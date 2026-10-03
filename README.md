@@ -1,5 +1,7 @@
 # moonbit_static_analysis
 
+**中文** | [English](README.en.md)
+
 `riantr/moonbit_static_analysis` — **三鉴（结构/类型/行为）静态分析流水线，一个基础设施，两种用途**：
 
 1. **程序代码修订**：分析**快速进化中的 MoonBit 语言**的程序（未定义名、未用绑定、类型错配、死分支、不可达代码）；
