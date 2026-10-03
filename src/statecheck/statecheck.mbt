@@ -155,6 +155,29 @@ pub fn audit(spec : MachineSpec) -> Array[@report.Report] {
     })
   }
   // ---- lens 2: the drive-slot contract (注解即契约)
+  // determinism: one (state, trigger) pair must resolve to ONE destination —
+  // two different `to`s for the same drive and the contract cannot decide
+  // where the machine goes.
+  let first_to : Map[String, String] = Map([])
+  let amb_reported : Map[String, Bool] = Map([])
+  for tr in spec.transitions {
+    let (from, trigger, to) = tr
+    let key = "\{from}\n\{trigger}"
+    match first_to.get(key) {
+      Some(prev) =>
+        if prev != to && !amb_reported.get(key).unwrap_or(false) {
+          amb_reported.set(key, true)
+          all.push(@report.Report::{
+            family: @core.FArgType,
+            lenses: [@core.LType],
+            message: "trigger '\{trigger}' at state '\{from}' resolves to multiple destinations ('\{prev}' vs '\{to}') — ambiguous drive",
+            span: state_span(from),
+            vst: [],
+          })
+        }
+      None => first_to.set(key, to)
+    }
+  }
   if spec.slot_names.length() > 0 {
     let placed : Map[String, Bool] = Map([])
     for pair in spec.trigger_slots {

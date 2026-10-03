@@ -184,3 +184,52 @@ test "lens 1: unreachable terminal means the machine cannot finish" {
   }
   assert_eq(cannot_finish, 1)
 }
+
+///|
+test "lens 2: one (state, trigger) with two destinations is ambiguous" {
+  // 同位同触发多去向：a --go--> b 与 a --go--> c 并存，驱动契约无法
+  // 决定去向 —— 恰好一条 FArgType 报告（去重后只报一次）
+  let spec : @statecheck.MachineSpec = {
+    name: "fork",
+    states: ["a", "b", "c"],
+    initial: "a",
+    terminal: "c",
+    transitions: [("a", "go", "b"), ("a", "go", "c"), ("a", "go", "c")],
+    trigger_slots: [("go", "act")],
+    slot_names: [],
+    blocks: [],
+    course: [],
+  }
+  let findings = @statecheck.audit(spec)
+  let mut ambiguous = 0
+  for rep in findings {
+    if rep.message.contains("resolves to multiple destinations ('b' vs 'c')") {
+      ambiguous += 1
+      assert_true(
+        match rep.family {
+          @core.FArgType => true
+          _ => false
+        },
+      )
+      assert_eq(rep.lenses.length(), 1)
+      assert_eq(rep.lenses[0].name(), "type")
+    }
+  }
+  assert_eq(ambiguous, 1)
+}
+
+///|
+test "clean machine stays clean with the determinism check" {
+  let spec : @statecheck.MachineSpec = {
+    name: "demo2",
+    states: ["a", "b", "c"],
+    initial: "a",
+    terminal: "c",
+    transitions: [("a", "go", "b"), ("a", "wake", "c"), ("b", "stop", "c")],
+    trigger_slots: [("go", "act"), ("wake", "act"), ("stop", "rest")],
+    slot_names: [],
+    blocks: [],
+    course: [],
+  }
+  assert_eq(@statecheck.audit(spec).length(), 0)
+}

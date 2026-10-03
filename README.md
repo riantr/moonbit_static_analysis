@@ -7,6 +7,22 @@
 
 一条流水线贯穿两者：**结构走查 → 类型/符号 → 抽象解释 → 统一报告**。
 
+## 安装 / 快速上手
+
+```bash
+moon add riantr/moonbit_static_analysis@0.1.1
+```
+
+```moonbit
+// 用途一：修订一段 MoonBit（当前子集）程序
+let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbt")
+println(@pipeline.render_result(result))
+
+// 用途二：审计一台状态机（机器表以纯数据进来）
+let spec : @statecheck.MachineSpec = { name: "主体", states: [...], ... }
+println(@statecheck.render(spec))
+```
+
 ## 三鉴（结构/类型/行为）（流水线核心）
 
 三鉴按"后者消费前者的表"组装：
@@ -127,5 +143,5 @@ moon prove src/core --why3-config .why3.conf   # 生成 12 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.1.0` 可被任何 MoonBit 模块以 `import` 依赖）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.1.1` 可被任何 MoonBit 模块以 `import` 依赖）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
