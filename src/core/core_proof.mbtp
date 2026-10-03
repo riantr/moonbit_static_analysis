@@ -128,6 +128,23 @@ lemma method_error_severity_is_error() where {
 } {}
 
 ///|
+/// parse errors and undefined names are Errors (the frontend cannot guess).
+lemma parse_severity_is_error() where {
+  proof_ensure: is_error(FParse.severity()),
+} {}
+
+///|
+lemma undefined_name_severity_is_error() where {
+  proof_ensure: is_error(FUndefinedName.severity()),
+} {}
+
+///|
+/// operator mismatches are Errors (a type-soundness break, not style).
+lemma op_mismatch_severity_is_error() where {
+  proof_ensure: is_error(FOpMismatch.severity()),
+} {}
+
+///|
 /// dead branches are warnings, not errors (they are unreachable, not
 /// malformed).
 lemma unreachable_severity_is_warning() where {
@@ -138,6 +155,30 @@ lemma unreachable_severity_is_warning() where {
 /// unused bindings are warnings (style, not type soundness).
 lemma unused_local_severity_is_warning() where {
   proof_ensure: is_warning(FUnusedLocal.severity()),
+} {}
+
+///|
+lemma unused_param_severity_is_warning() where {
+  proof_ensure: is_warning(FUnusedParam.severity()),
+} {}
+
+///|
+/// a parameter assigned in the body is a warning (annotation drift).
+lemma param_changed_severity_is_warning() where {
+  proof_ensure: is_warning(FParamChanged.severity()),
+} {}
+
+///|
+/// annotated-assignment mismatches are warnings (gradual binding permits
+/// widening; the drift is reported, not rejected).
+lemma assign_type_severity_is_warning() where {
+  proof_ensure: is_warning(FAssignType.severity()),
+} {}
+
+///|
+/// non-boolean conditions are warnings (the condition is still interpretable).
+lemma cond_bool_severity_is_warning() where {
+  proof_ensure: is_warning(FCondBool.severity()),
 } {}
 
 ///|

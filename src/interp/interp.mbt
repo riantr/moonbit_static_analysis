@@ -90,9 +90,6 @@ fn union_names(t1 : String, t2 : String) -> Array[String] {
 
 ///|
 /// Widen constants to types (loop fixpoints / abstract time).
-/// #proof_pure: the same function serves execution and the logic side
-/// (proof lemmas reason about widening directly).
-#proof_pure
 pub fn widen(v : AbsVal) -> AbsVal {
   match v {
     AInt(_) => AType("int")
@@ -105,7 +102,6 @@ pub fn widen(v : AbsVal) -> AbsVal {
 /// Can value `v` be an argument for a parameter declared `ty`?
 /// Bottom is vacuously applicable; Any matches everything (keep
 /// inferring under Any — conservative).
-#proof_pure
 pub fn vmatches(v : AbsVal, ty : String) -> Bool {
   match v {
     ABottom => true
@@ -127,7 +123,6 @@ pub fn vmatches(v : AbsVal, ty : String) -> Bool {
 
 ///|
 /// Is the value a usable boolean condition? (non-boolean condition error)
-#proof_pure
 pub fn vboolean(v : AbsVal) -> Bool {
   match v {
     ABool(_) => true

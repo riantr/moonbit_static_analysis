@@ -103,7 +103,7 @@ src/cli       可执行入口（程序 demo + 示例机器审计）
 
 ```bash
 moon check                # 0 错 0 警
-moon test --target js     # 12（程序语义）+ 7（机器表语义）= 19/19 全绿
+moon test --target js     # 14（程序语义）+ 9（机器表语义）= 21/21 全绿
 moon run src/cli          # 程序 demo + pyroduct 形状示例机器审计
 ```
 
@@ -112,16 +112,16 @@ moon run src/cli          # 程序 demo + pyroduct 形状示例机器审计
 `src/core` 是纯内核（无 Array 携带的结构体、无字符串），以 `"proof-enabled": true` 开启
 MoonBit 2026 实验形式验证；`src/core/core_proof.mbtp` 是逻辑侧：谓词（is_error /
 type_error_family / lower_irreflexive_ok / lower_transitive_ok / lower_antisymmetric_ok /
-rank_order_ok）+ 12 条引理（rank 顺序三常数、lower 三律、rank_order_agrees、
-severity 分类四条 + 全量 taxonomy）。
+rank_order_ok）+ **19 条引理**（rank 顺序三常数、lower 三律、rank_order_agrees、
+severity 分类：5 个 Error 族 + 7 个 Warning 族逐条 + 全量 taxonomy）。
 
 ```bash
-moon prove src/core --why3-config .why3.conf   # 生成 12 个 VC 并交 cvc5/alt-ergo
+moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/alt-ergo
 ```
 
 验证状态（why3 降级产物 `_build/verif/src/core/*.smt2` 逐目标 cvc5 机检）：
 
-- 12/12 引理目标 **VALID**（unsat），外加 span_at/zero_span 两个自动安全 VC VALID。
+- **21/21 目标全部 VALID**（unsat）：19 条引理 + span_at/zero_span 两个自动安全 VC。
 - 已知工具链限制（均为上游问题，非本项目代码）：
   1. `#proof_pure` 函数体为**结构体字面量**时（pos/span_at/zero_span）降级为不透明逻辑符号
      —— 函数体被丢弃，span 形状律在逻辑侧不可证（已由测试钉住，见 core_proof.mbtp 注释）。

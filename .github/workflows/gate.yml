@@ -1,0 +1,22 @@
+name: gate
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonbitlang/setup-moonbit@v0
+        with:
+          moon-version: latest
+      - name: moon check
+        run: moon check
+      - name: moon fmt --check
+        run: moon fmt --check
+      - name: moon test
+        run: moon test --target js
