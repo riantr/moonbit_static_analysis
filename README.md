@@ -1,29 +1,29 @@
 # moonbit_static_analysis
 
-`riantr/moonbit_static_analysis` — **三透镜静态分析流水线，一个基础设施，两种用途**：
+`riantr/moonbit_static_analysis` — **三鉴（结构/类型/行为）静态分析流水线，一个基础设施，两种用途**：
 
-1. **程序代码修订**：分析中性迷你语言 **MLang** 的程序（未定义名、未用绑定、类型错配、死分支、不可达代码）；
+1. **程序代码修订**：分析**快速进化中的 MoonBit 语言**的程序（未定义名、未用绑定、类型错配、死分支、不可达代码）；
 2. **静态状态修订**：为多层状态机提供通用机器表审计（`src/statecheck`）——**被测对象调用本模块**，把机器表作为纯数据喂进来。参考消费方是 [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct@0.1.5)（主体／群体／社会／进化层状态机族），其 `audit` 包用真实机器表调用本模块做黑盒测试。
 
 一条流水线贯穿两者：**结构走查 → 类型/符号 → 抽象解释 → 统一报告**。
 
-## 三透镜（流水线核心）
+## 三鉴（结构/类型/行为）（流水线核心）
 
-三个透镜按"后者消费前者的表"组装：
+三鉴按"后者消费前者的表"组装：
 
-| 透镜 | 包 | 职责 | 产出 |
+| 鉴 | 包 | 职责 | 产出 |
 |---|---|---|---|
 | 结构 | `src/walk` | 赋值即绑定、未用/未定义/参数被改、常量折叠剪枝 | 绑定表 `fn_bindings` |
 | 类型 | `src/types` | 注解即契约、推断、赋值/实参/条件检查（**声明取自绑定表**） | 签名表 `sigs` |
 | 行为 | `src/interp` | 格上抽象解释、按签名调度、虚栈（**方法表取自签名表**） | 行为发现 |
-| 合并 | `src/pipeline` | 同一缺陷的多透镜回声 → 一条报告，lens 并集 | `render_result` |
+| 合并 | `src/pipeline` | 同一缺陷的多鉴回声 → 一条报告，lens 并集 | `render_result` |
 
 四个组装点：绑定表→符号表（组装点1）、签名表→方法表（组装点2）、常量折叠的格化（组装点3）、合并去重（组装点4）。
 
-## 用途一：程序代码修订（MLang）
+## 用途一：程序代码修订（快速进化中的 MoonBit 语言）
 
 ```bash
-moon run src/cli          # demo：6 个样例 × 三透镜
+moon run src/cli          # demo：6 个样例 × 三鉴
 ```
 
 ```
@@ -34,13 +34,13 @@ moon run src/cli          # demo：6 个样例 × 三透镜
 Summary: 1 finding(s) (before merge: structural 1, type 2, behavior 1)
 ```
 
-一条缺陷三透镜都看见 → **一条**报告，标签是透镜并集；合并前后计数都保留（合并无损）。死分支被剪两次（结构层 `const_eval` + 行为层 `ABool` 格值），不存在的 `typo_fn` 零报告。
+一条缺陷三鉴都看见 → **一条**报告，标签是并集；合并前后计数都保留（合并无损）。死分支被剪两次（结构层 `const_eval` + 行为层 `ABool` 格值），不存在的 `typo_fn` 零报告。
 
-## 用途二：静态状态修订（机器表 → 三透镜）
+## 用途二：静态状态修订（机器表 → 三鉴）
 
-`src/statecheck` 接受**任意状态机的纯数据规格** `MachineSpec`（状态 / 初始 / 终点 / 迁移 / 触发-槽位 / Block 理由 / 修习历程），三透镜读机器表就像读程序：
+`src/statecheck` 接受**任意状态机的纯数据规格** `MachineSpec`（状态 / 初始 / 终点 / 迁移 / 触发-槽位 / Block 理由 / 修习历程），三鉴读机器表就像读程序：
 
-| 透镜 | 机器侧语义 | 检查内容 |
+| 鉴 | 机器侧语义 | 检查内容 |
 |---|---|---|
 | 结构 | **状态即绑定**（"赋值即绑定"推广到机器表） | 任何状态都必须被至少一条迁移绑定（出或入）；只出不进 → `never entered`；从初始位置的可达性闭包；终点必须可达（机器必须能完成） |
 | 类型 | **驱动槽契约**（"注解即契约"） | 每个触发必须归位已知槽、无空槽；`Block` 必须带理由——**无路必须说出口，不能沉默** |
@@ -64,22 +64,22 @@ pyroduct 侧的真实审计结果（其 `moon test` 的一部分）：
 Machine '主体' summary: 4 finding(s)
 ```
 
-`失忆`(NoPast) 与 `浑噩`(NoFuture) 是主体机器（34 位·53 迁·8 槽）里真实存在的两个"只出不进且不可达"位置——pyroduct 自己的 95 个测试之外，用另一套透镜语言独立复核出机器的论文边界（「过去与未来皆无处安放」）。
+`失忆`(NoPast) 与 `浑噩`(NoFuture) 是主体机器（34 位·53 迁·8 槽）里真实存在的两个"只出不进且不可达"位置——pyroduct 自己的 95 个测试之外，用另一套三鉴语言独立复核出机器的论文边界（「过去与未来皆无处安放」）。
 
 ## 包结构
 
 ```
 src/core      Span/Severity/Lens/Family(merge_group 契约)/Frame
 src/report    Report 结构与渲染（lens 并集标签、vst 框架）
-src/lexer     MLang 词法
-src/parser    MLang 语法 → ast
-src/ast       MLang 抽象语法
-src/walk      透镜1：绑定表 + 结构发现
-src/types     透镜2：Ty/Ty?/Sig 推断
-src/interp    透镜3：AbsVal 格 + 调度 + 虚栈
-src/pipeline  组装：跑三透镜 + merge_group 合并
+src/lexer     MoonBit 词法前端
+src/parser    MoonBit 语法 → ast
+src/ast       MoonBit 抽象语法
+src/walk      结构鉴：绑定表 + 结构发现
+src/types     类型鉴：Ty/Ty?/Sig 推断
+src/interp    行为鉴：AbsVal 格 + 调度 + 虚栈
+src/pipeline  组装：跑三鉴 + merge_group 合并
 src/statecheck 用途二：通用机器表审计（MachineSpec 纯数据桥）
-src/samples   demo 样例（内嵌 MLang 源）
+src/samples   demo 样例（内嵌 MoonBit 源）
 src/cli       可执行入口（程序 demo + 示例机器审计）
 ```
 
