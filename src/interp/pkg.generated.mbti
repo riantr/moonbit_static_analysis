@@ -1,0 +1,41 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/interp"
+
+import {
+  "moonbitlang/core/debug",
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/report",
+  "riantr/moonbit_static_analysis/src/types",
+  "riantr/moonbit_static_analysis/src/walk",
+}
+
+// Values
+pub fn analyze_module(@ast.Module, @types.TypeResult, @walk.WalkResult, String) -> Array[@report.Report]
+
+pub fn analyzed_sigs(@ast.Module, @types.TypeResult, @walk.WalkResult, String) -> Array[String]
+
+pub fn val_name(AbsVal) -> String
+
+pub fn vboolean(AbsVal) -> Bool
+
+pub fn vjoin(AbsVal, AbsVal) -> AbsVal
+
+pub fn vmatches(AbsVal, String) -> Bool
+
+pub fn widen(AbsVal) -> AbsVal
+
+// Errors
+
+// Types and methods
+pub(all) enum AbsVal {
+  ABottom
+  AInt(Int)
+  ABool(Bool)
+  AType(String)
+  AUnion(Array[String])
+  AAny
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

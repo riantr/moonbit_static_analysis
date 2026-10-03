@@ -1,0 +1,1026 @@
+// interp: lens 3 — the behavioral lens. Abstract
+// interpretation over a reduced lattice; the method table comes
+// from the type lens's signatures (assembly point 2 — the "host inference"
+// is the type stage); `ABool`
+// constants prune dead branches the same way the structural lens's folder
+// does (assembly point 3, the folding insight ported into the lattice).
+//
+// Every report carries a virtual stack trace: entry frame first, error
+// point last.
+
+///|
+/// The abstract value lattice: Bottom < Const < Type < Union < Any.
+pub(all) enum AbsVal {
+  ABottom
+  AInt(Int)
+  ABool(Bool)
+  AType(String)
+  AUnion(Array[String])
+  AAny
+} derive(Eq, Debug)
+
+///|
+pub fn val_name(v : AbsVal) -> String {
+  match v {
+    ABottom => "Union{}"
+    AInt(_) => "int"
+    ABool(_) => "bool"
+    AType(t) => t
+    AUnion(xs) => "Union{\{xs.join(", ")}}"
+    AAny => "Any"
+  }
+}
+
+///|
+/// lub: Bottom absorbs; equal constants stay constants; disagreeing
+/// constants widen to their type (the standard tmerge/widen).
+pub fn vjoin(a : AbsVal, b : AbsVal) -> AbsVal {
+  match (a, b) {
+    (ABottom, x) => x
+    (x, ABottom) => x
+    (AAny, _) => AAny
+    (_, AAny) => AAny
+    (AInt(i), AInt(j)) => if i == j { AInt(i) } else { AType("int") }
+    (ABool(i), ABool(j)) => if i == j { ABool(i) } else { AType("bool") }
+    (AType(t1), AType(t2)) =>
+      if t1 == t2 {
+        AType(t1)
+      } else {
+        AUnion(union_names(t1, t2))
+      }
+    (AType(t), AUnion(xs)) | (AUnion(xs), AType(t)) => {
+      let out : Array[String] = []
+      for x in xs {
+        out.push(x)
+      }
+      if !out.contains(t) {
+        out.push(t)
+      }
+      out.sort()
+      AUnion(out)
+    }
+    (AUnion(xs), AUnion(ys)) => {
+      let out : Array[String] = []
+      for x in xs {
+        out.push(x)
+      }
+      for y in ys {
+        if !out.contains(y) {
+          out.push(y)
+        }
+      }
+      out.sort()
+      AUnion(out)
+    }
+    (AInt(_), _) => vjoin(AType("int"), b)
+    (_, AInt(_)) => vjoin(a, AType("int"))
+    (ABool(_), _) => vjoin(AType("bool"), b)
+    (_, ABool(_)) => vjoin(a, AType("bool"))
+  }
+}
+
+///|
+fn union_names(t1 : String, t2 : String) -> Array[String] {
+  if t1 < t2 {
+    [t1, t2]
+  } else {
+    [t2, t1]
+  }
+}
+
+///|
+/// Widen constants to types (loop fixpoints / abstract time).
+/// #proof_pure: the same function serves execution and the logic side
+/// (proof lemmas reason about widening directly).
+#proof_pure
+pub fn widen(v : AbsVal) -> AbsVal {
+  match v {
+    AInt(_) => AType("int")
+    ABool(_) => AType("bool")
+    other => other
+  }
+}
+
+///|
+/// Can value `v` be an argument for a parameter declared `ty`?
+/// Bottom is vacuously applicable; Any matches everything (keep
+/// inferring under Any — conservative).
+#proof_pure
+pub fn vmatches(v : AbsVal, ty : String) -> Bool {
+  match v {
+    ABottom => true
+    AAny => true
+    AInt(_) => ty == "int" || ty == "float" || ty == "Any"
+    ABool(_) => ty == "bool" || ty == "Any"
+    AType(t) => t == ty || ty == "Any"
+    AUnion(xs) => {
+      let mut any = false
+      for x in xs {
+        if x == ty || ty == "Any" {
+          any = true
+        }
+      }
+      any
+    }
+  }
+}
+
+///|
+/// Is the value a usable boolean condition? (non-boolean condition error)
+#proof_pure
+pub fn vboolean(v : AbsVal) -> Bool {
+  match v {
+    ABool(_) => true
+    AInt(_) => false
+    AType(t) => t == "bool"
+    AUnion(xs) => xs.contains("bool")
+    ABottom => true
+    AAny => true
+  }
+}
+
+///|
+priv enum Flow {
+  FNormal
+  FReturn
+  FBreak
+  FContinue
+}
+
+///|
+priv struct MethodDef {
+  name : String
+  /// declared/inferred parameter types ("" = Any)
+  ptypes : Array[String]
+  /// parameter names, in order (from the walk table)
+  pnames : Array[String]
+  /// the partial return used on recursive cycles (from the signature)
+  cycle_ret : AbsVal
+  body : Array[@ast.Stmt]
+  line : Int
+}
+
+///|
+priv struct Interp {
+  methods : Map[String, MethodDef]
+  file : String
+  /// signature cache: key -> return value
+  cache : Map[String, AbsVal]
+  /// signatures currently being analyzed (cycle detection)
+  in_progress : Map[String, Bool]
+  /// partial returns of in-progress signatures (cached partials)
+  partials : Map[String, AbsVal]
+  mut sink : Array[@report.Report]
+  vst : Array[@core.Frame]
+  mut ret_vals : Array[AbsVal]
+  mut flow : Flow
+  mut globals : Map[String, AbsVal]
+}
+
+///|
+fn new_interp(file : String) -> Interp {
+  Interp::{
+    methods: Map([]),
+    file,
+    globals: Map([]),
+    cache: Map([]),
+    in_progress: Map([]),
+    partials: Map([]),
+    sink: [],
+    vst: [],
+    ret_vals: [],
+    flow: FNormal,
+  }
+}
+
+///|
+fn sig_key(name : String, args : Array[AbsVal]) -> String {
+  let parts : Array[String] = []
+  for v in args {
+    parts.push(val_name(v))
+  }
+  "\{name}(\{parts.join(", ")})"
+}
+
+///|
+fn Interp::report(
+  self : Interp,
+  family : @core.Family,
+  msg : String,
+  sp : @core.Span,
+) -> Unit {
+  self.sink.push(@report.Report::{
+    family,
+    lenses: [@core.LBehavior],
+    message: msg,
+    span: sp,
+    vst: @core.snapshot_vst(self.vst),
+  })
+}
+
+///|
+fn copy_env(e : Map[String, AbsVal]) -> Map[String, AbsVal] {
+  let out : Map[String, AbsVal] = Map([])
+  for k, v in e {
+    out.set(k, v)
+  }
+  out
+}
+
+///|
+fn Interp::merge_env(
+  self : Interp,
+  base : Map[String, AbsVal],
+  other : Map[String, AbsVal],
+) -> Map[String, AbsVal] {
+  ignore(self)
+  let out = copy_env(base)
+  for k, v in other {
+    match out.get(k) {
+      Some(old) => out.set(k, vjoin(old, v))
+      None => out.set(k, v)
+    }
+  }
+  out
+}
+
+///|
+fn widen_all(e : Map[String, AbsVal]) -> Map[String, AbsVal] {
+  let out : Map[String, AbsVal] = Map([])
+  for k, v in e {
+    out.set(k, widen(v))
+  }
+  out
+}
+
+///|
+/// Analyze a whole module. Phase 1 registers methods (from the signature
+/// table — assembly point 2); phase 2 runs a dry top-level pass to populate
+/// the signature cache (fixpoint for recursion via partials); phase 3 is the
+/// report pass with complete virtual stacks.
+pub fn analyze_module(
+  m : @ast.Module,
+  tr : @types.TypeResult,
+  wr : @walk.WalkResult,
+  file : String,
+) -> Array[@report.Report] {
+  let it = new_interp(file)
+  // method table from the type lens's signatures (assembly point 2)
+  for f in wr.fns {
+    let sig : @types.Sig? = find_sig(tr, f.name)
+    let ptypes : Array[String] = []
+    let pts = match sig {
+      Some(s) => s.param_tys
+      None => []
+    }
+    for t in pts {
+      let n = @types.ty_name(t)
+      ptypes.push(if n == "Unknown" { "" } else { n })
+    }
+    let cycle_ret = match sig {
+      Some(s) =>
+        match s.declared_ret {
+          @types.TUnknown => AAny
+          t => AType(ret_name(t))
+        }
+      None => AAny
+    }
+    it.methods.set(f.name, {
+      name: f.name,
+      ptypes,
+      pnames: fn_pnames(f),
+      cycle_ret,
+      body: f.body,
+      line: f.span.start.line,
+    })
+  }
+  // phase 2 (dry): populate the cache
+  let itg = it
+  itg.run_top(m, true)
+  // phase 3 (report): replay with complete stacks
+  itg.run_top(m, false)
+  itg.sink
+}
+
+///|
+fn ret_name(t : @types.Ty) -> String {
+  match t {
+    @types.TUnknown => "Any"
+    @types.TNone => "None"
+    @types.TInt => "int"
+    @types.TFloat => "float"
+    @types.TBool => "bool"
+    @types.TStr => "str"
+    @types.TList(_) => "List"
+    @types.TFunc(n, _, _) => "fn \{n}"
+    @types.TUnion(_) => "Any"
+  }
+}
+
+///|
+fn find_sig(tr : @types.TypeResult, name : String) -> @types.Sig? {
+  for s in tr.sigs {
+    if s.name == name {
+      return Some(s)
+    }
+  }
+  None
+}
+
+///|
+fn Interp::run_top(self : Interp, m : @ast.Module, dry : Bool) -> Unit {
+  let saved_sink = self.sink
+  let saved_ret = self.ret_vals
+  let saved_flow = self.flow
+  if dry {
+    self.sink = []
+  }
+  self.globals = Map([])
+  self.flow = FNormal
+  for s in m.body {
+    match s.kind {
+      SFunc(_, _, _, _, _) => ()
+      _ => {
+        self.vst.push({
+          func: "main()",
+          file: self.file,
+          line: s.span.start.line,
+        })
+        self.exec_stmt(s, self.globals)
+        let _ = self.vst.pop()
+        self.flow = FNormal
+      }
+    }
+  }
+  if dry {
+    self.sink = saved_sink
+  }
+  self.ret_vals = saved_ret
+  self.flow = saved_flow
+}
+
+///|
+fn Interp::exec_block(
+  self : Interp,
+  body : Array[@ast.Stmt],
+  env : Map[String, AbsVal],
+) -> Unit {
+  for s in body {
+    let terminated = match self.flow {
+      FNormal => false
+      FReturn | FBreak | FContinue => true
+    }
+    if terminated {
+      // behavior lens's flow insight: statements after a terminator are
+      // unreachable (reportUnreachable)
+      self.report(@core.FUnreachable, "unreachable code", s.span)
+      break
+    }
+    self.exec_stmt(s, env)
+  }
+}
+
+///|
+fn Interp::exec_stmt(
+  self : Interp,
+  s : @ast.Stmt,
+  env : Map[String, AbsVal],
+) -> Unit {
+  match s.kind {
+    SExpr(e) => {
+      let _ = self.eval(e, env)
+    }
+    SLet(n, _, init) => {
+      let v = self.eval(init, env)
+      env.set(n, v)
+    }
+    SAssign(target, rhs) => {
+      let v = self.eval(rhs, env)
+      match target.kind {
+        EName(n) =>
+          if env.contains(n) {
+            env.set(n, v)
+          } else if self.globals.contains(n) {
+            self.globals.set(n, v)
+          } else {
+            env.set(n, v)
+          }
+        EField(base, _) => {
+          let _ = self.eval(base, env)
+        }
+        EIndex(base, idx) => {
+          let _ = self.eval(base, env)
+          let _ = self.eval(idx, env)
+        }
+        _ => ()
+      }
+    }
+    SIf(cond, then, elseifs, els) =>
+      // ABool constants prune dead branches (assembly point 3)
+      match self.eval(cond, env) {
+        ABool(true) => self.exec_block(then, env)
+        ABool(false) => self.exec_alt(elseifs, els, env, 0)
+        ABottom => ()
+        cv => {
+          if !vboolean(cv) {
+            self.report(
+              @core.FCondBool,
+              "condition must be bool, got '\{val_name(cv)}'",
+              cond.span,
+            )
+          }
+          let env_then = copy_env(env)
+          self.exec_block(then, env_then)
+          let acc = env_then
+          for ei in elseifs {
+            let env_ei = copy_env(acc)
+            self.exec_block(ei.body, env_ei)
+            let merged = Interp::merge_env(self, acc, env_ei)
+            acc.clear()
+            for k, v in merged {
+              acc.set(k, v)
+            }
+          }
+          match els {
+            Some(e) => {
+              let env_e = copy_env(acc)
+              self.exec_block(e, env_e)
+              let merged = Interp::merge_env(self, acc, env_e)
+              acc.clear()
+              for k, v in merged {
+                acc.set(k, v)
+              }
+            }
+            None => ()
+          }
+          env.clear()
+          for k, v in acc {
+            env.set(k, v)
+          }
+        }
+      }
+    SWhile(cond, body) => {
+      let cv = self.eval(cond, env)
+      if !vboolean(cv) {
+        self.report(
+          @core.FCondBool,
+          "condition must be bool, got '\{val_name(cv)}'",
+          cond.span,
+        )
+      }
+      // widening: run the body once in a widened copy; the pre-loop state
+      // is the sound meet (the loop may run zero times)
+      let wenv = widen_all(env)
+      self.exec_block(body, wenv)
+      let merged = Interp::merge_env(self, env, wenv)
+      env.clear()
+      for k, v in merged {
+        env.set(k, v)
+      }
+    }
+    SFor(v, _, seq, body) => {
+      let sv = self.eval(seq, env)
+      let elem = match sv {
+        AType("str") => AType("str")
+        ABottom => ABottom
+        AAny => AAny
+        AType("List") => AAny
+        AUnion(_) => AAny
+        _ => AAny
+      }
+      let wenv = widen_all(env)
+      wenv.set(v, elem)
+      self.exec_block(body, wenv)
+      let merged = Interp::merge_env(self, env, wenv)
+      env.clear()
+      for k, v in merged {
+        env.set(k, v)
+      }
+    }
+    SReturn(e) => {
+      let v = match e {
+        Some(x) => self.eval(x, env)
+        None => ABottom
+      }
+      self.ret_vals.push(v)
+      self.flow = FReturn
+    }
+    SBreak => self.flow = FBreak
+    SContinue => self.flow = FContinue
+    SFunc(_, _, _, _, _) => ()
+  }
+}
+
+///|
+fn Interp::exec_alt(
+  self : Interp,
+  elseifs : Array[@ast.ElseIf],
+  els : Array[@ast.Stmt]?,
+  env : Map[String, AbsVal],
+  idx : Int,
+) -> Unit {
+  if idx < elseifs.length() {
+    match self.eval(elseifs[idx].cond, env) {
+      ABool(true) => self.exec_block(elseifs[idx].body, env)
+      ABool(false) => self.exec_alt(elseifs, els, env, idx + 1)
+      ABottom => ()
+      cv => {
+        if !vboolean(cv) {
+          self.report(
+            @core.FCondBool,
+            "condition must be bool, got '\{val_name(cv)}'",
+            elseifs[idx].cond.span,
+          )
+        }
+        self.exec_block(elseifs[idx].body, env)
+      }
+    }
+  } else {
+    match els {
+      Some(e) => self.exec_block(e, env)
+      None => ()
+    }
+  }
+}
+
+///|
+fn Interp::eval(
+  self : Interp,
+  e : @ast.Expr,
+  env : Map[String, AbsVal],
+) -> AbsVal {
+  match e.kind {
+    EInt(i) => AInt(i)
+    EFloat(_) => AType("float")
+    EBool(b) => ABool(b)
+    EStr(_) => AType("str")
+    EList(_) => AType("List")
+    EName(n) =>
+      match env.get(n) {
+        Some(v) => v
+        None =>
+          match self.globals.get(n) {
+            Some(v) => v
+            None =>
+              if self.methods.contains(n) ||
+                n == "print" ||
+                n == "len" ||
+                n == "abs" {
+                AType("Function")
+              } else {
+                // UndefVarErrorReport (jetanalyzer.jl:862)
+                self.report(
+                  @core.FUndefinedName,
+                  "undefined variable '\{n}'",
+                  e.span,
+                )
+                ABottom
+              }
+          }
+      }
+    EUnary(op, a) => {
+      let v = self.eval(a, env)
+      match (op, v) {
+        (UNeg, AInt(i)) => AInt(-i)
+        (UNeg, AType(t)) => AType(t)
+        (UNot, ABool(b)) => ABool(!b)
+        (UNot, AType(t)) => AType(t)
+        (_, AAny) => AAny
+        (_, ABottom) => ABottom
+        _ => ABottom
+      }
+    }
+    EBin(op, a, b) => {
+      let l = self.eval(a, env)
+      let r = self.eval(b, env)
+      self.binop(op, l, r, e.span)
+    }
+    ECall(name, args) => {
+      let vals : Array[AbsVal] = []
+      for a in args {
+        vals.push(self.eval(a, env))
+      }
+      self.call(name, vals, e.span)
+    }
+    EField(base, _) => {
+      let _ = self.eval(base, env)
+      AAny
+    }
+    EIndex(base, idx) => {
+      let b = self.eval(base, env)
+      let _ = self.eval(idx, env)
+      match b {
+        AType("str") => AType("str")
+        AType("List") => AAny
+        AAny => AAny
+        _ => AAny
+      }
+    }
+  }
+}
+
+///|
+fn Interp::binop(
+  self : Interp,
+  op : @ast.BOp,
+  l : AbsVal,
+  r : AbsVal,
+  sp : @core.Span,
+) -> AbsVal {
+  match (l, r) {
+    (AInt(i), AInt(j)) =>
+      match op {
+        OpAdd => AInt(i + j)
+        OpSub => AInt(i - j)
+        OpMul => AInt(i * j)
+        OpMod => AInt(i % j)
+        OpDiv => AType("float")
+        OpLt => ABool(i < j)
+        OpLe => ABool(i <= j)
+        OpGt => ABool(i > j)
+        OpGe => ABool(i >= j)
+        OpEq => ABool(i == j)
+        OpNe => ABool(i != j)
+        _ => AType("bool")
+      }
+    (ABool(i), ABool(j)) =>
+      match op {
+        OpAnd => ABool(i && j)
+        OpOr => ABool(i || j)
+        OpEq => ABool(i == j)
+        OpNe => ABool(i != j)
+        _ => AType("bool")
+      }
+    (ABottom, _) | (_, ABottom) => ABottom
+    _ => {
+      // type-level arithmetic; mismatch = method error on `+`
+      // (keep inferring under Any — conservative, no report)
+      let numeric = fn(v : AbsVal) -> Bool {
+        match v {
+          AType("int") | AType("float") => true
+          AInt(_) => true
+          AAny => true
+          _ => false
+        }
+      }
+      let boolean = fn(v : AbsVal) -> Bool {
+        match v {
+          AType("bool") => true
+          ABool(_) => true
+          AAny => true
+          _ => false
+        }
+      }
+      let strv = fn(v : AbsVal) -> Bool {
+        match v {
+          AType("str") => true
+          _ => false
+        }
+      }
+      if l is AAny || r is AAny {
+        // Any absorbs: conservative, keep inferring (the basic analyzer)
+        return match op {
+          OpLt | OpLe | OpGt | OpGe | OpEq | OpNe | OpAnd | OpOr =>
+            AType("bool")
+          OpDiv => AType("float")
+          _ => AAny
+        }
+      }
+      match op {
+        OpAdd =>
+          if (numeric(l) && numeric(r)) || (strv(l) && strv(r)) {
+            AType(bin_widen(op, l, r))
+          } else {
+            self.report(
+              @core.FMethodError,
+              "no method matching +(\{val_name(l)}, \{val_name(r)})",
+              sp,
+            )
+            ABottom
+          }
+        OpSub | OpMul | OpDiv | OpMod =>
+          if numeric(l) && numeric(r) {
+            if op == OpDiv {
+              AType("float")
+            } else {
+              AType(bin_widen(op, l, r))
+            }
+          } else {
+            self.report(
+              @core.FMethodError,
+              "no method matching \{op.symbol()}(\{val_name(l)}, \{val_name(r)})",
+              sp,
+            )
+            ABottom
+          }
+        OpLt | OpLe | OpGt | OpGe =>
+          if numeric(l) && numeric(r) {
+            AType("bool")
+          } else {
+            self.report(
+              @core.FMethodError,
+              "no method matching \{op.symbol()}(\{val_name(l)}, \{val_name(r)})",
+              sp,
+            )
+            ABottom
+          }
+        OpEq | OpNe => AType("bool")
+        OpAnd | OpOr =>
+          if boolean(l) && boolean(r) {
+            AType("bool")
+          } else {
+            self.report(
+              @core.FMethodError,
+              "no method matching \{op.symbol()}(\{val_name(l)}, \{val_name(r)})",
+              sp,
+            )
+            ABottom
+          }
+      }
+    }
+  }
+}
+
+///|
+fn bin_widen(op : @ast.BOp, l : AbsVal, r : AbsVal) -> String {
+  let lname = val_name(l)
+  let rname = val_name(r)
+  if op == OpDiv {
+    return "float"
+  }
+  if lname == "float" || rname == "float" {
+    return "float"
+  }
+  if lname == "Any" || rname == "Any" {
+    return "Any"
+  }
+  "int"
+}
+
+///|
+fn Interp::call(
+  self : Interp,
+  name : String,
+  vals : Array[AbsVal],
+  sp : @core.Span,
+) -> AbsVal {
+  // builtins first (len's applicability is checked like a method)
+  if name == "print" {
+    return AType("None")
+  }
+  if name == "len" {
+    match vals.get(0) {
+      Some(v) =>
+        match v {
+          AType("str") | AType("List") => return AType("int")
+          AAny | ABottom => return AType("int")
+          _ => {
+            self.report(
+              @core.FMethodError,
+              "no method matching len(\{val_name(v)})",
+              sp,
+            )
+            return ABottom
+          }
+        }
+      None => return AType("int")
+    }
+  }
+  if name == "abs" {
+    match vals.get(0) {
+      Some(AInt(i)) => return AInt(if i < 0 { -i } else { i })
+      Some(v) =>
+        match v {
+          AType("int") | AType("float") => return v
+          AAny | ABottom => return AType("int")
+          _ => {
+            self.report(
+              @core.FMethodError,
+              "no method matching abs(\{val_name(v)})",
+              sp,
+            )
+            return ABottom
+          }
+        }
+      None => return ABottom
+    }
+  }
+  match self.methods.get(name) {
+    Some(def) => {
+      // dispatch: every declared parameter type must accept its argument
+      // (union-splitting lite; Any parameters accept everything)
+      let mut ok = true
+      for i, pt in def.ptypes {
+        let arg = match vals.get(i) {
+          Some(v) => v
+          None => ABottom
+        }
+        if !(pt == "" || pt == "Any") && !vmatches(arg, pt) {
+          ok = false
+        }
+      }
+      if vals.length() != def.ptypes.length() {
+        ok = false
+      }
+      if !ok {
+        // MethodErrorReport (jetanalyzer.jl:652)
+        let parts : Array[String] = []
+        for v in vals {
+          parts.push(val_name(v))
+        }
+        self.report(
+          @core.FMethodError,
+          "no method matching \{name}(\{parts.join(", ")})",
+          sp,
+        )
+        return ABottom
+      }
+      self.analyze_fn(def, vals)
+    }
+    None => {
+      // callee existence was the structural/type lenses' finding; here it
+      // is a runtime UndefVarError — the pipeline merges all three
+      self.report(@core.FUndefinedName, "undefined function '\{name}'", sp)
+      ABottom
+    }
+  }
+}
+
+///|
+fn Interp::analyze_fn(
+  self : Interp,
+  def : MethodDef,
+  vals : Array[AbsVal],
+) -> AbsVal {
+  // no cache short-circuit: the dry pass populates the cache for the
+  // summary and converges recursion via partials, but the report pass must
+  // re-execute every body so findings are emitted with full stacks
+  let key = sig_key(def.name, vals)
+  if self.in_progress.contains(key) {
+    // recursion: consult the partial (cached partial results);
+    // declared return types make the cycle converge
+    match self.partials.get(key) {
+      Some(v) => return v
+      None => {
+        self.partials.set(key, def.cycle_ret)
+        return def.cycle_ret
+      }
+    }
+  }
+  self.in_progress.set(key, true)
+  let env : Map[String, AbsVal] = Map([])
+  for i, pt in def.ptypes {
+    let name = "arg\{i}"
+    env.set(
+      name,
+      if pt == "" {
+        AAny
+      } else {
+        match vals.get(i) {
+          Some(v) => v
+          None => ABottom
+        }
+      },
+    )
+  }
+  // bind parameter NAMES properly: walk the def's params? The method table
+  // stores types only; recover names from the first statement scan
+  let saved_sink = self.sink
+  let saved_ret = self.ret_vals
+  let saved_flow = self.flow
+  self.ret_vals = []
+  self.flow = FNormal
+  self.vst.push({ func: def.name, file: self.file, line: def.line, })
+  // body uses parameter names; map them from the stored def body params
+  self.bind_params(def, vals, env)
+  self.exec_block(def.body, env)
+  let ret = join_vals(self.ret_vals)
+  let _ = self.vst.pop()
+  self.sink = saved_sink
+  self.ret_vals = saved_ret
+  self.flow = saved_flow
+  self.in_progress.remove(key)
+  // join the declared partial into the computed return: recursion returns
+  // the partial, so the finished analysis is the join of both (partials are
+  // refined by later passes; one round converges here)
+  let refined = match self.partials.get(key) {
+    Some(p) => vjoin(ret, p)
+    None => ret
+  }
+  self.partials.remove(key)
+  self.cache.set(key, refined)
+  refined
+}
+
+///|
+fn join_vals(vals : Array[AbsVal]) -> AbsVal {
+  if vals.length() == 0 {
+    return AType("None")
+  }
+  let mut acc = ABottom
+  for v in vals {
+    acc = vjoin(acc, v)
+  }
+  acc
+}
+
+///|
+fn Interp::bind_params(
+  self : Interp,
+  def : MethodDef,
+  vals : Array[AbsVal],
+  env : Map[String, AbsVal],
+) -> Unit {
+  ignore(self)
+  for i, name in def.pnames {
+    env.set(
+      name,
+      match vals.get(i) {
+        Some(v) => v
+        None => ABottom
+      },
+    )
+  }
+}
+
+///|
+fn fn_pnames(f : @walk.FnInfo) -> Array[String] {
+  let out : Array[String] = []
+  for p in f.params {
+    out.push(p.name)
+  }
+  out
+}
+
+///|
+fn Interp::summarize_sigs(self : Interp) -> Array[String] {
+  let out : Array[String] = []
+  for name, def in self.methods {
+    let parts : Array[String] = []
+    for pt in def.ptypes {
+      parts.push(if pt == "" { "Any" } else { pt })
+    }
+    let key = sig_key(name, arg_placeholders(def))
+    // refined where abstract execution reached the call; otherwise the
+    // type lens's declared/inferred return (assembly point 2)
+    let ret = match self.cache.get(key) {
+      Some(v) => val_name(v)
+      None => val_name(def.cycle_ret)
+    }
+    out.push("\{name}(\{parts.join(", ")}) -> \{ret}")
+  }
+  out.sort()
+  out
+}
+
+///|
+fn arg_placeholders(def : MethodDef) -> Array[AbsVal] {
+  let out : Array[AbsVal] = []
+  for pt in def.ptypes {
+    out.push(if pt == "" { AAny } else { AType(pt) })
+  }
+  out
+}
+
+///|
+/// Signatures analyzed by abstract interpretation, for the pipeline
+/// summary (`f(::int) -> int` style).
+pub fn analyzed_sigs(
+  m : @ast.Module,
+  tr : @types.TypeResult,
+  wr : @walk.WalkResult,
+  file : String,
+) -> Array[String] {
+  let it = new_interp(file)
+  for f in wr.fns {
+    let sig : @types.Sig? = find_sig(tr, f.name)
+    let ptypes : Array[String] = []
+    let pts = match sig {
+      Some(s) => s.param_tys
+      None => []
+    }
+    for t in pts {
+      let n = @types.ty_name(t)
+      ptypes.push(if n == "Unknown" { "" } else { n })
+    }
+    let cycle_ret = match sig {
+      Some(s) =>
+        match s.declared_ret {
+          @types.TUnknown => AAny
+          t => AType(ret_name(t))
+        }
+      None => AAny
+    }
+    it.methods.set(f.name, {
+      name: f.name,
+      ptypes,
+      pnames: fn_pnames(f),
+      cycle_ret,
+      body: f.body,
+      line: f.span.start.line,
+    })
+  }
+  it.run_top(m, true)
+  it.run_top(m, false)
+  it.summarize_sigs()
+}

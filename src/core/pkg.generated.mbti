@@ -1,0 +1,66 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/core"
+
+// Values
+pub fn pos(Int, Int) -> Pos
+
+pub fn snapshot_vst(Array[Frame]) -> Array[Frame]
+
+pub fn span_at(Int, Int, Int) -> Span
+
+pub fn zero_span() -> Span
+
+// Errors
+
+// Types and methods
+pub(all) enum Family {
+  FParse
+  FUndefinedName
+  FUnusedLocal
+  FUnusedParam
+  FParamChanged
+  FAssignType
+  FArgType
+  FOpMismatch
+  FMethodError
+  FCondBool
+  FUnreachable
+} derive(Eq)
+pub fn Family::merge_group(Self) -> String
+pub fn Family::name(Self) -> String
+pub fn Family::severity(Self) -> Severity
+
+pub(all) struct Frame {
+  func : String
+  file : String
+  line : Int
+} derive(Eq)
+
+pub(all) enum Lens {
+  LStructural
+  LType
+  LBehavior
+} derive(Eq)
+pub fn Lens::lower(Self, Self) -> Bool
+pub fn Lens::name(Self) -> String
+pub fn Lens::rank(Self) -> Int
+
+pub(all) struct Pos {
+  line : Int
+  col : Int
+} derive(Eq)
+
+pub(all) enum Severity {
+  Error
+  Warning
+  Hint
+} derive(Eq)
+
+pub(all) struct Span {
+  start : Pos
+  end : Pos
+} derive(Eq)
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/parser"
+
+import {
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/report",
+}
+
+// Values
+pub fn parse(String) -> ParseResult
+
+// Errors
+
+// Types and methods
+pub(all) struct ParseResult {
+  tree : @ast.Module
+  reports : Array[@report.Report]
+}
+
+// Type aliases
+
+// Traits

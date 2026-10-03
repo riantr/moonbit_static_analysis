@@ -1,0 +1,6 @@
+# build artifacts
+_build/
+
+# local formal-verification toolchain shims (machine-specific paths)
+.why3.conf
+cvc5wrap.ps1

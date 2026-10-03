@@ -1,0 +1,67 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/types"
+
+import {
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/report",
+  "riantr/moonbit_static_analysis/src/walk",
+}
+
+// Values
+pub fn ann_to_ty(String) -> Ty
+
+pub fn binop_result(@ast.BOp, Ty, Ty) -> Ty?
+
+pub fn infer_full(@ast.Module, @walk.WalkResult) -> TypeResult
+
+pub fn is_numeric(Ty) -> Bool
+
+pub fn ty_assignable(Ty, Ty) -> Bool
+
+pub fn ty_join(Ty, Ty) -> Ty
+
+pub fn ty_name(Ty) -> String
+
+pub fn ty_union(Array[Ty]) -> Ty
+
+// Errors
+
+// Types and methods
+pub(all) struct Sig {
+  name : String
+  param_tys : Array[Ty]
+  ret : Ty
+  declared_ret : Ty
+  line : Int
+} derive(Eq)
+
+pub(all) enum Ty {
+  TUnknown
+  TNone
+  TInt
+  TFloat
+  TBool
+  TStr
+  TList(Ty)
+  TFunc(String, Array[Ty], Ty)
+  TUnion(Array[Ty])
+} derive(Eq)
+
+pub(all) struct TypeResult {
+  syms : Array[TypedSym]
+  sigs : Array[Sig]
+  findings : Array[@report.Report]
+}
+
+pub(all) struct TypedSym {
+  name : String
+  ty : Ty
+  annotated : Bool
+  fn_scope : String
+  decl_span : @core.Span
+} derive(Eq)
+
+// Type aliases
+
+// Traits

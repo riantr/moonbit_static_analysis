@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/report"
+
+import {
+  "riantr/moonbit_static_analysis/src/core",
+}
+
+// Values
+pub fn render_reports(Array[Report]) -> String
+
+// Errors
+
+// Types and methods
+pub(all) struct Report {
+  family : @core.Family
+  lenses : Array[@core.Lens]
+  message : String
+  span : @core.Span
+  vst : Array[@core.Frame]
+}
+pub fn Report::render(Self) -> String
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,6 @@
+import {
+  "riantr/moonbit_static_analysis/src/report",
+  "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/walk",
+}

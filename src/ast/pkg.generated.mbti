@@ -1,0 +1,91 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/ast"
+
+import {
+  "riantr/moonbit_static_analysis/src/core",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) enum BOp {
+  OpAdd
+  OpSub
+  OpMul
+  OpDiv
+  OpMod
+  OpEq
+  OpNe
+  OpLt
+  OpLe
+  OpGt
+  OpGe
+  OpAnd
+  OpOr
+} derive(Eq)
+pub fn BOp::symbol(Self) -> String
+
+pub(all) enum EKind {
+  EInt(Int)
+  EFloat(Double)
+  EBool(Bool)
+  EStr(String)
+  EName(String)
+  EList(Array[Expr])
+  EUnary(UOp, Expr)
+  EBin(BOp, Expr, Expr)
+  ECall(String, Array[Expr])
+  EField(Expr, String)
+  EIndex(Expr, Expr)
+} derive(Eq)
+
+pub(all) struct ElseIf {
+  cond : Expr
+  body : Array[Stmt]
+} derive(Eq)
+
+pub(all) struct Expr {
+  span : @core.Span
+  kind : EKind
+} derive(Eq)
+pub fn Expr::assigned_base(Self) -> String?
+pub fn Expr::is_valid_target(Self) -> Bool
+
+pub(all) struct Module {
+  body : Array[Stmt]
+} derive(Eq)
+
+pub(all) struct Param {
+  name : String
+  tyann : String
+  span : @core.Span
+} derive(Eq)
+
+pub(all) enum SKind {
+  SExpr(Expr)
+  SLet(String, String, Expr)
+  SAssign(Expr, Expr)
+  SIf(Expr, Array[Stmt], Array[ElseIf], Array[Stmt]?)
+  SWhile(Expr, Array[Stmt])
+  SFor(String, @core.Span, Expr, Array[Stmt])
+  SReturn(Expr?)
+  SBreak
+  SContinue
+  SFunc(String, Array[Param], String, Array[Stmt], @core.Span)
+} derive(Eq)
+
+pub(all) struct Stmt {
+  span : @core.Span
+  kind : SKind
+} derive(Eq)
+
+pub(all) enum UOp {
+  UNeg
+  UNot
+} derive(Eq)
+
+// Type aliases
+
+// Traits

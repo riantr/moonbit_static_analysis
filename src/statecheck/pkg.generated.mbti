@@ -1,0 +1,32 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/statecheck"
+
+import {
+  "riantr/moonbit_static_analysis/src/report",
+}
+
+// Values
+pub fn audit(MachineSpec) -> Array[@report.Report]
+
+pub fn pyroduct_flavored() -> MachineSpec
+
+pub fn render(MachineSpec) -> String
+
+// Errors
+
+// Types and methods
+pub(all) struct MachineSpec {
+  name : String
+  states : Array[String]
+  initial : String
+  terminal : String
+  transitions : Array[(String, String, String)]
+  trigger_slots : Array[(String, String)]
+  slot_names : Array[String]
+  blocks : Array[(String, String, String)]
+  course : Array[String]
+}
+
+// Type aliases
+
+// Traits

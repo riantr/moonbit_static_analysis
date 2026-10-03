@@ -1,0 +1,52 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/lexer"
+
+import {
+  "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/report",
+}
+
+// Values
+pub fn lex(String) -> (Array[Tok], Array[@core.Span], Array[@report.Report])
+
+// Errors
+
+// Types and methods
+pub(all) enum Tok {
+  TInt(Int)
+  TFloat(Double)
+  TStr(String)
+  TName(String)
+  TPlus
+  TMinus
+  TStar
+  TSlash
+  TPercent
+  TAssign
+  TEqEq
+  TNe
+  TLt
+  TLe
+  TGt
+  TGe
+  TAndAnd
+  TOrOr
+  TBang
+  TLParen
+  TRParen
+  TLBrace
+  TRBrace
+  TLBracket
+  TRBracket
+  TComma
+  TColon
+  TArrow
+  TDot
+  TSemi
+  TNewline
+  TEOF
+} derive(Eq)
+
+// Type aliases
+
+// Traits

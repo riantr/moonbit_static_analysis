@@ -1,0 +1,147 @@
+// Logic side of the unified report model. These are the machine-checked
+// forms of the laws the tests pin operationally:
+//   - the lens ranks form a strict order (structural < type < behavior),
+//     which merge_findings relies on for representative selection;
+//   - spans are (line, col) → (line, col + len), which every renderer
+//     relies on;
+//   - the severity taxonomy assigns error/warning by merge group.
+// The verified functions are the #proof_pure definitions in core.mbt —
+// one definition, both program and logic side. This package is kept free
+// of Array-carrying structs (Report lives in src/report) so the
+// experimental proof lowering stays within its current limits.
+
+///|
+/// severity classes as match predicates (avoids string constants in logic).
+predicate is_error(s : Severity) {
+  match s {
+    Error => true
+    _ => false
+  }
+}
+
+///|
+predicate is_warning(s : Severity) {
+  match s {
+    Warning => true
+    _ => false
+  }
+}
+
+///|
+/// the merge-group premise of the severity taxonomy: every family whose
+/// merge_group names a type error reports Error.
+predicate type_error_family(f : Family) {
+  match f {
+    FParse => true
+    FUndefinedName => true
+    FArgType => true
+    FOpMismatch => true
+    FMethodError => true
+    _ => false
+  }
+}
+
+///|
+/// type errors are exactly the error-severity families.
+predicate severity_taxonomy(f : Family) {
+  is_error(f.severity()) == type_error_family(f)
+}
+
+///|
+/// strict order laws, one predicate each so the lemmas stay single calls.
+predicate lower_irreflexive_ok(l : Lens) {
+  l.lower(l) == false
+}
+predicate lower_transitive_ok(a : Lens, b : Lens, c : Lens) {
+  (a.lower(b) && b.lower(c)) → a.lower(c)
+}
+
+///|
+predicate lower_antisymmetric_ok(a : Lens, b : Lens) {
+  a.lower(b) → b.lower(a) == false
+}
+
+///|
+/// lower is exactly rank comparison (the definition the merge uses).
+predicate rank_order_ok(a : Lens, b : Lens) {
+  (a.rank() < b.rank()) == a.lower(b)
+}
+
+// NOTE: the span-shape law (span_at(l,c,n).start.line == l && … end.col ==
+// c + len) is NOT stated here. The experimental proof lowering lowers
+// functions whose bodies are struct literals (pos/span_at/zero_span) to
+// OPAQUE logic symbols — their bodies are dropped, so the shape law is
+// unprovable in logic today. The law is pinned operationally by
+// pipeline/statecheck tests instead. Re-add it when the lowering emits
+// struct-literal definitions.
+
+///|
+/// rank values are the pipeline order constants.
+lemma rank_structural_zero() where {
+  proof_ensure: LStructural.rank() == 0,
+} {}
+
+///|
+lemma rank_type_one() where {
+  proof_ensure: LType.rank() == 1,
+} {}
+
+///|
+lemma rank_behavior_two() where {
+  proof_ensure: LBehavior.rank() == 2,
+} {}
+
+///|
+/// strict order: lower is irreflexive (no finding can be its own echo).
+lemma lower_irreflexive(l : Lens) where {
+  proof_ensure: lower_irreflexive_ok(l),
+} {}
+
+///|
+/// strict order: lower is transitive (lens chains compose).
+lemma lower_transitive(a : Lens, b : Lens, c : Lens) where {
+  proof_ensure: lower_transitive_ok(a, b, c),
+} {}
+
+///|
+/// strict order: lower is antisymmetric (two lenses agree on order both
+/// ways only when they are the same lens).
+lemma lower_antisymmetric(a : Lens, b : Lens) where {
+  proof_ensure: lower_antisymmetric_ok(a, b),
+} {}
+
+///|
+/// lower is exactly rank comparison (the definition the merge uses).
+lemma rank_order_agrees(a : Lens, b : Lens) where {
+  proof_ensure: rank_order_ok(a, b),
+} {}
+
+///|
+/// the severity taxonomy: arg-type/method errors are Errors.
+lemma arg_type_severity_is_error() where {
+  proof_ensure: is_error(FArgType.severity()),
+} {}
+
+///|
+lemma method_error_severity_is_error() where {
+  proof_ensure: is_error(FMethodError.severity()),
+} {}
+
+///|
+/// dead branches are warnings, not errors (they are unreachable, not
+/// malformed).
+lemma unreachable_severity_is_warning() where {
+  proof_ensure: is_warning(FUnreachable.severity()),
+} {}
+
+///|
+/// unused bindings are warnings (style, not type soundness).
+lemma unused_local_severity_is_warning() where {
+  proof_ensure: is_warning(FUnusedLocal.severity()),
+} {}
+
+///|
+/// the full taxonomy holds for every family in the model.
+lemma severity_taxonomy_holds(f : Family) where {
+  proof_ensure: severity_taxonomy(f),
+} {}

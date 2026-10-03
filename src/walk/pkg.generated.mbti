@@ -1,0 +1,47 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/walk"
+
+import {
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/report",
+}
+
+// Values
+pub fn const_eval(@ast.Expr) -> Const?
+
+pub fn walk_module(@ast.Module, String) -> WalkResult
+
+// Errors
+
+// Types and methods
+pub(all) struct Binding {
+  name : String
+  tyann : String
+  param : Bool
+  decl_span : @core.Span
+} derive(Eq)
+
+pub(all) enum Const {
+  CInt(Int)
+  CBool(Bool)
+} derive(Eq)
+
+pub(all) struct FnInfo {
+  name : String
+  params : Array[@ast.Param]
+  retann : String
+  body : Array[@ast.Stmt]
+  span : @core.Span
+} derive(Eq)
+
+pub(all) struct WalkResult {
+  fns : Array[FnInfo]
+  module_bindings : Array[Binding]
+  fn_bindings : Map[String, Array[Binding]]
+  findings : Array[@report.Report]
+}
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,6 @@
+// report: rendering layer of the unified finding model (Report, lens tags,
+// summaries). Split from src/core so the proof-enabled kernel stays free of
+// Array-carrying structs (see core/AGENTS note in core_proof.mbtp).
+import {
+  "riantr/moonbit_static_analysis/src/core",
+}

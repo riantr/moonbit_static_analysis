@@ -1,0 +1,30 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/pipeline"
+
+import {
+  "riantr/moonbit_static_analysis/src/report",
+}
+
+// Values
+pub fn merge_findings(Array[@report.Report]) -> Array[@report.Report]
+
+pub fn merge_group(Array[@report.Report]) -> @report.Report
+
+pub fn render_result(PipelineResult) -> String
+
+pub fn run(String, String) -> PipelineResult
+
+// Errors
+
+// Types and methods
+pub(all) struct PipelineResult {
+  reports : Array[@report.Report]
+  sigs : Array[String]
+  n_structural : Int
+  n_type : Int
+  n_behavior : Int
+}
+
+// Type aliases
+
+// Traits

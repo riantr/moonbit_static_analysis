@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/samples"
+
+// Values
+pub fn all() -> Array[(String, String)]
+
+pub let clean : String
+
+pub let deadbranch : String
+
+pub let flow : String
+
+pub let structure : String
+
+pub let typing : String
+
+pub let undefined : String
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
