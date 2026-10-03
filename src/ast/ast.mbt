@@ -1,6 +1,7 @@
-// ast: the neutral mini-language (MLang). Deliberately no single host
-// language: the three lenses contribute their native semantics without
-// fighting another language's edge cases. Statements are brace-blocked,
+// ast: the MoonBit-subset frontend (internal name MLang). The target
+// language is MoonBit itself — fast-evolving — and this module consumes its
+// current working subset: the shape the three inspections need, tracking
+// the language as it moves. Statements are brace-blocked,
 // `let`/assignment both bind (assignment-as-binding),
 // and function parameters carry optional type annotations
 // (the type/behavior seam).

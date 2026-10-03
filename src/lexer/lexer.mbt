@@ -1,4 +1,4 @@
-// lexer for MLang. Newline-sensitive frontend: newlines are
+// lexer for the MoonBit-subset frontend (MLang): newline-sensitive rules —
 // suppressed after openers/binary operators/assignment so expressions can
 // span lines; otherwise a newline terminates the statement.
 

@@ -1,4 +1,4 @@
-// Embedded MLang samples for the demo.
+// Embedded MoonBit-subset samples (MLang) for the demo.
 
 ///|
 /// Clean: recursion + dispatch — zero findings, signature inferred.

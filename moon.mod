@@ -1,6 +1,7 @@
 // module: riantr/moonbit_static_analysis — a three-lens static analysis
-// pipeline: one pipeline, three lenses, one report stream. Two uses: MLang
-// program revision, and static state revision of state machines via
+// pipeline: one pipeline, three lenses, one report stream. Two uses: MoonBit
+// program revision (the MLang subset of the fast-evolving language), and
+// static state revision of state machines via
 // src/statecheck (pure-data MachineSpec). Dependency direction: machines
 // call US (reference consumer: riantr/pyroduct audit package); we never
 // import them.

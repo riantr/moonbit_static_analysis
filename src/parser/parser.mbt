@@ -1,4 +1,5 @@
-// parser for MLang: precedence climbing; assignment targets validated to
+// parser for the MoonBit-subset frontend (MLang): precedence climbing;
+// assignment targets validated to
 // name/field/index; function definitions restricted to the top level.
 
 ///|
