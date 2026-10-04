@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.1.1
+moon add riantr/moonbit_static_analysis@0.1.2
 ```
 
 ```moonbit
@@ -145,5 +145,5 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.1.1` 可被任何 MoonBit 模块以 `import` 依赖）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.1.2` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。

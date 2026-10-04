@@ -7,7 +7,7 @@
 // import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.1.1"
+version = "0.1.2"
 
 readme = "README.md"
 
