@@ -1,10 +1,10 @@
-// module: riantr/moonbit_static_analysis — a three-lens static analysis
-// pipeline: one pipeline, three lenses, one report stream. Two uses: MoonBit
-// program revision (the MLang subset of the fast-evolving language), and
-// static state revision of state machines via
-// src/statecheck (pure-data MachineSpec). Dependency direction: machines
-// call US (reference consumer: riantr/pyroduct audit package); we never
-// import them.
+// module: riantr/moonbit_static_analysis — a three-inspection static
+// analysis pipeline (structural / type / behavior): one pipeline, three
+// inspections, one report stream. Two uses: MoonBit program revision (the
+// frontend subset of the fast-evolving MoonBit language), and static state
+// revision of state machines via src/statecheck (pure-data MachineSpec).
+// Dependency direction: machines call US (reference consumer:
+// riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
 version = "0.1.2"
@@ -22,7 +22,7 @@ keywords = [
   "abstract-interpretation",
 ]
 
-description = "Three-lens static analysis pipeline (structural / type / behavioral) for MLang programs and state-machine tables"
+description = "Three-inspection (structural / type / behavior) static-analysis pipeline for MoonBit programs and state-machine tables"
 
 preferred_target = "js"
 
