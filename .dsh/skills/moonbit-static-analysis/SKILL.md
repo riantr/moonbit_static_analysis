@@ -113,6 +113,14 @@ is the taxonomy and the authority for what each suffix means):
   `https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis`
   (returns the latest version plus the full version list; a version-specific
   URL 404s).
+- The public surface splits in two, and they move independently:
+  `@statecheck` (machine tables) is what pyroduct consumes — its `audit/audit.mbt`
+  only calls `@statecheck.audit` / `.render`; **`@pipeline` / `PipelineResult`
+  is consumed by the JSON bridge and the DSH plugin, not by pyroduct**, and
+  nothing outside this module constructs that struct. So a `PipelineResult`
+  change has no effect on the machine-table consumer, and pyroproduct is safe
+  on the old pin until you deliberately move it. Bump the pin for hygiene, not
+  because something is broken.
 - pyroduct/moon.mod contains Chinese — edit it only with file tools (pwsh `Get-Content` defaults
   to GBK on this machine and double-encodes the Chinese; recovery is possible from the registry
   zip but avoid it).
