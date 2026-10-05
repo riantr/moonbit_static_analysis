@@ -9,6 +9,7 @@
 // a parse-class defect.
 
 ///
+
 ///|
 test "import block: quoted specs recorded, body still parsed" {
   let r = @parser.parse(
@@ -28,6 +29,7 @@ test "import block: quoted specs recorded, body still parsed" {
 }
 
 ///
+
 ///|
 test "import block: '*' is a trailing modifier, not an entry" {
   // the docs' own example: "moonbitlang/core/queue" @q *
@@ -43,6 +45,7 @@ test "import block: '*' is a trailing modifier, not an entry" {
 }
 
 ///
+
 ///|
 test "import block: '*' without an alias" {
   let r = @parser.parse(
@@ -56,6 +59,7 @@ test "import block: '*' without an alias" {
 }
 
 ///
+
 ///|
 test "import block: canonical rendering round-trips the written form" {
   let r = @parser.parse(
@@ -70,6 +74,7 @@ test "import block: canonical rendering round-trips the written form" {
 }
 
 ///
+
 ///|
 test "import block: '@version' inside a path is not an alias" {
   // script-mode docs: import paths may carry @version after the module name
@@ -84,6 +89,7 @@ test "import block: '@version' inside a path is not an alias" {
 }
 
 ///
+
 ///|
 test "import block: a trailing entry may omit its comma (docs' own shape)" {
   // the script-mode docs' first example, verbatim
@@ -96,6 +102,7 @@ test "import block: a trailing entry may omit its comma (docs' own shape)" {
 }
 
 ///
+
 ///|
 test "import block: a missing comma between entries is rejected" {
   // entries are comma-separated; the lexer always ends a line after a string
@@ -110,6 +117,7 @@ test "import block: a missing comma between entries is rejected" {
 }
 
 ///
+
 ///|
 test "import block: duplicate path reported once, modifiers do not excuse it" {
   let r = @parser.parse(
@@ -124,6 +132,7 @@ test "import block: duplicate path reported once, modifiers do not excuse it" {
 }
 
 ///
+
 ///|
 test "import block: duplicates across separate blocks are caught too" {
   let r = @parser.parse(
@@ -135,6 +144,7 @@ test "import block: duplicates across separate blocks are caught too" {
 }
 
 ///
+
 ///|
 test "import block: a bare '*' entry is malformed" {
   // '*' only ever trails a quoted path — it is not an entry of its own
@@ -145,6 +155,7 @@ test "import block: a bare '*' entry is malformed" {
 }
 
 ///
+
 ///|
 test "import block: modifiers out of order ('*' before '@alias') is rejected" {
   let r = @parser.parse(
@@ -157,6 +168,7 @@ test "import block: modifiers out of order ('*' before '@alias') is rejected" {
 }
 
 ///
+
 ///|
 test "import block: junk entry rejected with FParse" {
   let r = @parser.parse("import {\n  42,\n}\nfn f() -> int {\n  1\n}\n")
@@ -166,6 +178,7 @@ test "import block: junk entry rejected with FParse" {
 }
 
 ///
+
 ///|
 test "import without a '{' block rejected" {
   let r = @parser.parse("import foo\nfn f() -> int {\n  1\n}\n")
@@ -174,6 +187,7 @@ test "import without a '{' block rejected" {
 }
 
 ///
+
 ///|
 test "package sources carry no imports" {
   let r = @parser.parse("fn f() -> int {\n  1\n}\n")

@@ -73,25 +73,25 @@ test "iface .mbti: malformed line reported" {
 /// each of these lines as "malformed interface line" or as an unknown type —
 /// i.e. it flagged every real generated interface.
 test "iface .mbti: real 'moon info' output produces no findings" {
-  let src =
-    "// Generated using `moon info`, DON'T EDIT IT\npackage \"moonbitlang/async/io\"\n\nimport {\n  \"moonbitlang/core/debug\",\n}\n\n// Values\npub fn pipe() -> (PipeRead, PipeWrite)\n\n// Errors\npub suberror PipeClosed derive(ToJson, @debug.Debug)\n#deprecated\npub impl Show for PipeClosed\n\npub(all) suberror ReaderClosed derive(ToJson, @debug.Debug)\n#deprecated\npub impl Show for ReaderClosed\n\n// Types and methods\ntype BufferedWriter[W]\npub fn[W] BufferedWriter::capacity(Self[W]) -> Int\npub async fn[W : Writer] BufferedWriter::flush(Self[W]) -> Unit\npub impl[W : Writer] Writer for BufferedWriter[W]\n\npub(all) enum Encoding {\n  UTF8\n}\n\ntype MemoryReader\n#callsite(autofill(loc))\npub fn MemoryReader::MemoryReader(async (&Writer) -> Unit, loc~ : SourceLoc) -> Self\npub async fn MemoryReader::read_some(Self) -> String?\npub fn MemoryReader::drop(Self, Int) -> Int\npub impl Reader for MemoryReader\n\ntype PipeRead\ntype PipeWrite\ntrait Writer\ntrait Data\npub impl Data for String\npub fn &Data::text(Self) -> String raise\n\npub const HEADER_SIZE : Int = 10\npub const STAT_FILE_SIZE : UInt = 0x0020\n\n// Type aliases\npub type Fd = Int\n"
+  let src = "// Generated using `moon info`, DON'T EDIT IT\npackage \"moonbitlang/async/io\"\n\nimport {\n  \"moonbitlang/core/debug\",\n}\n\n// Values\npub fn pipe() -> (PipeRead, PipeWrite)\n\n// Errors\npub suberror PipeClosed derive(ToJson, @debug.Debug)\n#deprecated\npub impl Show for PipeClosed\n\npub(all) suberror ReaderClosed derive(ToJson, @debug.Debug)\n#deprecated\npub impl Show for ReaderClosed\n\n// Types and methods\ntype BufferedWriter[W]\npub fn[W] BufferedWriter::capacity(Self[W]) -> Int\npub async fn[W : Writer] BufferedWriter::flush(Self[W]) -> Unit\npub impl[W : Writer] Writer for BufferedWriter[W]\n\npub(all) enum Encoding {\n  UTF8\n}\n\ntype MemoryReader\n#callsite(autofill(loc))\npub fn MemoryReader::MemoryReader(async (&Writer) -> Unit, loc~ : SourceLoc) -> Self\npub async fn MemoryReader::read_some(Self) -> String?\npub fn MemoryReader::drop(Self, Int) -> Int\npub impl Reader for MemoryReader\n\ntype PipeRead\ntype PipeWrite\ntrait Writer\ntrait Data\npub impl Data for String\npub fn &Data::text(Self) -> String raise\n\npub const HEADER_SIZE : Int = 10\npub const STAT_FILE_SIZE : UInt = 0x0020\n\n// Type aliases\npub type Fd = Int\n"
   let reports = @moonfiles.iface(src, "io.mbti")
   assert_eq(reports.length(), 0)
 }
 
 ///
+
 ///|
 test "iface .mbti: labeled and optional parameters name types, not labels" {
   // `input_offset?` is a parameter name and `Int` is its type. Splitting the
   // parameter list on bare commas used to yield "input_offset? : Int" as an
   // unknown type.
-  let src =
-    "type Decoder\npub fn Decoder::write(Self, Bytes, FixedArray[Byte], input_offset? : Int, output_offset? : Int) -> (Int, Int) raise\n"
+  let src = "type Decoder\npub fn Decoder::write(Self, Bytes, FixedArray[Byte], input_offset? : Int, output_offset? : Int) -> (Int, Int) raise\n"
   let reports = @moonfiles.iface(src, "d.mbti")
   assert_eq(reports.length(), 0)
 }
 
 ///
+
 ///|
 test "iface .mbti: a genuinely unknown type is still caught" {
   let src = "package \"d\"\npub fn f(Mystery) -> Int\n"
@@ -101,6 +101,7 @@ test "iface .mbti: a genuinely unknown type is still caught" {
 }
 
 ///
+
 ///|
 test "iface .mbti: a generic fn binds its own type parameter, but not a ghost" {
   let src = "package \"d\"\npub fn[W] Boxed::new(W, Ghost) -> Self\n"
@@ -110,22 +111,27 @@ test "iface .mbti: a generic fn binds its own type parameter, but not a ghost" {
 }
 
 ///
+
 ///|
+
 ///|
+
 ///|
 /// The remaining shapes real generated interfaces use: value declarations
 /// (`pub let`), re-exports (`pub using @pkg {type T as U}`), the `noraise`
 /// error modifier, and the ArrayView / ReadOnlyArray builtin constructors.
 test "iface .mbti: let declarations, using re-exports and noraise are understood" {
-  let src =
-    "package \"a\"\n\nimport {\n  \"a/types\",\n}\n\n// Values\npub let current_process : UInt\n\npub let platform : @types.Platform\n\npub async fn Cond::wait(Self) -> Unit noraise\npub async fn Cond::drop(Self) -> Unit cancel\npub async fn Cond::join(Self) -> Unit noraise cancel\npub fn take(ArrayView[Int], ReadOnlyArray[Byte]) -> Int\n\n// Type aliases\npub using @types {type Platform}\npub using @cond_var {type Cond as CondVar}\npub using @aqueue {type Queue}\n"
+  let src = "package \"a\"\n\nimport {\n  \"a/types\",\n}\n\n// Values\npub let current_process : UInt\n\npub let platform : @types.Platform\n\npub async fn Cond::wait(Self) -> Unit noraise\npub async fn Cond::drop(Self) -> Unit cancel\npub async fn Cond::join(Self) -> Unit noraise cancel\npub fn take(ArrayView[Int], ReadOnlyArray[Byte]) -> Int\n\n// Type aliases\npub using @types {type Platform}\npub using @cond_var {type Cond as CondVar}\npub using @aqueue {type Queue}\n"
   let reports = @moonfiles.iface(src, "env_util.mbti")
   assert_eq(reports.length(), 0)
 }
 
 ///
+
 ///|
+
 ///|
+
 ///|
 /// The fence language decides whether a block is code at all. `mbt` and
 /// `mbt check` are compiled; `mbt nocheck` and a bare `moonbit` are shown but
@@ -143,6 +149,7 @@ test "literate .mbt.md: nocheck and bare moonbit fences are skipped" {
 }
 
 ///|
+
 ///|
 test "proof .mbtp: clean file has no findings" {
   let src = "///|\npredicate is_error(s : Severity) {\n  match s {\n    Error => true\n    _ => false\n  }\n}\n\n///|\nlemma one_zero() where {\n  proof_ensure: LStructural.rank() == 0,\n} {}\n"

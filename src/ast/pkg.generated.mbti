@@ -53,8 +53,20 @@ pub(all) struct Expr {
 pub fn Expr::assigned_base(Self) -> String?
 pub fn Expr::is_valid_target(Self) -> Bool
 
+pub(all) enum ImportSpec {
+  IImport(String)
+  IAliased(String, String)
+  IStar(String)
+  IAliasedStar(String, String)
+} derive(Eq)
+pub fn ImportSpec::alias_name(Self) -> String
+pub fn ImportSpec::is_star(Self) -> Bool
+pub fn ImportSpec::path(Self) -> String
+pub fn ImportSpec::render(Self) -> String
+
 pub(all) struct Module {
   body : Array[Stmt]
+  imports : Array[ImportSpec]
 } derive(Eq)
 
 pub(all) struct Param {

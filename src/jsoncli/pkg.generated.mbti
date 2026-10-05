@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/jsoncli"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+type Finding derive(ToJson)
+
+type FrameRep derive(ToJson)
+
+type Reply derive(ToJson)
+
+type Request derive(@json.FromJson)
+
+type SpecReq derive(@json.FromJson)
+
+// Type aliases
+
+// Traits

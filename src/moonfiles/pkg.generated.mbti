@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/moonfiles"
+
+import {
+  "riantr/moonbit_static_analysis/src/pipeline",
+  "riantr/moonbit_static_analysis/src/report",
+}
+
+// Values
+pub fn fence_mode(String) -> FenceMode?
+
+pub fn iface(String, String) -> Array[@report.Report]
+
+pub fn literate(String, String) -> @pipeline.PipelineResult
+
+pub fn moonbit_fences(String) -> Array[(String, Int)]
+
+pub fn proof(String, String) -> Array[@report.Report]
+
+pub fn render_reports(Array[@report.Report]) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum FenceMode {
+  FCheck
+  FTest
+  FNoCheck
+  FDisplay
+} derive(Eq)
+
+// Type aliases
+
+// Traits

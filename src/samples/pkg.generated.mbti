@@ -10,6 +10,12 @@ pub let deadbranch : String
 
 pub let flow : String
 
+pub let iface_bad : String
+
+pub let literate_md : String
+
+pub let proof_bad : String
+
 pub let structure : String
 
 pub let typing : String

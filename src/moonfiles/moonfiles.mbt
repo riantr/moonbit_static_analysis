@@ -171,10 +171,18 @@ pub fn fence_mode(info : String) -> FenceMode? {
   if !words.has_prefix("moonbit") && !words.has_prefix("mbt") {
     return None
   }
-  let rest = trim_sp_view(after_n(words, if starts_with_ci(words.view(), "moonbit") { 8 } else { 3 }).view())
+  let rest = trim_sp_view(
+    after_n(words, if starts_with_ci(words.view(), "moonbit") { 8 } else { 3 }).view(),
+  )
   if rest == "" {
     // bare `mbt` is compiled; bare `moonbit` is display-only
-    return Some(if starts_with_ci(words.view(), "moonbit") { FDisplay } else { FCheck })
+    return Some(
+      if starts_with_ci(words.view(), "moonbit") {
+        FDisplay
+      } else {
+        FCheck
+      },
+    )
   }
   let head = decl_name(rest)
   if head == "nocheck" {
@@ -270,7 +278,9 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
 ///|
 /// identifier characters (letters, digits, underscore)
 fn is_ident_char(c : Char) -> Bool {
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (c >= '0' && c <= '9') ||
   c == '_'
 }
 
@@ -422,7 +432,8 @@ fn label_type(s : String) -> (String, String) {
 ///|
 /// Strip one layer of matching brackets, if present.
 fn strip_outer(s : String, open : Char, close : Char) -> String {
-  if s.length() >= 2 && s.has_prefix(open.to_string()) &&
+  if s.length() >= 2 &&
+    s.has_prefix(open.to_string()) &&
     s.has_suffix(close.to_string()) {
     let chars = s.to_array()
     let buf = StringBuilder()
@@ -480,10 +491,7 @@ fn leading_bracket(s : String) -> (String, String) {
     } else if c == ']' {
       depth -= 1
       if depth == 0 {
-        return (
-          buf.to_string(),
-          trim_sp(after_n(s, i + 1)),
-        )
+        return (buf.to_string(), trim_sp(after_n(s, i + 1)))
       }
     }
     i += 1
@@ -612,7 +620,7 @@ fn type_names(s : String) -> Array[String] {
       buf.write_char('@')
       i += 1
       while i < chars.length() &&
-        (is_ident_char(chars[i]) || chars[i] == '.' || chars[i] == '/') {
+            (is_ident_char(chars[i]) || chars[i] == '.' || chars[i] == '/') {
         buf.write_char(chars[i])
         i += 1
       }
@@ -638,7 +646,9 @@ fn type_names(s : String) -> Array[String] {
         i += 1
       }
       let mut w = buf.to_string()
-      if i + 2 < chars.length() && chars[i] == ':' && chars[i + 1] == ':' &&
+      if i + 2 < chars.length() &&
+        chars[i] == ':' &&
+        chars[i + 1] == ':' &&
         is_ident_start(chars[i + 2]) {
         let sub = ident_from(chars, i + 2)
         w = w + "::" + sub
@@ -653,8 +663,6 @@ fn type_names(s : String) -> Array[String] {
   }
   out
 }
-
-
 
 ///|
 /// The shapes `moon info` actually emits for a value signature. Returns
@@ -792,7 +800,7 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
     if body.has_prefix("using ") {
       let after = trim_sp(after_n(body, 6))
       match rsplit_at(after, "}") {
-        Some((head, _)) => {
+        Some((head, _)) =>
           for seg in split_top_commas(strip_outer(trim_sp(head), '{', '}')) {
             let body_seg = if seg.has_prefix("type ") {
               trim_sp(after_n(seg, 5))
@@ -814,7 +822,6 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
               }
             }
           }
-        }
         None => ()
       }
       continue
@@ -829,11 +836,10 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
         }
       }
       match rsplit_at(after_params, " for ") {
-        Some((_, target)) => {
+        Some((_, target)) =>
           for n in type_names(target) {
             referenced.push((n, lineno, 1))
           }
-        }
         None => ()
       }
       continue
@@ -861,11 +867,10 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
       // an alias `type Fd = Int` also references its right-hand side
       if matched == "type " {
         match after_params.split_once("=") {
-          Some((_, rhs)) => {
+          Some((_, rhs)) =>
             for n in type_names(view_str(rhs)) {
               referenced.push((n, lineno, 1))
             }
-          }
           None => ()
         }
       }
@@ -908,7 +913,7 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
           referenced.push((ty, lineno, 1))
         }
       }
-      None => {
+      None =>
         // a non-signature, non-declaration line is malformed interface text
         reports.push(@report.Report::{
           family: @core.FParse,
@@ -917,15 +922,13 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
           span: @core.span_at(lineno, 1, t.length()),
           vst: [],
         })
-      }
     }
   }
   let builtin = [
-    "Int", "Int64", "UInt", "UInt64", "Double", "Bool", "Char", "String",
-    "StringView", "Bytes", "BytesView", "Byte", "Unit", "Nil", "Array",
-    "FixedArray", "ArrayView", "ReadOnlyArray",
-    "Option", "Result", "Map", "Set", "StringBuilder", "Error", "SourceLoc",
-    "Json",
+    "Int", "Int64", "UInt", "UInt64", "Double", "Bool", "Char", "String", "StringView",
+    "Bytes", "BytesView", "Byte", "Unit", "Nil", "Array", "FixedArray", "ArrayView",
+    "ReadOnlyArray", "Option", "Result", "Map", "Set", "StringBuilder", "Error",
+    "SourceLoc", "Json",
   ]
   for r in referenced {
     let (ty, lineno, col) = r
@@ -1026,8 +1029,14 @@ pub fn proof(src : String, file : String) -> Array[@report.Report] {
         let words = StringBuilder()
         let candidates : Array[String] = []
         for ch in code {
-          if ch == ' ' || ch == '(' || ch == ')' || ch == '{' || ch == '}' ||
-            ch == '[' || ch == ']' || ch == ',' {
+          if ch == ' ' ||
+            ch == '(' ||
+            ch == ')' ||
+            ch == '{' ||
+            ch == '}' ||
+            ch == '[' ||
+            ch == ']' ||
+            ch == ',' {
             let w = words.to_string()
             if w != "" {
               candidates.push(w)

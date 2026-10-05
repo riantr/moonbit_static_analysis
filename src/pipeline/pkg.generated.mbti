@@ -2,6 +2,7 @@
 package "riantr/moonbit_static_analysis/src/pipeline"
 
 import {
+  "riantr/moonbit_static_analysis/src/ast",
   "riantr/moonbit_static_analysis/src/report",
 }
 
@@ -23,6 +24,7 @@ pub(all) struct PipelineResult {
   n_structural : Int
   n_type : Int
   n_behavior : Int
+  imports : Array[@ast.ImportSpec]
 }
 
 // Type aliases

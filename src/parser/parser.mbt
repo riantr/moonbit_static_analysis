@@ -66,7 +66,8 @@ pub fn parse(src : String) -> ParseResult {
               star = true
             }
             match import_seen.get(path) {
-              Some(_) => p.err("duplicate import of '\{path}' in this script", sp)
+              Some(_) =>
+                p.err("duplicate import of '\{path}' in this script", sp)
               None => {
                 import_seen.set(path, true)
                 imports.push(
