@@ -89,13 +89,30 @@ is the taxonomy and the authority for what each suffix means):
 ## Publishing
 
 - moon.mod carries readme/repository/license/keywords/description (mooncakes requires license).
-- `moon publish --dry-run` first (expect 202 Accepted), then `moon publish` (200 OK).
+- Check `moon whoami` first — login is permanent until the token rotates.
+- `moon publish --dry-run` first. **`--dry-run` ALWAYS exits non-zero with
+  "Error: `moon publish` failed" even on success** — by design, since it does
+  not upload. Read the line above it: `202 Accepted ... Dry run completed
+  successfully` is the real signal. Do not re-bump the version because of it.
+  The run packages the zip, extracts it, re-checks the extracted package, and
+  POSTs — so a 202 does verify the package is publishable.
+- Then `moon publish` for real: expect **200 OK**, which appears on stdout.
+  PowerShell mangles both streams (`2>&1` loses output, exit reads as -1); to
+  see the real status use
+  `Start-Process moon.exe -ArgumentList publish -NoNewWindow -Wait -PassThru -RedirectStandardOutput out.log -RedirectStandardError err.log`.
 - Git remotes: `origin` = Gitee (primary), `github` = mirror; tags stay in lockstep with the
   moon.mod version (v0.1.x). Push master + tag to both.
 - Registry README is the moon.mod `readme` file (Chinese `README.md`; English twin
   `README.en.md` cross-linked).
 - After publishing a new version, bump `pyroduct/moon.mod`'s
   `riantr/moonbit_static_analysis@<ver>` and run `moon update` there, then the pyroduct gates.
+- Version policy: this module is `0.x`. `PipelineResult` gained the public
+  `imports` field in 0.2.0 — a `pub` struct gaining a field breaks any
+  consumer that constructs it, so that is a MINOR bump (0.1.x -> 0.2.0), not a
+  patch. Check the registry manifest before choosing a number:
+  `https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis`
+  (returns the latest version plus the full version list; a version-specific
+  URL 404s).
 - pyroduct/moon.mod contains Chinese — edit it only with file tools (pwsh `Get-Content` defaults
   to GBK on this machine and double-encodes the Chinese; recovery is possible from the registry
   zip but avoid it).
