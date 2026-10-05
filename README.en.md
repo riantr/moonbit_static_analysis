@@ -96,18 +96,43 @@ src/walk      structural inspection: binding tables + structural findings
 src/types     type inspection: Ty/Ty?/Sig inference
 src/interp    behavior inspection: AbsVal lattice + dispatch + virtual stacks
 src/pipeline  assembly: run the three inspections + merge_group merge
+src/moonfiles the other file kinds: .mbt.md per-block three-inspection / .mbti
+              interface audit / .mbtp proof lint
 src/statecheck use 2: generic machine-table audit (plain-data MachineSpec bridge)
 src/samples   demo samples (embedded MoonBit source)
-src/cli       executable entry (program demo + sample machine audit)
+src/cli       executable entry (program demo + file-kind demo + sample machine audit)
 ```
 
 ## Verification
 
 ```bash
-moon check                # 0 errors, 0 warnings
-moon test --target js     # 14 (program semantics) + 9 (machine-table semantics) = 21/21 green
-moon run src/cli          # program demo + pyroduct-shaped sample machine audit
+moon check --target all   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
+moon test                 # 49/49 green (49 on each of the four targets)
+moon run src/cli          # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
+
+## File kinds (the other MoonBit toolchain suffixes)
+
+The full taxonomy is in [EXTENSIONS.md](EXTENSIONS.md). Semantics follow
+[docs.moonbitlang.com/en/latest](https://docs.moonbitlang.com/en/latest/) as the final
+authority, cross-checked against mooncakes' [`moonbitlang/parser@0.4.3`](https://mooncakes.io/docs/moonbitlang/parser@0.4.3)
+and [`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.2):
+
+| suffix | static analysis here |
+|---|---|
+| `.mbt` | three-inspection program analysis |
+| `.mbtx` | three-inspection program analysis + import-block audit (entry grammar `"path" [@alias] [*]`; duplicate paths report FParse; the import list is echoed in the report) |
+| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so generated files raise nothing |
+| `.mbt.md` | literate: extract ```moonbit fences, three-inspect each block, line numbers aligned to the `.md` file's real lines |
+| `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
+| `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code) |
+
+The `.mbti` line grammar was aligned against real generated output: `moon info` emits
+`import {}` blocks, `#deprecated` / `#alias(...)` / `#callsite(...)` attribute lines,
+`const`, `impl ... for T`, `suberror`, and `fn` signatures carrying `pub` / `async` /
+`extern` / type parameters / labeled parameters (`input_offset? : Int`) / `raise` /
+`String?`. The earlier version reported every one of those as a malformed line — that
+is, it false-positived on **every** real generated interface file.
 
 ## Formal verification (moon prove)
 
@@ -162,6 +187,8 @@ The module is published through the following channels (one source, three syncs)
 `src/jsoncli` is the JSON bridge entry: it runs under Node, takes one JSON
 request on the command line, and answers with one JSON reply —
 `{"kind":"program","source":...}` goes through the three program inspections,
+`{"kind":"file","filename":...}` dispatches on the extension to the matching
+file-kind analysis (`.mbt` / `.mbtx` / `.mbt.md` / `.mbti` / `.mbtp`),
 `{"kind":"machine","spec":...}` through the machine-table audit. It is packaged
 as the DeepSeek Harness plugin `@local/moonbit-static-analysis` (workspace
 directory `dsh-plugin-moonbit-static-analysis/`), which exposes the

@@ -1,0 +1,16 @@
+// 静态分析覆盖 MoonBit 工具链的其他文件种类：.mbt.md / .mbti / .mbtp，
+// 语义依据 docs.moonbitlang.com/en/latest（文件种类分类表见模块根 EXTENSIONS.md）：
+// - .mbt.md（literate MoonBit）：提取 moonbit 围栏代码块，逐块三鉴，
+//   行号按更档真实行号对齐；发现直接落在 .md 文件上。
+// - .mbti（接口文件）：签名行解析，审计畸形行、重复声明、未知类型引用。
+// - .mbtp（证明文件）：逻辑侧结构审计——体内字符串常量（E4207 同型）、
+//   `!`/`↔` 禁形、跨包 `@pkg.` 调用、lemma 缺 `proof_ensure`。
+// 所有拒绝都归 FParse（错误级）：这些检查是"其他文件种类的前端"，拒绝即
+// 前端拒绝形状；核心模型（Family 表）零改动，证明目标数不变。
+// 依赖方向：moonfiles 调用 pipeline（.mbt.md 的块复用三鉴），水不反向。
+import {
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/pipeline",
+  "riantr/moonbit_static_analysis/src/report",
+}

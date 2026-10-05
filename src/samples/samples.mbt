@@ -1,6 +1,57 @@
 // Embedded MoonBit-subset samples for the demo.
 
 ///|
+/// A toolchain file-kind sample set: a literate .mbt.md document, an .mbti
+/// interface file and a .mbtp proof file (see EXTENSIONS.md).
+pub let literate_md : String =
+  #|# Demo document
+  #|
+  #|A clean block:
+  #|
+  #|```moonbit
+  #|fn twice(n: int) -> int {
+  #|  n * 2
+  #|}
+  #|twice(21)
+  #|```
+  #|
+  #|A broken block (undefined name lands on file line 16):
+  #|
+  #|```moonbit
+  #|fn shrug() -> int {
+  #|  vanish(1)
+  #|}
+  #|```
+  #|
+
+///|
+/// An .mbti interface sample: one unknown type reference.
+pub let iface_bad : String =
+  #|// Generated using `moon info`, DON'T EDIT IT
+  #|package "riantr/demo"
+  #|
+  #|pub(all) struct Pos {
+  #|  line : Int
+  #|} derive(Eq)
+  #|pub fn Pos::shift(Self, Int) -> Pos
+  #|pub fn leap(Mystery) -> Int
+  #|
+
+///|
+/// A .mbtp proof sample: a string constant inside a logic body.
+pub let proof_bad : String =
+  #|///|
+  #|predicate is_hot(s : Severity) {
+  #|  s.tag() == "hot"
+  #|}
+  #|
+  #|///|
+  #|lemma one_zero() where {
+  #|  proof_ensure: LStructural.rank() == 0,
+  #|} {}
+  #|
+
+///|
 /// Clean: recursion + dispatch — zero findings, signature inferred.
 pub let clean : String =
   #|fn fact(n: int) -> int {

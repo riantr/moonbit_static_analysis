@@ -106,8 +106,70 @@ pub(all) struct Stmt {
 } derive(Eq)
 
 ///|
+/// One `.mbtx` script import entry. The official entry grammar (script-mode
+/// docs) is `"path" [@alias] [*]` — a quoted path with two optional TRAILING
+/// modifiers, in that order. The docs also state the alias stays available
+/// alongside import-all (both `Queue` and `@q.Queue` resolve), so alias+star is
+/// its own shape rather than "an alias then a star".
+pub(all) enum ImportSpec {
+  /// "moonbitlang/core/list"
+  IImport(String)
+  /// "moonbitlang/core/list" @ls
+  IAliased(String, String)
+  /// "moonbitlang/core/queue" * — import-all, script-only per the docs
+  IStar(String)
+  /// "moonbitlang/core/queue" @q *
+  IAliasedStar(String, String)
+} derive(Eq)
+
+///|
+/// The quoted package path, whichever modifiers follow it.
+pub fn ImportSpec::path(self : ImportSpec) -> String {
+  match self {
+    IImport(p) | IStar(p) => p
+    IAliased(p, _) | IAliasedStar(p, _) => p
+  }
+}
+
+///|
+/// The `@alias`, or "" when the entry carries none (default alias).
+/// Named `alias_name` because `alias` is a reserved keyword in MoonBit.
+pub fn ImportSpec::alias_name(self : ImportSpec) -> String {
+  match self {
+    IAliased(_, a) | IAliasedStar(_, a) => a
+    IImport(_) | IStar(_) => ""
+  }
+}
+
+///|
+/// Whether the entry is import-all (`*`), which brings every definition of the
+/// package into scope.
+pub fn ImportSpec::is_star(self : ImportSpec) -> Bool {
+  match self {
+    IStar(_) | IAliasedStar(_, _) => true
+    IImport(_) | IAliased(_, _) => false
+  }
+}
+
+///|
+/// Canonical rendering — the path, then the alias as `@alias`, then ` *`.
+/// Deterministic, so it can be compared and re-parsed safely.
+pub fn ImportSpec::render(self : ImportSpec) -> String {
+  match self {
+    IImport(p) => p
+    IStar(p) => "\{p} *"
+    IAliased(p, a) => "\{p} @\{a}"
+    IAliasedStar(p, a) => "\{p} @\{a} *"
+  }
+}
+
+///|
 pub(all) struct Module {
   body : Array[Stmt]
+  /// `.mbtx` script imports from the leading `import { ... }` block(s),
+  /// recorded but NOT resolved — the subset analyzes one self-contained file
+  /// at a time. Empty for package sources (`.mbt`).
+  imports : Array[ImportSpec]
 } derive(Eq)
 
 ///|

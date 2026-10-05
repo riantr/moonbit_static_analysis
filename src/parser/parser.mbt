@@ -17,11 +17,88 @@ priv struct Parser {
 }
 
 ///|
+/// strip the leading '@' the lexer glued onto an alias token (`@q` -> `q`)
+fn alias_of(tag : String) -> String {
+  if tag.has_prefix("@") {
+    let chars = tag.to_array()
+    let buf = StringBuilder()
+    for i in 1..<chars.length() {
+      buf.write_char(chars[i])
+    }
+    buf.to_string()
+  } else {
+    tag
+  }
+}
+
+///|
 pub fn parse(src : String) -> ParseResult {
   let (toks, spans, reports) = @lexer.lex(src)
   let p = Parser::{ toks, spans, p: 0, reports, }
+  let imports : Array[@ast.ImportSpec] = []
+  let import_seen : Map[String, Bool] = Map([])
   let body : Array[@ast.Stmt] = []
   p.skip_seps()
+  // `.mbtx` script imports. The official entry grammar is `"path" [@alias] [*]`
+  // — the modifiers TRAIL the quoted path, in that order, and import-all is
+  // script-only. Recorded, not resolved; a repeated path is a parse-class
+  // defect (the second and later entries are the ones reported).
+  while p.at_name("import") {
+    let _ = p.bump()
+    if !p.at(TLBrace) {
+      p.err("import needs a '{' block (script-form imports)", p.span())
+    } else {
+      let _ = p.bump()
+      p.skip_seps()
+      while !p.at(TRBrace) && !p.at(TEOF) {
+        let sp = p.span()
+        match p.bump() {
+          TStr(path) => {
+            let mut alias_name = ""
+            // the lexer glues '@' into the alias name: `@q` is ONE TName
+            if p.peek() is TName(tag) && tag.has_prefix("@") {
+              let _ = p.bump()
+              alias_name = alias_of(tag)
+            }
+            let mut star = false
+            if p.at(TStar) {
+              let _ = p.bump()
+              star = true
+            }
+            match import_seen.get(path) {
+              Some(_) => p.err("duplicate import of '\{path}' in this script", sp)
+              None => {
+                import_seen.set(path, true)
+                imports.push(
+                  if star {
+                    if alias_name == "" {
+                      @ast.IStar(path)
+                    } else {
+                      @ast.IAliasedStar(path, alias_name)
+                    }
+                  } else if alias_name == "" {
+                    @ast.IImport(path)
+                  } else {
+                    @ast.IAliased(path, alias_name)
+                  },
+                )
+              }
+            }
+          }
+          _ => p.err("expected a quoted package path in an import block", sp)
+        }
+        p.skip_seps()
+        if p.at(TComma) {
+          let _ = p.bump()
+          p.skip_seps()
+        } else {
+          break
+        }
+      }
+      p.expect(TRBrace, "'}'")
+    }
+    p.skip_seps()
+  }
   while !(p.peek() is TEOF) {
     if p.at_name("fn") {
       body.push(p.parse_fn())
@@ -30,7 +107,7 @@ pub fn parse(src : String) -> ParseResult {
     }
     p.skip_seps()
   }
-  ParseResult::{ tree: { body, }, reports: p.reports, }
+  ParseResult::{ tree: { body, imports, }, reports: p.reports, }
 }
 
 ///|

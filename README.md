@@ -90,24 +90,48 @@ Machine '主体' summary: 4 finding(s)
 src/core      Span/Severity/Lens/Family(merge_group 契约)/Frame
 src/report    Report 结构与渲染（lens 并集标签、vst 框架）
 src/lexer     MoonBit 词法前端
-src/parser    MoonBit 语法 → ast
+src/parser    MoonBit 语法 → ast（含 .mbtx 脚本的 import 块）
 src/ast       MoonBit 抽象语法
 src/walk      结构鉴：绑定表 + 结构发现
 src/types     类型鉴：Ty/Ty?/Sig 推断
 src/interp    行为鉴：AbsVal 格 + 调度 + 虚栈
 src/pipeline  组装：跑三鉴 + merge_group 合并
+src/moonfiles 其余文件种类：.mbt.md 逐块三鉴 / .mbti 接口审计 / .mbtp 证明 lint
 src/statecheck 用途二：通用机器表审计（MachineSpec 纯数据桥）
 src/samples   demo 样例（内嵌 MoonBit 源）
-src/cli       可执行入口（程序 demo + 示例机器审计）
+src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器审计）
 ```
+
+## 文件种类（MoonBit 工具链的其它后缀）
+
+完整分类表见 [EXTENSIONS.md](EXTENSIONS.md)，语义依据
+[docs.moonbitlang.com/en/latest](https://docs.moonbitlang.com/en/latest/)（最终依据），
+并与 mooncakes 的 [`moonbitlang/parser@0.4.3`](https://mooncakes.io/docs/moonbitlang/parser@0.4.3) /
+[`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.2) 对照过：
+
+| 后缀 | 本项目静态分析 |
+|---|---|
+| `.mbt` | 三鉴程序分析 |
+| `.mbtx` | 三鉴程序分析 + 导入块审计（条目文法 `"path" [@alias] [*]`；重复路径报 FParse；导入清单随报告回显） |
+| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件零误报 |
+| `.mbt.md` | literate：抽 ```moonbit 围栏逐块三鉴，行号对齐到 `.md` 真实行 |
+| `.mbtp` | 证明文件逻辑侧 lint（体内字符串常量、`!`/`↔` 禁形、跨包调用、lemma 缺 `proof_ensure`）——**不替代 `moon prove`** |
+| `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码） |
+
+`.mbti` 审计的行文法是照着真实生成物对齐的：`moon info` 实际会输出 `import {}` 块、
+`#deprecated` / `#alias(...)` / `#callsite(...)` 属性行、`const`、`impl … for T`、
+`suberror`、带 `pub` / `async` / `extern` / 类型参数 / 具名参数（`input_offset? : Int`）/
+`raise` / `String?` 的 `fn` 签名。早期版本会把其中每一种都当成"畸形行"报出来，
+也就是对**每一个**真实生成的接口文件都误报。
 
 ## 验证
 
 ```bash
-moon check                # 0 错 0 警
-moon test --target js     # 14（程序语义）+ 9（机器表语义）= 21/21 全绿
-moon run src/cli          # 程序 demo + pyroduct 形状示例机器审计
+moon check --target all   # 0 错 0 警（js / native / wasm / wasm-gc）
+moon test                 # 49/49 全绿（四个 target 各 49）
+moon run src/cli          # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
+
 
 ## 形式验证（moon prove）
 
@@ -151,7 +175,9 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 ## DeepSeek Harness 插件
 
 `src/jsoncli` 是 JSON 桥接入口（Node 下运行，一条 JSON 请求进、一条 JSON 应答出）：
-`{"kind":"program","source":...}` 走程序三鉴，`{"kind":"machine","spec":...}` 走机器表审计。
+`{"kind":"program","source":...}` 走程序三鉴，`{"kind":"file","filename":...}` 按扩展名
+分派到对应文件种类的分析（`.mbt` / `.mbtx` / `.mbt.md` / `.mbti` / `.mbtp`），
+`{"kind":"machine","spec":...}` 走机器表审计。
 它被打包为 DeepSeek Harness 插件 `@local/moonbit-static-analysis`（工作区目录
 `dsh-plugin-moonbit-static-analysis/`），向 agent 暴露 `moonbit_analyze` / `moonbit_audit` /
 `moonbit_gates` 三个工具——插件只是生成器与格式化器，分析语义全部留在 MoonBit 侧、随模块一起版本化与跑门禁。

@@ -157,7 +157,8 @@ fn Lexer::run(self : Lexer) -> Unit {
       last = self.lex_string()
       continue
     }
-    if is_letter(c) {
+    if is_letter(c) || c == '@' {
+      // '@' starts a package alias token ("@q") so `.mbtx` import blocks lex
       let (t, l, cl, len) = self.lex_name()
       last = t
       self.emit(t, l, cl, len)
@@ -256,6 +257,10 @@ fn Lexer::lex_name(self : Lexer) -> (Tok, Int, Int, Int) {
   let l = self.line
   let c0 = self.col
   let start = self.pos
+  if self.chars[self.pos] == '@' {
+    self.pos += 1
+    self.col += 1
+  }
   while self.pos < self.chars.length() &&
         (is_letter(self.chars[self.pos]) || is_digit(self.chars[self.pos])) {
     self.pos += 1

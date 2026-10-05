@@ -1,7 +1,8 @@
 // JSON bridge entry: the DeepSeek Harness plugin (dsh-plugin-moonbit-static-analysis)
 // spawns this program under Node, passes ONE argument — a JSON request — and
-// reads a JSON reply from stdout. Two request kinds:
+// reads a JSON reply from stdout. Request kinds:
 //   { "kind": "program", "source": "...", "filename": "main.mbt" }
+//   { "kind": "file",    "source": "...", "filename": "doc.mbt.md" }   (extension dispatch)
 //   { "kind": "machine", "spec": { MachineSpec fields } }
 // The bridge keeps the plugin a pure spawner: all analyzer semantics stay in
 // MoonBit, versioned and gated with the module itself.
@@ -147,6 +148,52 @@ fn run_program(source : String, filename : String) -> Reply {
 }
 
 ///|
+/// kind:"file" — dispatch on the filename's extension (the taxonomy lives in
+/// the module root EXTENSIONS.md):
+///   .mbt / .mbtx  → program three-inspection (.mbtx may carry an import block)
+///   .md / .mbt.md → literate MoonBit (moonbit fences, real line numbers)
+///   .mbti         → interface well-formedness audit
+///   .mbtp         → proof-file logic-side audit
+fn dispatch_file(filename : String, source : String) -> Reply {
+  let lower = filename.to_lower()
+  let kind = if lower.has_suffix(".mbt.md") || lower.has_suffix(".md") {
+    "md"
+  } else if lower.has_suffix(".mbti") {
+    "iface"
+  } else if lower.has_suffix(".mbtp") {
+    "proof"
+  } else {
+    "program"
+  }
+  match kind {
+    "md" => {
+      let r = @moonfiles.literate(source, filename)
+      ok_reply(r.reports, @pipeline.render_result(r))
+    }
+    "iface" => {
+      let reports = @moonfiles.iface(source, filename)
+      ok_reply(reports, render_reports(reports))
+    }
+    "proof" => {
+      let reports = @moonfiles.proof(source, filename)
+      ok_reply(reports, render_reports(reports))
+    }
+    _ => run_program(source, filename)
+  }
+}
+
+///|
+/// render a bare report list without signatures (iface/proof audits)
+fn render_reports(reports : Array[@report.Report]) -> String {
+  let buf = StringBuilder()
+  for rep in reports {
+    buf.write_string(rep.render())
+  }
+  buf.write_string("\nSummary: \{reports.length()} finding(s)\n")
+  buf.to_string()
+}
+
+///|
 fn handle(raw : String) -> Reply {
   try {
     let request : Request = @json.from_json(@json.parse(raw))
@@ -156,6 +203,11 @@ fn handle(raw : String) -> Reply {
         run_program(
           request.source.unwrap_or(""),
           request.filename.unwrap_or("main.mbt"),
+        )
+      "file" =>
+        dispatch_file(
+          request.filename.unwrap_or("main.mbt"),
+          request.source.unwrap_or(""),
         )
       "machine" =>
         match request.spec {

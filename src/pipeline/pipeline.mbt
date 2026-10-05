@@ -21,6 +21,10 @@ pub(all) struct PipelineResult {
   n_structural : Int
   n_type : Int
   n_behavior : Int
+  /// `.mbtx` script imports, recorded but not resolved; empty for `.mbt`
+  /// package sources. Surfaced so the script file kind reports its own
+  /// dependency surface instead of silently swallowing the block.
+  imports : Array[@ast.ImportSpec]
 }
 
 ///|
@@ -69,6 +73,7 @@ pub fn run(src : String, file : String) -> PipelineResult {
     n_structural: n1,
     n_type: n2,
     n_behavior: n3,
+    imports: parsed.tree.imports,
   }
 }
 
@@ -162,6 +167,12 @@ pub fn render_result(r : PipelineResult) -> String {
   buf.write_string(
     "Summary: \{r.reports.length()} finding(s) (before merge: structural \{r.n_structural}, type \{r.n_type}, behavior \{r.n_behavior})\n",
   )
+  if r.imports.length() > 0 {
+    buf.write_string("Imports (.mbtx script, recorded not resolved):\n")
+    for i in r.imports {
+      buf.write_string("  \{i.render()}\n")
+    }
+  }
   if r.sigs.length() > 0 {
     buf.write_string("Inferred signatures:\n")
     for s in r.sigs {
