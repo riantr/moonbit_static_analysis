@@ -93,6 +93,59 @@ test "iface .mbti: labeled and optional parameters name types, not labels" {
 ///
 
 ///|
+
+///|
+/// Declaration-body types are resolved. `Constr(a, label~ : T)` is BOTH a
+/// constructor and a `label : Type` pair, so the constructor shape is tested
+/// first and the contents are comma-split before each segment is read; hoisting
+/// the `:` split instead reports the labeled parameter's NAME as a type, which
+/// was measured at 7 false positives over the 89 real interfaces.
+test "iface .mbti: types inside a declaration body are resolved" {
+  // an unknown payload type inside an enum body IS caught
+  let payload = @moonfiles.iface(
+    "package \"d\"\npub(all) enum E {\n  Other(Ghost)\n}\n", "d.mbti",
+  )
+  assert_eq(payload.length(), 1)
+  assert_true(payload[0].message.contains("unknown type 'Ghost'"))
+  // so is an unknown struct field type
+  let field = @moonfiles.iface(
+    "package \"d\"\npub(all) struct S {\n  line : Phantom\n}\n", "d.mbti",
+  )
+  assert_eq(field.length(), 1)
+  assert_true(field[0].message.contains("unknown type 'Phantom'"))
+}
+
+///|
+/// The negative controls for the body scan — the shapes that look like types
+/// and are not. All three appear verbatim in real `moon info` output.
+test "iface .mbti: labeled params, derives and builtins are not body types" {
+  // `context~ : String` — the NAME is not a type
+  let labeled = @moonfiles.iface(
+    "package \"d\"\npub(all) suberror OSError {\n  OSError(Int, context~ : String)\n}\n",
+    "d.mbti",
+  )
+  assert_eq(labeled.length(), 0)
+  // three labeled params in one constructor
+  let multi = @moonfiles.iface(
+    "package \"d\"\npub(all) enum R {\n  Exp(initial~ : Int, factor~ : Double, maximum~ : Int)\n}\n",
+    "d.mbti",
+  )
+  assert_eq(multi.length(), 0)
+  // derive(...) names TRAITS, not types
+  let derived = @moonfiles.iface(
+    "package \"d\"\npub(all) enum E {\n  A\n} derive(Eq, @debug.Debug)\n", "d.mbti",
+  )
+  assert_eq(derived.length(), 0)
+  // UInt16 is a real MoonBit type (the toolchain's own utils.mbt uses it)
+  let builtin = @moonfiles.iface(
+    "package \"d\"\npub(all) enum E {\n  Other(UInt16)\n}\n", "d.mbti",
+  )
+  assert_eq(builtin.length(), 0)
+}
+
+///
+
+///|
 test "iface .mbti: a genuinely unknown type is still caught" {
   let src = "package \"d\"\npub fn f(Mystery) -> Int\n"
   let reports = @moonfiles.iface(src, "d.mbti")

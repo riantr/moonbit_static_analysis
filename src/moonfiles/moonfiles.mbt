@@ -799,6 +799,101 @@ fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
 }
 
 ///|
+/// The type references on ONE line of a type-declaration body.
+///
+/// Two shapes occur, and they COLLIDE: `Constr(a, label~ : T)` is both a
+/// constructor and a `label : Type` pair. So the constructor shape is tested
+/// FIRST — a top-level `(` wins — and the contents are split on commas before
+/// each segment is read, which is what keeps a labeled parameter's NAME out of
+/// the type set. Splitting the line at its first ':' instead reports
+/// `context` in `OSError(Int, context~ : String)` as a type; that version was
+/// written, measured (7 false positives over 89 real interfaces) and reverted.
+///
+/// Returns [] for a derive list (`derive(Eq, @debug.Debug)` names TRAITS),
+/// comments, attributes and the closing brace.
+fn body_type_refs(line : String) -> Array[String] {
+  let t = trim_sp(line)
+  if t == "" || t.has_prefix("//") || t.has_prefix("#") || t.has_prefix("}") {
+    return []
+  }
+  let out : Array[String] = []
+  match top_level_paren(t) {
+    Some((name, inner)) => {
+      let head = decl_name(name)
+      if head == "" || is_type_noise(head) {
+        return []
+      }
+      for seg in split_top_commas(inner) {
+        // per segment a labeled param is `label~ : Type`; keep the type half
+        let (_label, ty) = label_type(seg)
+        for n in type_names(ty) {
+          if !out.contains(n) {
+            out.push(n)
+          }
+        }
+      }
+    }
+    None => {
+      // struct field shape: `name : Type`
+      let (label, ty) = label_type(t)
+      if label == "" || label.has_prefix("}") {
+        return []
+      }
+      for n in type_names(ty) {
+        if !out.contains(n) {
+          out.push(n)
+        }
+      }
+    }
+  }
+  out
+}
+
+///|
+/// Split at the first `(` at nesting depth 0, returning the text before it and
+/// the text inside its matching `)`. Depth-aware so `FixedDelay(Int)` does not
+/// split inside the parens and a `(` belonging to an earlier line cannot be
+/// mistaken for the constructor's. Returns None when there is no such `(` or it
+/// is unclosed.
+fn top_level_paren(t : String) -> (String, String)? {
+  let chars = t.to_array()
+  let mut depth = 0
+  let mut i = 0
+  while i < chars.length() {
+    let c = chars[i]
+    if c == '[' || c == '{' {
+      depth += 1
+    } else if c == ']' || c == '}' {
+      depth -= 1
+    } else if c == '(' && depth == 0 {
+      let mut d = 0
+      let mut j = i
+      while j < chars.length() {
+        if chars[j] == '(' {
+          d += 1
+        } else if chars[j] == ')' {
+          d -= 1
+          if d == 0 {
+            break
+          }
+        }
+        j += 1
+      }
+      if d != 0 {
+        return None
+      }
+      let buf = StringBuilder()
+      for k in (i + 1)..<j {
+        buf.write_char(chars[k])
+      }
+      return Some((take_n(t, i), buf.to_string()))
+    }
+    i += 1
+  }
+  None
+}
+
+///|
 /// Analyze a `.mbti` interface file. The line grammar is the one `moon info`
 /// emits, so nothing it generates is reported as malformed:
 ///   comments, `#attribute` lines, `package`, `import { }` blocks,
@@ -830,8 +925,12 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
       import_depth += count_char(t, '{') - count_char(t, '}')
       continue
     }
-    // inside a type declaration body (fields / constructors / derives)
+    // inside a type declaration body: field and constructor TYPES are resolved
+    // too. derive(...) lists are exempt — they name traits, not types.
     if decl_depth > 0 {
+      for n in body_type_refs(t) {
+        referenced.push((n, lineno, 1))
+      }
       decl_depth += count_char(t, '{') - count_char(t, '}')
       continue
     }
@@ -980,7 +1079,7 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
     "Int", "Int64", "UInt", "UInt64", "Double", "Bool", "Char", "String", "StringView",
     "Bytes", "BytesView", "Byte", "Unit", "Nil", "Array", "FixedArray", "ArrayView",
     "ReadOnlyArray", "Option", "Result", "Map", "Set", "StringBuilder", "Error",
-    "SourceLoc", "Json",
+    "UInt16", "Int16", "UInt8", "Float", "SourceLoc", "Json",
   ]
   for r in referenced {
     let (ty, lineno, col) = r

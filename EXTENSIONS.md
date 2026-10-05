@@ -11,7 +11,7 @@
 |---|---|---|---|
 | `.mbt` | 包内模块源码（函数/类型/逻辑） | 本模块全部 `src/**/*.mbt` | **三鉴程序分析**（`@pipeline.run`；`.mbti` 声明不参与） |
 | `.mbtx` | **独立脚本**（无模块/包配置，`moon run script.mbtx`；可带 `import { ... }` 块） | `pyroduct/` 下的脚本；`Module.imports` 记录其导入块 | **三鉴程序分析** + 导入块审计：条目文法 `"path" [@alias] [*]`（修饰符**后置**且定序），记入 `Module.imports`，重复路径报 FParse；结果在报告里以 `Imports:` 段回显。不解析依赖 |
-| `.mbti` | 接口文件（`moon info` 生成或手写：包的公开 API/类型签名） | 各包 `pkg.generated.mbti` | **接口审计**（`@moonfiles.iface`）：畸形行、重复签名、未知类型引用。行文法与 `moon info` 实际输出一致（注释 / `#属性` 行 / `package` / `import {}` 块 / `enum`·`struct`·`trait`·`type`·`suberror` 声明（体跳过）/ `impl … for T` / `const` / 带 `pub`、`async`、`extern`、类型参数、具名参数的 `fn`），因此生成文件不会被误判。类型声明体（字段/构造器/derive）跳过——**这是一个盲点，见下** |
+| `.mbti` | 接口文件（`moon info` 生成或手写：包的公开 API/类型签名） | 各包 `pkg.generated.mbti` | **接口审计**（`@moonfiles.iface`）：畸形行、重复签名、未知类型引用。行文法与 `moon info` 实际输出一致（注释 / `#属性` 行 / `package` / `import {}` 块 / `enum`·`struct`·`trait`·`type`·`suberror` 声明（体跳过）/ `impl … for T` / `const` / 带 `pub`、`async`、`extern`、类型参数、具名参数的 `fn`），因此生成文件不会被误判。声明体（字段/构造子）内的类型**也会解析**（`derive` 列表豁免，见下） |
 | `.mbt.md` | literate MoonBit：Markdown 中嵌可编译/可测试代码块 | `pyroduct/README.mbt.md`；mooncakes 依赖的 README | **逐块三鉴**（`@moonfiles.literate`）：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号按文件真实行对齐（块前补空行），块间独立。`mbt nocheck` 与裸 `moonbit` 是**展示块**——工具链既不编译也不测试它们——一律跳过（见下「围栏语言」）|
 | `.mbtp` | 证明文件（`moon prove` 形式化验证的逻辑侧） | `src/core/core_proof.mbtp` | **逻辑侧结构审计**（`@moonfiles.proof`）：体内字符串常量（E4207 同型）、`!`/`↔` 禁形（写 `== false` 与 `→`）、跨包 `@pkg.` 调用、lemma 缺 `proof_ensure`。**这是 lint，不替代 `moon prove`** |
 | `moon.mod` / `moon.mod.json` | 模块配置 | 两模块各一 | 记录在案，不做静态分析（配置非代码，见下「配置文件的边界」） |
@@ -51,42 +51,33 @@
   审计是独立健全性检查，不做声明↔实现一致性比对。
 - `.mbtp` 的 `predicate`/`lemma`/`proof_ensure` 不是子集语法——证明文件走专属 lint，不走三鉴前端。
 
-## `.mbti` 的已知盲点：声明体内的类型
+## `.mbti` 声明体内的类型（曾经是盲点，现已解析）
 
-`.mbti` 审计**跳过类型声明体**（字段 / 构造器 / `derive`），所以**写在体内的类型引用
-从不被解析**。实测（对本模块自己的 `ast/pkg.generated.mbti` 注入对照）：
+`.mbti` 审计**解析类型声明体**（字段 / 构造子），所以写在体内的类型引用会被检查。
+`derive(...)` 列表**豁免**——它列的是 **trait** 不是类型。
 
-| 注入 | 结果 |
-|---|---|
-| `ISpectacular(String)` 放在 `enum ImportSpec` 的构造子列表里 | **0 条**（不报） |
-| 同一个 `ISpectacular` 放在签名位置 `pub fn Probe::p(ISpectacular) -> Unit` | 1 条 `unknown type` |
+**关键：先判构造子形状（顶层有 `(` 就走它），再在括号内按逗号切、逐段取类型半边。**
+原因是 `Constr(a, label~ : T)` 一行里**同时**是构造子和 `label : Type` 对；
+按"第一个 `:` 切分"必然把**带标签的参数名**当成类型名。踩过一次，量出来的：
 
-这不是 bug 而是**范围选择**（体里还有字段名、`derive(...)` 列表等噪声，逐行解析的
-误报率高于收益），但**必须写明**：`.mbti` 的未知类型检查**只覆盖签名与别名右侧**，
-**不覆盖声明体内部**。`moon info` 确实会生成带类型的构造子
-（如 `IStar(String)`），所以那里的类型拼写错误本工具**看不见**。
+| 真实行 | 只按 `:` 切分 | 先判构造子 |
+|---|---|---|
+| `OSError(Int, context~ : String)` | `context` 误报 | ✅ 只取 `Int`/`String` |
+| `ExponentialDelay(initial~ : Int, factor~ : Double, maximum~ : Int)` | `factor`/`maximum` 误报 | ✅ |
+| `Rename(old~ : String, new~ : String)` | `old`/`new` 误报 | ✅ |
 
-⚠️ 这类"跳过"与"检查通过"在结论上不可区分——**89/89 全清不等于 89/89 全查过**。
+**第一版（`: ` 优先）在 89 个真实接口上量到 7 条误报，已回滚**；改成构造子优先后
+重测：**89 个文件 0 条误报**，且 6/6 探针全对（体内未知载荷类型、未知字段类型会被
+抓；带标签参数名、`derive(...)` 列表、`UInt16` 这类真内建不会被误报）。
 
-**已试过补上，失败，已回滚（不要重试同一个做法）**：把体内两行形状都解析
-（`field : Type` 与 `Constr(Types)`），拿全部 89 个真实接口量了一次——结果
-**新增 7 条误报**，而且**盲点根本没关上**：
-
-| 真实行 | 误报 |
-|---|---|
-| `OSError(Int, context~ : String)` | `context` 当成了类型 |
-| `ExponentialDelay(initial~ : Int, factor~ : Double, maximum~ : Int)` | `factor` / `maximum` |
-| `Rename(old~ : String, new~ : String)` | `old` / `new` |
-
-根因：**一行里同时出现了两种形状**。`Constr(a, label~ : T)` 既像构造子又像
-`label : Type`，按"第一个 `:` 切分"的启发式必然切错，把**带标签的参数名**读成
-类型名。要做对必须**先判构造子形状（顶层有 `(` 就走它）**，再在括号内按标签处理
-——不是把 `label_type` 提到前面就行。
+顺带补全内建集合：**`UInt16` 是真的**（工具链自己的 `utils.mbt` 就在用，
+`moonbitlang/async` 的 `websocket` 接口也在构造子里用它），原先漏了它，
+连同 `Int16` / `UInt8` / `Float` 一并加入。
 
 ⚠️ 顺带记一次**我自己探针的错误**：`ISpectacular(String)` 里的 `ISpectacular`
 是**构造子名**不是类型，所以"体内未知类型"那样注入**根本构不成盲点**——要注入
-得写 `Other(UInt16)` 这种载荷，或 `field : ISpectacular`。**盲点存在，但我第一次
-的探针没能证明它。**
+得写 `Other(Ghost)` 这种载荷，或 `field : Phantom`。**盲点是真的，但我第一次的
+探针没能证明它。**
 
 ## 工作区清单的实际形状（`moon.work`）
 
