@@ -125,7 +125,7 @@ and [`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.
 | `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so generated files raise nothing |
 | `.mbt.md` | literate: only fences that are actually **compiled** (`mbt` / `mbt check`), line numbers aligned to the `.md` file's real lines. `mbt nocheck` and a bare `moonbit` are display blocks (the toolchain neither compiles nor tests them), so they are skipped |
 | `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
-| `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code) |
+| `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code — upstream puts both in the parser's separate `moon_config` subpackage, alongside `syntax` and `mbti_parser` rather than inside them; see the config-boundary section of EXTENSIONS.md) |
 
 The `.mbti` line grammar was aligned against real generated output: `moon info` emits
 `import {}` blocks, `#deprecated` / `#alias(...)` / `#callsite(...)` attribute lines,

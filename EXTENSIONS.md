@@ -14,9 +14,29 @@
 | `.mbti` | 接口文件（`moon info` 生成或手写：包的公开 API/类型签名） | 各包 `pkg.generated.mbti` | **接口审计**（`@moonfiles.iface`）：畸形行、重复签名、未知类型引用。行文法与 `moon info` 实际输出一致（注释 / `#属性` 行 / `package` / `import {}` 块 / `enum`·`struct`·`trait`·`type`·`suberror` 声明（体跳过）/ `impl … for T` / `const` / 带 `pub`、`async`、`extern`、类型参数、具名参数的 `fn`），因此生成文件不会被误判。类型声明体（字段/构造器/derive）跳过 |
 | `.mbt.md` | literate MoonBit：Markdown 中嵌可编译/可测试代码块 | `pyroduct/README.mbt.md`；mooncakes 依赖的 README | **逐块三鉴**（`@moonfiles.literate`）：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号按文件真实行对齐（块前补空行），块间独立。`mbt nocheck` 与裸 `moonbit` 是**展示块**——工具链既不编译也不测试它们——一律跳过（见下「围栏语言」）|
 | `.mbtp` | 证明文件（`moon prove` 形式化验证的逻辑侧） | `src/core/core_proof.mbtp` | **逻辑侧结构审计**（`@moonfiles.proof`）：体内字符串常量（E4207 同型）、`!`/`↔` 禁形（写 `== false` 与 `→`）、跨包 `@pkg.` 调用、lemma 缺 `proof_ensure`。**这是 lint，不替代 `moon prove`** |
-| `moon.mod` / `moon.mod.json` | 模块配置 | 两模块各一 | 记录在案，不做静态分析（配置非代码） |
-| `moon.pkg` / `moon.pkg.json` | 包配置 | 各包一 | 记录在案，不做静态分析 |
+| `moon.mod` / `moon.mod.json` | 模块配置 | 两模块各一 | 记录在案，不做静态分析（配置非代码，见下「配置文件的边界」） |
+| `moon.pkg` / `moon.pkg.json` | 包配置 | 各包一（`src/*/moon.pkg`） | 记录在案，不做静态分析（同上） |
 | `moon.work` / workspace | 多模块工作区配置 | 未使用（两模块独立） | 记录在案 |
+
+## 配置文件的边界（为什么 `moon.mod` / `moon.pkg` 不进三鉴）
+
+`moon.mod` 与 `moon.pkg` 是**配置**，不是代码，本项目明确不对它们跑三鉴。原因不是"没写"：
+
+- 官方把这两者的解析放在 `moonbitlang/parser@0.4.3` 的 **`moon_config`** 子包里，与
+  `syntax`（程序 AST）、`mbti_parser`（接口 AST）**并列但独立**——工具链自己就把配置
+  与源码分成了两套前端。
+- 本项目的三鉴是**一个发现通道**（`@report.Report` + `Family` + lens 并集），它的输入
+  是 `ast.Module`。配置里没有绑定、没有类型、没有轨迹，三鉴的三个阶段都无从施加。
+- 硬塞进去只会产出"配置没有 `let` 绑定"这类无意义条目——与 `.mbti` 审计早先对每个
+  真实生成文件误报是同一类错误。
+
+**边界是「不分析」，不是「不看」**：`moon.pkg` 里的 `import { }` 声明的是包的依赖边，
+它与 `.mbtx` 脚本的 import 块是**同一种语法**。本项目对后者建模为 `ast.ImportSpec`
+并审计（重复路径即 FParse），对前者不做——因为 `moon.pkg` 的 import 由 `moon` 自己
+在构建期解析并校验，重复项会让 `moon check` 直接失败，我们再报一遍只是噪声。
+
+官方 `parser@0.4.3` 的 `mbti_ast` 里同样有 `PackageImport`，可见"import 声明"在
+接口/配置侧是同一个概念的不同载体。
 
 ## 分类要点（易混处）
 
@@ -93,5 +113,6 @@ UTF-16 code unit 计，供编辑器/LSP 用）；`LexicalError` 含
 - **`.mbti` 走行式审计而非 AST**。`@moonfiles.iface` 要做的检查（未知类型引用、重复签名、
   畸形行）本质是名字解析，行式读取已经够用；`moonbitlang/parser` 的 `mbti_parser` 会建完整
   AST，对本项目的目标而言是过度实现。
-- **`moon.mod` / `moon.pkg` 不做静态分析**：官方把它们放在 `moon_config` 子包里解析，本项目
-  在上表里明确记为"记录在案"——配置不是代码，不进三鉴。
+- **`moon.mod` / `moon.pkg` 不做静态分析**：官方把它们放在 `moon_config` 子包里解析，与
+  `syntax` / `mbti_parser` 并列而独立；本项目的三鉴只有一条发现通道且输入是
+  `ast.Module`，配置里没有绑定/类型/轨迹，三阶段都无从施加。详见上节「配置文件的边界」。

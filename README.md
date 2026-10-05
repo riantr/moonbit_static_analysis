@@ -116,7 +116,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 | `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件零误报 |
 | `.mbt.md` | literate：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号对齐到 `.md` 真实行。`mbt nocheck` 与裸 `moonbit` 是展示块（工具链既不编译也不测试），跳过 |
 | `.mbtp` | 证明文件逻辑侧 lint（体内字符串常量、`!`/`↔` 禁形、跨包调用、lemma 缺 `proof_ensure`）——**不替代 `moon prove`** |
-| `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码） |
+| `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码——官方也把两者放在 `parser` 的 `moon_config` 子包里，与 `syntax` / `mbti_parser` 并列而独立；理由见 EXTENSIONS.md「配置文件的边界」）|
 
 `.mbti` 审计的行文法是照着真实生成物对齐的：`moon info` 实际会输出 `import {}` 块、
 `#deprecated` / `#alias(...)` / `#callsite(...)` 属性行、`const`、`impl … for T`、
