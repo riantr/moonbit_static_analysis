@@ -78,11 +78,11 @@ pub let flow : String =
 ///|
 pub fn all() -> Array[(String, String)] {
   [
-    ("clean.mbtx", clean),
-    ("undefined.mbtx", undefined),
-    ("structure.mbtx", structure),
-    ("deadbranch.mbtx", deadbranch),
-    ("typing.mbtx", typing),
-    ("flow.mbtx", flow),
+    ("clean.mbt", clean),
+    ("undefined.mbt", undefined),
+    ("structure.mbt", structure),
+    ("deadbranch.mbt", deadbranch),
+    ("typing.mbt", typing),
+    ("flow.mbt", flow),
   ]
 }

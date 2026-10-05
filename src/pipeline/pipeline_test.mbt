@@ -30,7 +30,7 @@ const SAMPLE_FLOW : String = "let k = 3\nif k {\n  print(\"yes\")\n}\nfn u(x: in
 
 ///|
 test "pipeline: clean program has no findings and a full signature" {
-  let r = @pipeline.run(SAMPLE_CLEAN, "clean.mbtx")
+  let r = @pipeline.run(SAMPLE_CLEAN, "clean.mbt")
   assert_eq(r.reports.length(), 0)
   assert_eq(r.sigs.length(), 1)
   assert_eq(r.sigs[0], "fact(int) -> int")
@@ -38,7 +38,7 @@ test "pipeline: clean program has no findings and a full signature" {
 
 ///|
 test "merge: one defect, three lenses, ONE finding" {
-  let r = @pipeline.run(SAMPLE_UNDEFINED, "u.mbtx")
+  let r = @pipeline.run(SAMPLE_UNDEFINED, "u.mbt")
   // before the merge all three lenses saw it
   assert_eq(r.n_structural, 1)
   assert_eq(r.n_type, 2)
@@ -50,7 +50,7 @@ test "merge: one defect, three lenses, ONE finding" {
   assert_eq(rep.lenses.length(), 3)
   assert_eq(
     rep.render(),
-    "2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior]\n  in main() at u.mbtx:4\n  in g at u.mbtx:1\n",
+    "2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior]\n  in main() at u.mbt:4\n  in g at u.mbt:1\n",
   )
 }
 
@@ -58,7 +58,7 @@ test "merge: one defect, three lenses, ONE finding" {
 test "merge: arg-type echoes unify under MethodError" {
   // `shout(42)` is an argument-type error AND a method error at
   // the same span; the pipeline emits one behavioral-phrased finding
-  let r = @pipeline.run(SAMPLE_TYPING, "t.mbtx")
+  let r = @pipeline.run(SAMPLE_TYPING, "t.mbt")
   let mut shout_hits = 0
   for rep in r.reports {
     if rep.family.merge_group() == "arg-type" && rep.span.start.line == 6 {
@@ -77,7 +77,7 @@ test "assembly 1: type lens consumes walk's binding tables" {
   // lens never re-parses — re-assigning a str to n reports AssignType with
   // the ANNOTATION'S type, taken from lens 1's table
   let src = "z = 1\nlet n: int = 2\nn = \"x\"\nz = \"y\"\n"
-  let r = @pipeline.run(src, "a1.mbtx")
+  let r = @pipeline.run(src, "a1.mbt")
   // n: annotation violation (reported); z: gradual re-binding, no report
   let mut n_hits = 0
   let mut z_hits = 0
@@ -100,7 +100,7 @@ test "assembly 2: behavior lens dispatches on type lens signatures" {
   // f accepts int only; only the behavior lens can reject f(true) —
   // dispatch against the signature table lens 2 produced
   let src = "fn f(x: int) -> int {\n  return x\n}\nf(true)\n"
-  let r = @pipeline.run(src, "a2.mbtx")
+  let r = @pipeline.run(src, "a2.mbt")
   let mut hits = 0
   for rep in r.reports {
     if rep.family.name() == "MethodError" {
@@ -115,14 +115,14 @@ test "assembly 2: behavior lens dispatches on type lens signatures" {
 test "pruning appears twice: structural fold and lattice ABool" {
   // dead branch: the walk prunes it structurally, the interp prunes it in
   // the lattice — typo_fn exists NOWHERE, yet no lens reports it
-  let r = @pipeline.run(SAMPLE_DEADBRANCH, "d.mbtx")
+  let r = @pipeline.run(SAMPLE_DEADBRANCH, "d.mbt")
   assert_eq(r.reports.length(), 0)
   assert_eq(r.sigs[0], "h(int) -> int")
 }
 
 ///|
 test "structural-only: unused param/local/changed param invisible to others" {
-  let r = @pipeline.run(SAMPLE_STRUCTURE, "s.mbtx")
+  let r = @pipeline.run(SAMPLE_STRUCTURE, "s.mbt")
   assert_eq(r.reports.length(), 2)
   for rep in r.reports {
     assert_eq(rep.lenses.length(), 1)
@@ -145,7 +145,7 @@ test "structural-only: unused param/local/changed param invisible to others" {
 ///|
 test "behavior only: unreachable after return carries a virtual stack" {
   let src = "fn u(x: int) -> int {\n  return x\n  print(x)\n}\nu(1)\n"
-  let r = @pipeline.run(src, "v.mbtx")
+  let r = @pipeline.run(src, "v.mbt")
   let mut found = false
   for rep in r.reports {
     if rep.family.name() == "Unreachable" {
@@ -163,7 +163,7 @@ test "behavior only: unreachable after return carries a virtual stack" {
 
 ///|
 test "cond echoes merge: type lens NonBooleanCond + behavior lens agree" {
-  let r = @pipeline.run(SAMPLE_FLOW, "f.mbtx")
+  let r = @pipeline.run(SAMPLE_FLOW, "f.mbt")
   let mut cond_hits = 0
   for rep in r.reports {
     if rep.family.merge_group() == "cond" && rep.span.start.line == 2 {
@@ -197,7 +197,7 @@ test "lattice: vjoin widens constants and absorbs bottom" {
 
 ///|
 test "frontend: syntax errors are structural findings, pipeline survives" {
-  let r = @pipeline.run("fn broken( {\n", "e.mbtx")
+  let r = @pipeline.run("fn broken( {\n", "e.mbt")
   assert_true(r.reports.length() > 0)
   let mut parse_hits = 0
   for rep in r.reports {

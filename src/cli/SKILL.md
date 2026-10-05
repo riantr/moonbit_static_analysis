@@ -43,8 +43,8 @@ union of lenses that saw it; multi-lens findings carry a virtual stack
 
 ```
 2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior]
-  in main() at undefined.mbtx:4
-  in g at undefined.mbtx:1
+  in main() at undefined.mbt:4
+  in g at undefined.mbt:1
 Summary: 1 finding(s) (before merge: structural 1, type 2, behavior 1)
 ```
 
@@ -61,7 +61,7 @@ The demo CLI cannot analyze user input. Depend on the module and call the API:
 
 ```moonbit
 // program revision: source is a String in the MoonBit subset
-let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbtx")
+let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbt")
 println(@pipeline.render_result(result))
 
 // machine-table audit: plain data, any state machine
