@@ -189,6 +189,48 @@ test "import without a '{' block rejected" {
 ///
 
 ///|
+
+///|
+/// The script-mode docs' own example, verbatim. The docs call this one out
+/// specifically: "The package alias remains available, so the example can use
+/// both `Queue` and `@q.Queue`" — alias and import-all together on one entry.
+/// The body uses `async`, which is outside the subset by design, so only the
+/// import block is asserted here.
+test "import block: the docs' alias+import-all example, verbatim" {
+  let src = "import {\n  \"moonbitlang/core/queue\" @q *\n}\n"
+  let r = @parser.parse(src)
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.tree.imports.length(), 1)
+  assert_eq(r.tree.imports[0].render(), "moonbitlang/core/queue @q *")
+  assert_true(r.tree.imports[0].is_star())
+  assert_eq(r.tree.imports[0].alias_name(), "q")
+}
+
+///
+
+///|
+/// The other two documented shapes: an `@alias`-only entry with no trailing
+/// comma (the last entry may omit it), and versioned import paths where the
+/// `@version` sits inside the quotes and must not be read as an alias.
+test "import block: the docs' other two examples, verbatim" {
+  let r1 = @parser.parse("import {\n  \"moonbitlang/core/list\" @ls\n}\n")
+  assert_eq(r1.reports.length(), 0)
+  assert_eq(r1.tree.imports[0].render(), "moonbitlang/core/list @ls")
+  assert_false(r1.tree.imports[0].is_star())
+  let r2 = @parser.parse(
+    "import {\n  \"moonbitlang/async@0.20.2/fs\",\n  \"moonbitlang/async@0.20.2\",\n}\n",
+  )
+  assert_eq(r2.reports.length(), 0)
+  assert_eq(r2.tree.imports.length(), 2)
+  // the @version is part of the quoted path, not an alias
+  assert_eq(r2.tree.imports[0].path(), "moonbitlang/async@0.20.2/fs")
+  assert_eq(r2.tree.imports[0].alias_name(), "")
+  assert_eq(r2.tree.imports[1].alias_name(), "")
+}
+
+///
+
+///|
 test "package sources carry no imports" {
   let r = @parser.parse("fn f() -> int {\n  1\n}\n")
   assert_eq(r.reports.length(), 0)
