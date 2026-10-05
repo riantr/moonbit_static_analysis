@@ -16,7 +16,7 @@
 | `.mbtp` | 证明文件（`moon prove` 形式化验证的逻辑侧） | `src/core/core_proof.mbtp` | **逻辑侧结构审计**（`@moonfiles.proof`）：体内字符串常量（E4207 同型）、`!`/`↔` 禁形（写 `== false` 与 `→`）、跨包 `@pkg.` 调用、lemma 缺 `proof_ensure`。**这是 lint，不替代 `moon prove`** |
 | `moon.mod` / `moon.mod.json` | 模块配置 | 两模块各一 | 记录在案，不做静态分析（配置非代码，见下「配置文件的边界」） |
 | `moon.pkg` / `moon.pkg.json` | 包配置 | 各包一（`src/*/moon.pkg`） | 记录在案，不做静态分析（同上） |
-| `moon.work` / workspace | 多模块工作区配置 | 未使用（两模块独立） | 记录在案 |
+| `moon.work` | **多模块工作区清单**（官方唯一的名字，**没有 `moon.workspace`**） | 本模块未用（单模块）；`moonbitlang/async` 用 | 记录在案 |
 
 ## 配置文件的边界（为什么 `moon.mod` / `moon.pkg` 不进三鉴）
 
@@ -50,6 +50,26 @@
   与子集程序推导签名（`fact(int) -> int`，注解名或 `Any`）**不构成可比较对**——因此 .mbti
   审计是独立健全性检查，不做声明↔实现一致性比对。
 - `.mbtp` 的 `predicate`/`lemma`/`proof_ensure` 不是子集语法——证明文件走专属 lint，不走三鉴前端。
+
+## 工作区清单的实际形状（`moon.work`）
+
+官方 [workspace 文档](https://docs.moonbitlang.com/en/latest/toolchain/moon/workspace.html)
+只承认**一个**名字：`moon.work`。`moon work init <mod...>` 生成，`moon work use <mod>` 增员，
+`moon work sync` 对齐成员版本；`publish` 这类**模块专属命令**在工作区根上不可用，
+要 `moon -C <mod> publish`。
+
+真实形状（`moonbitlang/async` 的工作区根）：
+
+```
+members = [
+  ".",
+  "./examples",
+  "./test_programs",
+]
+```
+
+⚠️ **成员用相对路径，且 `"."` 指工作区根自己**——本模块没有 `moon.work`，
+所以「成员列表为空」与「不存在该文件」是**两件事**，不要混为一谈。
 
 ## 真实语料的验证基础（各检查的证据强度不同）
 
