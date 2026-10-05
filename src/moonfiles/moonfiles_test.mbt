@@ -239,6 +239,43 @@ test "proof .mbtp: banned forms reported" {
 }
 
 ///|
+
+///|
+/// The negative controls for the proof lint. The four rules each have a
+/// triggering test; without these, a rule could fire on every line it merely
+/// resembles and the suite would still be green. Probed all nine cases
+/// (4 triggers + 5 negatives) against the bridge: 9/9 behaved as documented.
+///
+///   !=  must not trip the '!'  rule
+///   ->  must not trip the '↔'  rule
+///   a predicate body must not be mistaken for a lemma (no proof_ensure to find)
+///   a clean body must stay silent
+test "proof .mbtp: legal forms are not mistaken for banned ones" {
+  // '!=' contains '!' but is an equality operator, not a negation
+  let ne = @moonfiles.proof(
+    "predicate p(x : T) {\n  x.a() != x.b()\n}\n", "p.mbtp",
+  )
+  assert_eq(ne.length(), 0)
+  // '->' is the one-directional implication, not the biconditional
+  let arrow = @moonfiles.proof(
+    "predicate q(a : T, b : T) {\n  a -> b\n}\n", "p.mbtp",
+  )
+  assert_eq(arrow.length(), 0)
+  // a predicate has no proof_ensure to discharge, so the lemma rule must not
+  // fire on it
+  let pred = @moonfiles.proof("predicate r(x : T) {\n  x.ok()\n}\n", "p.mbtp")
+  assert_eq(pred.length(), 0)
+  // a real lemma that does discharge stays silent too
+  let good = @moonfiles.proof(
+    "///|\nlemma one_zero() where {\n  proof_ensure: LStructural.rank() == 0,\n} {}\n",
+    "p.mbtp",
+  )
+  assert_eq(good.length(), 0)
+}
+
+///
+
+///|
 test "proof .mbtp: lemma without proof_ensure reported" {
   let src = "lemma empty() where {\n} {}\n"
   let reports = @moonfiles.proof(src, "p.mbtp")
