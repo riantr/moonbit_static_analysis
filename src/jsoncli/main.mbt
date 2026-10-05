@@ -1,7 +1,7 @@
 // JSON bridge entry: the DeepSeek Harness plugin (dsh-plugin-moonbit-static-analysis)
 // spawns this program under Node, passes ONE argument — a JSON request — and
 // reads a JSON reply from stdout. Two request kinds:
-//   { "kind": "program", "source": "...", "filename": "main.mlang" }
+//   { "kind": "program", "source": "...", "filename": "main.mbtx" }
 //   { "kind": "machine", "spec": { MachineSpec fields } }
 // The bridge keeps the plugin a pure spawner: all analyzer semantics stay in
 // MoonBit, versioned and gated with the module itself.
@@ -155,7 +155,7 @@ fn handle(raw : String) -> Reply {
       "program" =>
         run_program(
           request.source.unwrap_or(""),
-          request.filename.unwrap_or("main.mlang"),
+          request.filename.unwrap_or("main.mbtx"),
         )
       "machine" =>
         match request.spec {

@@ -17,7 +17,7 @@ moon add riantr/moonbit_static_analysis@0.1.2
 
 ```moonbit
 // 用途一：修订一段 MoonBit（当前子集）程序
-let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbt")
+let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbtx")
 println(@pipeline.render_result(result))
 
 // 用途二：审计一台状态机（机器表以纯数据进来）
@@ -45,10 +45,10 @@ moon run src/cli          # demo：6 个样例 × 三鉴
 ```
 
 ```
-=== undefined.mlang ===
+=== undefined.mbtx ===
 2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior]
-  in main() at undefined.mlang:4
-  in g at undefined.mlang:1
+  in main() at undefined.mbtx:4
+  in g at undefined.mbtx:1
 Summary: 1 finding(s) (before merge: structural 1, type 2, behavior 1)
 ```
 

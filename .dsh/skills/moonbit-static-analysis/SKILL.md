@@ -6,7 +6,7 @@ description: Revise MoonBit-subset programs and audit state-machine tables with 
 # moonbit_static_analysis — the three-inspection pipeline
 
 Module `riantr/moonbit_static_analysis` (dir `moonbit_static_analysis/`): one pipeline, three
-inspections, one report stream. Two uses: MoonBit program revision (the MLang subset of the
+inspections, one report stream. Two uses: MoonBit program revision (the current working subset of the
 fast-evolving language) and static state revision of machine tables (`src/statecheck`, plain-data
 `MachineSpec`). The reference consumer is `pyroduct/audit` (module `riantr/pyroduct`): pyroduct
 calls US — we never import pyroduct.

@@ -1,4 +1,4 @@
-// ast: the MoonBit-subset frontend (internal name MLang). The target
+// ast: the MoonBit-subset frontend. The target
 // language is MoonBit itself — fast-evolving — and this module consumes its
 // current working subset: the shape the three inspections need, tracking
 // the language as it moves. Statements are brace-blocked,

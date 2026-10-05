@@ -1,4 +1,4 @@
-// Embedded MoonBit-subset samples (MLang) for the demo.
+// Embedded MoonBit-subset samples for the demo.
 
 ///|
 /// Clean: recursion + dispatch — zero findings, signature inferred.
@@ -78,11 +78,11 @@ pub let flow : String =
 ///|
 pub fn all() -> Array[(String, String)] {
   [
-    ("clean.mlang", clean),
-    ("undefined.mlang", undefined),
-    ("structure.mlang", structure),
-    ("deadbranch.mlang", deadbranch),
-    ("typing.mlang", typing),
-    ("flow.mlang", flow),
+    ("clean.mbtx", clean),
+    ("undefined.mbtx", undefined),
+    ("structure.mbtx", structure),
+    ("deadbranch.mbtx", deadbranch),
+    ("typing.mbtx", typing),
+    ("flow.mbtx", flow),
   ]
 }

@@ -33,7 +33,7 @@ fn lens_count(lens : @core.Lens, r : @report.Report) -> Int {
 }
 
 ///|
-/// Run the full pipeline over MLang source.
+/// Run the full pipeline over MoonBit-subset source.
 pub fn run(src : String, file : String) -> PipelineResult {
   let parsed = @parser.parse(src)
   let all : Array[@report.Report] = []
