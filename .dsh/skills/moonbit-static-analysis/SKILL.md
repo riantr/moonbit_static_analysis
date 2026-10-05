@@ -16,10 +16,19 @@ calls US — we never import pyroduct.
 ```console
 moon check                # 0 errors, 0 warnings — first gate
 moon fmt                  # format; `moon fmt --check` must stay clean
-moon test --target js     # 21/21 (14 program semantics + 9 machine-table semantics)
-moon run src/cli          # program demo (6 samples × 3 inspections) + sample machine audit
+moon test --target js     # 51/51 (see the breakdown below)
+moon run src/cli          # program demo + file-kind demo + sample machine audit
 moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma VCs)
 ```
+
+The test breakdown is 4 targets × 51: pipeline, moonfiles (literate / .mbti /
+.mbtp), parser (.mbtx import block), statecheck, walk/types/interp.
+
+**`pkg.generated.mbti` is tracked.** Changing a public surface (`pub`, `pub(all)`,
+a struct field, an enum constructor) requires `moon info`, and the regenerated
+files must be committed — otherwise the committed interface describes a module
+version that no longer exists. A brand-new package gets its `.mbti` from the
+same run; it will not appear on its own.
 
 pyroduct gates (run inside `pyroduct/`): `moon check`, `moon test` (98/98), `moon fmt --check`.
 
@@ -32,6 +41,22 @@ parse (src/lexer, src/parser) → ast
 ③ behavior    src/interp  abstract execution + behavior findings — method table COMES FROM ②'s sigs
 ④ merge       src/pipeline  same merge_group at the same span → ONE report, union of lenses
 ```
+
+The other file kinds are frontends in `src/moonfiles` (see EXTENSIONS.md, which
+is the taxonomy and the authority for what each suffix means):
+- `.mbt.md` — only fences the toolchain actually compiles (`mbt`, `mbt check`)
+  are three-inspected, with line numbers aligned to the .md file. `mbt nocheck`
+  and a bare `moonbit` are display-only and are SKIPPED.
+- `.mbti` — interface audit. The line grammar matches what `moon info` emits
+  (import blocks, `#attribute` lines, const/let, `impl ... for T`, suberror,
+  using re-exports, async/extern, type params, labeled params, noraise/cancel).
+  Verified over the 71 generated interfaces in pyroduct/.mooncakes: 71/71
+  clean, and 4/4 injected defects caught in 71/71.
+- `.mbtp` — logic-side lint. A lint, NOT a substitute for `moon prove`.
+- `.mbtx` — a standalone script (no module/package config). Its import block
+  is `"path" [@alias] [*]`: modifiers TRAIL the path and are ordered. Recorded
+  into `Module.imports` as a typed `ImportSpec`, echoed in the report; a
+  repeated path is an FParse. Dependencies are not resolved.
 
 - Assembly points are one-directional: a later stage never rediscovers what an earlier stage
   produced (types consume walk's binding tables; interp consumes types' signature tables).

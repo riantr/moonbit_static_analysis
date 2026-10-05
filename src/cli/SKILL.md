@@ -35,6 +35,13 @@ moon run src/cli
 The CLI takes no arguments; the samples are embedded (`src/samples`). Pin a
 verified published version with `@VERSION` when reproducibility matters.
 
+The demo now covers every file kind the module analyzes, not just `.mbt`:
+`.mbt` samples, a `.mbtx` script (its import block is echoed under
+`Imports (.mbtx script, recorded not resolved):`), a `.mbt.md` document, a
+`.mbti` interface and a `.mbtp` proof file. See
+[EXTENSIONS.md](../../EXTENSIONS.md) for the full taxonomy and for which
+fences inside a `.mbt.md` count as code.
+
 ## Reading the output
 
 Each finding is one line with position, severity, message, family, and the
@@ -64,6 +71,12 @@ The demo CLI cannot analyze user input. Depend on the module and call the API:
 let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbt")
 println(@pipeline.render_result(result))
 
+// the other file kinds have their own frontends (src/moonfiles)
+let doc  = @moonfiles.literate(md_text, "README.mbt.md")   // .mbt.md, real line numbers
+let iface = @moonfiles.iface(mbti_text, "pkg.mbti")       // interface audit
+let proof = @moonfiles.proof(mbtp_text, "core.mbtp")      // proof lint
+println(@moonfiles.render_reports(iface))
+
 // machine-table audit: plain data, any state machine
 let spec : @statecheck.MachineSpec = {
   name: "主体",
@@ -84,5 +97,6 @@ println(@statecheck.render(spec))
 The CLI exposes no flags, no file input, and no JSON output. It does not
 replace a linter integration: for CI use `moon check` plus the module's tests;
 for machine-table audits use `@statecheck.audit` directly. Consult the adjacent
-[README.md](../../README.md) for the full architecture and the formal
+[README.md](../../README.md) for the full architecture and
+[EXTENSIONS.md](../../EXTENSIONS.md) for the file-kind taxonomy and the formal
 verification story.
