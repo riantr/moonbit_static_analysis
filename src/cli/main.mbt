@@ -17,14 +17,20 @@ fn main {
   println("")
   println("====================================================")
   println(
-    "toolchain file kinds (.mbt.md / .mbti / .mbtp — see EXTENSIONS.md)",
+    "toolchain file kinds (.mbt / .mbtx / .mbti / .mbt.md / .mbtp — see EXTENSIONS.md)",
   )
   println("")
-  println("=== demo.mbt.md (literate: two moonbit fences) ===")
+  println(
+    "=== demo.mbt.md (literate: 2 compiled fences, 2 display-only skipped) ===",
+  )
   println(
     @pipeline.render_result(
       @moonfiles.literate(@samples.literate_md, "demo.mbt.md"),
     ),
+  )
+  println("=== demo.mbtx (script: import block + a body defect) ===")
+  println(
+    @pipeline.render_result(@pipeline.run(@samples.script_mbtx, "demo.mbtx")),
   )
   println("=== demo.mbti (interface: unknown type reference) ===")
   println(

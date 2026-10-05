@@ -3,25 +3,61 @@
 ///|
 /// A toolchain file-kind sample set: a literate .mbt.md document, an .mbti
 /// interface file and a .mbtp proof file (see EXTENSIONS.md).
+///
+/// The fences are `mbt`, the language the toolchain actually compiles. The
+/// first two blocks are display-only (`mbt nocheck` and bare `moonbit`) and
+/// must be skipped even though the second one names an undefined function —
+/// that is the whole point of honouring the fence language.
 pub let literate_md : String =
   #|# Demo document
   #|
-  #|A clean block:
+  #|A display-only block, shown but never compiled (its bad name is NOT reported):
+  #|
+  #|```mbt nocheck
+  #|fn ignored() -> int {
+  #|  vanish(1)
+  #|}
+  #|```
+  #|
+  #|Another display-only block, the bare `moonbit` fence:
   #|
   #|```moonbit
+  #|fn also_ignored() -> int {
+  #|  gone(2)
+  #|}
+  #|```
+  #|
+  #|A compiled block:
+  #|
+  #|```mbt
   #|fn twice(n: int) -> int {
   #|  n * 2
   #|}
   #|twice(21)
   #|```
   #|
-  #|A broken block (undefined name lands on file line 16):
+  #|A compiled block with a real defect (lands on file line 32):
   #|
-  #|```moonbit
+  #|```mbt check
   #|fn shrug() -> int {
   #|  vanish(1)
   #|}
   #|```
+  #|
+
+///|
+/// A `.mbtx` script sample: the import block in the official form (a quoted
+/// path with trailing, ordered modifiers) plus a body defect, so the report
+/// shows both the echoed imports and a finding.
+pub let script_mbtx : String =
+  #|import {
+  #|  "moonbitlang/core/list" @ls,
+  #|  "moonbitlang/core/queue" @q *,
+  #|}
+  #|
+  #|fn total(xs) -> int {
+  #|  vanish(xs)
+  #|}
   #|
 
 ///|

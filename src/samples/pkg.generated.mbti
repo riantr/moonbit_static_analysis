@@ -16,6 +16,8 @@ pub let literate_md : String
 
 pub let proof_bad : String
 
+pub let script_mbtx : String
+
 pub let structure : String
 
 pub let typing : String
