@@ -239,6 +239,45 @@ pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
 }
 
 ///|
+/// The first word of each line of a block, when it is a whole identifier.
+fn line_heads(block : String) -> Array[String] {
+  let out : Array[String] = []
+  for raw in split_lines(block) {
+    let t = trim_sp(raw)
+    if t == "" || t.has_prefix("//") {
+      continue
+    }
+    let name = decl_name(t)
+    if name != "" {
+      out.push(name)
+    }
+  }
+  out
+}
+
+///|
+/// The first word in `block` that the MoonBit subset deliberately leaves out
+/// (see EXTENSIONS.md), or "" when the block is analyzable.
+///
+/// A compiled block that leaves the subset is reported ONCE. Handing it to the
+/// parser instead reports the keyword as an undefined *variable* — the subset
+/// lexer has no keyword table — and then a cascade of "unexpected token" behind
+/// it. Measured over the 12 real .mbt.md documents in this workspace, that
+/// cascade was 2335 findings, 1505 of them ParseError.
+fn subset_exclusion(block : String) -> String {
+  let excluded = [
+    "async", "extern", "match", "pub", "priv", "mut", "struct", "enum", "trait",
+    "derive", "suberror", "impl", "test", "throw",
+  ]
+  for h in line_heads(block) {
+    if excluded.contains(h) {
+      return h
+    }
+  }
+  ""
+}
+
+///|
 /// Analyze a `.mbt.md` literate document: each moonbit fence is an
 /// independent snippet (literate blocks share nothing by design), run through
 /// the full three-inspection pipeline; findings carry REAL line numbers.
@@ -250,7 +289,20 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
   let mut n2 = 0
   let mut n3 = 0
   for pair in moonbit_fences(md) {
-    let (block, _start) = pair
+    let (block, start) = pair
+    // outside the subset: one finding at the block's first line, not a cascade
+    let excluded = subset_exclusion(block)
+    if excluded != "" {
+      all.push(@report.Report::{
+        family: @core.FParse,
+        lenses: [@core.LStructural],
+        message: "block starts with '\{excluded}', outside the analyzer's MoonBit subset; skipped whole",
+        span: @core.span_at(start, 1, excluded.length()),
+        vst: [],
+      })
+      n1 += 1
+      continue
+    }
     let r = @pipeline.run(block, file)
     for rep in r.reports {
       all.push(rep)

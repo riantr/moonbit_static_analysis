@@ -151,6 +151,63 @@ test "literate .mbt.md: nocheck and bare moonbit fences are skipped" {
 ///|
 
 ///|
+
+///|
+/// A compiled block that leaves the subset is reported ONCE. The subset lexer
+/// has no keyword table, so `async fn main` used to parse `async` as a
+/// variable — "undefined variable 'async'" — then cascade hundreds of
+/// "unexpected token" behind it. Measured over the 12 real .mbt.md documents
+/// in this workspace that was 2335 findings; now 89, all of them this one
+/// message.
+test "literate .mbt.md: a block outside the subset is reported once, not cascaded" {
+  let md = "```mbt\nasync fn main {\n  let xs = [1, 2]\n  debug(xs)\n}\n```\n"
+  let r = @moonfiles.literate(md, "doc.mbt.md")
+  assert_eq(r.reports.length(), 1)
+  assert_eq(r.reports[0].family.name(), "ParseError")
+  assert_true(
+    r.reports[0].message.contains("outside the analyzer's MoonBit subset"),
+  )
+  // named after the word that put the block out of reach, and it does not
+  // pretend the word was an undefined variable
+  assert_true(r.reports[0].message.contains("'async'"))
+  assert_false(r.reports[0].message.contains("undefined"))
+  // nothing was analyzed, so nothing is claimed
+  assert_eq(r.sigs.length(), 0)
+  // the report lands on the .md file's real line, the one holding `async fn`
+  assert_eq(r.reports[0].span.start.line, 2)
+}
+
+///
+
+///|
+/// A `test { .. }` block is a document-test entry, not a definition the
+/// subset can read: same one-line treatment.
+test "literate .mbt.md: a test block is reported once" {
+  let md = "```mbt check\ntest \"forty two\" {\n  inspect(40 + 2, content=\"42\")\n}\n```\n"
+  let r = @moonfiles.literate(md, "doc.mbt.md")
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("'test'"))
+  assert_eq(r.sigs.length(), 0)
+}
+
+///
+
+///|
+/// A compiled block that stays inside the subset is still fully analyzed — the
+/// short-circuit must not swallow the blocks it is meant to leave alone.
+test "literate .mbt.md: an in-subset compiled block is still analyzed" {
+  let md = "```mbt\nfn twice(n: int) -> int {\n  n * 2\n}\nprint(twice(21))\n```\n"
+  let r = @moonfiles.literate(md, "doc.mbt.md")
+  // the block was analyzed, not short-circuited: no exclusion finding, and the
+  // definition reached the signature table
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.sigs.length(), 1)
+  assert_true(r.sigs[0].has_prefix("twice(int) -> "))
+}
+
+///
+
+///|
 test "proof .mbtp: clean file has no findings" {
   let src = "///|\npredicate is_error(s : Severity) {\n  match s {\n    Error => true\n    _ => false\n  }\n}\n\n///|\nlemma one_zero() where {\n  proof_ensure: LStructural.rank() == 0,\n} {}\n"
   let reports = @moonfiles.proof(src, "core_proof.mbtp")
