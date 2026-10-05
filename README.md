@@ -147,3 +147,12 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 
 - **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.1.2` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
+
+## DeepSeek Harness 插件
+
+`src/jsoncli` 是 JSON 桥接入口（Node 下运行，一条 JSON 请求进、一条 JSON 应答出）：
+`{"kind":"program","source":...}` 走程序三鉴，`{"kind":"machine","spec":...}` 走机器表审计。
+它被打包为 DeepSeek Harness 插件 `@local/moonbit-static-analysis`（工作区目录
+`dsh-plugin-moonbit-static-analysis/`），向 agent 暴露 `moonbit_analyze` / `moonbit_audit` /
+`moonbit_gates` 三个工具——插件只是生成器与格式化器，分析语义全部留在 MoonBit 侧、随模块一起版本化与跑门禁。
+安装方式见该目录 README（`plugin_manager` 的 `install_bundle`）。

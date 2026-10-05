@@ -156,3 +156,16 @@ The module is published through the following channels (one source, three syncs)
 
 - **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.1.2` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
+
+## DeepSeek Harness plugin
+
+`src/jsoncli` is the JSON bridge entry: it runs under Node, takes one JSON
+request on the command line, and answers with one JSON reply —
+`{"kind":"program","source":...}` goes through the three program inspections,
+`{"kind":"machine","spec":...}` through the machine-table audit. It is packaged
+as the DeepSeek Harness plugin `@local/moonbit-static-analysis` (workspace
+directory `dsh-plugin-moonbit-static-analysis/`), which exposes the
+`moonbit_analyze` / `moonbit_audit` / `moonbit_gates` tools to the agent — the
+plugin only spawns and formats; every analysis semantic stays in MoonBit,
+versioned and gated with the module. See that directory's README for the
+install step (`plugin_manager` with `install_bundle`).
