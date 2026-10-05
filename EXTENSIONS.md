@@ -68,6 +68,26 @@
 
 ⚠️ 这类"跳过"与"检查通过"在结论上不可区分——**89/89 全清不等于 89/89 全查过**。
 
+**已试过补上，失败，已回滚（不要重试同一个做法）**：把体内两行形状都解析
+（`field : Type` 与 `Constr(Types)`），拿全部 89 个真实接口量了一次——结果
+**新增 7 条误报**，而且**盲点根本没关上**：
+
+| 真实行 | 误报 |
+|---|---|
+| `OSError(Int, context~ : String)` | `context` 当成了类型 |
+| `ExponentialDelay(initial~ : Int, factor~ : Double, maximum~ : Int)` | `factor` / `maximum` |
+| `Rename(old~ : String, new~ : String)` | `old` / `new` |
+
+根因：**一行里同时出现了两种形状**。`Constr(a, label~ : T)` 既像构造子又像
+`label : Type`，按"第一个 `:` 切分"的启发式必然切错，把**带标签的参数名**读成
+类型名。要做对必须**先判构造子形状（顶层有 `(` 就走它）**，再在括号内按标签处理
+——不是把 `label_type` 提到前面就行。
+
+⚠️ 顺带记一次**我自己探针的错误**：`ISpectacular(String)` 里的 `ISpectacular`
+是**构造子名**不是类型，所以"体内未知类型"那样注入**根本构不成盲点**——要注入
+得写 `Other(UInt16)` 这种载荷，或 `field : ISpectacular`。**盲点存在，但我第一次
+的探针没能证明它。**
+
 ## 工作区清单的实际形状（`moon.work`）
 
 官方 [workspace 文档](https://docs.moonbitlang.com/en/latest/toolchain/moon/workspace.html)
