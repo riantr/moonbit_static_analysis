@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.1.2"
+version = "0.2.0"
 
 readme = "README.md"
 
@@ -20,9 +20,13 @@ keywords = [
   "linter",
   "state-machine",
   "abstract-interpretation",
+  "file-kinds",
+  "mbti",
+  "literate-markdown",
+  "formal-verification",
 ]
 
-description = "Three-inspection (structural / type / behavior) static-analysis pipeline for MoonBit programs and state-machine tables"
+description = "Three-inspection (structural / type / behavior) static analysis for MoonBit programs, every toolchain file kind (.mbt / .mbtx / .mbti / .mbt.md / .mbtp) and state-machine tables"
 
 preferred_target = "js"
 
