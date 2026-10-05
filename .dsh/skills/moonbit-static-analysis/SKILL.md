@@ -16,12 +16,12 @@ calls US — we never import pyroduct.
 ```console
 moon check                # 0 errors, 0 warnings — first gate
 moon fmt                  # format; `moon fmt --check` must stay clean
-moon test --target js     # 51/51 (see the breakdown below)
+moon test --target js     # 59/59 (see the breakdown below)
 moon run src/cli          # program demo + file-kind demo + sample machine audit
 moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma VCs)
 ```
 
-The test breakdown is 4 targets × 51: pipeline, moonfiles (literate / .mbti /
+The test breakdown is 4 targets × 59: pipeline, moonfiles (literate / .mbti /
 .mbtp), parser (.mbtx import block), statecheck, walk/types/interp.
 
 **`pkg.generated.mbti` is tracked.** Changing a public surface (`pub`, `pub(all)`,

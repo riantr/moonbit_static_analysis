@@ -107,7 +107,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test                 # 51/51 green (51 on each of the four targets)
+moon test                 # 59/59 green (59 on each of the four targets)
 moon run src/cli          # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
