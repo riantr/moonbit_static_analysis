@@ -11,7 +11,7 @@
 |---|---|---|---|
 | `.mbt` | 包内模块源码（函数/类型/逻辑） | 本模块全部 `src/**/*.mbt` | **三鉴程序分析**（`@pipeline.run`；`.mbti` 声明不参与） |
 | `.mbtx` | **独立脚本**（无模块/包配置，`moon run script.mbtx`；可带 `import { ... }` 块） | `pyroduct/` 下的脚本；`Module.imports` 记录其导入块 | **三鉴程序分析** + 导入块审计：条目文法 `"path" [@alias] [*]`（修饰符**后置**且定序），记入 `Module.imports`，重复路径报 FParse；结果在报告里以 `Imports:` 段回显。不解析依赖 |
-| `.mbti` | 接口文件（`moon info` 生成或手写：包的公开 API/类型签名） | 各包 `pkg.generated.mbti` | **接口审计**（`@moonfiles.iface`）：畸形行、重复签名、未知类型引用。行文法与 `moon info` 实际输出一致（注释 / `#属性` 行 / `package` / `import {}` 块 / `enum`·`struct`·`trait`·`type`·`suberror` 声明（体跳过）/ `impl … for T` / `const` / 带 `pub`、`async`、`extern`、类型参数、具名参数的 `fn`），因此生成文件不会被误判。类型声明体（字段/构造器/derive）跳过 |
+| `.mbti` | 接口文件（`moon info` 生成或手写：包的公开 API/类型签名） | 各包 `pkg.generated.mbti` | **接口审计**（`@moonfiles.iface`）：畸形行、重复签名、未知类型引用。行文法与 `moon info` 实际输出一致（注释 / `#属性` 行 / `package` / `import {}` 块 / `enum`·`struct`·`trait`·`type`·`suberror` 声明（体跳过）/ `impl … for T` / `const` / 带 `pub`、`async`、`extern`、类型参数、具名参数的 `fn`），因此生成文件不会被误判。类型声明体（字段/构造器/derive）跳过——**这是一个盲点，见下** |
 | `.mbt.md` | literate MoonBit：Markdown 中嵌可编译/可测试代码块 | `pyroduct/README.mbt.md`；mooncakes 依赖的 README | **逐块三鉴**（`@moonfiles.literate`）：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号按文件真实行对齐（块前补空行），块间独立。`mbt nocheck` 与裸 `moonbit` 是**展示块**——工具链既不编译也不测试它们——一律跳过（见下「围栏语言」）|
 | `.mbtp` | 证明文件（`moon prove` 形式化验证的逻辑侧） | `src/core/core_proof.mbtp` | **逻辑侧结构审计**（`@moonfiles.proof`）：体内字符串常量（E4207 同型）、`!`/`↔` 禁形（写 `== false` 与 `→`）、跨包 `@pkg.` 调用、lemma 缺 `proof_ensure`。**这是 lint，不替代 `moon prove`** |
 | `moon.mod` / `moon.mod.json` | 模块配置 | 两模块各一 | 记录在案，不做静态分析（配置非代码，见下「配置文件的边界」） |
@@ -50,6 +50,23 @@
   与子集程序推导签名（`fact(int) -> int`，注解名或 `Any`）**不构成可比较对**——因此 .mbti
   审计是独立健全性检查，不做声明↔实现一致性比对。
 - `.mbtp` 的 `predicate`/`lemma`/`proof_ensure` 不是子集语法——证明文件走专属 lint，不走三鉴前端。
+
+## `.mbti` 的已知盲点：声明体内的类型
+
+`.mbti` 审计**跳过类型声明体**（字段 / 构造器 / `derive`），所以**写在体内的类型引用
+从不被解析**。实测（对本模块自己的 `ast/pkg.generated.mbti` 注入对照）：
+
+| 注入 | 结果 |
+|---|---|
+| `ISpectacular(String)` 放在 `enum ImportSpec` 的构造子列表里 | **0 条**（不报） |
+| 同一个 `ISpectacular` 放在签名位置 `pub fn Probe::p(ISpectacular) -> Unit` | 1 条 `unknown type` |
+
+这不是 bug 而是**范围选择**（体里还有字段名、`derive(...)` 列表等噪声，逐行解析的
+误报率高于收益），但**必须写明**：`.mbti` 的未知类型检查**只覆盖签名与别名右侧**，
+**不覆盖声明体内部**。`moon info` 确实会生成带类型的构造子
+（如 `IStar(String)`），所以那里的类型拼写错误本工具**看不见**。
+
+⚠️ 这类"跳过"与"检查通过"在结论上不可区分——**89/89 全清不等于 89/89 全查过**。
 
 ## 工作区清单的实际形状（`moon.work`）
 
