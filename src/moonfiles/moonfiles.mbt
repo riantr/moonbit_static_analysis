@@ -144,10 +144,54 @@ fn contains_bang(code : String) -> Bool {
 }
 
 ///|
-/// Extract moonbit fenced code blocks from a Markdown document: returns
-/// (block_source_with_line_padding, start_line) pairs. Fence info strings
-/// must start with `moonbit` or `mbt` (case-insensitive); other fences are
-/// prose and skipped.
+/// How a fenced block is meant to be treated, from its info string. The fence
+/// language is the authority here, not the extension: the toolchain compiles
+/// `mbt` and `mbt check` and deliberately leaves `mbt nocheck` and plain
+/// `moonbit` blocks alone.
+pub(all) enum FenceMode {
+  /// ```mbt or ```moonbit check — compiled, no test entry
+  FCheck
+  /// ```mbt check — document-test code
+  FTest
+  /// ```mbt nocheck — shown only; the toolchain neither compiles nor tests it
+  FNoCheck
+  /// ```moonbit — an ordinary displayed block; not compiled, not tested
+  FDisplay
+} derive(Eq)
+
+///|
+/// Classify a fence info string. Returns None for a non-MoonBit fence.
+///
+/// The two distinctions that matter, both documented:
+///   - `nocheck` opts the block OUT of compilation and testing;
+///   - a bare `moonbit` fence is display-only, while `mbt` (with or without
+///     `check`) is compiled.
+pub fn fence_mode(info : String) -> FenceMode? {
+  let words = trim_sp_view(trim_sp_view(after_n(info, 3).view()).view())
+  if !words.has_prefix("moonbit") && !words.has_prefix("mbt") {
+    return None
+  }
+  let rest = trim_sp_view(after_n(words, if starts_with_ci(words.view(), "moonbit") { 8 } else { 3 }).view())
+  if rest == "" {
+    // bare `mbt` is compiled; bare `moonbit` is display-only
+    return Some(if starts_with_ci(words.view(), "moonbit") { FDisplay } else { FCheck })
+  }
+  let head = decl_name(rest)
+  if head == "nocheck" {
+    return Some(FNoCheck)
+  }
+  if head == "check" {
+    return Some(FTest)
+  }
+  None
+}
+
+///|
+/// Extract the moonbit fenced code blocks that are actually compiled, i.e.
+/// ```mbt and ```mbt check: returns (block_source_with_line_padding, start_line)
+/// pairs. `mbt nocheck` and bare `moonbit` blocks are skipped, matching the
+/// toolchain's own rule that they are shown but neither compiled nor tested.
+/// Other fences are prose and skipped too.
 pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
   let src = normalize(md)
   let blocks : Array[(String, Int)] = []
@@ -156,7 +200,16 @@ pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
   let n = lines.length()
   while i < n {
     let line = lines[i]
-    if line.has_prefix("```") && fence_is_moonbit(line) {
+    if line.has_prefix("```") {
+      match fence_mode(line) {
+        Some(FCheck) | Some(FTest) => ()
+        Some(_) | None => {
+          i += 1
+          continue
+        }
+      }
+    }
+    if line.has_prefix("```") {
       let start_line = i + 2
       let body = StringBuilder()
       i += 1
@@ -175,12 +228,6 @@ pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
     i += 1
   }
   blocks
-}
-
-///|
-fn fence_is_moonbit(info : String) -> Bool {
-  let tag = trim_sp_view(after_n(info, 3).view())
-  starts_with_ci(tag.view(), "moonbit") || starts_with_ci(tag.view(), "mbt")
 }
 
 ///|

@@ -3,7 +3,7 @@
 
 ///|
 test "literate .mbt.md: fences analyzed with real line numbers" {
-  let md = "# Title\n\nIntro prose.\n\n```moonbit\nfn ok_fn() -> int {\n  1\n}\n```\n\nMore prose.\n\n```moonbit\nfn broken() -> int {\n  missing(1)\n}\n```\n"
+  let md = "# Title\n\nIntro prose.\n\n```mbt\nfn ok_fn() -> int {\n  1\n}\n```\n\nMore prose.\n\n```mbt\nfn broken() -> int {\n  missing(1)\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   // first block is clean; the second block reports the undefined name
   assert_eq(r.reports.length(), 1)
@@ -18,7 +18,7 @@ test "literate .mbt.md: fences analyzed with real line numbers" {
 
 ///|
 test "literate .mbt.md: non-moonbit fences skipped" {
-  let md = "```json\n{\"not\": \"code\"}\n```\n\n```moonbit\nfn f() -> int {\n  2\n}\n```\n"
+  let md = "```json\n{\"not\": \"code\"}\n```\n\n```mbt\nfn f() -> int {\n  2\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   assert_eq(r.reports.length(), 0)
   assert_eq(r.sigs.length(), 1)
@@ -26,7 +26,7 @@ test "literate .mbt.md: non-moonbit fences skipped" {
 
 ///|
 test "literate .mbt.md: blocks are independent (no cross-block bindings)" {
-  let md = "```moonbit\nfn helper() -> int {\n  1\n}\n```\n\n```moonbit\nfn caller() -> int {\n  helper()\n}\n```\n"
+  let md = "```mbt\nfn helper() -> int {\n  1\n}\n```\n\n```mbt\nfn caller() -> int {\n  helper()\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   // `helper` is not visible in the second block: one UndefinedName finding
   assert_eq(r.reports.length(), 1)
@@ -124,6 +124,24 @@ test "iface .mbti: let declarations, using re-exports and noraise are understood
 }
 
 ///
+///|
+///|
+///|
+/// The fence language decides whether a block is code at all. `mbt` and
+/// `mbt check` are compiled; `mbt nocheck` and a bare `moonbit` are shown but
+/// neither compiled nor tested. Analysing a display-only block turned the one
+/// real .mbt.md in the workspace into 31 findings, all of them false.
+test "literate .mbt.md: nocheck and bare moonbit fences are skipped" {
+  let md = "```mbt nocheck\nfn skipped_nocheck() -> int {\n  missing_nocheck(1)\n}\n```\n\n```moonbit\nfn skipped_display() -> int {\n  missing_display(1)\n}\n```\n\n```mbt\nfn compiled() -> int {\n  1\n}\n```\n\n```mbt check\nfn doc_tested() -> int {\n  2\n}\n```\n"
+  let r = @moonfiles.literate(md, "doc.mbt.md")
+  // the two display-only blocks contribute nothing, not even their names
+  assert_eq(r.reports.length(), 0)
+  // only the two compiled fences are analyzed
+  assert_eq(r.sigs.length(), 2)
+  assert_eq(r.sigs[0], "compiled() -> int")
+  assert_eq(r.sigs[1], "doc_tested() -> int")
+}
+
 ///|
 ///|
 test "proof .mbtp: clean file has no findings" {

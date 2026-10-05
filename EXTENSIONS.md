@@ -12,7 +12,7 @@
 | `.mbt` | 包内模块源码（函数/类型/逻辑） | 本模块全部 `src/**/*.mbt` | **三鉴程序分析**（`@pipeline.run`；`.mbti` 声明不参与） |
 | `.mbtx` | **独立脚本**（无模块/包配置，`moon run script.mbtx`；可带 `import { ... }` 块） | `pyroduct/` 下的脚本；`Module.imports` 记录其导入块 | **三鉴程序分析** + 导入块审计：条目文法 `"path" [@alias] [*]`（修饰符**后置**且定序），记入 `Module.imports`，重复路径报 FParse；结果在报告里以 `Imports:` 段回显。不解析依赖 |
 | `.mbti` | 接口文件（`moon info` 生成或手写：包的公开 API/类型签名） | 各包 `pkg.generated.mbti` | **接口审计**（`@moonfiles.iface`）：畸形行、重复签名、未知类型引用。行文法与 `moon info` 实际输出一致（注释 / `#属性` 行 / `package` / `import {}` 块 / `enum`·`struct`·`trait`·`type`·`suberror` 声明（体跳过）/ `impl … for T` / `const` / 带 `pub`、`async`、`extern`、类型参数、具名参数的 `fn`），因此生成文件不会被误判。类型声明体（字段/构造器/derive）跳过 |
-| `.mbt.md` | literate MoonBit：Markdown 中嵌可执行/可测试代码块 | `pyroduct/README.mbt.md`；mooncakes 依赖的 README | **逐块三鉴**（`@moonfiles.literate`）：```moonbit / ```mbt 围栏，行号按文件真实行对齐（块前补空行），块间独立 |
+| `.mbt.md` | literate MoonBit：Markdown 中嵌可编译/可测试代码块 | `pyroduct/README.mbt.md`；mooncakes 依赖的 README | **逐块三鉴**（`@moonfiles.literate`）：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号按文件真实行对齐（块前补空行），块间独立。`mbt nocheck` 与裸 `moonbit` 是**展示块**——工具链既不编译也不测试它们——一律跳过（见下「围栏语言」）|
 | `.mbtp` | 证明文件（`moon prove` 形式化验证的逻辑侧） | `src/core/core_proof.mbtp` | **逻辑侧结构审计**（`@moonfiles.proof`）：体内字符串常量（E4207 同型）、`!`/`↔` 禁形（写 `== false` 与 `→`）、跨包 `@pkg.` 调用、lemma 缺 `proof_ensure`。**这是 lint，不替代 `moon prove`** |
 | `moon.mod` / `moon.mod.json` | 模块配置 | 两模块各一 | 记录在案，不做静态分析（配置非代码） |
 | `moon.pkg` / `moon.pkg.json` | 包配置 | 各包一 | 记录在案，不做静态分析 |
@@ -30,6 +30,26 @@
   与子集程序推导签名（`fact(int) -> int`，注解名或 `Any`）**不构成可比较对**——因此 .mbti
   审计是独立健全性检查，不做声明↔实现一致性比对。
 - `.mbtp` 的 `predicate`/`lemma`/`proof_ensure` 不是子集语法——证明文件走专属 lint，不走三鉴前端。
+
+## 围栏语言（.mbt.md 哪一块才算代码）
+
+**围栏语言决定一个块是不是代码**——不是文件后缀。工具链的规则：
+
+| 围栏 | 官方语义 | 本项目 |
+|---|---|---|
+| ` ```mbt ` | 编译，但不产生测试入口 | **分析** |
+| ` ```mbt check ` | 文档测试代码 | **分析** |
+| ` ```mbt nocheck ` | 只展示，**不编译也不测试** | 跳过 |
+| ` ```moonbit ` | 普通展示块，**不编译也不测试** | 跳过 |
+| 其他（`json`/`bash`/…） | 散文 | 跳过 |
+
+早期实现把 `moonbit` / `mbt` 前缀的围栏一律当代码，于是工作区里唯一的真实
+`.mbt.md`（`pyroduct/README.mbt.md`，其 Example 段是 ` ```moonbit nocheck `）
+报了 **31 条**发现，**全部是假的**——它分析的是工具链自己声明不分析的块。
+现在 `fence_mode` 按上表分派，只有 `FCheck` / `FTest` 进入三鉴。
+
+`@moonfiles.fence_mode` 返回 `FCheck | FTest | FNoCheck | FDisplay | None`，
+`None` 即非 MoonBit 围栏；`@moonfiles.moonbit_fences` 只返回会被编译的块。
 
 ## 前端子集覆盖（.mbt / .mbtx 分析的语法面）
 

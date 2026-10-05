@@ -114,7 +114,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 | `.mbt` | 三鉴程序分析 |
 | `.mbtx` | 三鉴程序分析 + 导入块审计（条目文法 `"path" [@alias] [*]`；重复路径报 FParse；导入清单随报告回显） |
 | `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件零误报 |
-| `.mbt.md` | literate：抽 ```moonbit 围栏逐块三鉴，行号对齐到 `.md` 真实行 |
+| `.mbt.md` | literate：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号对齐到 `.md` 真实行。`mbt nocheck` 与裸 `moonbit` 是展示块（工具链既不编译也不测试），跳过 |
 | `.mbtp` | 证明文件逻辑侧 lint（体内字符串常量、`!`/`↔` 禁形、跨包调用、lemma 缺 `proof_ensure`）——**不替代 `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码） |
 
@@ -128,7 +128,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test                 # 49/49 全绿（四个 target 各 49）
+moon test                 # 51/51 全绿（四个 target 各 51）
 moon run src/cli          # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
 

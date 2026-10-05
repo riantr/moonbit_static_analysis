@@ -107,7 +107,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test                 # 49/49 green (49 on each of the four targets)
+moon test                 # 51/51 green (51 on each of the four targets)
 moon run src/cli          # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -123,7 +123,7 @@ and [`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.
 | `.mbt` | three-inspection program analysis |
 | `.mbtx` | three-inspection program analysis + import-block audit (entry grammar `"path" [@alias] [*]`; duplicate paths report FParse; the import list is echoed in the report) |
 | `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so generated files raise nothing |
-| `.mbt.md` | literate: extract ```moonbit fences, three-inspect each block, line numbers aligned to the `.md` file's real lines |
+| `.mbt.md` | literate: only fences that are actually **compiled** (`mbt` / `mbt check`), line numbers aligned to the `.md` file's real lines. `mbt nocheck` and a bare `moonbit` are display blocks (the toolchain neither compiles nor tests them), so they are skipped |
 | `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code) |
 
