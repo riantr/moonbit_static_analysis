@@ -168,7 +168,18 @@ members = [
 > ⚠️ 本表曾经把 ` ```mbt ` 写成「编译，但不产生测试入口」。**那是错的**，来源是文档
 > 措辞而非实测：裸 `mbt` 与裸 `moonbit` 一样是**展示**块，必须加 `check` / `test`
 > 才成代码。分析这些块 = 分析工具链从不构建的代码。已改，并移除了不再产生的
-> `FCheck` 变体（`moonfiles` 是 0.2.0 新增的包，此次属破坏性变更）。
+> `FCheck` 变体（`moonfiles` 是 0.2.0 新增的包）。
+>
+> **关于版本号**：删 `FCheck` 是对已发布 0.2.1 API 的破坏性改动，但**仍走 PATCH
+> （0.2.2）而不是 MINOR**。两条理由：
+> 1. SemVer 2.0.0 §6/§7/§8 三条递增规则**全部**带 `| x > 0` 守卫；0.x 阶段由
+>    §4 管——「Anything MAY change at any time. The public API SHOULD NOT be
+>    considered stable.」
+> 2. 这次是**纯修复**（分类本来就是错的），没有新功能。走 MINOR 反而会按
+>    MoonBit 发布页的定义对外宣称「向后兼容地添加了功能」，那才是误导。
+>
+> 记这一条是因为我一度按「不兼容 → MAJOR」建议发 0.3.0，那是**套用了 x>0 才
+> 生效的规则**。判据：0.x 阶段先查 SemVer §4，别急着套 §8。
 
 早期实现把 `moonbit` / `mbt` 前缀的围栏一律当代码，于是工作区里那份真实
 `.mbt.md`（`pyroduct/README.mbt.md`，其 Example 段是 ` ```moonbit nocheck `）
