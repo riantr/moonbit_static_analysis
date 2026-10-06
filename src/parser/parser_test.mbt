@@ -326,3 +326,55 @@ test "top level: a function after an unmodelled declaration is still parsed" {
   assert_true(r.reports[0].message.contains("struct"))
   assert_eq(r.tree.body.length(), 1)
 }
+
+///|
+/// A `test "name" { ... }` block is a declaration form, not a statement. Left to
+/// `parse_stmt` the body was parsed as ordinary code and produced a cascade --
+/// 25 ParseErrors on one test file in moonbit_linalg_gpu, against 3 from the
+/// block's single skip.
+test "a test block is skipped whole, and the file after it still parses" {
+  let r = @parser.parse(
+    "test \"default: returns non-zero\" {\n  match x {\n    A => 1\n  }\n}\nfn f() -> int {\n  1\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("test"))
+  // the function after the test block still reaches the body
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+/// Attributes are consumed by the lexer and emit no token, so what follows them
+/// is classified on its own merits. Before this, `#cfg(target="native")` in
+/// front of an `extern` produced "unexpected character '#'" and everything on
+/// the line after it cascaded.
+test "an attribute is consumed, and the declaration after it is named" {
+  let r = @parser.parse(
+    "#cfg(target=\"native\")\nextern \"libloading\" fn load(p : string) -> int\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("extern"))
+}
+
+///|
+/// `#[derive(Eq)]` and a bare `#deprecated`, and a function before and after,
+/// so the attribute branch cannot be eating code.
+test "brackets and bare attributes are consumed" {
+  let r = @parser.parse(
+    "#deprecated\nfn a() -> int {\n  1\n}\n#[derive(Eq)]\nstruct P {\n  x : int\n}\nfn b() -> int {\n  2\n}\n",
+  )
+  // one finding: the struct, which was going to be reported anyway
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("struct"))
+  assert_eq(r.tree.body.length(), 2)
+}
+
+///|
+/// The attribute's argument list can itself contain brackets and parens, and can
+/// span lines.
+test "an attribute argument list is consumed whole" {
+  let r = @parser.parse(
+    "#cfg(target=[\n  \"a\",\n  \"b\",\n])(all)\nfn a() -> int {\n  1\n}\n",
+  )
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.tree.body.length(), 1)
+}

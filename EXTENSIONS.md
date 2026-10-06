@@ -271,6 +271,46 @@ members = [
 （工具的本职：畸形行 / 重复签名 / 未知类型 / 逻辑体里的字符串常量）。
 把两者一起抑制等于删掉整个产品——`.mbti` 实测 71 个真实文件零误报、4/4 缺陷抓到。
 
+### 子集边界的实测分布，与「加跳过分支」的真实收益（2026-10-06）
+
+`5x unexpected token` 这种归因没有用——它不说在哪、也不说什么。把两个项目的
+解析错误按行列号取出来，落到具体语法上（moonbit_linalg_gpu 6 个 `.mbt`）：
+
+| 阻塞 | 列号指向的构造 | 文件数 |
+|---|---|---|
+| `expected ')'` | `a : FixedArray[Double]` — 泛型索引类型标注 | 2 |
+| `unexpected token` | `test "name" {` — `test` 块 | 1 |
+| `unexpected token` | `let d = if a > b { … } else { … }` — `if` 当表达式 | 1 |
+| `unexpected character '#'` | `#cfg(...)` / `#borrow(...)` — 属性 | 1 |
+| `const declaration` | `pub const ErrLibNotLoaded : Int = -1000` | 1 |
+
+两个完全不同的项目（ML/CI 与 linalg_gpu）头号阻塞落在同一批语法上，
+**说明这是子集边界的稳定分布，不是某项目的偶发**。
+
+本轮补了其中三项（`test` 块、属性、const 已是既有分支），跨三个项目实测：
+
+| 项目 | 补之前 | 补之后 | 解析率 |
+|---|---|---|---|
+| moonbit_linalg_gpu | 623 withheld | **351** | 2/8 → 2/8（未变） |
+| 自噬（.repos/0.3.5） | 7,374 withheld | **6,177** | 17/39 → 17/39（未变） |
+| ML/CI | 17,940 withheld | **16,463** | 23/85 → 23/98（未变） |
+
+> **⚠ 解析率一个都没涨——这是意料之中的，但要讲清楚为什么。**
+> 当前判据是「**只要文件里出现任何一条 FParse，整份文件就记为未解析**」。
+> 把 `test` 块和属性加进跳过分支，只是把「解析失败的级联」换成「一条明确的
+> 越界声明」：噪声降了 8%–44%，归因从 `unexpected token` 变成
+> `test declaration is outside the analyzed subset`，但那一��� FParse 仍在，
+> 所以文件仍算未解析。
+>
+> 换句话说：**「加跳过分支」只降噪，不提升覆盖率。** 要真正提升覆盖率，
+> 只有两条路——
+> (a) 真的把语法解析出来（`if` 表达式、泛型索引类型 `FixedArray[T]`）；
+> (b) 把 FParse 拆成两类：**「读不懂」**（级联，文件作废）与
+>     **「读得懂但这一种声明不分析」**（不产生级联，不该让整份文件作废）。
+>
+> (b) 才是那个大杠杆，因为它把「本工具不认识 `test` 块」和
+> 「本工具看不懂这个文件」这两件事分开了——而现在它们共用一个 FParse 家族。
+
 ## 发布与依赖解析（工具链权威页核对，2026-10-06）
 
 依据[使用与发布包](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/package-manage-tour.html)

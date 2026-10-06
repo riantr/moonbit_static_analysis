@@ -160,13 +160,22 @@ fn Lexer::run(self : Lexer) -> Unit {
     if c == '#' &&
       self.pos + 1 < self.chars.length() &&
       self.chars[self.pos + 1] == '|' {
-      // A `#| ... |#` block string is a STRING LITERAL, not code. Without this
+      // A `#| ... #|` block string is a STRING LITERAL, not code. Without this
       // branch its contents were lexed as ordinary tokens, so a bare `%` inside
       // prose became a binary operator with no right operand, and the compiler's
       // own divide-by-zero guard in Interp.binop panicked — killing the whole
       // scan. Found by reducing a real crash in moonbitlang/async's test files.
       last = self.lex_block_string()
       continue
+    }
+    // An attribute (`#cfg(...)`, `#borrow(...)`, `#[derive(...)]`, `#deprecated`).
+    // Not a block string: `#` is only a block-string opener when `|` follows it.
+    if c == '#' && self.pos + 1 < self.chars.length() {
+      let nx = self.chars[self.pos + 1]
+      if nx == '[' || is_letter(nx) {
+        self.lex_attribute()
+        continue
+      }
     }
     if is_letter(c) || c == '@' {
       // '@' starts a package alias token ("@q") so `.mbtx` import blocks lex
@@ -176,6 +185,56 @@ fn Lexer::run(self : Lexer) -> Unit {
       continue
     }
     last = self.lex_op()
+  }
+}
+
+///|
+/// An attribute: `#cfg(target="native")`, `#borrow(a, b)`, `#[derive(Eq)]`, a
+/// bare `#deprecated`, or several in a row. Consumed whole, no token emitted.
+///
+/// Discarded rather than parsed because an attribute decides what the
+/// toolchain COMPILES, not what the code inside means, and every declaration
+/// form an attribute can precede is one this frontend skips anyway. The one
+/// fidelity cost is real and worth stating: `#cfg` can hide a declaration from
+/// the build for a given target, and dropping the attribute means that
+/// declaration is still analyzed. Recorded here rather than papered over.
+fn Lexer::lex_attribute(self : Lexer) -> Unit {
+  let n = self.chars.length()
+  // `#`
+  self.pos += 1
+  self.col += 1
+  // the attribute name, when it is not `#[...]`
+  while self.pos < n &&
+        (is_letter(self.chars[self.pos]) || is_digit(self.chars[self.pos])) {
+    self.pos += 1
+    self.col += 1
+  }
+  // then any number of `[...]` / `(...)` argument groups, in either order
+  while self.pos < n {
+    let open = self.chars[self.pos]
+    if open != '[' && open != '(' {
+      break
+    }
+    let close = if open == '[' { ']' } else { ')' }
+    let mut depth = 0
+    while self.pos < n {
+      let c = self.chars[self.pos]
+      if c == '\n' {
+        self.line += 1
+        self.col = 1
+      } else {
+        self.col += 1
+      }
+      self.pos += 1
+      if c == open {
+        depth += 1
+      } else if c == close {
+        depth -= 1
+        if depth <= 0 {
+          break
+        }
+      }
+    }
   }
 }
 

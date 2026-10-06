@@ -112,7 +112,8 @@ pub fn parse(src : String) -> ParseResult {
       kw == "enum" ||
       kw == "trait" ||
       kw == "impl" ||
-      kw == "derive" {
+      kw == "derive" ||
+      kw == "test" {
       p.skip_decl_braced(kw, sp)
     } else if kw == "type" ||
       kw == "const" ||
