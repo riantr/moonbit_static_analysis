@@ -1,0 +1,17 @@
+// Cross-project scanning logic. A LIBRARY, not an entrypoint: the module's root
+// package is the executable, and a main package importing another main package
+// is deprecated ("Move reusable APIs into a non-main package and keep main
+// packages as entrypoints").
+//
+// Needs the async runtime (file IO + `moon fetch`), which only some backends
+// provide: wasm and native do; js has none, and wasm-gc wants a
+// `run_async_main` that async 0.22.4 does not export. Naming the supported set
+// makes check/test on those backends SKIP this package instead of failing.
+supported_targets = "+wasm+native"
+
+import {
+  "riantr/moonbit_static_analysis/src/pipeline",
+  "riantr/moonbit_static_analysis/src/moonfiles",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+}

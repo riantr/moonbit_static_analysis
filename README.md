@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.2.3
+moon add riantr/moonbit_static_analysis@0.3.0
 ```
 
 ```moonbit
@@ -195,8 +195,27 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.2.3` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.3.0` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
+
+## 分析其他项目（不引入本项目）
+
+本工具可以扫**任意** MoonBit 仓库，而那个仓库既不依赖本模块、也不会被改动 —— 源码只在扫描时被**读取**：
+
+```bash
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
+```
+
+第一个参数是要扫的目标：registry 坐标（`author/module`，可带 `@version` / `@latest`）或一个本地路径；省略则扫当前目录。坐标会经 `moon fetch` 落到 `.repos/` 再遍历。
+
+输出每行 `kind<TAB>count<TAB>path`，末行 `SUMMARY`。**已实测**：
+
+| 目标 | 文件 | 结果 |
+|---|---|---|
+| 本仓库自身 | 38 | `.mbti` 16 个 / `.mbtp` 1 个 **各 0 条**；`.mbt` 21 个 7215 条（全为子集边界） |
+| `riantr/moonbit_doubleML@latest` → 0.107.0 | 177 | `.mbt.md` **0 条**；`.mbt` 176 个 49945 条（全为子集边界） |
+
+根包是薄转发层，真正的实现在 `src/sa`（library）。设成 library 是因为「main 包 import 另一个 main 包」已被工具链标记为将来会报错；`src/sa` 与根包都声明 `supported_targets = "+wasm+native"`，因为文件 IO 与子进程来自 `moonbitlang/async`，只有 wasm / native 后端有可用的 async 运行时（js 没有，wasm-gc 缺 `run_async_main`），其余后端会**跳过**这两个包而不是失败。
 
 ## DeepSeek Harness 插件
 

@@ -12,7 +12,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.2.3
+moon add riantr/moonbit_static_analysis@0.3.0
 ```
 
 ```moonbit
@@ -212,8 +212,37 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.2.3` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.3.0` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
+
+## Analyze another project (without pulling this one in)
+
+This tool scans **any** MoonBit repository, and that repository neither depends
+on this module nor is modified — its sources are only READ, at scan time:
+
+```bash
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
+```
+
+The target is a registry coordinate (`author/module`, optionally `@version` or
+`@latest`) or a local path; omit it to scan the current directory. A coordinate
+is materialised with `moon fetch` into `.repos/` and then walked.
+
+Output is one `kind<TAB>count<TAB>path` line per file plus a `SUMMARY` line.
+**Measured**:
+
+| target | files | result |
+|---|---|---|
+| this repository | 38 | 16 `.mbti` + 1 `.mbtp` **all clean**; 21 `.mbt` → 7215 findings (all subset edges) |
+| `riantr/moonbit_doubleML@latest` → 0.107.0 | 177 | `.mbt.md` **0**; 176 `.mbt` → 49945 findings (all subset edges) |
+
+The root package is a thin forwarder; the implementation is `src/sa`, a
+**library**. That is deliberate: a main package importing another main package
+is deprecated by the toolchain. Both `src/sa` and the root declare
+`supported_targets = "+wasm+native"`, because file IO and subprocesses come from
+`moonbitlang/async` and only some backends have a working async runtime (js has
+none, wasm-gc wants a `run_async_main` that async 0.22.4 does not export); the
+other backends SKIP those two packages instead of failing.
 
 ## DeepSeek Harness plugin
 

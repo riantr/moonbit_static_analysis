@@ -1,6 +1,12 @@
 # build artifacts
 _build/
 
+# vendored registry dependencies materialised by `moon update` / `moon add`.
+# NOT ours to commit: it is a copy of someone else's published source, and
+# `git add -A` will happily stage thousands of files of it. (Learned the hard
+# way — a release commit once swept in the whole of moonbitlang/async.)
+.mooncakes/
+
 # local formal-verification toolchain shims (machine-specific paths)
 .why3.conf
 cvc5wrap.ps1

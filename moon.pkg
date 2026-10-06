@@ -1,0 +1,19 @@
+// The module's ROOT package: a thin forwarder to `src/sa`.
+//
+// It exists so `moonx riantr/moonbit_static_analysis@latest <target>` works
+// without naming a package — an unpinned `moonx <module>` resolves the root
+// package, and with no root executable it fails with "Prebuilt wasm asset does
+// not exist". No other package in this module depends on the root, and nothing
+// outside the module imports the bare module path.
+//
+// Like `src/sa`, it needs the async runtime, which only works on some
+// backends; see the note there.
+supported_targets = "+wasm+native"
+
+pkgtype(kind: "executable")
+
+import {
+  "riantr/moonbit_static_analysis/src/sa",
+  "moonbitlang/async",
+  "moonbitlang/core/env",
+}

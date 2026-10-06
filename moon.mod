@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.2.3"
+version = "0.3.0"
 
 readme = "README.md"
 
@@ -28,6 +28,15 @@ keywords = [
 
 description = "Three-inspection (structural / type / behavior) static analysis for MoonBit programs, every toolchain file kind (.mbt / .mbtx / .mbti / .mbt.md / .mbtp) and state-machine tables"
 
-preferred_target = "js"
+// wasm, not js: `src/sa` needs the async runtime (file IO + `moon fetch`) and
+// `moonx` runs the wasm backend. The js backend has no async runtime, so those
+// packages degrade and their functions vanish. The DSH plugin still builds the
+// JSON bridge for js explicitly, so nothing downstream of that changes.
+
+preferred_target = "wasm"
 
 warnings = "-0079"
+
+import {
+  "moonbitlang/async@0.22.4",
+}
