@@ -1,19 +1,11 @@
 ///|
-/// Cross-project static analysis, without naming a package:
-///
-///   moonx riantr/moonbit_static_analysis@latest <target>
-///
-/// `<target>` is a registry coordinate (`author/module`, optionally
-/// `@version` or `@latest`) or a filesystem path; omit it for the current
-/// directory. The target project neither depends on this module nor is
-/// modified — sources are only READ, at scan time.
-///
-/// This root package exists purely to make the short `moonx <module>` form
-/// work: an unpinned `moonx <module>` resolves the module's ROOT package, and
-/// without a root executable it fails with "Prebuilt wasm asset does not
-/// exist". The implementation lives in `src/sa`; this forwards to it.
 async fn main {
   let args = @env.args()
   let target = if args.length() >= 2 { args[1] } else { "." }
+  // NOTE: this cannot exit non-zero. MoonBit exposes no process-exit entry point
+  // in the packages available here (no `sys` package; moonbitlang/async has only
+  // `Output::exit_code`, which reads a finished process). So a target that
+  // cannot be located prints ERROR and still exits 0 — a caller must read the
+  // output, not the exit code. Recorded as a known limitation.
   @sa.scan(target)
 }

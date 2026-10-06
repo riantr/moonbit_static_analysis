@@ -23,8 +23,6 @@
 /// `moonx riantr/moonbit_static_analysis@latest <target>` work without naming
 /// a package (an unpinned `moonx <module>` needs a root executable — otherwise
 /// it looks for a prebuilt wasm asset that mooncakes does not have).
-///
-/// This package is a library, not a main package: the root is the entrypoint.
 pub async fn scan(target : String) -> Unit {
   let root = locate(target)
   if root == "" {
