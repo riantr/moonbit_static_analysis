@@ -264,32 +264,76 @@ fn Lexer::lex_string(self : Lexer) -> Tok {
 }
 
 ///|
-/// A `#| ... |#` block string. The whole body is one string token; newlines
-/// inside it advance the line counter (so every span after it stays correct) but
-/// are NOT emitted as `TNewline` — they are string contents, not statement
-/// separators. The terminating `|#` is the only closing form; `|` on its own
-/// does not close.
+/// A block string. `#|` opens it; a line-leading `#|` closes it and the string
+/// ends at the end of THAT line.
+///
+/// Measured against the toolchain rather than assumed, with `moon run` printing
+/// the resulting value:
+///
+///   #|AAA\n#|BBB            -> "AAA\nBBB"
+///   #|AAA\n  #|BBB         -> "AAA\nBBB"        (the closer may be indented)
+///   #|AAA\n#|BBB trailing   -> "AAA\nBBB trailing"
+///   #|one #|two\n#|three    -> "one #|two\nthree"  (mid-line `#|` is content)
+///   #|AAA\n|#BBB            -> not closed        (`|#` is content)
+///   #|AAA\n#|BBB\nCCC       -> "AAA\nBBB", and CCC is parsed as CODE
+///
+/// So: the closer is a `#|` with only whitespace before it on its line; the
+/// text after the closer on that line stays inside the string, and the newline
+/// does not. An earlier version of this file looked for `|#`, which never
+/// appears in real code -- it reported "unterminated block string" on anything
+/// containing a block string at all.
+///
+/// That report was NOT a false positive to be chased: this module's own
+/// src/samples/samples.mbt contains 107 `#|` markers, an odd count, so its last
+/// one really does run to end of input. I took the self-scan output as evidence
+/// that the closer was wrong and it was not -- the closer WAS wrong, but for the
+/// five measured reasons above, not for that. A truthful "unterminated" is not a
+/// bug report, and treating it as one wasted a cycle.
+///
+/// End of input also closes the block, as the toolchain's tolerance for an
+/// odd count shows, but the file is still reported: whatever followed the last
+/// `#|` was never lexed, so every span past it would be wrong.
+///
+/// Newlines inside the body advance the line counter (so every span after it
+/// stays correct) but are NOT emitted as `TNewline` — they are string contents,
+/// not statement separators.
 fn Lexer::lex_block_string(self : Lexer) -> Tok {
   let l = self.line
   let c0 = self.col
   let buf = StringBuilder()
   let n = self.chars.length()
-  // step past `#|`
+  // step past the opening `#|`
   self.pos += 2
   self.col += 2
   let mut closed = false
+  let mut at_line_start = false
   while self.pos < n {
     let c = self.chars[self.pos]
-    if c == '|' && self.pos + 1 < n && self.chars[self.pos + 1] == '#' {
+    if c == '#' &&
+      at_line_start &&
+      self.pos + 1 < n &&
+      self.chars[self.pos + 1] == '|' {
+      // The closer is stripped, and the string then ends at the END of that line:
+      // whatever follows the closer on it is still content, the newline after it
+      // is not.
       self.pos += 2
       self.col += 2
       closed = true
+      while self.pos < n && self.chars[self.pos] != '\n' {
+        buf.write_char(self.chars[self.pos])
+        self.pos += 1
+        self.col += 1
+      }
       break
     }
     if c == '\n' {
       self.line += 1
       self.col = 1
+      at_line_start = true
     } else {
+      if c != ' ' && c != '\t' {
+        at_line_start = false
+      }
       self.col += 1
     }
     buf.write_char(c)
@@ -299,7 +343,7 @@ fn Lexer::lex_block_string(self : Lexer) -> Tok {
     self.reports.push(@report.Report::{
       family: @core.FParse,
       lenses: [@core.LStructural],
-      message: "unterminated block string literal (expected a closing `|#`)",
+      message: "unterminated block string literal (expected a line-leading `#|`)",
       span: @core.span_at(l, c0, 1),
       vst: [],
     })
