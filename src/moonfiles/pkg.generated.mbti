@@ -8,6 +8,8 @@ import {
 }
 
 // Values
+pub fn fence_census(String) -> (Int, Int)
+
 pub fn fence_mode(String) -> FenceMode?
 
 pub fn iface(String, String) -> Array[@report.Report]

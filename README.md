@@ -147,7 +147,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # 71/71 全绿（四个 target 各 71）
+moon test --deny-warn                # 73/73 全绿（四个 target 各 73）
 moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
 

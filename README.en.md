@@ -130,7 +130,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 71/71 green (71 on each of the four targets)
+moon test --deny-warn                # 73/73 green (73 on each of the four targets)
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 

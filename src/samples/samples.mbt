@@ -4,10 +4,12 @@
 /// A toolchain file-kind sample set: a literate .mbt.md document, an .mbti
 /// interface file and a .mbtp proof file (see EXTENSIONS.md).
 ///
-/// The fences are `mbt`, the language the toolchain actually compiles. The
-/// first two blocks are display-only (`mbt nocheck` and bare `moonbit`) and
-/// must be skipped even though the second one names an undefined function —
-/// that is the whole point of honouring the fence language.
+/// The fences are `mbt` and `moonbit`, the languages the toolchain recognises.
+/// Only a fence carrying a second word of `check` or `test` is live code: a
+/// BARE `mbt` is a display fence, exactly like a bare `moonbit` (measured
+/// against `moon check` — see `FenceMode`). So the first THREE blocks are
+/// display-only and must be skipped even though two of them name an undefined
+/// function; the bare-`mbt` one is clean, and skipping it is the point.
 pub let literate_md : String =
   #|# Demo document
   #|
@@ -27,7 +29,7 @@ pub let literate_md : String =
   #|}
   #|```
   #|
-  #|A compiled block:
+  #|A display-only block too — a BARE `mbt` is not compiled, only `mbt check` is:
   #|
   #|```mbt
   #|fn twice(n: int) -> int {

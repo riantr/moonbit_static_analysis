@@ -20,9 +20,13 @@ fn main {
     "toolchain file kinds (.mbt / .mbtx / .mbti / .mbt.md / .mbtp — see EXTENSIONS.md)",
   )
   println("")
-  println(
-    "=== demo.mbt.md (literate: 2 compiled fences, 2 display-only skipped) ===",
-  )
+  // counted from the sample, never hard-coded: see @moonfiles.fence_census
+  {
+    let (live, display) = @moonfiles.fence_census(@samples.literate_md)
+    println(
+      "=== demo.mbt.md (literate: \{live} live fence(s), \{display} display-only skipped) ===",
+    )
+  }
   println(
     @pipeline.render_result(
       @moonfiles.literate(@samples.literate_md, "demo.mbt.md"),

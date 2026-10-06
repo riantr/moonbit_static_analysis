@@ -14,3 +14,9 @@ import {
   "riantr/moonbit_static_analysis/src/pipeline",
   "riantr/moonbit_static_analysis/src/report",
 }
+
+// Only the tests read the shipped sample, to pin its fence census. A plain
+// import would draw `unused_package` in the non-test build.
+import {
+  "riantr/moonbit_static_analysis/src/samples",
+} for "test"

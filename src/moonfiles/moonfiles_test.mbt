@@ -241,6 +241,35 @@ test "fence_mode: the full measured table" {
 ///|
 
 ///|
+/// The shipped sample is the demo the CLI prints, so its fence mix is part of
+/// the contract: 1 live fence, 3 display-only. The bare `mbt` block in it used
+/// to be described as "a compiled block" in a comment AND counted as one in
+/// the CLI's header string — both were wrong, and nothing pinned the numbers,
+/// so they survived a release. The census is now computed, and this pins it.
+test "fence_census: the shipped sample has 1 live fence and 3 display-only" {
+  let (live, display) = @moonfiles.fence_census(@samples.literate_md)
+  assert_eq(live, 1)
+  assert_eq(display, 3)
+}
+
+///|
+/// And the census must agree with what actually gets analysed.
+test "the shipped sample yields exactly one analysed block, the mbt check one" {
+  let blocks = @moonfiles.moonbit_fences(@samples.literate_md)
+  assert_eq(blocks.length(), 1)
+  let r = @moonfiles.literate(@samples.literate_md, "demo.mbt.md")
+  // the one live fence carries the deliberate defect, and nothing else does
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("vanish"))
+  // `twice` lives in the bare-`mbt` block, which is display-only, so it must
+  // NOT reach the signature table — that is the regression this pins
+  assert_eq(r.sigs.length(), 1)
+  assert_eq(r.sigs[0], "shrug() -> int")
+}
+
+///|
+
+///|
 
 ///|
 /// A compiled block that leaves the subset is reported ONCE. The subset lexer

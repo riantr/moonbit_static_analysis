@@ -236,6 +236,39 @@ pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
 }
 
 ///|
+/// `(live, display)` counts of the MoonBit fences in `md`: live is what
+/// `moonbit_fences` would analyse, display is what it must skip.
+///
+/// Counting from the document exists so a demo or a report cannot silently
+/// drift away from the fence rules — the "2 compiled fences" string in
+/// `src/cli` stayed wrong for a release precisely because it was hard-coded
+/// while the classification underneath it changed.
+pub fn fence_census(md : String) -> (Int, Int) {
+  let src = normalize(md)
+  let lines = split_lines(src)
+  let mut live = 0
+  let mut display = 0
+  let mut i = 0
+  let n = lines.length()
+  while i < n {
+    if lines[i].has_prefix("```") {
+      match fence_mode(lines[i]) {
+        Some(FTest) => live += 1
+        Some(_) => display += 1
+        None => ()
+      }
+      // step over the body: a ``` inside a fence is not a fence
+      i += 1
+      while i < n && !lines[i].has_prefix("```") {
+        i += 1
+      }
+    }
+    i += 1
+  }
+  (live, display)
+}
+
+///|
 /// The first word of each line of a block, when it is a whole identifier.
 fn line_heads(block : String) -> Array[String] {
   let out : Array[String] = []

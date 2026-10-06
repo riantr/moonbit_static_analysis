@@ -16,7 +16,7 @@ calls US — we never import pyroduct.
 ```console
 moon check --deny-warn      # 0 errors, 0 warnings — first gate
 moon fmt                   # format; `moon fmt --check` must stay clean
-moon test --target js      # 71/71 (see the breakdown below)
+moon test --target js      # 73/73 (see the breakdown below)
 moon run src/cli           # program demo + file-kind demo + sample machine audit
 moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma VCs)
 ```
