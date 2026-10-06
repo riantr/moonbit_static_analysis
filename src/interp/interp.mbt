@@ -628,7 +628,12 @@ fn Interp::binop(
         OpAdd => AInt(i + j)
         OpSub => AInt(i - j)
         OpMul => AInt(i * j)
-        OpMod => AInt(i % j)
+        // Defence in depth. The lexer fix (block strings are strings, not code)
+        // removed the known way a zero divisor reached here, but MoonBit's
+        // compiler inserts a divide-by-zero guard here, so a stray zero would
+        // abort the whole scan rather than produce a finding. An analyzer that
+        // dies on one line is worse than one that says "unknown".
+        OpMod => if j == 0 { ABottom } else { AInt(i % j) }
         OpDiv => AType("float")
         OpLt => ABool(i < j)
         OpLe => ABool(i <= j)

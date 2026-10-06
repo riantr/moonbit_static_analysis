@@ -157,6 +157,17 @@ fn Lexer::run(self : Lexer) -> Unit {
       last = self.lex_string()
       continue
     }
+    if c == '#' &&
+      self.pos + 1 < self.chars.length() &&
+      self.chars[self.pos + 1] == '|' {
+      // A `#| ... |#` block string is a STRING LITERAL, not code. Without this
+      // branch its contents were lexed as ordinary tokens, so a bare `%` inside
+      // prose became a binary operator with no right operand, and the compiler's
+      // own divide-by-zero guard in Interp.binop panicked — killing the whole
+      // scan. Found by reducing a real crash in moonbitlang/async's test files.
+      last = self.lex_block_string()
+      continue
+    }
     if is_letter(c) || c == '@' {
       // '@' starts a package alias token ("@q") so `.mbtx` import blocks lex
       let (t, l, cl, len) = self.lex_name()
@@ -249,6 +260,52 @@ fn Lexer::lex_string(self : Lexer) -> Tok {
   }
   let s = buf.to_string()
   self.emit(TStr(s), l, c0, self.col - c0)
+  TStr(s)
+}
+
+///|
+/// A `#| ... |#` block string. The whole body is one string token; newlines
+/// inside it advance the line counter (so every span after it stays correct) but
+/// are NOT emitted as `TNewline` — they are string contents, not statement
+/// separators. The terminating `|#` is the only closing form; `|` on its own
+/// does not close.
+fn Lexer::lex_block_string(self : Lexer) -> Tok {
+  let l = self.line
+  let c0 = self.col
+  let buf = StringBuilder()
+  let n = self.chars.length()
+  // step past `#|`
+  self.pos += 2
+  self.col += 2
+  let mut closed = false
+  while self.pos < n {
+    let c = self.chars[self.pos]
+    if c == '|' && self.pos + 1 < n && self.chars[self.pos + 1] == '#' {
+      self.pos += 2
+      self.col += 2
+      closed = true
+      break
+    }
+    if c == '\n' {
+      self.line += 1
+      self.col = 1
+    } else {
+      self.col += 1
+    }
+    buf.write_char(c)
+    self.pos += 1
+  }
+  if !closed {
+    self.reports.push(@report.Report::{
+      family: @core.FParse,
+      lenses: [@core.LStructural],
+      message: "unterminated block string literal (expected a closing `|#`)",
+      span: @core.span_at(l, c0, 1),
+      vst: [],
+    })
+  }
+  let s = buf.to_string()
+  self.emit(TStr(s), l, c0, 1)
   TStr(s)
 }
 

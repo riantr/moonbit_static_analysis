@@ -267,3 +267,35 @@ test "a defect below an unmodelled declaration is still reported" {
   assert_true(saw_struct)
   assert_true(saw_missing)
 }
+
+///|
+/// A `#| ... |#` block string is a string literal, not code. The lexer used to
+/// fall through and lex its contents as ordinary tokens, so a bare `%` in prose
+/// ("ownership of fifty percent (50%) or more") became a binary operator with
+/// no right operand; MoonBit's own divide-by-zero guard in Interp.binop then
+/// panicked and killed the entire scan. Reduced from a real file —
+/// moonbitlang/async's `src/fs/read_all_test.mbt` — down to one comment line.
+test "a bare % inside a block string is text, not an operator" {
+  let src = "fn f() -> int {\n  1\n}\n      #|      ownership of fifty percent (50%) or more  |#\n"
+  let r = @pipeline.run(src, "x.mbt")
+  // the point is that we get here at all; nothing here is a real defect
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+/// Same, with the block string spanning lines — the line counter has to
+/// advance inside it or every span after it would be wrong. The string covers
+/// lines 1..=3 and `fn f()` resumes on line 3 right after the closing `|#`, so
+/// the injected call sits on line 4.
+test "a multi-line block string keeps later line numbers correct" {
+  let src = "#|line one\nline two\nline three|#fn f() -> int {\n  missing(1)\n}\n"
+  let r = @pipeline.run(src, "x.mbt")
+  let mut saw = false
+  for rep in r.reports {
+    if rep.message.contains("missing") {
+      saw = true
+      assert_eq(rep.span.start.line, 4)
+    }
+  }
+  assert_true(saw)
+}
