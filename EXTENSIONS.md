@@ -1,8 +1,17 @@
 # MoonBit 文件种类与静态分析支持（文件后缀分类表）
 
-依据：**docs.moonbitlang.com/en/latest**（最终依据；关键页：
-[script-mode](https://docs.moonbitlang.com/en/latest/toolchain/moon/script-mode.html)、
-[verification](https://docs.moonbitlang.com/en/latest/language/verification.html)）。
+依据：**docs.moonbitlang.com** 的工具链手册（最终依据；关键页：
+[工具链总览](https://docs.moonbitlang.com/zh-cn/latest/toolchain/)、
+[script-mode](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/script-mode.html)、
+[使用与发布包](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/package-manage-tour.html)、
+[工作区支持](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/workspace.html)、
+[模块配置](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/module.html)、
+[verification](https://docs.moonbitlang.com/zh-cn/latest/language/verification.html)）。
+
+> 读取这些页时，HTML 页面每页带约 12k token 的错误码侧栏。同样的内容可直接取原始
+> markdown：`https://docs.moonbitlang.com/<lang>/latest/_sources/<页面路径>.md`
+> （注意后缀是 `.md`，`.md.txt` 会 404；且 zh-cn 树下的 `_sources` 返回的仍是英文原文）。
+> `raw.githubusercontent.com` 在本机不可达，`_sources` 是可用的轻量入口。
 本表是 `riantr/moonbit_static_analysis` 各文件种类的静态分析契约，由
 `src/moonfiles`（.mbt.md / .mbti / .mbtp）与 `src/pipeline`（.mbt / .mbtx）实现，
 `src/jsoncli` 桥的 `kind:"file"` 按扩展名分发。
@@ -42,10 +51,26 @@
 
 - `.mbt` vs `.mbtx`：**包内源码 vs 独立脚本**。判据是"是否带模块/包配置"，不是内容语法。
   粘贴一段代码给分析器时，默认文件名 `main.mbt`；独立脚本请传 `xxx.mbtx`。
-- `.mbtx` 的 `import` 条目文法是 `"path"` + 可选 `@alias` + 可选 `*`，**修饰符后置**；
-  `@alias` 与 `*` 可同时出现（文档明确：别名在 import-all 下仍可用）。`*` 不是独立条目。
+- `.mbtx` 的 `import` 条目文法是 `"path"` + 可选 `@alias` + 可选 `*`，**修饰符后置且定序**；
+  `@alias` 与 `*` 可同时出现（文档明确：别名在 import-all 下仍可用，故 `Queue` 与 `@q.Queue` 都能用）。`*` 不是独立条目。
   路径里的 `@version`（`"moonbitlang/async@0.20.2/fs"`）在引号内，不得与 `@alias` 混淆。
   import-all 仅限 `.mbtx`；条目之间用逗号分隔（末条目可省逗号）。
+
+  **顺序由编译器钉死，不只是文档措辞。** 四种组合逐个 `moon run` 实测：
+
+  | 条目 | 结果 |
+  |---|---|
+  | `"path" @alias` | exit 0 |
+  | `"path" *` | exit 0 |
+  | `"path" @alias *` | exit 0 |
+  | `"path" * @alias` | **`invalid .mbtx import syntax`** ／ `Parsing error: unexpected token @ls at line 2, column 29` |
+
+  ⇒ 本分析器把 `*` 建模为**后置修饰符**而非独立条目，就是照这条错误定位的。
+
+- **`.mbtx` 不在包级测试范围内**（官方明文：package-wide test runs do not include
+  `.mbtx` scripts）。实测 `moon test <script>.mbtx` → `Total tests: 0` exit 0。
+  所以本项目自己的 70 个测试**不覆盖** `.mbtx` 前端；它的证据来自
+  `src/parser/parser_test.mbt` 的语法钉用例，不是来自 `moon test`。
 - `.mbti` 的签名行用的是**真实 MoonBit 类型**（`Array[Frame]`、`Self`、`String?`、`raise`），
   与子集程序推导签名（`fact(int) -> int`，注解名或 `Any`）**不构成可比较对**——因此 .mbti
   审计是独立健全性检查，不做声明↔实现一致性比对。
@@ -183,6 +208,34 @@ members = [
 > 教训：`src/cli` 的 6 个样例是合成的，**一个 `pub` 都没有**，所以这个缺口对自测
 > 完全隐形。子集声明只对着自己的样例验是不够的——**任何子集都要拿真实文件量一遍**，
 > 否则测试语料会骗你。
+
+## 发布与依赖解析（工具链权威页核对，2026-10-06）
+
+依据[使用与发布包](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/package-manage-tour.html)
+与[工作区支持](https://docs.moonbitlang.com/zh-cn/latest/toolchain/moon/workspace.html)：
+
+- **核发布内容用 `moon package --list`**，它是工具链自己的权威清单（本项目 54 个文件）。
+  之前用 zipfile 手搓解析 tarball 是多余的——`moon package --list` 更快且不会漏规则。
+  确认 `.why3.conf` / `cvc5wrap.ps1` 不在包内，`.mbtp` 证明文件与各 `_test.mbt` 在包内。
+- **`moon.mod` 与 `README.md` 两处的元数据都会显示在 mooncakes.io**。发布页列出的字段：
+  `license`（SPDX）/ `keywords` / `repository` / `description` / `homepage`。
+  ⚠️ **但 `homepage` 目前不可用**：在 `moon.mod` 里写它，工具链直接拒绝——
+  `Unexpected key 'homepage' found in moon.mod.`，`moon check` 与 `moon package` 都会失败
+  （实测 moon 0.1.20260920）。已发布的 0.2.1 元数据键也确认为
+  `name, version, readme, repository, license, keywords, description,
+  preferred_target, warn-list, checksum, created_at`——**没有** `homepage`。
+  ⇒ **文档列出的字段 ≠ 工具链接受的字段**；加任何元数据键之前先 `moon check` 验一次。
+- **版本必须每次推送递增**，按语义化：MAJOR = 不兼容 API 变更，MINOR = 向后兼容的
+  功能新增，PATCH = 向后兼容的错误修复。本项目 0.1.2 → 0.2.0 走 MINOR 即依此条
+  （新增四类文件前端是功能）；0.2.0 → 0.2.1 走 PATCH（只改随包文档）。
+- **moon 实现最小版本选择（MVS）**。⇒ 下游把 pin 写在 `@0.2.0` 就**不会**自动升到
+  0.2.1：pyroduct 要升必须显式改 `moon.mod` 再 `moon update`，不能指望发布。
+- **工作区**：唯一清单是 `moon.work`；`moon work init <mods…>` 建、`moon work use <mod>`
+  加成员、`moon work sync` 对齐成员版本。`publish` 是**模块专属**命令，在工作区根
+  不可用，须 `moon -C <member> publish`。
+- **`supported_targets` 不写 = 声明支持全部后端**（模块配置页 Notes 明文）。所以
+  mooncakes 没为本模块构建 wasm 预构建产物（`wasm_url` 404）不是配置漏写造成的；
+  且 `moon runwasm` 已被工具链标记弃用，官方推荐 `moonx`。
 
 ## 与官方 parser/lexer 包的关系（mooncakes 参考面）
 
