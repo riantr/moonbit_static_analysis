@@ -5,14 +5,14 @@
 `riantr/moonbit_static_analysis` — **三鉴（结构/类型/行为）静态分析流水线，一个基础设施，两种用途**：
 
 1. **程序代码修订**：分析**快速进化中的 MoonBit 语言**的程序（未定义名、未用绑定、类型错配、死分支、不可达代码）；
-2. **静态状态修订**：为多层状态机提供通用机器表审计（`src/statecheck`）——**被测对象调用本模块**，把机器表作为纯数据喂进来。参考消费方是 [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct@0.1.5)（主体／群体／社会／进化层状态机族），其 `audit` 包用真实机器表调用本模块做黑盒测试。
+2. **静态状态修订**：为多层状态机提供通用机器表审计（`src/statecheck`）——**被测对象调用本模块**，把机器表作为纯数据喂进来。参考消费方是 [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct@0.1.28)（主体／群体／社会／进化层状态机族），其 `audit` 包用真实机器表调用本模块做黑盒测试。
 
 一条流水线贯穿两者：**结构走查 → 类型/符号 → 抽象解释 → 统一报告**。
 
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.1.2
+moon add riantr/moonbit_static_analysis@0.2.0
 ```
 
 ```moonbit
@@ -72,17 +72,35 @@ let text : String = @statecheck.render(spec)   // 合并后的文本报告
 
 **pyroduct 是被测对象，不是依赖**：本模块自身不依赖 pyroduct；方向是 pyroduct（其 `audit` 包）用真实机器表构造 `MachineSpec` 调用本模块。依赖单向：机器 → 分析器。
 
-pyroduct 侧的真实审计结果（其 `moon test` 的一部分）：
+pyroduct 侧的真实自审计（`moon run cmd/main -- audit`，跑在本模块 0.2.0 上）：
 
 ```
-182:12 - warning: state '失忆' is never entered: it appears only as a transition source (UnusedLocal) [structural]
-182:12 - warning: state '失忆' is unreachable from the initial position '站立' (Unreachable) [structural]
-825:37 - warning: state '浑噩' is never entered: it appears only as a transition source (UnusedLocal) [structural]
-825:37 - warning: state '浑噩' is unreachable from the initial position '站立' (Unreachable) [structural]
-Machine '主体' summary: 4 finding(s)
+规格 | 计数
+---|---
+状态 | 034
+迁移 | 053
+触发→槽 | 049 → 8
+无路组合（带理由） | 228
+修习历程 | 031 站
+
+已知设计（4 条，出处层：设计使然——0.2.0 审计已验证）：
+- state '无忆' is never entered: it appears only as a transition source
+- state '无筹' is never entered: it appears only as a transition source
+- state '无忆' is unreachable from the initial position '立位'
+- state '无筹' is unreachable from the initial position '立位'
+
+未预期发现：**0 条**
 ```
 
-`失忆`(NoPast) 与 `浑噩`(NoFuture) 是主体机器（34 位·53 迁·8 槽）里真实存在的两个"只出不进且不可达"位置——pyroduct 自己的 95 个测试之外，用另一套三鉴语言独立复核出机器的论文边界（「过去与未来皆无处安放」）。
+`无忆`／`无筹`（原文：失忆／浑噩）是主体机器（34 位·53 迁·8 槽）里真实存在的两个"只出不进且不可达"
+位置——pyroduct 自己的 192 个测试之外，用另一套三鉴语言独立复核出机器的论文边界
+（「记不起来的过去」与「尚未到来的未来」）。"未预期发现 0 条"是回归绊线：三鉴在真实表上
+任何新增报警都会让 pyroduct 的测试失败，强制复审。
+
+> `moon run src/cli` 末尾那台 `pyroduct 形状示例机器` 是本模块内嵌的 **8 状态玩具机**
+> （`statecheck.pyroduct_flavored()`），不是 pyroduct 的真表；它带 `182:12` 这类
+> `行:列`，那是 `state_span()` 按状态名哈希出来的**稳定伪 span**（同一名字永远同一坐标），
+> 不是任何源文件的位置——别拿它去 pyroduct 里对行号。
 
 ## 包结构
 
@@ -169,7 +187,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.1.2` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.2.0` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## DeepSeek Harness 插件
@@ -178,7 +196,8 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 `{"kind":"program","source":...}` 走程序三鉴，`{"kind":"file","filename":...}` 按扩展名
 分派到对应文件种类的分析（`.mbt` / `.mbtx` / `.mbt.md` / `.mbti` / `.mbtp`），
 `{"kind":"machine","spec":...}` 走机器表审计。
-它被打包为 DeepSeek Harness 插件 `@local/moonbit-static-analysis`（工作区目录
-`dsh-plugin-moonbit-static-analysis/`），向 agent 暴露 `moonbit_analyze` / `moonbit_audit` /
-`moonbit_gates` 三个工具——插件只是生成器与格式化器，分析语义全部留在 MoonBit 侧、随模块一起版本化与跑门禁。
+它被打包为 DeepSeek Harness 插件 `@riantr/moonbit-static-analysis-dsh`（工作区目录
+`dsh-plugin-moonbit-static-analysis/`），向 agent 暴露 `moonbit_analyze` /
+`moonbit_analyze_file` / `moonbit_audit` / `moonbit_gates` **四个**工具——插件只是生成器与
+格式化器，分析语义全部留在 MoonBit 侧、随模块一起版本化与跑门禁。
 安装方式见该目录 README（`plugin_manager` 的 `install_bundle`）。

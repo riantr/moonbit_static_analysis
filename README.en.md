@@ -5,14 +5,14 @@
 `riantr/moonbit_static_analysis` — **a three-inspection (structural / type / behavior) static-analysis pipeline: one infrastructure, two uses**:
 
 1. **Program-code revision**: analyze programs in the **fast-evolving MoonBit language** (undefined names, unused bindings, type mismatches, dead branches, unreachable code);
-2. **Static state revision**: a generic machine-table audit for multi-layer state machines (`src/statecheck`) — **the audited subject calls this module**, feeding its machine tables in as plain data. The reference consumer is [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct@0.1.5) (a subject / group / society / evolution state-machine family); its `audit` package drives this module black-box with its real tables.
+2. **Static state revision**: a generic machine-table audit for multi-layer state machines (`src/statecheck`) — **the audited subject calls this module**, feeding its machine tables in as plain data. The reference consumer is [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct@0.1.28) (a subject / group / society / evolution state-machine family); its `audit` package drives this module black-box with its real tables.
 
 One pipeline runs through both: **structural walk → types/symbols → abstract interpretation → unified report**.
 
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.1.2
+moon add riantr/moonbit_static_analysis@0.2.0
 ```
 
 ```moonbit
@@ -72,17 +72,38 @@ let text : String = @statecheck.render(spec)   // merged text report
 
 **pyroduct is the audited subject, not a dependency**: this module does not depend on pyroduct; the direction is pyroduct (its `audit` package) building a `MachineSpec` from its real tables and calling this module. One-way: machine → analyzer.
 
-Real audit output from the pyroduct side (part of its `moon test`):
+pyroduct's real self-audit (`moon run cmd/main -- audit`, run against this module at 0.2.0):
 
 ```
-182:12 - warning: state '失忆' is never entered: it appears only as a transition source (UnusedLocal) [structural]
-182:12 - warning: state '失忆' is unreachable from the initial position '站立' (Unreachable) [structural]
-825:37 - warning: state '浑噩' is never entered: it appears only as a transition source (UnusedLocal) [structural]
-825:37 - warning: state '浑噩' is unreachable from the initial position '站立' (Unreachable) [structural]
-Machine '主体' summary: 4 finding(s)
+规格 | 计数
+---|---
+状态 | 034
+迁移 | 053
+触发→槽 | 049 → 8
+无路组合（带理由） | 228
+修习历程 | 031 站
+
+已知设计（4 条，出处层：设计使然——0.2.0 审计已验证）：
+- state '无忆' is never entered: it appears only as a transition source
+- state '无筹' is never entered: it appears only as a transition source
+- state '无忆' is unreachable from the initial position '立位'
+- state '无筹' is unreachable from the initial position '立位'
+
+未预期发现：**0 条**
 ```
 
-`失忆` (NoPast) and `浑噩` (NoFuture) are two real "out-only and unreachable" positions in the subject machine (34 positions · 53 transitions · 8 drive slots) — beyond pyroduct's own 95 tests, the three-inspection language independently re-derives the machine's thesis-level boundary ("no place to put the past or the future").
+`无忆` / `无筹` (the model's names; in the source text 失忆 / 浑噩) are two real "out-only and
+unreachable" positions in the subject machine (34 positions · 53 transitions · 8 drive slots) —
+beyond pyroduct's own 192 tests, the three-inspection language independently re-derives the
+machine's thesis-level boundary ("a past you cannot recall, a future not yet arrived"). The
+"0 unexpected findings" line is a tripwire: any new structural / type / behavior finding on the
+real tables fails pyroduct's tests and forces a re-review.
+
+> The `pyroduct-shaped sample machine` printed at the end of `moon run src/cli` is this module's
+> own **8-state toy** (`statecheck.pyroduct_flavored()`), not pyroduct's real tables. It carries
+> coordinates like `182:12`; those are **stable pseudo-spans** hashed from the state name by
+> `state_span()` (the same name always yields the same coordinate), not positions in any source
+> file — don't go looking for that line in pyroduct.
 
 ## Package structure
 
@@ -179,7 +200,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.1.2` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.2.0` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## DeepSeek Harness plugin
@@ -190,9 +211,10 @@ request on the command line, and answers with one JSON reply —
 `{"kind":"file","filename":...}` dispatches on the extension to the matching
 file-kind analysis (`.mbt` / `.mbtx` / `.mbt.md` / `.mbti` / `.mbtp`),
 `{"kind":"machine","spec":...}` through the machine-table audit. It is packaged
-as the DeepSeek Harness plugin `@local/moonbit-static-analysis` (workspace
-directory `dsh-plugin-moonbit-static-analysis/`), which exposes the
-`moonbit_analyze` / `moonbit_audit` / `moonbit_gates` tools to the agent — the
+as the DeepSeek Harness plugin `@riantr/moonbit-static-analysis-dsh` (workspace
+directory `dsh-plugin-moonbit-static-analysis/`), which exposes the **four**
+tools `moonbit_analyze` / `moonbit_analyze_file` / `moonbit_audit` /
+`moonbit_gates` to the agent — the
 plugin only spawns and formats; every analysis semantic stays in MoonBit,
 versioned and gated with the module. See that directory's README for the
 install step (`plugin_manager` with `install_bundle`).
