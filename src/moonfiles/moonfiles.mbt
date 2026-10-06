@@ -318,6 +318,10 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
   let mut n1 = 0
   let mut n2 = 0
   let mut n3 = 0
+  let mut n_parse = 0
+  let reasons : Map[String, Int] = Map([])
+  let mut reason = ""
+  let mut reason_n = 0
   for pair in moonbit_fences(md) {
     let (block, start) = pair
     // outside the subset: one finding at the block's first line, not a cascade
@@ -346,6 +350,22 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     n1 += r.n_structural
     n2 += r.n_type
     n3 += r.n_behavior
+    // Aggregated across every fence in the document, so the literate file's
+    // verdict means the same thing a `.mbt` file's does: zero means every
+    // compiled fence was understood, and the reason names the most common
+    // blocker across all of them.
+    n_parse += r.n_parse
+    if r.n_parse > 0 {
+      let c = match reasons.get(r.parse_reason) {
+        Some(n) => n + r.n_parse
+        None => r.n_parse
+      }
+      reasons.set(r.parse_reason, c)
+      if c > reason_n {
+        reason_n = c
+        reason = r.parse_reason
+      }
+    }
   }
   @pipeline.PipelineResult::{
     reports: all,
@@ -354,6 +374,8 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     n_type: n2,
     n_behavior: n3,
     imports,
+    n_parse,
+    parse_reason: reason,
   }
 }
 

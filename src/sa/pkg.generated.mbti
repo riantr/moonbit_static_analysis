@@ -1,12 +1,24 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "riantr/moonbit_static_analysis/src/sa"
 
+import {
+  "riantr/moonbit_static_analysis/src/report",
+}
+
 // Values
-pub async fn scan(String) -> Unit
+pub async fn scan(String, Array[String]) -> Unit
 
 // Errors
 
 // Types and methods
+pub(all) struct Verdict {
+  path : String
+  kind : String
+  findings : Array[@report.Report]
+  parsed : Bool
+  reason : String
+  total : Int
+}
 
 // Type aliases
 

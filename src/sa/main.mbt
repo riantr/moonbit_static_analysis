@@ -34,25 +34,141 @@ let max_files : Int = 20000
 let progress_every : Int = 500
 
 ///|
-pub async fn scan(target : String) -> Unit {
+/// Per-file findings shown before the scan stops printing them for that file.
+/// A file the frontend understood is a file whose findings are worth reading;
+/// a hundred of them is still noise, and the file is named either way.
+let findings_shown_per_file : Int = 40
+
+///|
+/// What the scan can honestly say about one file.
+///
+/// `parsed` carries the whole weight. On a file the frontend did not understand,
+/// every other number here measures the analyzer's blindness rather than the
+/// code: an unparsed `struct` body turns its fields into undefined names and its
+/// `*` into operator mismatches. Measured on a 63-file module, `moon check`
+/// reports 8 unused values where the same code yields 529 "unused locals" from
+/// this pipeline -- the difference is 66x of the tool not seeing the struct
+/// bodies. Reporting the downstream families on such a file is how a 3%
+/// coverage scan becomes 17,937 lines of noise, so they are withheld and the
+/// file is counted once, under the reason it was not understood.
+pub(all) struct Verdict {
+  path : String
+  kind : String
+  /// findings worth reading. Always empty when `parsed` is false.
+  findings : Array[@report.Report]
+  /// did the frontend understand the whole file
+  parsed : Bool
+  /// why not, when it did not
+  reason : String
+  /// every finding, shown or withheld. Kept so the SUMMARY can account for the
+  /// difference instead of quietly dropping it.
+  total : Int
+}
+
+///|
+/// Public entry point. `target` is a registry coordinate or a path; the
+/// module's root package forwards the CLI arguments here, which is what makes
+/// `moonx riantr/moonbit_static_analysis@latest <target>` work without naming
+/// a package (an unpinned `moonx <module>` needs a root executable — otherwise
+/// it looks for a prebuilt wasm asset that mooncakes does not have).
+///
+/// `excludes` names directory entries to skip. It exists because a dot-directory
+/// rule cannot catch everything: a project may keep vendored registry snapshots
+/// under an ordinary name, and on one such tree those snapshots were 1020 files
+/// and 126,687 findings — 88% of everything the scan reported, none of it the
+/// target's own code.
+pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let root = locate(target)
   if root == "" {
     println("ERROR\tcannot locate source for target: \{target}")
     return
   }
+  if excludes.length() > 0 {
+    println("EXCLUDE\t\{excludes.join(" ")}")
+  }
   println("TARGET\t\{target}\t\{root}")
   let files : Array[String] = []
-  let complete = collect(root, files)
+  let complete = collect(root, files, excludes)
   if complete {
     println("SCANNED\t\{files.length()} files under \{root}")
   }
-  let mut total = 0
+  let mut parsed_files = 0
+  let mut actionable = 0
+  let mut withheld = 0
+  let mut all_total = 0
+  // Unparsed files are counted by reason rather than listed. One line per file
+  // would replace thousands of findings with thousands of lines and teach the
+  // reader to scroll past the section that matters.
+  let reasons : Map[String, Int] = Map([])
+  let examples : Map[String, Array[String]] = Map([])
   for f in files {
-    let n = analyze(f)
-    total += n
-    println("\{kind_of(f)}\t\{n}\t\{f}")
+    let v = analyze(f)
+    all_total += v.total
+    if v.parsed {
+      parsed_files += 1
+      let n = v.findings.length()
+      actionable += n
+      if n == 0 {
+        println("CLEAN\t\{v.kind}\t\{v.path}")
+      } else {
+        println("FOUND\t\{v.kind}\t\{n}\t\{v.path}")
+        let shown = if n < findings_shown_per_file {
+          n
+        } else {
+          findings_shown_per_file
+        }
+        for i in 0..<shown {
+          println(v.findings[i].render())
+        }
+        if shown < n {
+          println("...  \{n - shown} more in this file")
+        }
+      }
+    } else {
+      withheld += v.total
+      let r = if v.reason == "" { "unspecified" } else { v.reason }
+      let c = match reasons.get(r) {
+        Some(n) => n + 1
+        None => 1
+      }
+      reasons.set(r, c)
+      let ex = match examples.get(r) {
+        Some(a) => a
+        None => []
+      }
+      if ex.length() < 3 {
+        ex.push(v.path)
+        examples.set(r, ex)
+      }
+    }
   }
-  println("SUMMARY\tfiles=\{files.length()}\tfindings=\{total}")
+  let pct = if files.length() == 0 {
+    0
+  } else {
+    parsed_files * 1000 / files.length()
+  }
+  println(
+    "PARSED\t\{parsed_files}/\{files.length()} files understood (\{pct / 10}.\{pct % 10}%)",
+  )
+  let unreadable = files.length() - parsed_files
+  if unreadable > 0 {
+    println(
+      "NOTPARSE\t\{unreadable} files, \{withheld} finding(s) withheld — they measure what this analyzer does not understand, not what your code does",
+    )
+    for r, c in reasons {
+      println("  \{c}x  \{r}")
+      let ex = match examples.get(r) {
+        Some(a) => a
+        None => []
+      }
+      for p in ex {
+        println("      e.g. \{p}")
+      }
+    }
+  }
+  println(
+    "SUMMARY\tfiles=\{files.length()}\tparsed=\{parsed_files}\tactionable=\{actionable}\twithheld=\{withheld}\ttotal=\{all_total}",
+  )
   if !complete {
     println(
       "NOTE\tthis tree exceeded the \{max_files}-file cap; the counts above cover only what was walked",
@@ -162,7 +278,11 @@ async fn is_dir(p : String) -> Bool {
 /// ones containing nothing analysable: `moon_openblas/vendor` holds 19483
 /// vendored files and `ML/CI` another 10572, and neither contributes a single
 /// `.mbt`. The directory counter moves in every directory, analysable or not.
-async fn collect(root : String, out : Array[String]) -> Bool {
+async fn collect(
+  root : String,
+  out : Array[String],
+  excludes : Array[String],
+) -> Bool {
   let stack : Array[String] = [root]
   let mut seen_dirs = 0
   let mut last_files = 0
@@ -177,7 +297,11 @@ async fn collect(root : String, out : Array[String]) -> Bool {
       // Skip build output, vendored registry sources (.mooncakes, .repos) and
       // every other dot-directory: none of them are the target's own source, and
       // walking them inflates the count with a dependency's code.
-      if e == "_build" || e.has_prefix(".") {
+      //
+      // A dot rule cannot catch everything. `excludes` is the caller's way to
+      // name directories that hold a copy of somebody else's code under an
+      // ordinary name.
+      if e == "_build" || e.has_prefix(".") || excludes.contains(e) {
         continue
       }
       let p = dir + "/" + e
@@ -235,15 +359,115 @@ fn kind_of(p : String) -> String {
 }
 
 ///|
-async fn analyze(p : String) -> Int {
+async fn analyze(p : String) -> Verdict {
   let src = read_or(p)
   let n = base_of(p)
-  match kind_of(p) {
-    ".mbti" => @moonfiles.iface(src, n).length()
-    ".mbtp" => @moonfiles.proof(src, n).length()
-    ".mbt.md" => @moonfiles.literate(src, n).reports.length()
-    _ => @pipeline.run(src, n).reports.length()
+  let k = kind_of(p)
+  match k {
+    // `.mbti` and `.mbtp` are audited in their own right, and there FParse means
+    // "this file has a defect", not "I could not read it" — malformed interface
+    // lines, duplicate signatures, unknown type references, string constants in
+    // a logic body. Suppressing those would delete the entire product.
+    ".mbti" => {
+      let rs = @moonfiles.iface(src, n)
+      Verdict::{
+        path: p,
+        kind: k,
+        findings: rs,
+        parsed: true,
+        reason: "",
+        total: rs.length(),
+      }
+    }
+    ".mbtp" => {
+      let rs = @moonfiles.proof(src, n)
+      Verdict::{
+        path: p,
+        kind: k,
+        findings: rs,
+        parsed: true,
+        reason: "",
+        total: rs.length(),
+      }
+    }
+    ".mbt.md" => {
+      let rs = @moonfiles.literate(src, n).reports
+      let total = rs.length()
+      let parsed = all_parse(rs)
+      Verdict::{
+        path: p,
+        kind: k,
+        findings: if parsed {
+          rs
+        } else {
+          []
+        },
+        parsed,
+        reason: if parsed {
+          ""
+        } else {
+          dominant_reason(rs)
+        },
+        total,
+      }
+    }
+    _ => {
+      let r = @pipeline.run(src, n)
+      let total = r.reports.length()
+      Verdict::{
+        path: p,
+        kind: k,
+        findings: if r.n_parse == 0 {
+          r.reports
+        } else {
+          []
+        },
+        parsed: r.n_parse == 0,
+        reason: if r.n_parse == 0 {
+          ""
+        } else {
+          r.parse_reason
+        },
+        total,
+      }
+    }
   }
+}
+
+///|
+/// True when no report is a frontend complaint. Used on the `.mbt.md` path,
+/// where the literate frontend has no `n_parse` counter and FParse carries both
+/// meanings at once — see `analyze`.
+fn all_parse(rs : Array[@report.Report]) -> Bool {
+  for r in rs {
+    if r.family == @core.FParse {
+      return false
+    }
+  }
+  true
+}
+
+///|
+/// The most frequent FParse message; ties go to the message seen first, so the
+/// line is stable across runs.
+fn dominant_reason(rs : Array[@report.Report]) -> String {
+  let counts : Map[String, Int] = Map([])
+  let mut best = ""
+  let mut best_n = 0
+  for r in rs {
+    if r.family == @core.FParse {
+      let c = match counts.get(r.message) {
+        Some(n) => n + 1
+        None => 1
+      }
+      counts.set(r.message, c)
+      if c > best_n {
+        best_n = c
+        best = r.message
+      }
+    }
+  }
+  best
 }
 
 ///|

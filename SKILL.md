@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.3.4 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.0 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -51,21 +51,46 @@ moonx riantr/moonbit_static_analysis@0.3.4 riantr/moonbit_doubleML
 
 ## Reading the output
 
-One line per file, `kind<TAB>count<TAB>path`, then a `SUMMARY` line:
+**The headline is parse coverage, not the finding count.** A scan reports what it
+understood and what it refused to guess at:
 
 ```
-TARGET	riantr/moonbit_doubleML@latest	.repos/riantr/moonbit_doubleML/0.107.0
-SCANNED	177 files under .repos/riantr/moonbit_doubleML/0.107.0
-.mbt	49945	.repos/.../quantile.mbt
-.mbt.md	0	.repos/.../README.mbt.md
-SUMMARY	files=177	findings=49945
+EXCLUDE	_qa_verify
+TARGET	D:\src\...\ML\CI	D:\src\...\ML\CI
+SCANNED	85 files under D:\src\...\ML\CI
+CLEAN	.mbti	D:\src\...\CI/pof/pkg.generated.mbti
+FOUND	.mbt	2	D:\src\...\CI/scm/dag.mbt
+12:3 - error: ... (UndefinedName) [behavior]
+PARSED	23/85 files understood (27.0%)
+NOTPARSE	62 files, 17940 finding(s) withheld — they measure what this analyzer
+  does not understand, not what your code does
+  55x  unexpected token
+      e.g. D:\src\...\CI/scm/dag.mbt
+SUMMARY	files=85	parsed=23	actionable=0	withheld=17940	total=17940
 ```
+
+- `CLEAN` / `FOUND` lines cover only files the frontend read completely.
+- Unparsed files are **grouped by reason, not listed one per line**, with example
+  paths — 62 unparsed files cost 9 lines, not 62.
+- `actionable` + `withheld` = `total`: nothing is silently dropped.
 
 **Read the output, not the exit code.** MoonBit exposes no process-exit entry
 point in the available packages, so a target that could not be located still
 exits 0 — it prints
 `ERROR<TAB>cannot locate source for target: <target>`. A successful run always
 prints a `SUMMARY` line.
+
+### Excluding directories
+
+```
+moonx riantr/moonbit_static_analysis@latest <target> --exclude <dir> [--exclude <dir>...]
+```
+
+`--exclude` matches any path segment, and is repeatable. Use it when the tree
+keeps copies of other people's code under an ordinary directory name: on one
+such tree those copies were 1020 files and 126,687 findings — 88% of everything
+the scan reported, none of it the target's own code. Dot-directories
+(`.mooncakes`, `.repos`) and `_build` are already skipped.
 
 ## What the numbers mean, and what they do not
 
@@ -74,10 +99,17 @@ report **0 findings** unless something is actually wrong.
 
 `.mbt` is different. The program frontend covers a **subset** of MoonBit — no
 struct literals, no `match`, no `@alias` calls, no type annotations in general
-position, no lambdas or interpolation. On real code it therefore reports a large
-number of findings that are **all subset edges, not defects**. Treat a `.mbt`
-count as a rough size indicator, never as a defect list. Do not report those
-numbers to a user as "problems found".
+position, no lambdas or interpolation. On real code it therefore produces a large
+number of findings that are **all subset edges, not defects**.
+
+That is why the scan now withholds them. An unparsed `struct` body turns its
+fields into undefined names and its `*` into operator mismatches, so the
+downstream families on an unread file are noise with a real-looking shape. On a
+63-file module `moon check` reports **8** unused values where this pipeline
+reported **529** "unused locals" — the difference is the analyzer not seeing the
+struct bodies. So: **quote `PARSED` first**, and treat `actionable` as the only
+count that describes the code. Do not report `withheld` to a user as "problems
+found".
 
 ## Instead of the CLI
 

@@ -25,6 +25,14 @@ pub(all) struct PipelineResult {
   /// package sources. Surfaced so the script file kind reports its own
   /// dependency surface instead of silently swallowing the block.
   imports : Array[@ast.ImportSpec]
+  /// Lexer/parser complaints, subset exclusions included. Zero means the
+  /// frontend understood the whole file, and only then are the findings above
+  /// a statement about the code rather than about the analyzer.
+  n_parse : Int
+  /// The most frequent parser message, as the file-level explanation. Empty
+  /// exactly when `n_parse` is zero. Ties go to the message seen first, so the
+  /// line is stable across runs.
+  parse_reason : String
 }
 
 ///|
@@ -42,8 +50,28 @@ pub fn run(src : String, file : String) -> PipelineResult {
   let parsed = @parser.parse(src)
   let all : Array[@report.Report] = []
   // parse findings are already tagged structural
+  //
+  // Counted BEFORE the merge, from the parser's own reports: the merge rewrites
+  // a finding's family to the representative's, so counting FParse afterwards
+  // would under-report it and a partly-understood file could read as clean.
+  let mut n_parse = 0
+  let reasons : Map[String, Int] = Map([])
+  let mut reason = ""
+  let mut reason_n = 0
   for r in parsed.reports {
     all.push(r)
+    if r.family == @core.FParse {
+      n_parse += 1
+      let c = match reasons.get(r.message) {
+        Some(n) => n + 1
+        None => 1
+      }
+      reasons.set(r.message, c)
+      if c > reason_n {
+        reason_n = c
+        reason = r.message
+      }
+    }
   }
   let wr = @walk.walk_module(parsed.tree, file)
   for r in wr.findings {
@@ -74,6 +102,8 @@ pub fn run(src : String, file : String) -> PipelineResult {
     n_type: n2,
     n_behavior: n3,
     imports: parsed.tree.imports,
+    n_parse,
+    parse_reason: reason,
   }
 }
 

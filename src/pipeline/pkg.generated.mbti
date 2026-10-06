@@ -25,6 +25,8 @@ pub(all) struct PipelineResult {
   n_type : Int
   n_behavior : Int
   imports : Array[@ast.ImportSpec]
+  n_parse : Int
+  parse_reason : String
 }
 
 // Type aliases
