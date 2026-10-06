@@ -1,0 +1,32 @@
+# Files that must never reach the registry.
+#
+# This module had no .moonignore at all until 0.3.4, so nothing was excluded --
+# and `moon package --list` showed the consequence. The published 0.3.4 tarball
+# shipped:
+#
+#   _qa/bigtree2.log    261966 bytes of scan output naming local absolute paths
+#   _qa/bigtree.log       286 bytes, same
+#   _qa/commitmsg.txt    2499 bytes, a scratch commit message
+#   cvc5wrap.ps1           637 bytes, a machine-local shim hardcoding
+#                           C:\Users\<account>\.moon\bin\cvc5.exe
+#
+# None of those are credentials, but none belong in a public package either. The
+# build dir (_build) is already excluded by the toolchain itself; everything
+# below had to be named explicitly.
+
+# Mooncakes credentials. `moon publish` would upload a live token otherwise --
+# verified, `moon package --list` listed this file before the rule existed.
+# The token belongs in ~/.moon/credentials.json, and the copy CI needs belongs
+# in Settings -> Secrets and variables -> Actions as MOONCAKES_RIANTR_TOKEN.
+credentials.json
+*.credentials.json
+
+# Measurement scratch: per-file scan listings and working commit messages.
+# Evidence, not source -- the numbers they contain are already written up in
+# EXTENSIONS.md. Git ignores this directory; moon package does not read
+# .gitignore, so it has to be named here too.
+_qa/
+
+# Machine-local formal-verification shims (same reasoning as .gitignore).
+.why3.conf
+cvc5wrap.ps1

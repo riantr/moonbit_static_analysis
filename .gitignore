@@ -15,3 +15,9 @@ cvc5wrap.ps1
 # Evidence, not source: the numbers quoted in the docs are already recorded in
 # EXTENSIONS.md, and these files are megabytes of per-file listing.
 _qa/
+
+# The mooncakes credential. `git add -A` staged it once before .moonignore
+# existed; the token inside is live. The copy CI needs is a GitHub Actions
+# secret, not a file in the tree. .moonignore covers the publish side of this.
+credentials.json
+*.credentials.json
