@@ -253,9 +253,11 @@ members = [
   ⇒ **文档列出的字段 ≠ 工具链接受的字段**；加任何元数据键之前先 `moon check` 验一次。
 - **版本必须每次推送递增**，按语义化：MAJOR = 不兼容 API 变更，MINOR = 向后兼容的
   功能新增，PATCH = 向后兼容的错误修复。本项目 0.1.2 → 0.2.0 走 MINOR 即依此条
-  （新增四类文件前端是功能）；0.2.0 → 0.2.1 走 PATCH（只改随包文档）。
-- **moon 实现最小版本选择（MVS）**。⇒ 下游把 pin 写在 `@0.2.0` 就**不会**自动升到
-  0.2.1：pyroduct 要升必须显式改 `moon.mod` 再 `moon update`，不能指望发布。
+  （新增四类文件前端是功能）；0.2.0 → 0.2.1 走 PATCH（只改随包文档）；
+  **0.2.1 → 0.2.2 走 PATCH**（修围栏误判 + 删 FCheck，属修复不属新增功能）。
+- **moon 实现最小版本选择（MVS）**。⇒ 下游把 pin 写死在 `@0.2.0` 就**不会**自动升到
+  后续版本（0.2.1、0.2.2 …）：pyroduct 要升必须显式改 `moon.mod` 再 `moon update`，
+  不能指望发布。
 - **工作区**：唯一清单是 `moon.work`；`moon work init <mods…>` 建、`moon work use <mod>`
   加成员、`moon work sync` 对齐成员版本。`publish` 是**模块专属**命令，在工作区根
   不可用，须 `moon -C <member> publish`。
