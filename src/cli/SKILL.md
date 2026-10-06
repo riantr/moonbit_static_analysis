@@ -5,9 +5,10 @@ description: >-
   (structural / type / behavior) over embedded MoonBit-subset samples and a
   sample state-machine audit with the published CLI. Use to showcase or
   smoke-check the analyzer's findings format (line:col findings with family,
-  lens tags, and virtual stacks). Do not use it to analyze user-supplied
-  source or machine tables — import the module instead and call
-  @pipeline.run / @statecheck.audit.
+  lens tags, and virtual stacks). This entry takes no input. To ANALYSE a real
+  project use the scanner skill (moonx riantr/moonbit_static_analysis@latest
+  <target>), or import the module and call @pipeline.run / @moonfiles.* /
+  @statecheck.audit.
 ---
 
 # The three-inspection pipeline demo
@@ -67,9 +68,22 @@ nothing on disk — don't go looking for it in the audited project's sources.
 Machine '主体' summary: 4 finding(s)
 ```
 
-## Analyze real source or a real machine (import, not the CLI)
+## Analyze real source or a real machine
 
-The demo CLI cannot analyze user input. Depend on the module and call the API:
+Two routes, depending on whether the target may take a dependency.
+
+**Scan a project as-is** — nothing to add to it, nothing written into it:
+
+```sh
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
+```
+
+The target is a registry coordinate or a filesystem path; omit it for the
+current directory. Sources are only read. This is the right default for
+"analyse this other repository".
+
+**Depend on the module** when you want structured output, or are analysing the
+analyzer's own repository:
 
 ```moonbit
 // program revision: source is a String in the MoonBit subset
@@ -99,9 +113,15 @@ println(@statecheck.render(spec))
 
 ## Scope
 
-The CLI exposes no flags, no file input, and no JSON output. It does not
-replace a linter integration: for CI use `moon check` plus the module's tests;
-for machine-table audits use `@statecheck.audit` directly. Consult the adjacent
+The CLI takes **no arguments**: the samples are embedded (`src/samples`), so it
+can only show the findings format. To analyse anything else use one of the two
+routes above.
+
+> The `moon runwasm …` command shown on this skill's page is **deprecated** and
+> its prebuilt wasm asset may 404. `moonx` (above) is the working invocation.
+
+It does not replace a linter integration: for CI use `moon check` plus the
+module's tests. Consult the adjacent
 [README.md](../../README.md) for the full architecture and
 [EXTENSIONS.md](../../EXTENSIONS.md) for the file-kind taxonomy and the formal
 verification story.
