@@ -68,9 +68,12 @@ jobs:
         # does not exist (404), which is what made the sibling gate.yml fail every
         # run at "Set up job" -- actions a workflow references are resolved during
         # job setup, before any step is named in the log.
+        #
+        # The path is install/unix.sh. install.sh answers 403 even from a GitHub
+        # runner, which the first fixed run proved by failing with curl exit 22.
         run: |
           set -euo pipefail
-          curl -LsSf https://cli.moonbitlang.com/install.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.moon/bin:$PATH"
           command -v moon >/dev/null || {
@@ -78,6 +81,12 @@ jobs:
             exit 1
           }
           moon version --all
+
+      - name: Resolve the registry index
+        # A fresh runner's index is empty, and this module imports
+        # moonbitlang/async from mooncakes.io, so the gate below would fail with
+        # "Failed to resolve registry dependency" without this.
+        run: moon update
 
       - name: moon.mod must agree with the tag
         # moon publish takes the version from moon.mod, not from the tag. If

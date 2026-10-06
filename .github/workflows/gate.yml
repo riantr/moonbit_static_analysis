@@ -20,15 +20,19 @@ jobs:
       # typo failed every run at "Set up job" instead of at a named step, and
       # why this gate had never once produced a result.
       #
+      # The path is install/unix.sh, not install.sh: the latter answers 403 even
+      # from a GitHub runner, which is what the first fixed run failed with
+      # (curl exit 22).
+      #
       # The version check at the end is not decoration: without it a silently
       # failed install would surface three steps later as a confusing
       # "moon: command not found" inside `moon check`.
       - name: Install moon
         run: |
           set -euo pipefail
-          curl -LsSf https://cli.moonbitlang.com/install.sh | bash
-          # The installer puts moon under ~/.moon/bin, which is not on a
-          # GitHub runner's PATH by default.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          # The installer puts moon under $MOON_HOME/bin (default ~/.moon/bin),
+          # which is not on a GitHub runner's PATH by default.
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.moon/bin:$PATH"
           command -v moon >/dev/null || {
@@ -36,6 +40,13 @@ jobs:
             exit 1
           }
           moon version --all
+      # Mandatory, not optional. A fresh runner has an EMPTY registry index, and
+      # this module imports moonbitlang/async from mooncakes.io, so without
+      # this every build command below fails with "Failed to resolve registry
+      # dependency". The local machine never shows this because its index is
+      # already warm.
+      - name: Resolve the registry index
+        run: moon update
       # --deny-warn per the official package-configuration guidance ("In CI, add
       # --deny-warn to moon check, moon test, or the equivalent command to treat
       # enabled warnings as fatal errors"). Without it this gate passes on a
