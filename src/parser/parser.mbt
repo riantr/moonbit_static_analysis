@@ -101,8 +101,24 @@ pub fn parse(src : String) -> ParseResult {
     p.skip_seps()
   }
   while !(p.peek() is TEOF) {
+    let sp = p.span()
+    p.skip_modifiers()
+    // Read the keyword AFTER the modifiers: `pub struct X` is `pub` then
+    // `struct`, and reading it first would classify the declaration as `pub`.
+    let kw = p.peek_name()
     if p.at_name("fn") {
       body.push(p.parse_fn())
+    } else if kw == "struct" ||
+      kw == "enum" ||
+      kw == "trait" ||
+      kw == "impl" ||
+      kw == "derive" {
+      p.skip_decl_braced(kw, sp)
+    } else if kw == "type" ||
+      kw == "const" ||
+      kw == "suberror" ||
+      kw == "extern" {
+      p.skip_decl_line(kw, sp)
     } else {
       body.push(p.parse_stmt())
     }
@@ -144,6 +160,15 @@ fn Parser::at_name(self : Parser, n : String) -> Bool {
 }
 
 ///|
+/// The current token's name, or "" when it is not a name.
+fn Parser::peek_name(self : Parser) -> String {
+  match self.peek() {
+    TName(s) => s
+    _ => ""
+  }
+}
+
+///|
 fn Parser::err(self : Parser, msg : String, sp : @core.Span) -> Unit {
   self.reports.push(@report.Report::{
     family: @core.FParse,
@@ -159,6 +184,119 @@ fn Parser::skip_seps(self : Parser) -> Unit {
   while self.at(TNewline) || self.at(TSemi) {
     let _ = self.bump()
   }
+}
+
+///|
+/// Consume a balanced `( ... )`, starting at the open paren.
+fn Parser::skip_parens(self : Parser) -> Unit {
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if self.at(TLParen) {
+      depth += 1
+    } else if self.at(TRParen) {
+      depth -= 1
+    }
+    let _ = self.bump()
+    if depth <= 0 {
+      break
+    }
+  }
+}
+
+///|
+/// Consume a balanced `( ... )` if one starts here, else do nothing.
+fn Parser::skip_parens_if_present(self : Parser) -> Unit {
+  if self.at(TLParen) {
+    self.skip_parens()
+  }
+}
+
+///|
+/// Visibility and calling-convention modifiers that may precede a `fn`:
+/// `pub`, `pub(all)`, `priv`, `async`. Consume them and keep dispatching, so
+/// `pub async fn f()` is still parsed as a function instead of turning `pub`
+/// into an undefined variable.
+///
+/// `extern` is deliberately NOT here: its body is a raw string (`= "..."`), not
+/// a MoonBit block, so it is a declaration form the frontend does not model and
+/// is skipped as one.
+fn Parser::skip_modifiers(self : Parser) -> Unit {
+  let mut again = true
+  while again {
+    again = false
+    if self.at_name("pub") || self.at_name("priv") {
+      let _ = self.bump()
+      self.skip_parens_if_present()
+      again = true
+      continue
+    }
+    if self.at_name("async") {
+      let _ = self.bump()
+      again = true
+    }
+  }
+}
+
+///|
+/// A brace-bodied declaration the frontend does not model (struct / enum /
+/// trait / impl). Consume the whole declaration and report it **once**.
+///
+/// Parsing it statement-by-statement is what produced the false-positive
+/// cascades: every field line became its own UndefinedName plus a ParseError
+/// echo, and the fields then counted as dead top-level statements. A top-level
+/// `fn` cannot legally appear inside a declaration, so meeting one means the
+/// declaration has no body (e.g. `pub impl Eq for T` with its methods in a
+/// separate impl block) — stop there instead of swallowing the rest of the file.
+fn Parser::skip_decl_braced(
+  self : Parser,
+  what : String,
+  sp : @core.Span,
+) -> Unit {
+  let mut found = false
+  while !self.at(TEOF) {
+    if self.at(TLBrace) {
+      found = true
+      break
+    }
+    if self.at_name("fn") {
+      break
+    }
+    let _ = self.bump()
+  }
+  if found {
+    let mut depth = 0
+    while !self.at(TEOF) {
+      if self.at(TLBrace) {
+        depth += 1
+      } else if self.at(TRBrace) {
+        depth -= 1
+        let _ = self.bump()
+        if depth <= 0 {
+          break
+        }
+        continue
+      }
+      let _ = self.bump()
+    }
+  }
+  self.err(
+    "\{what} declaration is outside the analyzed subset; its body was not analyzed",
+    sp,
+  )
+}
+
+///|
+/// A line-terminated declaration the frontend does not model (type / const /
+/// suberror). One finding, no cascade.
+fn Parser::skip_decl_line(
+  self : Parser,
+  what : String,
+  sp : @core.Span,
+) -> Unit {
+  while !self.at(TEOF) && !self.at(TNewline) && !self.at(TSemi) {
+    let _ = self.bump()
+  }
+  self.err("\{what} declaration is outside the analyzed subset", sp)
 }
 
 ///|

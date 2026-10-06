@@ -224,3 +224,46 @@ test "report rendering appends the lens tag once per lens, sorted" {
     "2:5 - error: undefined variable 'x' (UndefinedName) [structural+type+behavior]\n",
   )
 }
+
+// --- out-of-subset top-level declarations --------------------------------
+//
+// Found by running this analyzer over real MoonBit code. `pub` on a definition
+// is a modifier, and struct/enum/type/const/extern declarations are forms the
+// frontend does not model. Before this, `pub fn` reported `undefined variable
+// 'pub'` and every field line of a struct cascaded into its own finding pair.
+// The rule pinned here: an unmodelled declaration costs exactly ONE finding and
+// never blinds the pipeline for what follows it.
+
+///|
+test "a 'pub' modifier is not itself a defect" {
+  let r = @pipeline.run("pub fn f() -> int {\n  1\n}\n", "m.mbt")
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+test "an unmodelled struct costs one finding, not one per field" {
+  let r = @pipeline.run(
+    "pub struct Point {\n  x : int\n  y : int\n}\n", "m.mbt",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("struct"))
+}
+
+///|
+test "a defect below an unmodelled declaration is still reported" {
+  let r = @pipeline.run(
+    "struct P {\n  x : int\n}\nfn f() -> int {\n  missing(1)\n}\n", "m.mbt",
+  )
+  let mut saw_missing = false
+  let mut saw_struct = false
+  for rep in r.reports {
+    if rep.message.contains("missing") {
+      saw_missing = true
+    }
+    if rep.message.contains("struct") {
+      saw_struct = true
+    }
+  }
+  assert_true(saw_struct)
+  assert_true(saw_missing)
+}

@@ -236,3 +236,93 @@ test "package sources carry no imports" {
   assert_eq(r.reports.length(), 0)
   assert_eq(r.tree.imports.length(), 0)
 }
+
+// --- top-level modifiers and out-of-subset declarations -------------------
+//
+// Found by running this analyzer over real MoonBit code (pyroduct's audit
+// package): `pub fn` is how almost every real file opens, and the top-level
+// dispatch only recognised a bare `fn`. So `pub` fell through to the statement
+// parser, became "undefined variable 'pub'", and the rest of the declaration
+// cascaded. Measured on 3 real files, that class alone was the single most
+// common false positive.
+
+///|
+test "top level: a visibility modifier is not an expression" {
+  let r = @parser.parse("pub fn f() -> int {\n  1\n}\n")
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: pub(all) and pub async still parse as functions" {
+  let r = @parser.parse("pub(all) async fn f() -> int {\n  1\n}\n")
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: extern is a declaration form, not a modifier" {
+  // `pub extern "js" fn f(..) = "raw"` has a raw-string body, not a MoonBit
+  // block, so it is not a function the frontend can model. One finding, and the
+  // function after it still parses.
+  let r = @parser.parse(
+    "pub extern \"js\" fn f() -> int = \"0\"\nfn g() -> int {\n  1\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("extern"))
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: an unmodelled brace declaration is ONE finding, not a cascade" {
+  // The field lines used to each become their own UndefinedName plus a
+  // ParseError echo, and were then counted as dead top-level statements.
+  let r = @parser.parse(
+    "pub struct Point {\n  x : int\n  y : int\n}\nfn f() -> int {\n  1\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("struct"))
+  // the function after the declaration is still parsed
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: an enum body is consumed whole" {
+  let r = @parser.parse(
+    "enum Color {\n  Red\n  Green\n}\nfn f() -> int {\n  1\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: line-terminated declarations are one finding each" {
+  let r = @parser.parse(
+    "pub type Id = int\npub const K : int = 10\nfn f() -> int {\n  1\n}\n",
+  )
+  assert_eq(r.reports.length(), 2)
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: a body-less impl does not swallow the rest of the file" {
+  // `pub impl Eq for T` with its methods in a separate impl block has no body
+  // brace. The skip must stop at the `fn` instead of eating the file — the
+  // sentinel is that a top-level `fn` cannot legally sit inside a declaration.
+  let r = @parser.parse("pub impl Eq for T\nfn f() -> int {\n  1\n}\n")
+  assert_eq(r.tree.body.length(), 1)
+}
+
+///|
+test "top level: a function after an unmodelled declaration is still parsed" {
+  // The skip must not blind the pipeline: the function below a skipped struct
+  // has to reach the body, or the structural inspection would never see it.
+  // (That a defect INSIDE it is still reported is a pipeline property and is
+  // pinned in pipeline_test — the parser emits no UndefinedName of its own.)
+  let r = @parser.parse(
+    "struct P {\n  x : int\n}\nfn f() -> int {\n  missing(1)\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("struct"))
+  assert_eq(r.tree.body.length(), 1)
+}
