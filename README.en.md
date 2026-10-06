@@ -130,7 +130,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test                 # 70/70 green (70 on each of the four targets)
+moon test                 # 71/71 green (71 on each of the four targets)
 moon run src/cli          # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -146,7 +146,7 @@ and [`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.
 | `.mbt` | three-inspection program analysis |
 | `.mbtx` | three-inspection program analysis + import-block audit (entry grammar `"path" [@alias] [*]`; duplicate paths report FParse; the import list is echoed in the report) |
 | `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so generated files raise nothing |
-| `.mbt.md` | literate: only fences that are actually **compiled** (`mbt` / `mbt check`), line numbers aligned to the `.md` file's real lines. `mbt nocheck` and a bare `moonbit` are display blocks (the toolchain neither compiles nor tests them), so they are skipped |
+| `.mbt.md` | literate: only fences the toolchain actually **compiles** — `mbt check` / `mbt test` and the `moonbit` spellings; a second word of `check` or `test` is what makes a block live code. Line numbers align to the `.md` file's real lines. A bare `mbt`, a bare `moonbit` and `nocheck` are display blocks and are skipped — measured against the toolchain, see EXTENSIONS.md |
 | `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code — upstream puts both in the parser's separate `moon_config` subpackage, alongside `syntax` and `mbti_parser` rather than inside them; see the config-boundary section of EXTENSIONS.md) |
 

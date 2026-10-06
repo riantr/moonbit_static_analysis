@@ -44,9 +44,12 @@ parse (src/lexer, src/parser) → ast
 
 The other file kinds are frontends in `src/moonfiles` (see EXTENSIONS.md, which
 is the taxonomy and the authority for what each suffix means):
-- `.mbt.md` — only fences the toolchain actually compiles (`mbt`, `mbt check`)
-  are three-inspected, with line numbers aligned to the .md file. `mbt nocheck`
-  and a bare `moonbit` are display-only and are SKIPPED.
+- `.mbt.md` — only fences the toolchain actually compiles (`mbt check` / `mbt test`,
+  and the `moonbit` spellings) are three-inspected, with line numbers aligned to
+  the .md file. A second word of `check` or `test` is what makes a block live
+  code. A bare `mbt`, a bare `moonbit` and `nocheck` are display-only and are
+  SKIPPED. Measured against the toolchain, not taken from doc wording — see the
+  fence table in EXTENSIONS.md.
 - `.mbti` — interface audit. The line grammar matches what `moon info` emits
   (import blocks, `#attribute` lines, const/let, `impl ... for T`, suberror,
   using re-exports, async/extern, type params, labeled params, noraise/cancel).

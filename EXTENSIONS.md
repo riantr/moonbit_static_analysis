@@ -69,7 +69,7 @@
 
 - **`.mbtx` 不在包级测试范围内**（官方明文：package-wide test runs do not include
   `.mbtx` scripts）。实测 `moon test <script>.mbtx` → `Total tests: 0` exit 0。
-  所以本项目自己的 70 个测试**不覆盖** `.mbtx` 前端；它的证据来自
+  所以本项目自己的 71 个测试**不覆盖** `.mbtx` 前端；它的证据来自
   `src/parser/parser_test.mbt` 的语法钉用例，不是来自 `moon test`。
 - `.mbti` 的签名行用的是**真实 MoonBit 类型**（`Array[Frame]`、`Self`、`String?`、`raise`），
   与子集程序推导签名（`fact(int) -> int`，注解名或 `Any`）**不构成可比较对**——因此 .mbti
@@ -132,7 +132,7 @@ members = [
 | `.mbt.md` 逐块三鉴 | **12 篇**真实 literate 文档（`moonbitlang/async` 等） | 子集外块每次 1 条；子集内块仍全分析 |
 | `.mbtx` 导入块 | **0 个**真实脚本 | 只对官方文档的三个示例逐字验证 |
 | `.mbtp` 逻辑 lint | **2 个**文件（本模块的 + 其 vendored 副本） | **无语料**；改为逐规则验证：4 条规则各有一个触发用例 + 5 个负向对照，桥上 9/9 如文档所述 |
-| `.mbt` 三鉴 | 6 个内嵌样例 + 70 个单元测试 | 无外部语料——样例是合成的，真实文件的实测缺口见下 |
+| `.mbt` 三鉴 | 6 个内嵌样例 + 71 个单元测试 | 无外部语料——样例是合成的，真实文件的实测缺口见下 |
 
 .mbti 一项的**自审**是其中最有分量的部分：把本模块自己 `moon info` 生成的 13 个接口
 过一遍自己的审计器，89 个文件零发现——**审计器不会在它自己产出的形状上误报**。
@@ -149,27 +149,42 @@ members = [
 
 ## 围栏语言（.mbt.md 哪一块才算代码）
 
-**围栏语言决定一个块是不是代码**——不是文件后缀。工具链的规则：
+**围栏语言决定一个块是不是代码**——不是文件后缀。**工具链实测为准，文档措辞不算数**：
+下表是把一个未定义调用放进每种候选围栏、再问 `moon check` 到底报哪几个得到的
+（moon 0.1.20260920）：
 
-| 围栏 | 官方语义 | 本项目 |
+| 围栏 info | 工具链是否编译 | 本项目 |
 |---|---|---|
-| ` ```mbt ` | 编译，但不产生测试入口 | **分析** |
-| ` ```mbt check ` | 文档测试代码 | **分析** |
-| ` ```mbt nocheck ` | 只展示，**不编译也不测试** | 跳过 |
-| ` ```moonbit ` | 普通展示块，**不编译也不测试** | 跳过 |
-| 其他（`json`/`bash`/…） | 散文 | 跳过 |
+| ` ```mbt check ` / ` ```mbt test ` | **编译**（可作测试入口） | **分析** |
+| ` ```moonbit check ` / ` ```moonbit test ` | **编译** | **分析** |
+| ` ```mbt ` | **不编译**（与裸 `moonbit` 同为展示块） | 跳过 |
+| ` ```moonbit ` | **不编译** | 跳过 |
+| ` ```mbt nocheck ` / ` ```moonbit nocheck ` | **不编译** | 跳过 |
+| ` ```mbt Check `（大写 C） | 不编译——**第二个词大小写敏感** | 跳过 |
+| ` ```mbtcheck `（无空格） | 不编译 | 跳过 |
+| ` ```mbt check extra ` | 编译（多余词忽略） | **分析** |
+| 无 info / 其他（`json`/`bash`/…） | 散文 | 跳过 |
+
+> ⚠️ 本表曾经把 ` ```mbt ` 写成「编译，但不产生测试入口」。**那是错的**，来源是文档
+> 措辞而非实测：裸 `mbt` 与裸 `moonbit` 一样是**展示**块，必须加 `check` / `test`
+> 才成代码。分析这些块 = 分析工具链从不构建的代码。已改，并移除了不再产生的
+> `FCheck` 变体（`moonfiles` 是 0.2.0 新增的包，此次属破坏性变更）。
 
 早期实现把 `moonbit` / `mbt` 前缀的围栏一律当代码，于是工作区里那份真实
 `.mbt.md`（`pyroduct/README.mbt.md`，其 Example 段是 ` ```moonbit nocheck `）
 报了 **31 条**发现，**全部是假的**——它分析的是工具链自己声明不分析的块。
-现在 `fence_mode` 按上表分派，只有 `FCheck` / `FTest` 进入三鉴。
+现在 `fence_mode` 按上表分派，只有 `FTest` 进入三鉴。
 
 > 「唯一」是当时的措辞，现在不成立：pyroduct 有 `README.mbt.md` 与
 > `README.zh.mbt.md` 两份，工作区里还留着一份陈旧副本。三份各含 1 个
 > ` ```moonbit nocheck ` 围栏、0 个 ` ```mbt ` 围栏，**当前实现对三份都报 0 条**
 > ——这正是「展示块必须跳过」这条规则的正向验证（实测，非推断）。
+>
+> 这三份语料的**局限**要说清楚：它们全是展示围栏，所以只验证了「跳过」这一半。
+> 「`check` / `test` 会被分析」这一半**没有任何真实语料**，只有
+> `src/moonfiles/moonfiles_test.mbt` 里的合成用例 + 上表的工具链实测背书。
 
-`@moonfiles.fence_mode` 返回 `FCheck | FTest | FNoCheck | FDisplay | None`，
+`@moonfiles.fence_mode` 返回 `FTest | FNoCheck | FDisplay | None`，
 `None` 即非 MoonBit 围栏；`@moonfiles.moonbit_fences` 只返回会被编译的块。
 
 ## 前端子集覆盖（.mbt / .mbtx 分析的语法面）

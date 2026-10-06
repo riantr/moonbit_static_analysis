@@ -133,7 +133,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 | `.mbt` | 三鉴程序分析 |
 | `.mbtx` | 三鉴程序分析 + 导入块审计（条目文法 `"path" [@alias] [*]`；重复路径报 FParse；导入清单随报告回显） |
 | `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件零误报 |
-| `.mbt.md` | literate：只分析**会被编译**的围栏（`mbt` / `mbt check`），行号对齐到 `.md` 真实行。`mbt nocheck` 与裸 `moonbit` 是展示块（工具链既不编译也不测试），跳过 |
+| `.mbt.md` | literate：只分析工具链**确实编译**的围栏 —— `mbt check` / `mbt test` 及其 `moonbit` 写法；第二个词是 `check` 或 `test` 才使块成为活代码。行号对齐 `.md` 真实行。裸 `mbt`、裸 `moonbit` 与 `nocheck` 是展示块，跳过——**按工具链实测**，见 EXTENSIONS.md |
 | `.mbtp` | 证明文件逻辑侧 lint（体内字符串常量、`!`/`↔` 禁形、跨包调用、lemma 缺 `proof_ensure`）——**不替代 `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码——官方也把两者放在 `parser` 的 `moon_config` 子包里，与 `syntax` / `mbti_parser` 并列而独立；理由见 EXTENSIONS.md「配置文件的边界」）|
 
@@ -147,7 +147,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test                 # 70/70 全绿（四个 target 各 70）
+moon test                 # 71/71 全绿（四个 target 各 71）
 moon run src/cli          # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
 

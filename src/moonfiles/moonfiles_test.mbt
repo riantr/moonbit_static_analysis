@@ -3,7 +3,7 @@
 
 ///|
 test "literate .mbt.md: fences analyzed with real line numbers" {
-  let md = "# Title\n\nIntro prose.\n\n```mbt\nfn ok_fn() -> int {\n  1\n}\n```\n\nMore prose.\n\n```mbt\nfn broken() -> int {\n  missing(1)\n}\n```\n"
+  let md = "# Title\n\nIntro prose.\n\n```mbt check\nfn ok_fn() -> int {\n  1\n}\n```\n\nMore prose.\n\n```mbt check\nfn broken() -> int {\n  missing(1)\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   // first block is clean; the second block reports the undefined name
   assert_eq(r.reports.length(), 1)
@@ -18,7 +18,7 @@ test "literate .mbt.md: fences analyzed with real line numbers" {
 
 ///|
 test "literate .mbt.md: non-moonbit fences skipped" {
-  let md = "```json\n{\"not\": \"code\"}\n```\n\n```mbt\nfn f() -> int {\n  2\n}\n```\n"
+  let md = "```json\n{\"not\": \"code\"}\n```\n\n```mbt check\nfn f() -> int {\n  2\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   assert_eq(r.reports.length(), 0)
   assert_eq(r.sigs.length(), 1)
@@ -26,7 +26,7 @@ test "literate .mbt.md: non-moonbit fences skipped" {
 
 ///|
 test "literate .mbt.md: blocks are independent (no cross-block bindings)" {
-  let md = "```mbt\nfn helper() -> int {\n  1\n}\n```\n\n```mbt\nfn caller() -> int {\n  helper()\n}\n```\n"
+  let md = "```mbt check\nfn helper() -> int {\n  1\n}\n```\n\n```mbt check\nfn caller() -> int {\n  helper()\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   // `helper` is not visible in the second block: one UndefinedName finding
   assert_eq(r.reports.length(), 1)
@@ -186,19 +186,56 @@ test "iface .mbti: let declarations, using re-exports and noraise are understood
 ///|
 
 ///|
-/// The fence language decides whether a block is code at all. `mbt` and
-/// `mbt check` are compiled; `mbt nocheck` and a bare `moonbit` are shown but
-/// neither compiled nor tested. Analysing a display-only block turned the one
-/// real .mbt.md in the workspace into 31 findings, all of them false.
-test "literate .mbt.md: nocheck and bare moonbit fences are skipped" {
-  let md = "```mbt nocheck\nfn skipped_nocheck() -> int {\n  missing_nocheck(1)\n}\n```\n\n```moonbit\nfn skipped_display() -> int {\n  missing_display(1)\n}\n```\n\n```mbt\nfn compiled() -> int {\n  1\n}\n```\n\n```mbt check\nfn doc_tested() -> int {\n  2\n}\n```\n"
+/// The fence info string decides whether a block is code at all, and the
+/// toolchain — not the doc wording — is the authority. Measured by putting an
+/// unbound call in every candidate fence and asking `moon check` which ones it
+/// complained about: a second word of `check` or `test` is what makes a block
+/// live. A bare `mbt` is a DISPLAY fence, exactly like a bare `moonbit`.
+///
+/// Analysing a display-only block turned the one real .mbt.md in the workspace
+/// into 31 findings, all of them false. The bare-`mbt` case was the same disease
+/// one level up: the earlier version analysed blocks the toolchain never builds.
+test "literate .mbt.md: only check/test fences are code, bare mbt is display" {
+  let md = "```mbt nocheck\nfn skipped_nocheck() -> int {\n  missing_nocheck(1)\n}\n```\n\n```moonbit\nfn skipped_display() -> int {\n  missing_display(1)\n}\n```\n\n```mbt\nfn skipped_bare_mbt() -> int {\n  missing_bare_mbt(1)\n}\n```\n\n```mbt check\nfn doc_tested() -> int {\n  2\n}\n```\n\n```mbt test\nfn test_fenced() -> int {\n  3\n}\n```\n\n```moonbit check\nfn moonbit_checked() -> int {\n  4\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
-  // the two display-only blocks contribute nothing, not even their names
+  // the three display-only blocks contribute nothing, not even their names
   assert_eq(r.reports.length(), 0)
-  // only the two compiled fences are analyzed
-  assert_eq(r.sigs.length(), 2)
-  assert_eq(r.sigs[0], "compiled() -> int")
-  assert_eq(r.sigs[1], "doc_tested() -> int")
+  // only the three live fences are analyzed
+  assert_eq(r.sigs.length(), 3)
+  assert_eq(r.sigs[0], "doc_tested() -> int")
+  assert_eq(r.sigs[1], "test_fenced() -> int")
+  assert_eq(r.sigs[2], "moonbit_checked() -> int")
+}
+
+///|
+
+///|
+/// The classification itself, spelled out, so a regression in one spelling does
+/// not have to be rediscovered by running the toolchain again.
+test "fence_mode: the full measured table" {
+  // compiled
+  assert_eq(@moonfiles.fence_mode("```mbt check"), Some(@moonfiles.FTest))
+  assert_eq(@moonfiles.fence_mode("```mbt test"), Some(@moonfiles.FTest))
+  assert_eq(@moonfiles.fence_mode("```moonbit check"), Some(@moonfiles.FTest))
+  assert_eq(@moonfiles.fence_mode("```moonbit test"), Some(@moonfiles.FTest))
+  // extra words are ignored, extra whitespace is fine
+  assert_eq(@moonfiles.fence_mode("```mbt check extra"), Some(@moonfiles.FTest))
+  assert_eq(@moonfiles.fence_mode("```mbt  check"), Some(@moonfiles.FTest))
+  // display-only
+  assert_eq(@moonfiles.fence_mode("```mbt"), Some(@moonfiles.FDisplay))
+  assert_eq(@moonfiles.fence_mode("```moonbit"), Some(@moonfiles.FDisplay))
+  assert_eq(@moonfiles.fence_mode("```mbt nocheck"), Some(@moonfiles.FNoCheck))
+  assert_eq(
+    @moonfiles.fence_mode("```moonbit nocheck"),
+    Some(@moonfiles.FNoCheck),
+  )
+  // not a MoonBit fence at all
+  assert_eq(@moonfiles.fence_mode("```json"), None)
+  assert_eq(@moonfiles.fence_mode("```"), None)
+  // the second word is case-sensitive: `mbt Check` is NOT compiled
+  assert_false(@moonfiles.fence_mode("```mbt Check") == Some(@moonfiles.FTest))
+  // no space means it is not a recognised word
+  assert_false(@moonfiles.fence_mode("```mbtcheck") == Some(@moonfiles.FTest))
 }
 
 ///|
@@ -213,7 +250,7 @@ test "literate .mbt.md: nocheck and bare moonbit fences are skipped" {
 /// in this workspace that was 2335 findings; now 89, all of them this one
 /// message.
 test "literate .mbt.md: a block outside the subset is reported once, not cascaded" {
-  let md = "```mbt\nasync fn main {\n  let xs = [1, 2]\n  debug(xs)\n}\n```\n"
+  let md = "```mbt check\nasync fn main {\n  let xs = [1, 2]\n  debug(xs)\n}\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   assert_eq(r.reports.length(), 1)
   assert_eq(r.reports[0].family.name(), "ParseError")
@@ -249,7 +286,7 @@ test "literate .mbt.md: a test block is reported once" {
 /// A compiled block that stays inside the subset is still fully analyzed — the
 /// short-circuit must not swallow the blocks it is meant to leave alone.
 test "literate .mbt.md: an in-subset compiled block is still analyzed" {
-  let md = "```mbt\nfn twice(n: int) -> int {\n  n * 2\n}\nprint(twice(21))\n```\n"
+  let md = "```mbt check\nfn twice(n: int) -> int {\n  n * 2\n}\nprint(twice(21))\n```\n"
   let r = @moonfiles.literate(md, "doc.mbt.md")
   // the block was analyzed, not short-circuited: no exclusion finding, and the
   // definition reached the signature table

@@ -2,6 +2,7 @@
 package "riantr/moonbit_static_analysis/src/moonfiles"
 
 import {
+  "moonbitlang/core/debug",
   "riantr/moonbit_static_analysis/src/pipeline",
   "riantr/moonbit_static_analysis/src/report",
 }
@@ -23,11 +24,10 @@ pub fn render_reports(Array[@report.Report]) -> String
 
 // Types and methods
 pub(all) enum FenceMode {
-  FCheck
   FTest
   FNoCheck
   FDisplay
-} derive(Eq)
+} derive(Eq, @debug.Debug)
 
 // Type aliases
 

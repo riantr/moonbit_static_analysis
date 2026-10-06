@@ -79,30 +79,6 @@ fn view_str(v : StringView) -> String {
 }
 
 ///|
-/// case-insensitive prefix test (ASCII letters only)
-fn starts_with_ci(s : StringView, p : String) -> Bool {
-  let sc = s.to_array()
-  let pc = p.to_array()
-  if sc.length() < pc.length() {
-    return false
-  }
-  for i, c in pc {
-    let mut a = sc[i].to_int()
-    let mut b = c.to_int()
-    if a >= 65 && a <= 90 {
-      a += 32
-    }
-    if b >= 65 && b <= 90 {
-      b += 32
-    }
-    if a != b {
-      return false
-    }
-  }
-  true
-}
-
-///|
 /// the part of s after the first n chars, reified ("" when short)
 fn after_n(s : String, n : Int) -> String {
   if s.length() <= n {
@@ -145,19 +121,34 @@ fn contains_bang(code : String) -> Bool {
 
 ///|
 /// How a fenced block is meant to be treated, from its info string. The fence
-/// language is the authority here, not the extension: the toolchain compiles
-/// `mbt` and `mbt check` and deliberately leaves `mbt nocheck` and plain
-/// `moonbit` blocks alone.
+/// language is the authority here, not the extension. Measured against the
+/// toolchain itself (moon 0.1.20260920) by putting an unbound call in every
+/// candidate fence and seeing which ones `moon check` complained about:
+///
+///   ```mbt check      COMPILED     ```mbt nocheck     skipped
+///   ```mbt test       COMPILED     ```moonbit nocheck skipped
+///   ```moonbit check  COMPILED     ```mbt             skipped
+///   ```moonbit test   COMPILED     ```moonbit         skipped
+///                                      (no info string) skipped
+///                                      ```mbtcheck      skipped  (no space)
+///                                      ```mbt Check     skipped  (2nd word is case-sensitive)
+///
+/// So a bare `mbt` is a DISPLAY fence, exactly like a bare `moonbit` — a second
+/// word of `check` or `test` is what makes it live code. Extra words after it
+/// are ignored and extra whitespace is fine.
+///
+/// Earlier versions of this file claimed the toolchain compiled bare `mbt`. It
+/// does not; that claim came from the doc wording, not from a measurement, and
+/// analysing those blocks produced findings on code the toolchain never builds.
 pub(all) enum FenceMode {
-  /// ```mbt or ```moonbit check — compiled, no test entry
-  FCheck
-  /// ```mbt check — document-test code
+  /// ` ```mbt check ` / ` ```mbt test ` (and the `moonbit` spellings) — live
+  /// code: compiled, and reachable as a test
   FTest
-  /// ```mbt nocheck — shown only; the toolchain neither compiles nor tests it
+  /// ` ```mbt nocheck ` / ` ```moonbit nocheck ` — shown only
   FNoCheck
-  /// ```moonbit — an ordinary displayed block; not compiled, not tested
+  /// ` ```mbt ` / ` ```moonbit ` — a display fence for MoonBit source
   FDisplay
-} derive(Eq)
+} derive(Eq, Debug)
 
 ///|
 /// Classify a fence info string. Returns None for a non-MoonBit fence.
@@ -168,27 +159,33 @@ pub(all) enum FenceMode {
 ///     `check`) is compiled.
 pub fn fence_mode(info : String) -> FenceMode? {
   let words = trim_sp_view(trim_sp_view(after_n(info, 3).view()).view())
-  if !words.has_prefix("moonbit") && !words.has_prefix("mbt") {
+  // The language word must be a WHOLE word. `mbtcheck` is one token, not `mbt`
+  // plus `check`, and the toolchain does not compile it — a bare `has_prefix`
+  // would have called it FTest. Whitespace between the words is free-form:
+  // `mbt check` and `mbt  check` both compile.
+  let rest = if words == "moonbit" {
+    ""
+  } else if words == "mbt" {
+    ""
+  } else if words.has_prefix("moonbit ") {
+    // "moonbit" is 7 characters, so the separator puts the rest at index 8
+    trim_sp_view(after_n(words, 8).view())
+  } else if words.has_prefix("mbt ") {
+    trim_sp_view(after_n(words, 4).view())
+  } else {
     return None
   }
-  let rest = trim_sp_view(
-    after_n(words, if starts_with_ci(words.view(), "moonbit") { 8 } else { 3 }).view(),
-  )
   if rest == "" {
-    // bare `mbt` is compiled; bare `moonbit` is display-only
-    return Some(
-      if starts_with_ci(words.view(), "moonbit") {
-        FDisplay
-      } else {
-        FCheck
-      },
-    )
+    // A bare `mbt` is a DISPLAY fence, same as a bare `moonbit`: measured
+    // above, neither is compiled. Only a `check` / `test` second word makes the
+    // block live code.
+    return Some(FDisplay)
   }
   let head = decl_name(rest)
   if head == "nocheck" {
     return Some(FNoCheck)
   }
-  if head == "check" {
+  if head == "check" || head == "test" {
     return Some(FTest)
   }
   None
@@ -196,9 +193,9 @@ pub fn fence_mode(info : String) -> FenceMode? {
 
 ///|
 /// Extract the moonbit fenced code blocks that are actually compiled, i.e.
-/// ```mbt and ```mbt check: returns (block_source_with_line_padding, start_line)
-/// pairs. `mbt nocheck` and bare `moonbit` blocks are skipped, matching the
-/// toolchain's own rule that they are shown but neither compiled nor tested.
+/// ```mbt check and ```mbt test (and the `moonbit` spellings): returns
+/// (block_source_with_line_padding, start_line) pairs. `mbt nocheck`, bare
+/// `mbt` and bare `moonbit` blocks are skipped — measured, see `FenceMode`.
 /// Other fences are prose and skipped too.
 pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
   let src = normalize(md)
@@ -210,7 +207,7 @@ pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
     let line = lines[i]
     if line.has_prefix("```") {
       match fence_mode(line) {
-        Some(FCheck) | Some(FTest) => ()
+        Some(FTest) => ()
         Some(_) | None => {
           i += 1
           continue
