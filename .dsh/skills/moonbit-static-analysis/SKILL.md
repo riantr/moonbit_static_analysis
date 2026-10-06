@@ -118,7 +118,7 @@ is the taxonomy and the authority for what each suffix means):
   only calls `@statecheck.audit` / `.render`; **`@pipeline` / `PipelineResult`
   is consumed by the JSON bridge and the DSH plugin, not by pyroduct**, and
   nothing outside this module constructs that struct. So a `PipelineResult`
-  change has no effect on the machine-table consumer, and pyroproduct is safe
+  change has no effect on the machine-table consumer, and pyroduct is safe
   on the old pin until you deliberately move it. Bump the pin for hygiene, not
   because something is broken.
 - pyroduct/moon.mod contains Chinese — edit it only with file tools (pwsh `Get-Content` defaults
