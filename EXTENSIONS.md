@@ -134,10 +134,15 @@ members = [
 | ` ```moonbit ` | 普通展示块，**不编译也不测试** | 跳过 |
 | 其他（`json`/`bash`/…） | 散文 | 跳过 |
 
-早期实现把 `moonbit` / `mbt` 前缀的围栏一律当代码，于是工作区里唯一的真实
+早期实现把 `moonbit` / `mbt` 前缀的围栏一律当代码，于是工作区里那份真实
 `.mbt.md`（`pyroduct/README.mbt.md`，其 Example 段是 ` ```moonbit nocheck `）
 报了 **31 条**发现，**全部是假的**——它分析的是工具链自己声明不分析的块。
 现在 `fence_mode` 按上表分派，只有 `FCheck` / `FTest` 进入三鉴。
+
+> 「唯一」是当时的措辞，现在不成立：pyroduct 有 `README.mbt.md` 与
+> `README.zh.mbt.md` 两份，工作区里还留着一份陈旧副本。三份各含 1 个
+> ` ```moonbit nocheck ` 围栏、0 个 ` ```mbt ` 围栏，**当前实现对三份都报 0 条**
+> ——这正是「展示块必须跳过」这条规则的正向验证（实测，非推断）。
 
 `@moonfiles.fence_mode` 返回 `FCheck | FTest | FNoCheck | FDisplay | None`，
 `None` 即非 MoonBit 围栏；`@moonfiles.moonbit_fences` 只返回会被编译的块。

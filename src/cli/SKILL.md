@@ -55,7 +55,12 @@ union of lenses that saw it; multi-lens findings carry a virtual stack
 Summary: 1 finding(s) (before merge: structural 1, type 2, behavior 1)
 ```
 
-The machine-audit section prints the same shape over machine tables:
+The machine-audit section prints the same shape over machine tables — but its
+`line:col` is **not** a source position. A `MachineSpec` is a plain-data table
+with no file behind it, so `state_span()` derives a stable pseudo-span from the
+state name (`h = h*31 + c`, `line = 1 + (h & 1023)`, `col = 1 + ((h>>10) & 63)`).
+The same name always prints the same coordinate, and that coordinate points at
+nothing on disk — don't go looking for it in the audited project's sources.
 
 ```
 182:12 - warning: state '失忆' is never entered: it appears only as a transition source (UnusedLocal) [structural]
