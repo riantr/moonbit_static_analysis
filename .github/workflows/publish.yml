@@ -25,6 +25,21 @@
 # as MOONCAKES_RIANTR_TOKEN. The publish step fails fast and loudly when it is
 # absent, by design — a silent skip would look like a successful release.
 #
+# The secret's VALUE is the whole contents of ~/.moon/credentials.json, not the
+# bare token. The step below writes the secret verbatim into that path, and the
+# file is a JSON object with two fields:
+#
+#     { "token": "<...>", "username": "riantr" }
+#
+# so pasting only the token writes an invalid credentials.json and moon publish
+# then fails with the same opaque exit 255 as a genuine rejection. Copy the file
+# (it lands there after `moon login`), not one field of it.
+#
+# The name MOONCAKES_RIANTR_TOKEN is not a guess: riantr/moonbit_doubleML's
+# publish.yml names exactly this secret, and records that it is NOT set on that
+# repository, which is why its tag trigger is disabled and its releases are cut
+# from a local checkout. So it cannot be copied from there — only its name can.
+#
 # To cut a release:
 #   1. set version in moon.mod
 #   2. sync every version reference in README.md, README.en.md and SKILL.md
