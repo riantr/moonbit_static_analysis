@@ -34,12 +34,20 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.3.3 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.3.4 riantr/moonbit_doubleML
 ```
 
-> `moon runwasm …` is **deprecated** and its prebuilt asset may be absent (404).
-> Use `moonx`, as above. `moonx` with no package path resolves the module's ROOT
-> package, which is why the command needs no `/src/sa` suffix.
+> `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
+> mooncakes built for the published version, caches it under
+> `~/.moon/registry/cache/assets/<author>/<module>/<version>/`, and runs it with
+> `moonrun` — no clone, no local build. The very same artifact is what the
+> "Download wasm" button serves on skills.mooncakes.io.
+>
+> `moon runwasm …` is **deprecated** (the toolchain says removal after
+> 2026-09-14) but still works. Prefer `moonx`.
+>
+> `moonx` with no package path resolves the module's ROOT package, which is why
+> the command needs no `/src/sa` suffix.
 
 ## Reading the output
 

@@ -261,9 +261,32 @@ members = [
 - **工作区**：唯一清单是 `moon.work`；`moon work init <mods…>` 建、`moon work use <mod>`
   加成员、`moon work sync` 对齐成员版本。`publish` 是**模块专属**命令，在工作区根
   不可用，须 `moon -C <member> publish`。
-- **`supported_targets` 不写 = 声明支持全部后端**（模块配置页 Notes 明文）。所以
-  mooncakes 没为本模块构建 wasm 预构建产物（`wasm_url` 404）不是配置漏写造成的；
-  且 `moon runwasm` 已被工具链标记弃用，官方推荐 `moonx`。
+- **`supported_targets` 不写 = 声明支持全部后端**（模块配置页 Notes 明文）。
+- **wasm 预构建是全自动的，发布方没有任何开关可拧**。`moon publish --help`（本机
+  moon 0.1.20260920）**不存在** wasm / target / artifact 相关的选项；`moon.mod` 的
+  全部字段里也没有产物地址项（章节清单：Name / Version / Dependency Management /
+  Meta Information / `.moonignore` / Preferred Target / Supported Targets / Source
+  directory / Warning List / Rule / Scripts）。构建发生在**服务端**：产物落在
+  `https://download.mooncakes.io/prebuild/<author>/<module>@<ver>[/<pkg>]/<artifact>.wasm`
+  并经 wasm-opt 优化。skills.mooncakes.io 的 `wasm_url` / `checksum_url` 指的就是
+  它，「Download wasm」按钮可用。
+- **⚠ 更正我先前发布的两条错误断言 —— 两者都是测量方法造成的，不是工具链行为**：
+  1. ~~「全站 28 条 skill 的 `wasm_url` 一律 404 / wasm 预构建这条路全站不通」~~。
+     **错。** `download.mooncakes.io` 对**确实存在的对象不响应 HEAD**，一律回 404；
+     换成 GET 即 200。实测本模块 `@0.3.3` 的 `moonbit_static_analysis.wasm`
+     GET 200 / 254566 字节 / magic `asm`，官方 `moonbitlang/office@0.2.1/office.wasm`
+     GET 200 / 15958555 字节 / magic `asm`。
+     **判据：「拿 HEAD 探对象存在性」在 `download.mooncakes.io` 上恒假**，404 不构成
+     「东西不存在」的证据。
+  2. ~~「`moonx` / `moon runwasm` 走本地编译，并不消费预构建资源」~~。**错。**
+     `moonx -v` 明写
+     `Using cached ~/.moon/registry/cache/assets/<author>/<module>/<ver>/<artifact>.wasm`
+     并交给 `moonrun` 执行；未缓存时打印 `Downloading <url>`。缓存文件的 SHA256
+     与服务端公布的 `.wasm.sha256` 逐位一致（`dd9afabf…28db7f`）。这与
+     `moonbitlang/openseek` README 的自述一致：「mooncakes.io hosts a prebuilt wasm
+     binary for every published version. moonx fetches and caches it」。
+- **`moon runwasm` 已被工具链标记弃用**（写明 2026-09-14 后移除）**但目前仍可用**；
+  官方推荐 `moonx`。
 
 ## 与官方 parser/lexer 包的关系（mooncakes 参考面）
 

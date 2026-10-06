@@ -117,8 +117,14 @@ The CLI takes **no arguments**: the samples are embedded (`src/samples`), so it
 can only show the findings format. To analyse anything else use one of the two
 routes above.
 
-> The `moon runwasm …` command shown on this skill's page is **deprecated** and
-> its prebuilt wasm asset may 404. `moonx` (above) is the working invocation.
+> The `moon runwasm …` command shown on this skill's page is **deprecated** (the
+> toolchain says removal after 2026-09-14) but still works. Prefer `moonx`, which
+> is the recommended invocation above.
+>
+> The "Download wasm" button on this skill's page is **usable**. It serves the
+> same prebuilt artifact `moonx` downloads and caches — nothing to compile. (If a
+> tool reports that URL as 404, that check used an HTTP `HEAD`; `download.mooncakes.io`
+> answers 404 to `HEAD` even for artifacts that exist. Re-check with `GET`.)
 
 It does not replace a linter integration: for CI use `moon check` plus the
 module's tests. Consult the adjacent

@@ -23,6 +23,17 @@
 /// `moonx riantr/moonbit_static_analysis@latest <target>` work without naming
 /// a package (an unpinned `moonx <module>` needs a root executable — otherwise
 /// it looks for a prebuilt wasm asset that mooncakes does not have).
+
+///|
+/// Ceiling on files per scan, and how often the walk reports progress. Both are
+/// stated rather than silent: a scan that quietly stops at an arbitrary point
+/// is indistinguishable from a complete one.
+let max_files : Int = 20000
+
+///|
+let progress_every : Int = 500
+
+///|
 pub async fn scan(target : String) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -31,8 +42,10 @@ pub async fn scan(target : String) -> Unit {
   }
   println("TARGET\t\{target}\t\{root}")
   let files : Array[String] = []
-  collect(root, files)
-  println("SCANNED\t\{files.length()} files under \{root}")
+  let complete = collect(root, files)
+  if complete {
+    println("SCANNED\t\{files.length()} files under \{root}")
+  }
   let mut total = 0
   for f in files {
     let n = analyze(f)
@@ -40,6 +53,11 @@ pub async fn scan(target : String) -> Unit {
     println("\{kind_of(f)}\t\{n}\t\{f}")
   }
   println("SUMMARY\tfiles=\{files.length()}\tfindings=\{total}")
+  if !complete {
+    println(
+      "NOTE\tthis tree exceeded the \{max_files}-file cap; the counts above cover only what was walked",
+    )
+  }
 }
 
 ///|
@@ -128,22 +146,64 @@ async fn is_dir(p : String) -> Bool {
 }
 
 ///|
-async fn collect(dir : String, out : Array[String]) -> Unit {
-  let entries = @fs.readdir(dir) catch { _ => return }
-  for e in entries {
-    // Skip build output, vendored registry sources (.mooncakes, .repos) and
-    // every other dot-directory: none of them are the target's own source, and
-    // walking them inflates the count with a dependency's code.
-    if e == "_build" || e.has_prefix(".") {
-      continue
+/// Walk `root` iteratively with an explicit stack and collect the analysable
+/// files. Returns false when the cap was hit and the walk stopped early.
+///
+/// This used to recurse, one coroutine frame per directory level. An explicit
+/// stack removes the coroutine-frame-per-level cost and makes it affordable to
+/// report progress and to stop at a stated ceiling.
+///
+/// Progress is keyed on directories processed *as well as* on analysable files,
+/// and that second key is not decoration. Measured on a 20-project tree (2460
+/// analysable files out of 42k files total): with the file count as the only
+/// key, the first `WALKING` line took 15 minutes to appear and was the only one
+/// printed — the walk was still silent when it was stopped. Keying on files
+/// alone cannot work, because the stretches that take the time are exactly the
+/// ones containing nothing analysable: `moon_openblas/vendor` holds 19483
+/// vendored files and `ML/CI` another 10572, and neither contributes a single
+/// `.mbt`. The directory counter moves in every directory, analysable or not.
+async fn collect(root : String, out : Array[String]) -> Bool {
+  let stack : Array[String] = [root]
+  let mut seen_dirs = 0
+  let mut last_files = 0
+  let mut last_dirs = 0
+  while stack.length() > 0 {
+    let dir = match stack.pop() {
+      Some(d) => d
+      None => break
     }
-    let p = dir + "/" + e
-    if is_dir(p) {
-      collect(p, out)
-    } else if wanted(p) {
-      out.push(p)
+    let entries = @fs.readdir(dir) catch { _ => continue }
+    for e in entries {
+      // Skip build output, vendored registry sources (.mooncakes, .repos) and
+      // every other dot-directory: none of them are the target's own source, and
+      // walking them inflates the count with a dependency's code.
+      if e == "_build" || e.has_prefix(".") {
+        continue
+      }
+      let p = dir + "/" + e
+      if is_dir(p) {
+        stack.push(p)
+      } else if wanted(p) {
+        if out.length() >= max_files {
+          println(
+            "CAP\tstopped at \{max_files} files; some of this tree was NOT analysed",
+          )
+          return false
+        }
+        out.push(p)
+      }
+    }
+    seen_dirs = seen_dirs + 1
+    if out.length() - last_files >= progress_every ||
+      seen_dirs - last_dirs >= progress_every {
+      last_files = out.length()
+      last_dirs = seen_dirs
+      println(
+        "WALKING\tdirs=\{seen_dirs}\tfiles=\{out.length()} so far under \{root}",
+      )
     }
   }
+  true
 }
 
 ///|

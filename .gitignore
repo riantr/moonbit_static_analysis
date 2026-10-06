@@ -10,3 +10,8 @@ _build/
 # local formal-verification toolchain shims (machine-specific paths)
 .why3.conf
 cvc5wrap.ps1
+
+# scratch logs from measurement runs (scan output dumps, big-tree timings).
+# Evidence, not source: the numbers quoted in the docs are already recorded in
+# EXTENSIONS.md, and these files are megabytes of per-file listing.
+_qa/
