@@ -14,12 +14,16 @@ calls US — we never import pyroduct.
 ## Commands (run inside `moonbit_static_analysis/`)
 
 ```console
-moon check                # 0 errors, 0 warnings — first gate
-moon fmt                  # format; `moon fmt --check` must stay clean
-moon test --target js     # 59/59 (see the breakdown below)
-moon run src/cli          # program demo + file-kind demo + sample machine audit
+moon check --deny-warn      # 0 errors, 0 warnings — first gate
+moon fmt                   # format; `moon fmt --check` must stay clean
+moon test --target js      # 71/71 (see the breakdown below)
+moon run src/cli           # program demo + file-kind demo + sample machine audit
 moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma VCs)
 ```
+
+`--deny-warn` matches what CI actually runs. The official package-configuration page
+requires it in CI; without it a warning regression passes silently while the READMEs
+claim "0 errors, 0 warnings".
 
 The test breakdown is 4 targets × 59: pipeline, moonfiles (literate / .mbti /
 .mbtp), parser (.mbtx import block), statecheck, walk/types/interp.
@@ -30,7 +34,12 @@ files must be committed — otherwise the committed interface describes a module
 version that no longer exists. A brand-new package gets its `.mbti` from the
 same run; it will not appear on its own.
 
-pyroduct gates (run inside `pyroduct/`): `moon check`, `moon test` (98/98), `moon fmt --check`.
+pyroduct gates (run inside `pyroduct/`): `moon check`, `moon fmt --check` both pass;
+`moon test` was **190/192** as of 2026-10-06 — the two failures are in
+`audit/fleet_test.mbt` (lines 152 and 202, the mutation-harness family checks) and
+are NOT caused by the analyzer: `v0.1.2..v0.2.0` left `src/statecheck`,
+`src/core` and `src/report` — the only packages pyroduct imports — byte-identical.
+Re-measure before quoting a number.
 
 ## Architecture (read before changing the pipeline)
 

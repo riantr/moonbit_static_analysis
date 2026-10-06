@@ -146,10 +146,17 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 ## 验证
 
 ```bash
-moon check --target all   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test                 # 71/71 全绿（四个 target 各 71）
-moon run src/cli          # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
+moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
+moon test --deny-warn                # 71/71 全绿（四个 target 各 71）
+moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
+
+`--deny-warn` 是有意的：官方包配置页要求「In CI, add `--deny-warn` to `moon check`,
+`moon test`, or the equivalent command to treat enabled warnings as fatal errors」。
+少了它，「0 警」这句话没有任何东西强制 —— 冒出警告 CI 照样绿。`.github/workflows/gate.yml`
+里的 CI 门禁因此带 `--deny-warn`；代价是工具链日后新增警告会让 CI 变红，这正是它的用途。
+
+> CI 只跑 `--target js`；上面「四个 target」是本地跑的结论，CI 不覆盖 native/wasm。
 
 
 ## 形式验证（moon prove）

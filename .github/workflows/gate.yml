@@ -14,9 +14,13 @@ jobs:
       - uses: moonbitlang/setup-moonbit@v0
         with:
           moon-version: latest
+      # --deny-warn per the official package-configuration guidance ("In CI, add
+      # --deny-warn to moon check, moon test, or the equivalent command to treat
+      # enabled warnings as fatal errors"). Without it this gate passes on a
+      # warning regression, while both READMEs claim "0 errors, 0 warnings".
       - name: moon check
-        run: moon check
+        run: moon check --deny-warn
       - name: moon fmt --check
         run: moon fmt --check
       - name: moon test
-        run: moon test --target js
+        run: moon test --target js --deny-warn

@@ -129,10 +129,20 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 ## Verification
 
 ```bash
-moon check --target all   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test                 # 71/71 green (71 on each of the four targets)
-moon run src/cli          # program demo + file-kind demo + pyroduct-shaped sample machine audit
+moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
+moon test --deny-warn                # 71/71 green (71 on each of the four targets)
+moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
+
+`--deny-warn` is deliberate: the official package-configuration page says "In CI, add
+`--deny-warn` to `moon check`, `moon test`, or the equivalent command to treat enabled
+warnings as fatal errors". Without it nothing enforces the "0 warnings" claim — a warning
+regression passes CI silently. The gate in `.github/workflows/gate.yml` therefore carries
+`--deny-warn`; the cost is that a future toolchain release adding a warning turns CI red,
+which is the point.
+
+> CI runs `--target js` only. The "four targets" line above is a local result; CI does not
+> cover native or wasm.
 
 ## File kinds (the other MoonBit toolchain suffixes)
 
