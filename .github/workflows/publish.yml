@@ -1,0 +1,129 @@
+# Publish riantr/moonbit_static_analysis to mooncakes.io.
+#
+# There is ONE module, so there is ONE publish. The root package and src/sa
+# are sub-packages of it (they have a moon.pkg and no moon.mod), so the registry
+# shows them as children; src/cli is likewise a child. Publishing them
+# separately would create duplicate top-level entries that cannot be undone.
+#
+# skills.mooncakes.io needs NO workflow of its own. It is a downstream of this
+# publish: after `moon publish` the registry builds each wasm-capable executable
+# package with wasm-opt and lists it. Verified on 0.3.4 — the two skill entries
+# appeared with created_at equal to the publish moment, and
+# download.mooncakes.io/prebuild/riantr/moonbit_static_analysis@0.3.4/
+# moonbit_static_analysis.wasm served 200 with the "\0asm" magic.
+#
+# The authentication mechanism is not an environment variable. `moon publish`
+# reads $HOME/.moon/credentials.json, so the secret is written there, used, and
+# removed by a trap on the way out -- including on failure.
+#
+# `moon publish` exits 255 both when it cannot authenticate and when the registry
+# rejects it, so the secret is checked for emptiness first; otherwise the two are
+# indistinguishable in the log.
+#
+# TO ENABLE: set the secret under
+#     Settings -> Secrets and variables -> Actions
+# as MOONCAKES_RIANTR_TOKEN. The publish step fails fast and loudly when it is
+# absent, by design — a silent skip would look like a successful release.
+#
+# To cut a release:
+#   1. set version in moon.mod
+#   2. sync every version reference in README.md, README.en.md and SKILL.md
+#   3. commit, push to gitee (daily remote) and github
+#   4. git tag -a v<version> -m "..." && git push github v<version>
+#
+# Step 4 is what triggers this. A tag pushed to gitee alone does nothing.
+#
+# Why this does not wait on gate.yml: `needs:` cannot cross workflow files. The
+# alternative, workflow_run on gate's completion, makes the publish depend on the
+# payload shape of another workflow. Re-running the checks inline is one file
+# and cannot drift out of sync with the tag that triggered it.
+
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FORCE_COLOR: 1
+      SECRET: ${{ secrets.MOONCAKES_RIANTR_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install moon
+        uses: moonbitlang/setup-moonbit@v0
+        with:
+          moon-version: latest
+
+      - name: moon.mod must agree with the tag
+        # moon publish takes the version from moon.mod, not from the tag. If
+        # they disagree the module is published under a version the tag does
+        # not name, and the tag then points at a release that does not exist.
+        run: |
+          set -euo pipefail
+          want="${GITHUB_REF_NAME#v}"
+          got=$(sed -n 's/^version = "\(.*\)"$/\1/p' moon.mod)
+          if [ "$got" != "$want" ]; then
+            echo "::error file=moon.mod::version is '$got', tag says '$want'."
+            exit 1
+          fi
+          echo "ok  moon.mod  version=$got"
+
+      - name: There must be exactly one module
+        # The shape is asserted rather than a hard-coded list of paths, so a
+        # layout change has to change this workflow on purpose instead of
+        # quietly publishing a different set of packages.
+        run: |
+          set -euo pipefail
+          n=$(find . -name moon.mod -not -path "./_build/*" \
+                -not -path "./.mooncakes/*" | wc -l)
+          if [ "$n" -ne 1 ]; then
+            echo "::error::found $n moon.mod files; this workflow publishes the"
+            echo "single root module. If the layout changed, update this workflow"
+            echo "on purpose rather than letting it publish the wrong set."
+            exit 1
+          fi
+          echo "ok  exactly one module at the repository root"
+
+      - name: Gate
+        # Same commands as gate.yml. The wasm build is the one that must pass
+        # here: it is the target mooncakes compiles server-side into the
+        # artifact that skills.mooncakes.io links and moonx downloads.
+        run: |
+          moon fmt --check
+          moon check --deny-warn
+          moon test --target js --deny-warn
+          moon build --target wasm
+
+      - name: Publish to Mooncakes
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error::MOONCAKES_RIANTR_TOKEN is not set on this repository."
+            echo "moon publish cannot authenticate. Nothing was published."
+            exit 1
+          fi
+          mkdir -p "$HOME/.moon"
+          printf '%s' "$SECRET" > "$HOME/.moon/credentials.json"
+          trap 'rm -f "$HOME/.moon/credentials.json"' EXIT
+          moon publish
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "moonbit_static_analysis ${GITHUB_REF_NAME#v}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
