@@ -10,10 +10,32 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: moonbitlang/setup-moonbit@v0
-        with:
-          moon-version: latest
+      - uses: actions/checkout@v5
+      # Installed from the official script rather than a setup action, because
+      # the action this file used to reference does not exist:
+      #   moonbitlang/setup-moonbit  -> 404, repository not found
+      # and the near-miss replacement, moonbit-community/setup-moonbit, has zero
+      # tags and zero releases, so any @vN ref fails the same way. An action
+      # referenced by a workflow is resolved during job setup, which is why that
+      # typo failed every run at "Set up job" instead of at a named step, and
+      # why this gate had never once produced a result.
+      #
+      # The version check at the end is not decoration: without it a silently
+      # failed install would surface three steps later as a confusing
+      # "moon: command not found" inside `moon check`.
+      - name: Install moon
+        run: |
+          set -euo pipefail
+          curl -LsSf https://cli.moonbitlang.com/install.sh | bash
+          # The installer puts moon under ~/.moon/bin, which is not on a
+          # GitHub runner's PATH by default.
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.moon/bin:$PATH"
+          command -v moon >/dev/null || {
+            echo "::error::moon is still not on PATH after the install script"
+            exit 1
+          }
+          moon version --all
       # --deny-warn per the official package-configuration guidance ("In CI, add
       # --deny-warn to moon check, moon test, or the equivalent command to treat
       # enabled warnings as fatal errors"). Without it this gate passes on a
@@ -24,3 +46,8 @@ jobs:
         run: moon fmt --check
       - name: moon test
         run: moon test --target js --deny-warn
+      - name: The wasm target must build
+        # This is the target mooncakes compiles server-side into the artifact
+        # that skills.mooncakes.io links and moonx downloads, so a wasm-only
+        # regression that the js checks above cannot see would otherwise ship.
+        run: moon build --target wasm

@@ -61,12 +61,23 @@ jobs:
       SECRET: ${{ secrets.MOONCAKES_RIANTR_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install moon
-        uses: moonbitlang/setup-moonbit@v0
-        with:
-          moon-version: latest
+        # The official install script, not a setup action: moonbitlang/setup-moonbit
+        # does not exist (404), which is what made the sibling gate.yml fail every
+        # run at "Set up job" -- actions a workflow references are resolved during
+        # job setup, before any step is named in the log.
+        run: |
+          set -euo pipefail
+          curl -LsSf https://cli.moonbitlang.com/install.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.moon/bin:$PATH"
+          command -v moon >/dev/null || {
+            echo "::error::moon is still not on PATH after the install script"
+            exit 1
+          }
+          moon version --all
 
       - name: moon.mod must agree with the tag
         # moon publish takes the version from moon.mod, not from the tag. If
