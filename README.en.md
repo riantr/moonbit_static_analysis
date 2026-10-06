@@ -12,7 +12,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.2.0
+moon add riantr/moonbit_static_analysis@0.2.1
 ```
 
 ```moonbit
@@ -72,7 +72,9 @@ let text : String = @statecheck.render(spec)   // merged text report
 
 **pyroduct is the audited subject, not a dependency**: this module does not depend on pyroduct; the direction is pyroduct (its `audit` package) building a `MachineSpec` from its real tables and calling this module. One-way: machine → analyzer.
 
-pyroduct's real self-audit (`moon run cmd/main -- audit`, run against this module at 0.2.0):
+pyroduct's real self-audit (`moon run cmd/main -- audit`). **It pins 0.2.0**, so the
+`0.2.0` in the output below refers to that pin, not to the version `moon add`
+installs above:
 
 ```
 规格 | 计数
@@ -200,7 +202,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.2.0` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.2.1` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## DeepSeek Harness plugin

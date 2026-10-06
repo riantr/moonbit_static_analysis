@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.2.0
+moon add riantr/moonbit_static_analysis@0.2.1
 ```
 
 ```moonbit
@@ -72,7 +72,8 @@ let text : String = @statecheck.render(spec)   // 合并后的文本报告
 
 **pyroduct 是被测对象，不是依赖**：本模块自身不依赖 pyroduct；方向是 pyroduct（其 `audit` 包）用真实机器表构造 `MachineSpec` 调用本模块。依赖单向：机器 → 分析器。
 
-pyroduct 侧的真实自审计（`moon run cmd/main -- audit`，跑在本模块 0.2.0 上）：
+pyroduct 侧的真实自审计（`moon run cmd/main -- audit`）。**它 pin 的是 0.2.0**，所以
+下面输出里出现的 `0.2.0` 指那个 pin，不是上面 `moon add` 的安装版本：
 
 ```
 规格 | 计数
@@ -187,7 +188,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.2.0` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.2.1` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## DeepSeek Harness 插件
