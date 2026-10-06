@@ -47,12 +47,22 @@ pub async fn scan(target : String) -> Unit {
 /// fetched; a path is used as-is. Returns "" when nothing can be found.
 async fn locate(target : String) -> String {
   if is_coordinate(target) {
-    // `moon fetch` takes the bare module and resolves @latest itself; passing
-    // "@latest" through fails with "unexpected character 'l' while parsing
-    // major version number".
-    let spec = strip_latest(target)
+    let (mod, ver) = split_coord(target)
+    if mod == "" {
+      return ""
+    }
+    // `moon fetch` resolves a BARE module to the newest version itself, and
+    // rejects an explicit `@latest` ("unexpected character 'l' while parsing
+    // major version number"), so only a real version is passed through.
+    let spec = if ver == "" { mod } else { mod + "@" + ver }
     let _ = @process.run("moon", ["fetch", spec])
-    let base = ".repos/" + spec
+    let base = ".repos/" + mod
+    if ver != "" {
+      // pinned: that exact directory, not "whatever is newest on disk"
+      let pinned = base + "/" + ver
+      let _ = @fs.readdir(pinned) catch { _ => return "" }
+      return pinned
+    }
     let versions = @fs.readdir(base) catch { _ => return "" }
     if versions.length() == 0 {
       return ""
@@ -78,20 +88,36 @@ fn is_coordinate(t : String) -> Bool {
 }
 
 ///|
-/// Drop a trailing `@latest`. A coordinate carries at most one `@`, so stopping
-/// at the first one is enough — and avoids slicing, which this dialect lacks.
-fn strip_latest(t : String) -> String {
-  if !t.has_suffix("@latest") {
-    return t
-  }
-  let mut out = ""
+/// Split `author/module[@version]` into its two parts. The version comes back
+/// as "" when absent OR when it is `latest`, because `moon fetch` resolves a
+/// bare module to the newest one itself.
+///
+/// This split matters more than it looks. The fetch target and the `.repos`
+/// path are built from DIFFERENT strings: fetching `author/module` lands in
+/// `.repos/author/module/<version>/`. An earlier version of this file stripped
+/// only `@latest` and kept a pinned version in the name, so
+/// `...@0.3.1` was looked up at `.repos/author/module@0.3.1`, which never
+/// exists — `@latest` worked only because stripping it was the same operation
+/// that produced the right path. Any pinned target silently found nothing.
+fn split_coord(t : String) -> (String, String) {
+  let mut mod = ""
+  let mut ver = ""
+  let mut seen_at = false
   for c in t {
     if c == '@' {
-      break
+      seen_at = true
+      continue
     }
-    out = out + c.to_string()
+    if seen_at {
+      ver = ver + c.to_string()
+    } else {
+      mod = mod + c.to_string()
+    }
   }
-  out
+  if ver == "latest" {
+    ver = ""
+  }
+  (mod, ver)
 }
 
 ///|

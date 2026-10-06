@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.3.0 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.3.2 riantr/moonbit_doubleML
 ```
 
 > `moon runwasm …` is **deprecated** and its prebuilt asset may be absent (404).
