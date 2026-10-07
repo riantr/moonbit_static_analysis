@@ -12,7 +12,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.0
+moon add riantr/moonbit_static_analysis@0.4.1
 ```
 
 ```moonbit
@@ -212,7 +212,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.0` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.1` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
@@ -238,7 +238,7 @@ CLEAN	.mbti	...\CI/pof/pkg.generated.mbti
 PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
 12:3 - error: ... (UndefinedName) [behavior]
 PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable+withheld = total)
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
 ```
 
 - **`PARSED` is the headline.** The frontend covers a SUBSET of MoonBit, so what it
@@ -254,7 +254,10 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
   not a defect in your code — otherwise the self-scan once reported "92 problems"
   where the true count was zero.
 - Unparsed files are grouped BY REASON rather than listed one per line.
-- `actionable + notices + unreliable + withheld` = `total`, asserted in the line.
+- `actionable + notices + unreliable` = `total`, asserted in the line.
+  `withheld` is reported alongside it but is a subset of `unreliable` (the
+  post-boundary findings of partial files whose pre-boundary finding count
+  was zero), so it is intentionally not part of the sum.
 
 **Measured** (before and after the trusted-region gate, same trees):
 

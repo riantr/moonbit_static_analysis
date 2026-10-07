@@ -60,8 +60,10 @@ pub(all) struct Verdict {
   parsed : Bool
   /// why not, when it did not
   reason : String
-  /// every finding, shown or withheld. Kept so the SUMMARY can account for the
-  /// difference instead of quietly dropping it.
+  /// every finding the file produced: pre-boundary (trustworthy) plus
+  /// post-boundary (rejected). `unreliable` is the post-boundary count; the two
+  /// are kept separate so the SUMMARY can assert that nothing was dropped
+  /// silently and so the size of the "rejected" region is visible.
   total : Int
   /// How many of `findings` are "this declaration form is not analysed"
   /// notices rather than defects. Zero when the file is not understood.
@@ -73,6 +75,80 @@ pub(all) struct Verdict {
   /// Findings at or after `region_line` — derived from an already-wrong tree, so
   /// reported only as a count, never as results.
   unreliable : Int
+}
+
+///|
+/// Numbers that go onto the SUMMARY line. Computed in one place so the
+/// printed identity has a single source of truth and a unit test can pin it.
+pub struct Summary {
+  parsed_files : Int
+  partial_files : Int
+  /// Pre-boundary defects: findings in parsed files, plus findings before the
+  /// first parse error in partial files. Subtracting `notices` from
+  /// `findings.length()` per file is the conversion from "things the analyzer
+  /// has to say" to "things you should look at".
+  actionable : Int
+  /// Pre-boundary notices: "this declaration form is outside the analysed
+  /// subset" findings. Not a defect, but a real signal about coverage.
+  notices : Int
+  /// Post-boundary findings across every file. The "noisy tail" the
+  /// trusted-region split hides.
+  unreliable : Int
+  /// Post-boundary findings in partial files whose pre-boundary finding count
+  /// is zero. A subset of `unreliable` (every withheld finding is also
+  /// unreliable) reported separately because "this many findings are in files
+  /// the analyzer found nothing trustworthy in" is a useful number on its own.
+  /// NOT part of the SUMMARY sum.
+  withheld : Int
+  /// Pre-boundary + post-boundary. Equals `actionable + notices + unreliable`.
+  total : Int
+}
+
+///|
+/// Pure aggregation of per-file verdicts into SUMMARY-line numbers. The
+/// inline loop in `scan` used to do this, and the 0.4.0 release shipped a
+/// category error: `withheld` (a subset of `unreliable`) was added to the
+/// printed sum on top of `unreliable`. `aggregate` does the math once, and
+/// `sa_test.mbt` pins the identity to actual numbers so this cannot regress
+/// without the test going red.
+pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
+  let mut parsed_files = 0
+  let mut partial_files = 0
+  let mut actionable = 0
+  let mut notices = 0
+  let mut unreliable = 0
+  let mut withheld = 0
+  let mut total = 0
+  for v in verdicts {
+    let n = v.findings.length()
+    total += v.total
+    unreliable += v.unreliable
+    // Per-file contribution to the pre-boundary totals. When n == 0 and the
+    // file is partial, v.notices is 0 (notices are a count within findings),
+    // so the addition below is a no-op and does not skew the totals.
+    notices += v.notices
+    actionable += n - v.notices
+    if v.parsed {
+      parsed_files += 1
+    } else {
+      partial_files += 1
+      if n == 0 {
+        // The "every finding is post-boundary" subgroup. The same number is
+        // already in `unreliable`; we record it here without adding it to
+        // `total`. Asserted in the test.
+        withheld += v.unreliable
+      }
+    }
+  }
+  Summary::{
+    parsed_files,
+    partial_files,
+    actionable,
+    notices,
+    unreliable,
+    withheld,
+    total,
+  }
 }
 
 ///|
@@ -102,13 +178,13 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   if complete {
     println("SCANNED\t\{files.length()} files under \{root}")
   }
-  let mut parsed_files = 0
-  let mut actionable = 0
-  let mut withheld = 0
-  let mut notices = 0
-  let mut unreliable = 0
-  let mut partial_files = 0
-  let mut all_total = 0
+  // Verdicts collected in the loop, then handed to `aggregate` at the end so
+  // the SUMMARY-line math has a single source of truth and a unit-testable
+  // shape. Computing it inline is what produced the `+withheld` double-count
+  // in 0.4.0: `withheld` is a subset of `unreliable`, and adding it to the
+  // sum on top of `unreliable` is a category error that the printed identity
+  // then asserted as a fact.
+  let verdicts : Array[Verdict] = []
   // Per-kind totals, so the split this project is built around is visible in the
   // output instead of being a claim in the README. `.mbti` / `.mbtp` / `.mbt.md`
   // are audited properly and show a high parsed ratio; `.mbt` is a subset and
@@ -126,22 +202,18 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let examples : Map[String, Array[String]] = Map([])
   for f in files {
     let v = analyze(f)
-    all_total += v.total
-    unreliable += v.unreliable
+    verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
     let d = v.findings.length() - v.notices
     kind_defects.set(v.kind, get_or_zero(kind_defects, v.kind) + d)
     kind_notices.set(v.kind, get_or_zero(kind_notices, v.kind) + v.notices)
     if v.parsed {
       kind_parsed.set(v.kind, bump(kind_parsed, v.kind))
-      parsed_files += 1
       let n = v.findings.length()
       // A subset notice ("this declaration form is not analysed") is not a
       // defect in the reader's code. Counting it as one made the self-scan
       // report `actionable=92` when the true defect count was 0, which is worse
       // than reporting nothing: it reads as "this tool found 92 problems here".
-      notices += v.notices
-      actionable += n - v.notices
       if n == 0 {
         println("CLEAN\t\{v.kind}\t\{v.path}")
       } else {
@@ -164,9 +236,6 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
       // Partly understood: report what was read up to the first real failure
       // and say plainly how much came after it and is therefore not evidence.
       let n = v.findings.length()
-      notices += v.notices
-      actionable += n - v.notices
-      partial_files += 1
       if n > 0 {
         println(
           "PARTIAL\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tread up to line \{v.region_line}, \{v.unreliable} after it not shown\t\{v.path}",
@@ -183,7 +252,6 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
           println("...  \{n - shown} more before the boundary in this file")
         }
       } else {
-        withheld += v.unreliable
         let r = if v.reason == "" { "unspecified" } else { v.reason }
         let c = match reasons.get(r) {
           Some(x) => x + 1
@@ -201,13 +269,29 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
       }
     }
   }
+  // The SUMMARY numbers come from `aggregate`, a pure function over the
+  // collected verdicts, so the math has a single source of truth and a test
+  // can pin the printed identity. The identity itself:
+  //
+  //   total        = sum(v.total) over every file
+  //               = (sum of pre-boundary findings over every file)
+  //               + (sum of post-boundary findings over every file)
+  //               = (actionable + notices) + unreliable
+  //
+  // `withheld` is a SUBSET of `unreliable`: it is the post-boundary count of
+  // the partial files whose pre-boundary finding count is zero. The reason it
+  // exists as a separate number is operational ("how many findings are in
+  // files the analyzer found nothing trustworthy in"), not arithmetical; it
+  // is intentionally not part of the sum, and adding it on top of
+  // `unreliable` would double-count. Asserted in the test `sa_test.mbt`.
+  let s = aggregate(verdicts)
   let pct = if files.length() == 0 {
     0
   } else {
-    parsed_files * 1000 / files.length()
+    s.parsed_files * 1000 / files.length()
   }
   println(
-    "PARSED\t\{parsed_files}/\{files.length()} files understood (\{pct / 10}.\{pct % 10}%); \{partial_files} more read only up to their first parse error",
+    "PARSED\t\{s.parsed_files}/\{files.length()} files understood (\{pct / 10}.\{pct % 10}%); \{s.partial_files} more read only up to their first parse error",
   )
   for k in kinds {
     let nf = get_or_zero(kind_files, k)
@@ -217,10 +301,10 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
       )
     }
   }
-  let unreadable = files.length() - parsed_files
+  let unreadable = files.length() - s.parsed_files
   if unreadable > 0 {
     println(
-      "NOTPARSE\t\{unreadable} files, \{withheld} finding(s) withheld — they measure what this analyzer does not understand, not what your code does",
+      "NOTPARSE\t\{unreadable} files, \{s.withheld} finding(s) withheld — they measure what this analyzer does not understand, not what your code does",
     )
     for r, c in reasons {
       println("  \{c}x  \{r}")
@@ -234,7 +318,7 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
     }
   }
   println(
-    "SUMMARY\tfiles=\{files.length()}\tparsed=\{parsed_files}\tactionable=\{actionable}\tnotices=\{notices}\tunreliable=\{unreliable}\twithheld=\{withheld}\ttotal=\{all_total}\t(actionable+notices+unreliable+withheld = total)",
+    "SUMMARY\tfiles=\{files.length()}\tparsed=\{s.parsed_files}\tactionable=\{s.actionable}\tnotices=\{s.notices}\tunreliable=\{s.unreliable}\twithheld=\{s.withheld}\ttotal=\{s.total}\t(actionable+notices+unreliable = total; withheld ⊆ unreliable)",
   )
   if !complete {
     println(

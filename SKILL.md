@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.0 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.1 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -67,7 +67,7 @@ NOTPARSE	0 files, 6769 finding(s) withheld — they measure what this analyzer
   does not understand, not what your code does
   66x  unexpected token
       e.g. D:\src\...\CI/scm/dag.mbt
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable+withheld = total)
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
 ```
 
 - `CLEAN` / `FOUND` cover files the frontend read completely. `PARTIAL` covers
@@ -79,7 +79,10 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 - `actionable` excludes `notices` (a declaration form not analysed is not a
   defect) — otherwise the self-scan once reported "92 problems" where the true
   count was zero.
-- `actionable + notices + unreliable + withheld` = `total`, asserted in the line.
+- `actionable + notices + unreliable` = `total`, asserted in the line.
+  `withheld` is reported alongside it but is a subset of `unreliable` (the
+  post-boundary findings of partial files whose pre-boundary finding count
+  was zero), so it is intentionally not part of the sum.
 
 **Read the output, not the exit code.** MoonBit exposes no process-exit entry
 point in the available packages, so a target that could not be located still

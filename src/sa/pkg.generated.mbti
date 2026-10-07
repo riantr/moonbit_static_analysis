@@ -6,11 +6,23 @@ import {
 }
 
 // Values
+pub fn aggregate(Array[Verdict]) -> Summary
+
 pub async fn scan(String, Array[String]) -> Unit
 
 // Errors
 
 // Types and methods
+pub struct Summary {
+  parsed_files : Int
+  partial_files : Int
+  actionable : Int
+  notices : Int
+  unreliable : Int
+  withheld : Int
+  total : Int
+}
+
 pub(all) struct Verdict {
   path : String
   kind : String

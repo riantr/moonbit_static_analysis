@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.0
+moon add riantr/moonbit_static_analysis@0.4.1
 ```
 
 ```moonbit
@@ -195,7 +195,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.0` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.1` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
@@ -216,7 +216,7 @@ CLEAN	.mbti	...\CI/pof/pkg.generated.mbti
 PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
 12:3 - error: ... (UndefinedName) [behavior]
 PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable+withheld = total)
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
 ```
 
 - **`PARSED` 是头号指标。** 工具链的前端只覆盖 MoonBit 的一个子集，读不懂的部分
@@ -229,7 +229,7 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 - **`actionable` 不含告知。** 「这种声明不分析」不是你的代码有缺陷——不然自检
   会报「发现 92 个问题」而真实缺陷是 0。
 - 未解析文件**按原因分组**而不是一行一个，带示例路径。
-- `actionable + notices + unreliable + withheld = total`，一个不多一个不少。
+- `actionable + notices + unreliable = total`，这一行打印里直接断言成立。`withheld` 也印在旁边，但是 `unreliable` 的子集（无前置发现的 PARTIAL 文件的尾部发现），不计入等式。
 
 **已实测**（改可信区间前后，同一批树）：
 
