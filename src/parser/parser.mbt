@@ -6,6 +6,13 @@
 pub(all) struct ParseResult {
   tree : @ast.Module
   reports : Array[@report.Report]
+  /// Messages of the `reports` entries that are DELIBERATE subset exclusions —
+  /// a declaration form the frontend chose not to analyse, as opposed to one it
+  /// failed to read. They stay in `reports` (a caller printing findings should
+  /// still see "this struct was not analysed"), but the scanner must not
+  /// mistake them for a file it could not parse: skipping a `test` block leaves
+  /// the rest of the file perfectly readable.
+  skips : Array[String]
 }
 
 ///|
@@ -14,6 +21,8 @@ priv struct Parser {
   spans : Array[@core.Span]
   mut p : Int
   reports : Array[@report.Report]
+  /// Messages of the deliberate subset exclusions among `reports`
+  skips : Array[String]
 }
 
 ///|
@@ -34,7 +43,7 @@ fn alias_of(tag : String) -> String {
 ///|
 pub fn parse(src : String) -> ParseResult {
   let (toks, spans, reports) = @lexer.lex(src)
-  let p = Parser::{ toks, spans, p: 0, reports, }
+  let p = Parser::{ toks, spans, p: 0, reports, skips: [], }
   let imports : Array[@ast.ImportSpec] = []
   let import_seen : Map[String, Bool] = Map([])
   let body : Array[@ast.Stmt] = []
@@ -125,7 +134,7 @@ pub fn parse(src : String) -> ParseResult {
     }
     p.skip_seps()
   }
-  ParseResult::{ tree: { body, imports, }, reports: p.reports, }
+  ParseResult::{ tree: { body, imports, }, reports: p.reports, skips: p.skips, }
 }
 
 ///|
@@ -280,10 +289,7 @@ fn Parser::skip_decl_braced(
       let _ = self.bump()
     }
   }
-  self.err(
-    "\{what} declaration is outside the analyzed subset; its body was not analyzed",
-    sp,
-  )
+  self.skip(what, true, sp)
 }
 
 ///|
@@ -297,7 +303,41 @@ fn Parser::skip_decl_line(
   while !self.at(TEOF) && !self.at(TNewline) && !self.at(TSemi) {
     let _ = self.bump()
   }
-  self.err("\{what} declaration is outside the analyzed subset", sp)
+  self.skip(what, false, sp)
+}
+
+///|
+/// Record a deliberate subset exclusion: one report for the reader, and one
+/// entry in `skips` so the scanner can tell it apart from a read failure.
+///
+/// Both facts arrive as FParse, and only the read failure should cost the file
+/// its coverage. Skipping a `test` block leaves the rest of the file perfectly
+/// readable; failing to lex a string does not.
+fn Parser::skip(
+  self : Parser,
+  what : String,
+  braced : Bool,
+  sp : @core.Span,
+) -> Unit {
+  let msg = skip_msg(what, braced)
+  self.skips.push(msg)
+  self.err(msg, sp)
+}
+
+///|
+/// The message a deliberate subset exclusion carries.
+///
+/// It is recorded in `skips` as well as reported, because "this declaration was
+/// not analysed" and "this file could not be read" are DIFFERENT facts that both
+/// arrive as FParse -- and only the second one should cost the file its
+/// coverage. Skipping a `test` block leaves the rest of the file perfectly
+/// readable; failing to lex a string does not.
+fn skip_msg(what : String, braced : Bool) -> String {
+  if braced {
+    "\{what} declaration is outside the analyzed subset; its body was not analyzed"
+  } else {
+    "\{what} declaration is outside the analyzed subset"
+  }
 }
 
 ///|

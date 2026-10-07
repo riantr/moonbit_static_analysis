@@ -73,6 +73,34 @@ pub fn run(src : String, file : String) -> PipelineResult {
       }
     }
   }
+  // Deliberate subset exclusions share the FParse family but are NOT read
+  // failures: skipping a `test` block leaves the rest of the file perfectly
+  // readable. They are subtracted from the count AND from the reason tally,
+  // because otherwise a file whose only complaint is "this struct was not
+  // analysed" gets recorded as a file the frontend could not read — which is
+  // what made coverage sit at 25% on a project with six clean .mbti files.
+  for m in parsed.skips {
+    n_parse -= 1
+    let c = match reasons.get(m) {
+      Some(n) => n
+      None => 0
+    }
+    reasons.set(m, c - 1)
+  }
+  if n_parse < 0 {
+    n_parse = 0
+  }
+  // Re-pick the dominant reason AFTER the subtraction. Doing it incrementally
+  // left a file that had both a skip and a real parse failure with no reason at
+  // all ("unspecified") when the skip had been the more frequent of the two.
+  reason = ""
+  reason_n = 0
+  for m, c in reasons {
+    if c > reason_n {
+      reason_n = c
+      reason = m
+    }
+  }
   let wr = @walk.walk_module(parsed.tree, file)
   for r in wr.findings {
     all.push(r)

@@ -323,3 +323,40 @@ test "block string closes on a line-leading #|, and |# does not close" {
   let closed = "fn f() -> int {\n  1\n}\n#|a\n#|b trailing\n"
   assert_eq(@pipeline.run(closed, "x.mbt").n_parse, 0)
 }
+
+///|
+/// The split that makes coverage mean something: a declaration the frontend
+/// chose not to ANALYSE is not a declaration it failed to READ.
+///
+/// Both arrive as FParse. Before the split, a file whose only complaint was
+/// "this struct was outside the subset" was recorded as unparseable, which held
+/// moonbit_linalg_gpu at 2/8 -- two .mbti files -- even though five more were
+/// read end to end.
+test "a deliberate subset skip does not cost the file its coverage" {
+  let r = @pipeline.run(
+    "struct P {\n  x : int\n}\ntest \"t\" {\n  1\n}\nfn f() -> int {\n  1\n}\n",
+    "x.mbt",
+  )
+  // two exclusions reported...
+  assert_eq(r.reports.length(), 2)
+  // ...and neither of them counted as a read failure
+  assert_eq(r.n_parse, 0)
+}
+
+///|
+/// A real read failure still costs the file its coverage, even when a skip sits
+/// beside it -- and the reason names the read failure rather than the skip,
+/// which is why the dominant reason is re-picked after the subtraction.
+test "a real parse failure still counts next to a skip" {
+  let r = @pipeline.run(
+    "struct P {\n  x : int\n}\nfn f() -> int {\n  let y : FixedArray[Double] = z\n}\n",
+    "x.mbt",
+  )
+  assert_true(r.n_parse >= 1)
+  assert_false(r.parse_reason == "")
+  assert_false(r.parse_reason.has_suffix("is outside the analyzed subset"))
+  // measured: the parser reports `expected '='` where the `[` of
+  // `FixedArray[Double]` starts, so the reason names the position, not the
+  // construct. Pinned here only as "some real failure, not the skip".
+  assert_true(r.parse_reason.contains("expected"))
+}

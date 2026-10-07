@@ -391,22 +391,24 @@ async fn analyze(p : String) -> Verdict {
       }
     }
     ".mbt.md" => {
-      let rs = @moonfiles.literate(src, n).reports
-      let total = rs.length()
-      let parsed = all_parse(rs)
+      let r = @moonfiles.literate(src, n)
+      let total = r.reports.length()
+      // Same rule as `.mbt`: n_parse already excludes the deliberate fence
+      // skips, so a document whose only complaint is "this fence was not
+      // analysed" is still a document that was read.
       Verdict::{
         path: p,
         kind: k,
-        findings: if parsed {
-          rs
+        findings: if r.n_parse == 0 {
+          r.reports
         } else {
           []
         },
-        parsed,
-        reason: if parsed {
+        parsed: r.n_parse == 0,
+        reason: if r.n_parse == 0 {
           ""
         } else {
-          dominant_reason(rs)
+          r.parse_reason
         },
         total,
       }
@@ -432,42 +434,6 @@ async fn analyze(p : String) -> Verdict {
       }
     }
   }
-}
-
-///|
-/// True when no report is a frontend complaint. Used on the `.mbt.md` path,
-/// where the literate frontend has no `n_parse` counter and FParse carries both
-/// meanings at once — see `analyze`.
-fn all_parse(rs : Array[@report.Report]) -> Bool {
-  for r in rs {
-    if r.family == @core.FParse {
-      return false
-    }
-  }
-  true
-}
-
-///|
-/// The most frequent FParse message; ties go to the message seen first, so the
-/// line is stable across runs.
-fn dominant_reason(rs : Array[@report.Report]) -> String {
-  let counts : Map[String, Int] = Map([])
-  let mut best = ""
-  let mut best_n = 0
-  for r in rs {
-    if r.family == @core.FParse {
-      let c = match counts.get(r.message) {
-        Some(n) => n + 1
-        None => 1
-      }
-      counts.set(r.message, c)
-      if c > best_n {
-        best_n = c
-        best = r.message
-      }
-    }
-  }
-  best
 }
 
 ///|

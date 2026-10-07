@@ -15,6 +15,7 @@ pub fn parse(String) -> ParseResult
 pub(all) struct ParseResult {
   tree : @ast.Module
   reports : Array[@report.Report]
+  skips : Array[String]
 }
 
 // Type aliases
