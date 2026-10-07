@@ -63,6 +63,9 @@ pub(all) struct Verdict {
   /// every finding, shown or withheld. Kept so the SUMMARY can account for the
   /// difference instead of quietly dropping it.
   total : Int
+  /// How many of `findings` are "this declaration form is not analysed"
+  /// notices rather than defects. Zero when the file is not understood.
+  notices : Int
 }
 
 ///|
@@ -95,6 +98,7 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let mut parsed_files = 0
   let mut actionable = 0
   let mut withheld = 0
+  let mut notices = 0
   let mut all_total = 0
   // Unparsed files are counted by reason rather than listed. One line per file
   // would replace thousands of findings with thousands of lines and teach the
@@ -107,11 +111,18 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
     if v.parsed {
       parsed_files += 1
       let n = v.findings.length()
-      actionable += n
+      // A subset notice ("this declaration form is not analysed") is not a
+      // defect in the reader's code. Counting it as one made the self-scan
+      // report `actionable=92` when the true defect count was 0, which is worse
+      // than reporting nothing: it reads as "this tool found 92 problems here".
+      notices += v.notices
+      actionable += n - v.notices
       if n == 0 {
         println("CLEAN\t\{v.kind}\t\{v.path}")
       } else {
-        println("FOUND\t\{v.kind}\t\{n}\t\{v.path}")
+        println(
+          "FOUND\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\t\{v.path}",
+        )
         let shown = if n < findings_shown_per_file {
           n
         } else {
@@ -167,7 +178,7 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
     }
   }
   println(
-    "SUMMARY\tfiles=\{files.length()}\tparsed=\{parsed_files}\tactionable=\{actionable}\twithheld=\{withheld}\ttotal=\{all_total}",
+    "SUMMARY\tfiles=\{files.length()}\tparsed=\{parsed_files}\tactionable=\{actionable}\tnotices=\{notices}\twithheld=\{withheld}\ttotal=\{all_total}\t(actionable+notices+withheld = total)",
   )
   if !complete {
     println(
@@ -377,6 +388,7 @@ async fn analyze(p : String) -> Verdict {
         parsed: true,
         reason: "",
         total: rs.length(),
+        notices: 0,
       }
     }
     ".mbtp" => {
@@ -388,6 +400,7 @@ async fn analyze(p : String) -> Verdict {
         parsed: true,
         reason: "",
         total: rs.length(),
+        notices: 0,
       }
     }
     ".mbt.md" => {
@@ -411,6 +424,11 @@ async fn analyze(p : String) -> Verdict {
           r.parse_reason
         },
         total,
+        notices: if r.n_parse == 0 {
+          r.n_subset
+        } else {
+          0
+        },
       }
     }
     _ => {
@@ -431,6 +449,11 @@ async fn analyze(p : String) -> Verdict {
           r.parse_reason
         },
         total,
+        notices: if r.n_parse == 0 {
+          r.n_subset
+        } else {
+          0
+        },
       }
     }
   }

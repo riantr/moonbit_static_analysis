@@ -319,6 +319,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
   let mut n2 = 0
   let mut n3 = 0
   let mut n_parse = 0
+  let mut n_subset = 0
   let reasons : Map[String, Int] = Map([])
   let mut reason = ""
   let mut reason_n = 0
@@ -355,6 +356,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // compiled fence was understood, and the reason names the most common
     // blocker across all of them.
     n_parse += r.n_parse
+    n_subset += r.n_subset
     if r.n_parse > 0 {
       let c = match reasons.get(r.parse_reason) {
         Some(n) => n + r.n_parse
@@ -376,6 +378,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     imports,
     n_parse,
     parse_reason: reason,
+    n_subset,
   }
 }
 

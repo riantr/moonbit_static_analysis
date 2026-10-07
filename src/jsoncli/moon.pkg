@@ -1,4 +1,16 @@
+// JSON bridge: one JSON request in, one JSON reply out.
+//
+// `--file <path>` reads the request from disk, which needs async file IO. That
+// puts this package on the wasm/native side of the fence: the js backend has no
+// async runtime, so it cannot read a file. The reason for `--file` is that
+// Windows caps the WHOLE command line at 32,767 characters -- not each argument
+// -- so a request carrying a source over roughly 30 KB cannot be passed inline
+// at all, and splitting it across several arguments does not help. In
+// moonbit_doubleML 27 of 180 files are over 30 KB. Consumers run this bridge
+// through `moonrun`, which they already need for the scanner.
 pkgtype(kind: "executable")
+
+supported_targets = "+wasm+native"
 
 import {
   "riantr/moonbit_static_analysis/src/pipeline",
@@ -8,4 +20,6 @@ import {
   "riantr/moonbit_static_analysis/src/core",
   "moonbitlang/core/json",
   "moonbitlang/core/env",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
 }

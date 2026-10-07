@@ -222,13 +222,52 @@ fn handle(raw : String) -> Reply {
 }
 
 ///|
-fn main {
+/// `--file <path>`: read the request JSON from a file instead of argv.
+///
+/// Windows caps the WHOLE command line at 32,767 characters, not each
+/// argument, so a request is unusable once the source passes roughly 30 KB:
+/// the spawn fails with ENAMETOOLONG before this program starts, and it throws
+/// synchronously rather than arriving as an 'error' event. In moonbit_doubleML
+/// 27 of 180 files are over 30 KB.
+///
+/// Splitting the request across several argv entries was tried and does not
+/// help -- the cap is on the total, not per argument. A path is short, so the
+/// caller writes the request to a file and passes the path.
+///
+/// This needs file IO, so it puts the package on the wasm/native side of the
+/// fence: the js backend has no async runtime and cannot read a file.
+async fn file_request(args : Array[String]) -> String? {
+  // Not a fixed index: under `moonrun <wasm> --file <path>` the runner's own
+  // arguments come first, which is exactly why the inline form scans for the
+  // request instead of taking args[0].
+  let mut i = 0
+  while i + 1 < args.length() {
+    if args[i] == "--file" {
+      let data = @fs.read_file(args[i + 1]) catch { _ => return None }
+      let text = data.text() catch { _ => return None }
+      return Some(text)
+    }
+    i += 1
+  }
+  None
+}
+
+///|
+async fn main {
   let args : Array[String] = @env.args()
-  match find_request_arg(args) {
+  let raw = match file_request(args) {
+    Some(r) => Some(r)
+    None => find_request_arg(args)
+  }
+  match raw {
     None =>
       println(
-        reply_string(err_reply("missing request argument (a JSON object)")),
+        reply_string(
+          err_reply(
+            "missing request (pass a JSON object, or --file <path> for sources too large for the 32767-character command line)",
+          ),
+        ),
       )
-    Some(raw) => println(reply_string(handle(raw)))
+    Some(r) => println(reply_string(handle(r)))
   }
 }

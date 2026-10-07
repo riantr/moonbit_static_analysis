@@ -33,6 +33,11 @@ pub(all) struct PipelineResult {
   /// exactly when `n_parse` is zero. Ties go to the message seen first, so the
   /// line is stable across runs.
   parse_reason : String
+  /// How many of `reports` are deliberate subset exclusions rather than read
+  /// failures. They stay in `reports` — the reader should see "this struct was
+  /// not analysed" — but they are NOT defects, so a caller counting problems
+  /// must subtract them.
+  n_subset : Int
 }
 
 ///|
@@ -132,6 +137,7 @@ pub fn run(src : String, file : String) -> PipelineResult {
     imports: parsed.tree.imports,
     n_parse,
     parse_reason: reason,
+    n_subset: parsed.skips.length(),
   }
 }
 
