@@ -319,9 +319,7 @@ fn Parser::skip(
   braced : Bool,
   sp : @core.Span,
 ) -> Unit {
-  let msg = skip_msg(what, braced)
-  self.skips.push(msg)
-  self.err(msg, sp)
+  self.note_skip(skip_msg(what, braced), sp)
 }
 
 ///|
@@ -718,6 +716,12 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
 }
 
 ///|
+fn Parser::note_skip(self : Parser, msg : String, sp : @core.Span) -> Unit {
+  self.skips.push(msg)
+  self.err(msg, sp)
+}
+
+///|
 fn Parser::parse_atom(self : Parser) -> @ast.Expr {
   let sp = self.span()
   match self.bump() {
@@ -726,6 +730,31 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     TStr(s) => { span: sp, kind: @ast.EStr(s), }
     TName("true") => { span: sp, kind: @ast.EBool(true), }
     TName("false") => { span: sp, kind: @ast.EBool(false), }
+    // `if` in expression position: `let d = if a { x } else { y }`. Measured as
+    // the first blocker on 10 of 111 blocked real files.
+    //
+    // Parsed and consumed rather than added to the Expr enum, on the same
+    // grounds as `test` blocks and `const`: the AST has no conditional node,
+    // adding one would mean teaching all three lenses about it, and a value we
+    // cannot model is exactly the case that should not cascade. The expression
+    // yields 0 and a notice; the rest of the line stays readable.
+    //
+    // This arm must sit ABOVE the `TName(n)` catch-all below, which matches
+    // every TName including "if".
+    TName("if") => {
+      let _ = self.parse_expr()
+      let _ = self.parse_block()
+      self.skip_seps()
+      if self.at_name("else") {
+        let _ = self.bump()
+        let _ = self.parse_block()
+      }
+      self.note_skip(
+        "if expression is outside the analyzed subset; it was read but not analysed",
+        sp,
+      )
+      { span: sp, kind: @ast.EInt(0), }
+    }
     TName(n) => { span: sp, kind: @ast.EName(n), }
     TLParen => {
       let e = self.parse_expr()

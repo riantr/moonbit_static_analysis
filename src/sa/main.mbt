@@ -100,6 +100,16 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let mut withheld = 0
   let mut notices = 0
   let mut all_total = 0
+  // Per-kind totals, so the split this project is built around is visible in the
+  // output instead of being a claim in the README. `.mbti` / `.mbtp` / `.mbt.md`
+  // are audited properly and show a high parsed ratio; `.mbt` is a subset and
+  // shows a low one. A user can now see that in one place instead of having to
+  // take the word for it.
+  let kind_files : Map[String, Int] = Map([])
+  let kind_parsed : Map[String, Int] = Map([])
+  let kind_defects : Map[String, Int] = Map([])
+  let kind_notices : Map[String, Int] = Map([])
+  let kinds : Array[String] = [".mbt", ".mbti", ".mbtp", ".mbt.md", ".mbtx"]
   // Unparsed files are counted by reason rather than listed. One line per file
   // would replace thousands of findings with thousands of lines and teach the
   // reader to scroll past the section that matters.
@@ -108,6 +118,13 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   for f in files {
     let v = analyze(f)
     all_total += v.total
+    kind_files.set(v.kind, bump(kind_files, v.kind))
+    if v.parsed {
+      kind_parsed.set(v.kind, bump(kind_parsed, v.kind))
+      let d = v.findings.length() - v.notices
+      kind_defects.set(v.kind, get_or_zero(kind_defects, v.kind) + d)
+      kind_notices.set(v.kind, get_or_zero(kind_notices, v.kind) + v.notices)
+    }
     if v.parsed {
       parsed_files += 1
       let n = v.findings.length()
@@ -161,6 +178,14 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   println(
     "PARSED\t\{parsed_files}/\{files.length()} files understood (\{pct / 10}.\{pct % 10}%)",
   )
+  for k in kinds {
+    let nf = get_or_zero(kind_files, k)
+    if nf > 0 {
+      println(
+        "BYKIND\t\{k}\tfiles=\{nf}\tparsed=\{get_or_zero(kind_parsed, k)}\tdefects=\{get_or_zero(kind_defects, k)}\tnotices=\{get_or_zero(kind_notices, k)}",
+      )
+    }
+  }
   let unreadable = files.length() - parsed_files
   if unreadable > 0 {
     println(
@@ -457,6 +482,23 @@ async fn analyze(p : String) -> Verdict {
       }
     }
   }
+}
+
+///|
+fn get_or_zero(m : Map[String, Int], k : String) -> Int {
+  match m.get(k) {
+    Some(x) => x
+    None => 0
+  }
+}
+
+///|
+fn bump(m : Map[String, Int], k : String) -> Int {
+  let n = match m.get(k) {
+    Some(x) => x
+    None => 0
+  }
+  n + 1
 }
 
 ///|
