@@ -147,7 +147,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # 75/75 全绿（四个 target 各 75）
+moon test --deny-warn                # 86/86 全绿（四个 target 各 86）
 moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
 
@@ -206,14 +206,41 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
 ```
 
-第一个参数是要扫的目标：registry 坐标（`author/module`，可带 `@version` / `@latest`）或一个本地路径；省略则扫当前目录。坐标会经 `moon fetch` 落到 `.repos/` 再遍历。
+第一个参数是要扫的目标：registry 坐标（`author/module`，可带 `@version` / `@latest`）或一个本地路径；省略则扫当前目录。坐标会经 `moon fetch` 落到 `.repos/` 再遍历。`--exclude <目录>` 可重复，用来跳过**以普通名字存放的 vendored 源码**（点目录规则抓不到它们）。
 
-输出每行 `kind<TAB>count<TAB>path`，末行 `SUMMARY`。**已实测**：
+### 输出说的是「我读懂了什么」，不是「我数出多少条」
+
+```
+SCANNED	180 files under .repos/riantr/moonbit_doubleML/0.113.0
+PARSED	73/180 files understood (40.5%)
+NOTPARSE	107 files, 30432 finding(s) withheld — they measure what this analyzer
+  does not understand, not what your code does
+  104x  unexpected token
+SUMMARY	files=180	parsed=73	actionable=398	withheld=30432	total=30830
+```
+
+- **`PARSED` 是头号指标。** 工具链的前端只覆盖 MoonBit 的一个子集，读不懂的文件
+  报出来的「发现」量的是**工具的盲区**，不是你的代码。
+- **读得懂但没分析的声明不算读不懂。** 「不分析 `test` 块」和「看不懂这个文件」
+  是两件事：跳过声明的提示会照常报出来，但不计入 `PARSED`。
+- 未解析文件**按原因分组**而不是一行一个，���带示例路径——107 个文件占 9 行。
+- `actionable + withheld = total`，一个不多一个不少。
+
+**已实测**（同一棵树的 `PARSED` / `actionable`）：
 
 | 目标 | 文件 | 结果 |
 |---|---|---|
-| 本仓库自身 | 38 | `.mbti` 16 个 / `.mbtp` 1 个 **各 0 条**；`.mbt` 21 个 7215 条（全为子集边界） |
-| `riantr/moonbit_doubleML@latest` → 0.107.0 | 177 | `.mbt.md` **0 条**；`.mbt` 176 个 49945 条（全为子集边界） |
+| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | 解析 **73（40.5%）**，**actionable 398** |
+| 本仓库自身（.repos/0.3.5） | 39 | 解析 **22（56.4%）**，**actionable 86** |
+| `moonbit_linalg_gpu` | 8 | 解析 **4（50.0%）**，**actionable 9** |
+| `ML/CI`（`--exclude _qa_verify`） | 103 | 解析 **31（30.0%）**，**actionable 113** |
+
+> **与 `moon check` 的关系要说清楚**：在 `.mbt` 上，本工具**不与工具链的编译器
+> 竞争**——`moon check` 有真正的解析器和约 90 条内建告警，覆盖率恒为 100%，
+> 实测 2.3 秒 / 128 条，且每条都带 `file:line:col`、源码片段与修复建议
+> （同一份 ML/CI 代码本工具曾报 529 条「未使用局部」，而编译器报 8 条——
+> 差的那 66 倍是 struct 函数体没解析）。本工具能说「编译器做不到」的地方是
+> `.mbti` / `.mbt.md` / `.mbtp` 三类文件与跨包语义。
 
 根包是薄转发层，真正的实现在 `src/sa`（library）。设成 library 是因为「main 包 import 另一个 main 包」已被工具链标记为将来会报错；`src/sa` 与根包都声明 `supported_targets = "+wasm+native"`，因为文件 IO 与子进程来自 `moonbitlang/async`，只有 wasm / native 后端有可用的 async 运行时（js 没有，wasm-gc 缺 `run_async_main`），其余后端会**跳过**这两个包而不是失败。
 

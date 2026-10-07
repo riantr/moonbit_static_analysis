@@ -130,7 +130,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 75/75 green (75 on each of the four targets)
+moon test --deny-warn                # 86/86 green (86 on each of the four targets)
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -227,14 +227,46 @@ moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
 The target is a registry coordinate (`author/module`, optionally `@version` or
 `@latest`) or a local path; omit it to scan the current directory. A coordinate
 is materialised with `moon fetch` into `.repos/` and then walked.
+`--exclude <dir>` is repeatable and skips vendored source kept under an ordinary
+directory name, which a dot-directory rule cannot catch.
 
-Output is one `kind<TAB>count<TAB>path` line per file plus a `SUMMARY` line.
-**Measured**:
+### The output says what was UNDERSTOOD, not how much was counted
+
+```
+SCANNED	180 files under .repos/riantr/moonbit_doubleML/0.113.0
+PARSED	73/180 files understood (40.5%)
+NOTPARSE	107 files, 30432 finding(s) withheld — they measure what this analyzer
+  does not understand, not what your code does
+  104x  unexpected token
+SUMMARY	files=180	parsed=73	actionable=398	withheld=30432	total=30830
+```
+
+- **`PARSED` is the headline.** The frontend covers a SUBSET of MoonBit, so on a
+  file it cannot read, the "findings" measure the tool's blind spot, not your code.
+- **"read, but did not analyse" is not "could not read".** The notice for a
+  declaration form outside the subset is still printed, but it does not cost the
+  file its coverage.
+- Unparsed files are grouped BY REASON rather than listed one per line, with
+  example paths — 107 files cost 9 lines.
+- `actionable + withheld = total`; nothing is dropped quietly.
+
+**Measured** (`PARSED` / `actionable` on the same trees):
 
 | target | files | result |
 |---|---|---|
-| this repository | 38 | 16 `.mbti` + 1 `.mbtp` **all clean**; 21 `.mbt` → 7215 findings (all subset edges) |
-| `riantr/moonbit_doubleML@latest` → 0.107.0 | 177 | `.mbt.md` **0**; 176 `.mbt` → 49945 findings (all subset edges) |
+| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | parsed **73 (40.5%)**, **actionable 398** |
+| this repository (`.repos/0.3.5`) | 39 | parsed **22 (56.4%)**, **actionable 86** |
+| `moonbit_linalg_gpu` | 8 | parsed **4 (50.0%)**, **actionable 9** |
+| `ML/CI` (`--exclude _qa_verify`) | 103 | parsed **31 (30.0%)**, **actionable 113** |
+
+> **Where this stands against `moon check`.** On `.mbt` this tool does NOT compete
+> with the toolchain's compiler: `moon check` has a real parser and ~90 built-in
+> warnings at 100% coverage — measured 2.3 s for 128 diagnostics, each with
+> `file:line:col`, the source line and a fix (on the same ML/CI source this tool
+> once reported 529 "unused locals" where the compiler reports 8; the missing 66x
+> was struct bodies it never parsed). What this tool can do that the compiler
+> cannot is the three file kinds it does not audit at all — `.mbti`, `.mbt.md`,
+> `.mbtp` — plus cross-package semantics.
 
 The root package is a thin forwarder; the implementation is `src/sa`, a
 **library**. That is deliberate: a main package importing another main package
