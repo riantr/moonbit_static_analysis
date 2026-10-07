@@ -13,6 +13,10 @@ pub(all) struct ParseResult {
   /// mistake them for a file it could not parse: skipping a `test` block leaves
   /// the rest of the file perfectly readable.
   skips : Array[String]
+  /// Earliest line at which the source genuinely failed to read; 0 when it read
+  /// all of it. Deliberate subset exclusions do not move it, so this marks the
+  /// boundary of the region where findings can still be trusted.
+  first_error : Int
 }
 
 ///|
@@ -23,6 +27,9 @@ priv struct Parser {
   reports : Array[@report.Report]
   /// Messages of the deliberate subset exclusions among `reports`
   skips : Array[String]
+  /// Earliest line at which the source genuinely failed to read; 0 if it read
+  /// all of it. Deliberate exclusions do not move it.
+  mut first_error : Int
 }
 
 ///|
@@ -43,7 +50,16 @@ fn alias_of(tag : String) -> String {
 ///|
 pub fn parse(src : String) -> ParseResult {
   let (toks, spans, reports) = @lexer.lex(src)
-  let p = Parser::{ toks, spans, p: 0, reports, skips: [], }
+  // Seed from the LEXER's own reports (unterminated strings, stray characters):
+  // those are genuine read failures and arrive before the parser runs.
+  let mut first_error = 0
+  for r in reports {
+    let l = r.span.start.line
+    if first_error == 0 || l < first_error {
+      first_error = l
+    }
+  }
+  let p = Parser::{ toks, spans, p: 0, reports, skips: [], first_error, }
   let imports : Array[@ast.ImportSpec] = []
   let import_seen : Map[String, Bool] = Map([])
   let body : Array[@ast.Stmt] = []
@@ -134,7 +150,12 @@ pub fn parse(src : String) -> ParseResult {
     }
     p.skip_seps()
   }
-  ParseResult::{ tree: { body, imports, }, reports: p.reports, skips: p.skips, }
+  ParseResult::{
+    tree: { body, imports, },
+    reports: p.reports,
+    skips: p.skips,
+    first_error: p.first_error,
+  }
 }
 
 ///|
@@ -180,6 +201,11 @@ fn Parser::peek_name(self : Parser) -> String {
 
 ///|
 fn Parser::err(self : Parser, msg : String, sp : @core.Span) -> Unit {
+  // A genuine read failure: it moves the trusted-region boundary.
+  let l = sp.start.line
+  if self.first_error == 0 || l < self.first_error {
+    self.first_error = l
+  }
   self.reports.push(@report.Report::{
     family: @core.FParse,
     lenses: [@core.LStructural],
@@ -747,7 +773,15 @@ fn Parser::at_next(self : Parser, t : @lexer.Tok) -> Bool {
 ///|
 fn Parser::note_skip(self : Parser, msg : String, sp : @core.Span) -> Unit {
   self.skips.push(msg)
-  self.err(msg, sp)
+  // Deliberately NOT routed through err(): a skip must not move first_error,
+  // which is the boundary of the region where findings stay trustworthy.
+  self.reports.push(@report.Report::{
+    family: @core.FParse,
+    lenses: [@core.LStructural],
+    message: msg,
+    span: sp,
+    vst: [],
+  })
 }
 
 ///|

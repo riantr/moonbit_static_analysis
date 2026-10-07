@@ -359,3 +359,30 @@ test "a real parse failure still counts next to a skip" {
   assert_false(r.parse_reason == "")
   assert_false(r.parse_reason.has_suffix("is outside the analyzed subset"))
 }
+
+///|
+/// The trusted-region boundary: `first_error_line` is where the frontend gave
+/// up READING, and it must not move for a deliberate exclusion — skipping a
+/// `test` block leaves everything after it perfectly readable, so a file whose
+/// only complaint is a skip has no boundary at all.
+test "first_error_line marks the read failure, not the skip" {
+  let clean = @pipeline.run(
+    "test \"t\" {\n  1\n}\nfn f() -> int {\n  1\n}\n", "x.mbt",
+  )
+  assert_eq(clean.first_error_line, 0)
+  let broken = @pipeline.run(
+    "fn f() -> int {\n  try {\n    1\n  }\n}\n", "x.mbt",
+  )
+  assert_true(broken.n_parse >= 1)
+  assert_eq(broken.first_error_line, 2) // the line carrying `try`
+}
+
+///|
+/// A skip AFTER a real failure must not pull the boundary forward: it is the
+/// earliest genuine failure and nothing else.
+test "the boundary is the earliest real failure" {
+  let r = @pipeline.run(
+    "fn f() -> int {\n  try {\n    1\n  }\n}\ntest \"t\" {\n  1\n}\n", "x.mbt",
+  )
+  assert_eq(r.first_error_line, 2) // the `try` line, not the later skip
+}

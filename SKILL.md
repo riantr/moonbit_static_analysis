@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.3.6 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.0 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -59,20 +59,27 @@ EXCLUDE	_qa_verify
 TARGET	D:\src\...\ML\CI	D:\src\...\ML\CI
 SCANNED	85 files under D:\src\...\ML\CI
 CLEAN	.mbti	D:\src\...\CI/pof/pkg.generated.mbti
-FOUND	.mbt	2	D:\src\...\CI/scm/dag.mbt
+FOUND	.mbt	defects=0	notices=3	D:\src\...\CI/scm/dag.mbt
+PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	D:\src\...\CI/pof/aggregator.mbt
 12:3 - error: ... (UndefinedName) [behavior]
-PARSED	23/85 files understood (27.0%)
-NOTPARSE	62 files, 17940 finding(s) withheld — they measure what this analyzer
+PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
+NOTPARSE	0 files, 6769 finding(s) withheld — they measure what this analyzer
   does not understand, not what your code does
-  55x  unexpected token
+  66x  unexpected token
       e.g. D:\src\...\CI/scm/dag.mbt
-SUMMARY	files=85	parsed=23	actionable=0	withheld=17940	total=17940
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable+withheld = total)
 ```
 
-- `CLEAN` / `FOUND` lines cover only files the frontend read completely.
-- Unparsed files are **grouped by reason, not listed one per line**, with example
-  paths — 62 unparsed files cost 9 lines, not 62.
-- `actionable` + `withheld` = `total`: nothing is silently dropped.
+- `CLEAN` / `FOUND` cover files the frontend read completely. `PARTIAL` covers
+  files it read **up to the first line it genuinely failed on**; the findings
+  from the tail are counted in `unreliable` and never shown, because they come
+  from a tree that is already wrong.
+- **Subset exclusions do not move that boundary.** Skipping a `test` block leaves
+  everything after it readable, so such a file is `FOUND`, not `PARTIAL`.
+- `actionable` excludes `notices` (a declaration form not analysed is not a
+  defect) — otherwise the self-scan once reported "92 problems" where the true
+  count was zero.
+- `actionable + notices + unreliable + withheld` = `total`, asserted in the line.
 
 **Read the output, not the exit code.** MoonBit exposes no process-exit entry
 point in the available packages, so a target that could not be located still

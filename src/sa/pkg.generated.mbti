@@ -19,6 +19,8 @@ pub(all) struct Verdict {
   reason : String
   total : Int
   notices : Int
+  region_line : Int
+  unreliable : Int
 }
 
 // Type aliases

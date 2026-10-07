@@ -12,7 +12,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.3.6
+moon add riantr/moonbit_static_analysis@0.4.0
 ```
 
 ```moonbit
@@ -212,7 +212,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.3.6` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.0` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
@@ -233,31 +233,37 @@ directory name, which a dot-directory rule cannot catch.
 ### The output says what was UNDERSTOOD, not how much was counted
 
 ```
-SCANNED	180 files under .repos/riantr/moonbit_doubleML/0.113.0
-PARSED	73/180 files understood (40.5%)
-NOTPARSE	107 files, 30432 finding(s) withheld — they measure what this analyzer
-  does not understand, not what your code does
-  104x  unexpected token
-SUMMARY	files=180	parsed=73	actionable=398	withheld=30432	total=30830
+SCANNED	107 files under ...\ML\CI
+CLEAN	.mbti	...\CI/pof/pkg.generated.mbti
+PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
+12:3 - error: ... (UndefinedName) [behavior]
+PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable+withheld = total)
 ```
 
-- **`PARSED` is the headline.** The frontend covers a SUBSET of MoonBit, so on a
-  file it cannot read, the "findings" measure the tool's blind spot, not your code.
-- **"read, but did not analyse" is not "could not read".** The notice for a
-  declaration form outside the subset is still printed, but it does not cost the
-  file its coverage.
-- Unparsed files are grouped BY REASON rather than listed one per line, with
-  example paths — 107 files cost 9 lines.
-- `actionable + withheld = total`; nothing is dropped quietly.
+- **`PARSED` is the headline.** The frontend covers a SUBSET of MoonBit, so what it
+  cannot read measures the tool's blind spot, not your code.
+- **A partly-understood file is still worth reading.** The parser records the first
+  line it genuinely failed on; findings before it are reported (`PARTIAL`), and
+  everything after is counted in `unreliable` and never shown — it comes from a
+  tree that is already wrong, so presenting it as results would reintroduce the
+  exact failure this tool started with.
+- **Skipped declarations do not move that boundary.** "This `test` block is not
+  analysed" leaves the code after it readable, so such a file is `FOUND`.
+- **`actionable` excludes notices.** A declaration form we chose not to analyse is
+  not a defect in your code — otherwise the self-scan once reported "92 problems"
+  where the true count was zero.
+- Unparsed files are grouped BY REASON rather than listed one per line.
+- `actionable + notices + unreliable + withheld` = `total`, asserted in the line.
 
-**Measured** (`PARSED` / `actionable` on the same trees):
+**Measured** (before and after the trusted-region gate, same trees):
 
-| target | files | result |
-|---|---|---|
-| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | parsed **73 (40.5%)**, **actionable 398** |
-| this repository (`.repos/0.3.5`) | 39 | parsed **22 (56.4%)**, **actionable 86** |
-| `moonbit_linalg_gpu` | 8 | parsed **4 (50.0%)**, **actionable 9** |
-| `ML/CI` (`--exclude _qa_verify`) | 103 | parsed **31 (30.0%)**, **actionable 113** |
+| target | files | parsed | actionable (before → after) |
+|---|---|---|---|
+| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | **73 (40.5%)** | 0 → **123** |
+| this repository (`.repos/0.3.5`) | 39 | **22 (56.4%)** | 0 → **7** |
+| `moonbit_linalg_gpu` | 8 | **4 (50.0%)** | 1 → **5** |
+| `ML/CI` (`--exclude _qa_verify`) | 107 | **32 (29.9%)** | 11 → **57** |
 
 > **Where this stands against `moon check`.** On `.mbt` this tool does NOT compete
 > with the toolchain's compiler: `moon check` has a real parser and ~90 built-in

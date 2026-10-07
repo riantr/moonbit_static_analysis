@@ -66,6 +66,13 @@ pub(all) struct Verdict {
   /// How many of `findings` are "this declaration form is not analysed"
   /// notices rather than defects. Zero when the file is not understood.
   notices : Int
+  /// Line of the first genuine read failure, or 0 when the whole file was
+  /// understood. `findings` holds only what happens BEFORE it; everything from
+  /// that line on is counted in `unreliable` and not shown.
+  region_line : Int
+  /// Findings at or after `region_line` — derived from an already-wrong tree, so
+  /// reported only as a count, never as results.
+  unreliable : Int
 }
 
 ///|
@@ -99,6 +106,8 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let mut actionable = 0
   let mut withheld = 0
   let mut notices = 0
+  let mut unreliable = 0
+  let mut partial_files = 0
   let mut all_total = 0
   // Per-kind totals, so the split this project is built around is visible in the
   // output instead of being a claim in the README. `.mbti` / `.mbtp` / `.mbt.md`
@@ -118,14 +127,13 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   for f in files {
     let v = analyze(f)
     all_total += v.total
+    unreliable += v.unreliable
     kind_files.set(v.kind, bump(kind_files, v.kind))
+    let d = v.findings.length() - v.notices
+    kind_defects.set(v.kind, get_or_zero(kind_defects, v.kind) + d)
+    kind_notices.set(v.kind, get_or_zero(kind_notices, v.kind) + v.notices)
     if v.parsed {
       kind_parsed.set(v.kind, bump(kind_parsed, v.kind))
-      let d = v.findings.length() - v.notices
-      kind_defects.set(v.kind, get_or_zero(kind_defects, v.kind) + d)
-      kind_notices.set(v.kind, get_or_zero(kind_notices, v.kind) + v.notices)
-    }
-    if v.parsed {
       parsed_files += 1
       let n = v.findings.length()
       // A subset notice ("this declaration form is not analysed") is not a
@@ -153,20 +161,43 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
         }
       }
     } else {
-      withheld += v.total
-      let r = if v.reason == "" { "unspecified" } else { v.reason }
-      let c = match reasons.get(r) {
-        Some(n) => n + 1
-        None => 1
-      }
-      reasons.set(r, c)
-      let ex = match examples.get(r) {
-        Some(a) => a
-        None => []
-      }
-      if ex.length() < 3 {
-        ex.push(v.path)
-        examples.set(r, ex)
+      // Partly understood: report what was read up to the first real failure
+      // and say plainly how much came after it and is therefore not evidence.
+      let n = v.findings.length()
+      notices += v.notices
+      actionable += n - v.notices
+      partial_files += 1
+      if n > 0 {
+        println(
+          "PARTIAL\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tread up to line \{v.region_line}, \{v.unreliable} after it not shown\t\{v.path}",
+        )
+        let shown = if n < findings_shown_per_file {
+          n
+        } else {
+          findings_shown_per_file
+        }
+        for i in 0..<shown {
+          println(v.findings[i].render())
+        }
+        if shown < n {
+          println("...  \{n - shown} more before the boundary in this file")
+        }
+      } else {
+        withheld += v.unreliable
+        let r = if v.reason == "" { "unspecified" } else { v.reason }
+        let c = match reasons.get(r) {
+          Some(x) => x + 1
+          None => 1
+        }
+        reasons.set(r, c)
+        let ex = match examples.get(r) {
+          Some(a) => a
+          None => []
+        }
+        if ex.length() < 3 {
+          ex.push(v.path)
+          examples.set(r, ex)
+        }
       }
     }
   }
@@ -176,7 +207,7 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
     parsed_files * 1000 / files.length()
   }
   println(
-    "PARSED\t\{parsed_files}/\{files.length()} files understood (\{pct / 10}.\{pct % 10}%)",
+    "PARSED\t\{parsed_files}/\{files.length()} files understood (\{pct / 10}.\{pct % 10}%); \{partial_files} more read only up to their first parse error",
   )
   for k in kinds {
     let nf = get_or_zero(kind_files, k)
@@ -203,7 +234,7 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
     }
   }
   println(
-    "SUMMARY\tfiles=\{files.length()}\tparsed=\{parsed_files}\tactionable=\{actionable}\tnotices=\{notices}\twithheld=\{withheld}\ttotal=\{all_total}\t(actionable+notices+withheld = total)",
+    "SUMMARY\tfiles=\{files.length()}\tparsed=\{parsed_files}\tactionable=\{actionable}\tnotices=\{notices}\tunreliable=\{unreliable}\twithheld=\{withheld}\ttotal=\{all_total}\t(actionable+notices+unreliable+withheld = total)",
   )
   if !complete {
     println(
@@ -404,6 +435,9 @@ async fn analyze(p : String) -> Verdict {
     // "this file has a defect", not "I could not read it" — malformed interface
     // lines, duplicate signatures, unknown type references, string constants in
     // a logic body. Suppressing those would delete the entire product.
+    //
+    // Both frontends are line-based and produce no cascade, so the whole file is
+    // trusted: region_line 0, nothing withheld.
     ".mbti" => {
       let rs = @moonfiles.iface(src, n)
       Verdict::{
@@ -414,6 +448,8 @@ async fn analyze(p : String) -> Verdict {
         reason: "",
         total: rs.length(),
         notices: 0,
+        region_line: 0,
+        unreliable: 0,
       }
     }
     ".mbtp" => {
@@ -426,59 +462,79 @@ async fn analyze(p : String) -> Verdict {
         reason: "",
         total: rs.length(),
         notices: 0,
+        region_line: 0,
+        unreliable: 0,
       }
     }
     ".mbt.md" => {
       let r = @moonfiles.literate(src, n)
       let total = r.reports.length()
-      // Same rule as `.mbt`: n_parse already excludes the deliberate fence
-      // skips, so a document whose only complaint is "this fence was not
-      // analysed" is still a document that was read.
+      // Same trusted-region split as `.mbt`: n_parse already excludes the
+      // deliberate fence skips, so a document whose only complaint is "this
+      // fence was not analysed" is still a document that was read, and a
+      // document that hits a real failure keeps everything before it.
+      let cut = r.first_error_line
+      let reliable : Array[@report.Report] = []
+      let mut notices = 0
+      for rep in r.reports {
+        if cut > 0 && rep.span.start.line >= cut {
+          continue
+        }
+        reliable.push(rep)
+        if rep.family == @core.FParse {
+          notices += 1
+        }
+      }
       Verdict::{
         path: p,
         kind: k,
-        findings: if r.n_parse == 0 {
-          r.reports
-        } else {
-          []
-        },
-        parsed: r.n_parse == 0,
-        reason: if r.n_parse == 0 {
+        findings: reliable,
+        parsed: cut == 0,
+        reason: if cut == 0 {
           ""
         } else {
           r.parse_reason
         },
         total,
-        notices: if r.n_parse == 0 {
-          r.n_subset
-        } else {
-          0
-        },
+        notices,
+        region_line: cut,
+        unreliable: total - reliable.length(),
       }
     }
     _ => {
       let r = @pipeline.run(src, n)
       let total = r.reports.length()
+      // The trusted region: everything before the first genuine read failure.
+      //
+      // Inside it, `FParse` can only mean a deliberate exclusion -- a real
+      // failure on that line would itself have set first_error_line to it. So
+      // the defect/notice split needs no string matching here.
+      let cut = r.first_error_line
+      let reliable : Array[@report.Report] = []
+      let mut notices = 0
+      for rep in r.reports {
+        if cut > 0 && rep.span.start.line >= cut {
+          continue
+        }
+        reliable.push(rep)
+        if rep.family == @core.FParse {
+          notices += 1
+        }
+      }
       Verdict::{
         path: p,
         kind: k,
-        findings: if r.n_parse == 0 {
-          r.reports
-        } else {
-          []
-        },
-        parsed: r.n_parse == 0,
-        reason: if r.n_parse == 0 {
+        findings: reliable,
+        parsed: cut == 0,
+        reason: if cut == 0 {
           ""
         } else {
           r.parse_reason
         },
         total,
-        notices: if r.n_parse == 0 {
-          r.n_subset
-        } else {
-          0
-        },
+        notices,
+        region_line: cut,
+        unreliable: total - reliable.length(),
       }
     }
   }

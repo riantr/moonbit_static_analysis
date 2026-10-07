@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.3.6
+moon add riantr/moonbit_static_analysis@0.4.0
 ```
 
 ```moonbit
@@ -195,7 +195,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.3.6` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.0` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
@@ -211,29 +211,34 @@ moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
 ### 输出说的是「我读懂了什么」，不是「我数出多少条」
 
 ```
-SCANNED	180 files under .repos/riantr/moonbit_doubleML/0.113.0
-PARSED	73/180 files understood (40.5%)
-NOTPARSE	107 files, 30432 finding(s) withheld — they measure what this analyzer
-  does not understand, not what your code does
-  104x  unexpected token
-SUMMARY	files=180	parsed=73	actionable=398	withheld=30432	total=30830
+SCANNED	107 files under ...\ML\CI
+CLEAN	.mbti	...\CI/pof/pkg.generated.mbti
+PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
+12:3 - error: ... (UndefinedName) [behavior]
+PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable+withheld = total)
 ```
 
-- **`PARSED` 是头号指标。** 工具链的前端只覆盖 MoonBit 的一个子集，读不懂的文件
+- **`PARSED` 是头号指标。** 工具链的前端只覆盖 MoonBit 的一个子集，读不懂的部分
   报出来的「发现」量的是**工具的盲区**，不是你的代码。
-- **读得懂但没分析的声明不算读不懂。** 「不分析 `test` 块」和「看不懂这个文件」
-  是两件事：跳过声明的提示会照常报出来，但不计入 `PARSED`。
-- 未解析文件**按原因分组**而不是一行一个，���带示例路径——107 个文件占 9 行。
-- `actionable + withheld = total`，一个不多一个不少。
+- **半读懂的文件仍然值得读。** 解析器记录它**真正读不下去的第一行**；那之前的
+  发现照常报（`PARTIAL`），之后的计入 `unreliable` 且**从不展示**——它们来自一棵
+  已经错了的树，摆出来等于把这个工具最初的毛病又犯一遍。
+- **跳过声明不算读不懂。** 「不分析 `test` 块」不会移动这条边界，因为块之后的
+  代码照样读得通。
+- **`actionable` 不含告知。** 「这种声明不分析」不是你的代码有缺陷——不然自检
+  会报「发现 92 个问题」而真实缺陷是 0。
+- 未解析文件**按原因分组**而不是一行一个，带示例路径。
+- `actionable + notices + unreliable + withheld = total`，一个不多一个不少。
 
-**已实测**（同一棵树的 `PARSED` / `actionable`）：
+**已实测**（改可信区间前后，同一批树）：
 
-| 目标 | 文件 | 结果 |
-|---|---|---|
-| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | 解析 **73（40.5%）**，**actionable 398** |
-| 本仓库自身（.repos/0.3.5） | 39 | 解析 **22（56.4%）**，**actionable 86** |
-| `moonbit_linalg_gpu` | 8 | 解析 **4（50.0%）**，**actionable 9** |
-| `ML/CI`（`--exclude _qa_verify`） | 103 | 解析 **31（30.0%）**，**actionable 113** |
+| 目标 | 文件 | 解析 | actionable（旧 → 新） |
+|---|---|---|---|
+| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | **73（40.5%）** | 0 → **123** |
+| 本仓库自身（.repos/0.3.5） | 39 | **22（56.4%）** | 0 → **7** |
+| `moonbit_linalg_gpu` | 8 | **4（50.0%）** | 1 → **5** |
+| `ML/CI`（`--exclude _qa_verify`） | 107 | **32（29.9%）** | 11 → **57** |
 
 > **与 `moon check` 的关系要说清楚**：在 `.mbt` 上，本工具**不与工具链的编译器
 > 竞争**——`moon check` 有真正的解析器和约 90 条内建告警，覆盖率恒为 100%，

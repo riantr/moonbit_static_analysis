@@ -16,6 +16,7 @@ pub(all) struct ParseResult {
   tree : @ast.Module
   reports : Array[@report.Report]
   skips : Array[String]
+  first_error : Int
 }
 
 // Type aliases

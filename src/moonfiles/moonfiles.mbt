@@ -320,6 +320,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
   let mut n3 = 0
   let mut n_parse = 0
   let mut n_subset = 0
+  let mut first_error = 0
   let reasons : Map[String, Int] = Map([])
   let mut reason = ""
   let mut reason_n = 0
@@ -357,6 +358,10 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // blocker across all of them.
     n_parse += r.n_parse
     n_subset += r.n_subset
+    if r.first_error_line > 0 &&
+      (first_error == 0 || r.first_error_line < first_error) {
+      first_error = r.first_error_line
+    }
     if r.n_parse > 0 {
       let c = match reasons.get(r.parse_reason) {
         Some(n) => n + r.n_parse
@@ -379,6 +384,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     n_parse,
     parse_reason: reason,
     n_subset,
+    first_error_line: first_error,
   }
 }
 

@@ -38,6 +38,11 @@ pub(all) struct PipelineResult {
   /// not analysed" — but they are NOT defects, so a caller counting problems
   /// must subtract them.
   n_subset : Int
+  /// Earliest line the frontend genuinely failed to read; 0 when it read the
+  /// whole source. Everything before it is trustworthy, everything after it is
+  /// derived from a tree that is already wrong. Subset exclusions do NOT move
+  /// this boundary — skipping a `test` block leaves the code after it intact.
+  first_error_line : Int
 }
 
 ///|
@@ -138,6 +143,7 @@ pub fn run(src : String, file : String) -> PipelineResult {
     n_parse,
     parse_reason: reason,
     n_subset: parsed.skips.length(),
+    first_error_line: parsed.first_error,
   }
 }
 

@@ -28,6 +28,7 @@ pub(all) struct PipelineResult {
   n_parse : Int
   parse_reason : String
   n_subset : Int
+  first_error_line : Int
 }
 
 // Type aliases
