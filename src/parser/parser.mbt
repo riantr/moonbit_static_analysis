@@ -691,6 +691,28 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
       e = { span: e.span, kind: @ast.EIndex(e, idx), }
       continue
     }
+    // `Name::Name` — a path reference, and usually a path CALL when a `(` follows.
+    //
+    // A column-aware census of real code puts this at roughly 45 of 111 first
+    // blockers, the largest single gap in the `.mbt` subset; the earlier
+    // line-based census hid it by crediting those lines to the indexed-type
+    // annotation sitting further left on the same line.
+    //
+    // ECall's name is a String, so a qualified name fits without touching the
+    // AST: `Array::make(n, 0.0)` becomes ECall("Array::make", args), which is
+    // all the structural and type lenses compare against.
+    if self.at(TColon) && self.at_next(TColon) {
+      match e.kind {
+        @ast.EName(n) => {
+          let _ = self.bump()
+          let _ = self.bump()
+          let (m, _) = self.expect_name("name after '::'")
+          e = { span: e.span, kind: @ast.EName(n + "::" + m), }
+        }
+        _ => break
+      }
+      continue
+    }
     if self.at(TLParen) {
       let csp = self.span()
       let _ = self.bump()
@@ -713,6 +735,13 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
     break
   }
   e
+}
+
+///|
+/// True when the CURRENT token is `t` and the one after it is `u`. Used to
+/// recognise `::`, which the lexer emits as two `TColon` tokens rather than one.
+fn Parser::at_next(self : Parser, t : @lexer.Tok) -> Bool {
+  self.p + 1 < self.toks.length() && self.toks[self.p + 1] == t
 }
 
 ///|
