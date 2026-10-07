@@ -18,6 +18,7 @@ pub(all) struct Verdict {
   parsed : Bool
   reason : String
   total : Int
+  notices : Int
 }
 
 // Type aliases

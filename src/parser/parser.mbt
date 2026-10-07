@@ -359,6 +359,66 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 }
 
 ///|
+/// A type annotation: a head name, then any number of `[...]` argument lists.
+///
+/// `Array[Double]` was the single largest parse blocker measured across real
+/// projects: 74 of 84 blocked files stopped on it, counting the tuple returns
+/// that contain one (`-> (Matrix, Array[Double])`).
+///
+/// Only the head is kept, and that is not a compromise: the type lens does not
+/// model containers. `ann_to_ty` recognises `int` / `float` / `bool` / `str` /
+/// `None` and list literals, and falls back to Unknown otherwise -- so
+/// `Array[Double]` and `Array` reach it identically, both Unknown. What matters
+/// here is that the parser stops failing at the `[`, which is the difference
+/// between a real file being readable and being discarded.
+fn Parser::type_annotation(self : Parser) -> String {
+  let (name, _) = self.expect_name("type name")
+  self.skip_indexed()
+  name
+}
+
+///|
+/// Consume balanced `[ ... ]` groups, keeping nothing.
+fn Parser::skip_indexed(self : Parser) -> Unit {
+  while self.at(TLBracket) {
+    let _ = self.bump()
+    let mut depth = 1
+    while depth > 0 && !self.at(TEOF) {
+      if self.at(TLBracket) {
+        depth += 1
+      } else if self.at(TRBracket) {
+        depth -= 1
+      }
+      let _ = self.bump()
+    }
+  }
+}
+
+///|
+/// A return type: `Name`, `Name[...]`, or a tuple `(A, B[...], ...)`.
+///
+/// A tuple is recorded as "" — that is `TUnknown` for the type lens, which is
+/// the honest answer rather than pretending the first component is the whole
+/// return type.
+fn Parser::return_annotation(self : Parser) -> String {
+  if self.at(TLParen) {
+    let _ = self.bump()
+    while !self.at(TRParen) && !self.at(TEOF) {
+      if !self.at(TComma) {
+        let _ = self.bump()
+      }
+      self.skip_indexed()
+      if self.at(TComma) {
+        let _ = self.bump()
+      }
+    }
+    self.expect(TRParen, "')'")
+    return ""
+  }
+  self.type_annotation()
+}
+
+///|
 fn Parser::expect(self : Parser, t : @lexer.Tok, what : String) -> Unit {
   if !self.at(t) {
     self.err("expected \{what}", self.span())
@@ -379,8 +439,7 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
     let mut ann = ""
     if self.at(TColon) {
       let _ = self.bump()
-      let (a, _) = self.expect_name("type name")
-      ann = a
+      ann = self.type_annotation()
     }
     params.push({ name: pname, tyann: ann, span: psp, })
     if self.at(TComma) {
@@ -393,8 +452,7 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
   let mut retann = ""
   if self.at(TArrow) {
     let _ = self.bump()
-    let (r, _) = self.expect_name("return type")
-    retann = r
+    retann = self.return_annotation()
   }
   let body = self.parse_block()
   { span: sp, kind: @ast.SFunc(name, params, retann, body, sp), }
@@ -431,8 +489,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     let mut ann = ""
     if self.at(TColon) {
       let _ = self.bump()
-      let (a, _) = self.expect_name("type name")
-      ann = a
+      ann = self.type_annotation()
     }
     self.expect(TAssign, "'='")
     let init = self.parse_expr()

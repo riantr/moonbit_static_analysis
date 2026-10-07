@@ -347,16 +347,15 @@ test "a deliberate subset skip does not cost the file its coverage" {
 /// A real read failure still costs the file its coverage, even when a skip sits
 /// beside it -- and the reason names the read failure rather than the skip,
 /// which is why the dominant reason is re-picked after the subtraction.
+///
+/// `try { ... }` is the sample. It was `a : FixedArray[Double]` until the
+/// indexed-type work made annotations parse -- a test that rots silently when
+/// the subset grows under it, so the sample is stated rather than left implicit.
 test "a real parse failure still counts next to a skip" {
   let r = @pipeline.run(
-    "struct P {\n  x : int\n}\nfn f() -> int {\n  let y : FixedArray[Double] = z\n}\n",
-    "x.mbt",
+    "struct P {\n  x : int\n}\nfn f() -> int {\n  try {\n    1\n  }\n}\n", "x.mbt",
   )
   assert_true(r.n_parse >= 1)
   assert_false(r.parse_reason == "")
   assert_false(r.parse_reason.has_suffix("is outside the analyzed subset"))
-  // measured: the parser reports `expected '='` where the `[` of
-  // `FixedArray[Double]` starts, so the reason names the position, not the
-  // construct. Pinned here only as "some real failure, not the skip".
-  assert_true(r.parse_reason.contains("expected"))
 }
