@@ -1,11 +1,14 @@
 # build artifacts
 _build/
 
-# vendored registry dependencies materialised by `moon update` / `moon add`.
+# vendored registry dependencies materialised by `moon update` / `moon add`, and
+# by `moonx <target>` when the target is a registry coordinate (it runs
+# `moon fetch`, which drops the package under `.repos/`).
 # NOT ours to commit: it is a copy of someone else's published source, and
 # `git add -A` will happily stage thousands of files of it. (Learned the hard
 # way — a release commit once swept in the whole of moonbitlang/async.)
 .mooncakes/
+.repos/
 
 # local formal-verification toolchain shims (machine-specific paths)
 .why3.conf
