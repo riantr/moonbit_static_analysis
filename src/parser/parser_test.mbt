@@ -464,3 +464,62 @@ test "an attribute argument list is consumed whole" {
   assert_eq(r.reports.length(), 0)
   assert_eq(r.tree.body.length(), 1)
 }
+
+///|
+/// Qualified path calls of ANY segment count. The `.` branch in
+/// `parse_postfix` turns `@pkg.Type` into `EField(EName("@pkg"), "Type")`
+/// before the `::` branch ever runs, so a path with two or more segments used
+/// to arrive at a `match` that only accepted `EName` and fell through to
+/// `break` — leaving `::method()` unconsumed and cascading four parse errors
+/// for a shape the toolchain compiles. Measured on 0.4.3 against
+/// `moonbitlang/pdf2md@0.1.1`'s argparse-derived call shape:
+/// `Foo(name=@argparse.ValueRange::single())` = 4 errors, `A.B::m()` = 2,
+/// while the single-segment `A::m()` parsed clean. The `::` is an
+/// unambiguous path marker, so the whole chain folds back into one name.
+test "a two-segment path call parses: A.B::m()" {
+  assert_eq(@parser.parse("A.B::m()\n").reports.length(), 0)
+  assert_eq(@parser.parse("@p.A.B::m()\n").reports.length(), 0)
+}
+
+///|
+/// The case the fix was written for: a qualified path call as the VALUE of a
+/// named argument. Both halves are needed — `=` handling came in 0.4.3, the
+/// multi-segment path here.
+test "a named arg may hold a multi-segment path call" {
+  assert_eq(@parser.parse("Foo(name=@pkg.T::m())\n").reports.length(), 0)
+  assert_eq(@parser.parse("Foo(@pkg.T::m())\n").reports.length(), 0)
+  assert_eq(@parser.parse("Foo(@p.T::m(), 2)\n").reports.length(), 0)
+}
+
+///|
+/// A path reference (no call) and a path call followed by field access, which
+/// are the two shapes adjacent to the fixed one.
+test "multi-segment paths work as references and as receivers" {
+  assert_eq(@parser.parse("let x = A.B::m\n").reports.length(), 0)
+  assert_eq(@parser.parse("let x = @p.T::m().f\n").reports.length(), 0)
+  assert_eq(@parser.parse("let x = [@p.T::m()]\n").reports.length(), 0)
+  assert_eq(@parser.parse("let x = 1 + A.B::m()\n").reports.length(), 0)
+}
+
+///|
+/// The negative control for the folding: `::` must NOT be accepted after a
+/// call result. `dotted()` returns "" for an ECall (a call result has no
+/// name to extend), so `@p.T::m()::n()` stays a read failure — one reported,
+/// not silently absorbed into a plausible-looking name. Pinning this matters
+/// because the naive fix (accept any `::`) would swallow it.
+test "'::' after a call result is still a read failure" {
+  let r = @parser.parse("@p.T::m()::n()\n")
+  assert_true(r.reports.length() > 0)
+  assert_true(r.first_error > 0)
+}
+
+///|
+/// Calling a struct field (`a.b(1)`) is a separate, deliberate limitation:
+/// deciding whether `b` is a method or a plain field needs type information
+/// the single-file frontend does not have. Pinning it here so the `::` fix is
+/// not later mistaken for having solved it.
+test "calling a field is still reported, not silently accepted" {
+  let r = @parser.parse("a.b(1)\n")
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("only named functions"))
+}

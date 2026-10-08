@@ -749,16 +749,26 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
     // ECall's name is a String, so a qualified name fits without touching the
     // AST: `Array::make(n, 0.0)` becomes ECall("Array::make", args), which is
     // all the structural and type lenses compare against.
+    //
+    // The whole leading path is flattened, not just an EName. The `.` branch
+    // above turns `@pkg.Type` into EField(EName("@pkg"), "Type") BEFORE this
+    // branch ever sees it, so a two-segment path (`@pkg.Type::single`,
+    // `A.B::m`) used to arrive here as an EField and hit the `break` below,
+    // leaving `::m()` unconsumed — four parse errors for a shape the toolchain
+    // compiles. Measured on 0.4.3: `Foo(name=@argparse.ValueRange::single())`
+    // produced 4 errors, `A.B::m()` produced 2, while `A::m()` parsed clean.
+    // `::` is an unambiguous path marker, so folding the chain back into one
+    // name loses no information; `dotted` returns "" for anything that is not a
+    // name-rooted field chain (a call result, an index) and those still break.
     if self.at(TColon) && self.at_next(TColon) {
-      match e.kind {
-        @ast.EName(n) => {
-          let _ = self.bump()
-          let _ = self.bump()
-          let (m, _) = self.expect_name("name after '::'")
-          e = { span: e.span, kind: @ast.EName(n + "::" + m), }
-        }
-        _ => break
+      let path = dotted(e)
+      if path == "" {
+        break
       }
+      let _ = self.bump()
+      let _ = self.bump()
+      let (m, _) = self.expect_name("name after '::'")
+      e = { span: e.span, kind: @ast.EName(path + "::" + m), }
       continue
     }
     if self.at(TLParen) {
@@ -814,6 +824,32 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
 /// recognise `::`, which the lexer emits as two `TColon` tokens rather than one.
 fn Parser::at_next(self : Parser, t : @lexer.Tok) -> Bool {
   self.p + 1 < self.toks.length() && self.toks[self.p + 1] == t
+}
+
+///|
+/// Flatten a name-rooted field chain into its dotted spelling:
+/// `EName("a") -> "a"`, `EField(EField(EName("a"), "b"), "c") -> "a.b.c"`.
+/// Returns "" for anything that does not bottom out in a name — an index, a
+/// call result, a literal — because such an expression has no name a `::`
+/// could extend.
+///
+/// This is what lets the `::` branch in `parse_postfix` accept a path of any
+/// length. Before it existed, the branch only matched a bare `EName`, so the
+/// `.` branch's own `EField` output fell through to `break` and the rest of
+/// the line cascaded.
+fn dotted(e : @ast.Expr) -> String {
+  match e.kind {
+    @ast.EName(n) => n
+    @ast.EField(base, f) => {
+      let head = dotted(base)
+      if head == "" {
+        ""
+      } else {
+        head + "." + f
+      }
+    }
+    _ => ""
+  }
 }
 
 ///|
