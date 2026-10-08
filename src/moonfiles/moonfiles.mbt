@@ -1041,7 +1041,20 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
     // `impl[Params] Trait for Type` — only the implemented type is checked;
     // the trait name needs the whole trait set, which we do not model.
     if body.has_prefix("impl ") || body.has_prefix("impl[") {
-      let (plist, after_params) = leading_bracket(body)
+      // Strip the `impl` keyword (and any whitespace) before scanning the
+      // type-parameter bracket. Without this, `leading_bracket` sees a string
+      // that starts with `impl[`, not `[`, and returns ("", body) — so the
+      // bound_params("") call below sees an empty list and the type
+      // parameters A, B, ... are reported as unknown types in their own
+      // signature. Caught by scanning moonbitlang/core, where every generic
+      // impl produced 2..16 "unknown type" findings, totalling 1147 false
+      // positives across 80 interface files.
+      let after_impl = if body.has_prefix("impl ") {
+        trim_sp(after_n(body, 5))
+      } else {
+        trim_sp(after_n(body, 4))
+      }
+      let (plist, after_params) = leading_bracket(after_impl)
       for p in bound_params(plist) {
         if !type_params.contains(p) {
           type_params.push(p)

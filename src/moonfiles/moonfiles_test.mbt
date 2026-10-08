@@ -164,6 +164,59 @@ test "iface .mbti: a generic fn binds its own type parameter, but not a ghost" {
 }
 
 ///
+/// The same shape as the test above but for `impl`. Before the fix, the
+/// scanner called `leading_bracket` on a body that still started with
+/// `impl[`, so `bound_params` saw an empty string and the type parameters
+/// A, B, C, ... were reported as unknown types in their own signature.
+/// Caught on moonbitlang/core 0.1.20260920, where 15 generic impls in
+/// `tuple/pkg.generated.mbti` produced 135 false positives — 2+3+...+16,
+/// the sum of every impl's parameter arity.
+
+///|
+test "iface .mbti: a generic impl binds its own type parameters, but not a ghost" {
+  // The target is `(A, Ghost)` — A is bound, Ghost is not. The test pins
+  // that exactly one report fires, naming Ghost, and that the bound
+  // parameters are NOT reported (which was the regression).
+  let src = "package \"d\"\npub impl[A, B] Show for (A, Ghost)\n"
+  let reports = @moonfiles.iface(src, "d.mbti")
+  assert_eq(reports.length(), 1)
+  assert_true(reports[0].message.contains("unknown type 'Ghost'"))
+  for rep in reports {
+    assert_false(rep.message.contains("unknown type 'A'"))
+    assert_false(rep.message.contains("unknown type 'B'"))
+  }
+}
+
+///
+/// The exact shape moonbitlang/core emits: `pub impl[A : Default, B : Default]
+/// Default for (A, B)`. Without the fix this line emits 2 reports; with the
+/// fix, 0 (A and B are bound parameters; Default is builtin; the `(A, B)`
+/// tuple refers to types already on the same line's bound list).
+
+///|
+test "iface .mbti: real generic impl with bounds has no findings" {
+  let src = "package \"d\"\npub impl[A : Default, B : Default] Default for (A, B)\n"
+  let reports = @moonfiles.iface(src, "d.mbti")
+  // A, B are bound; Default is the bound type, which is a trait that the
+  // analyzer does not require to be declared; the target tuple (A, B)
+  // refers to types on the same line's bound list. Before the fix, this
+  // line emitted 2 reports: unknown type 'A', unknown type 'B'.
+  assert_eq(reports.length(), 0)
+}
+
+///
+/// High-arity impl, the shape moonbitlang/core's `tuple` package uses 15
+/// times. Before the fix, the 16-parameter impl emitted 16 false-positive
+/// `unknown type` reports (one per parameter). After the fix, it emits 0.
+
+///|
+test "iface .mbti: a 16-parameter impl has no findings" {
+  let src = "package \"d\"\npub impl[A : Default, B : Default, C : Default, D : Default, E : Default, F : Default, G : Default, H : Default, I : Default, J : Default, K : Default, L : Default, M : Default, N : Default, O : Default, P : Default] Default for (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)\n"
+  let reports = @moonfiles.iface(src, "d.mbti")
+  assert_eq(reports.length(), 0)
+}
+
+///
 
 ///|
 
