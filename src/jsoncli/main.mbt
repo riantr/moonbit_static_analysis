@@ -143,7 +143,7 @@ fn run_machine(req : SpecReq) -> Reply {
 
 ///|
 fn run_program(source : String, filename : String) -> Reply {
-  let result = @pipeline.run(source, filename)
+  let result = @pipeline.run(source, filename, @core.IfaceSymTab::empty())
   ok_reply(result.reports, @pipeline.render_result(result))
 }
 

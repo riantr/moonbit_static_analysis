@@ -3,6 +3,7 @@ package "riantr/moonbit_static_analysis/src/pipeline"
 
 import {
   "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/core",
   "riantr/moonbit_static_analysis/src/report",
 }
 
@@ -13,7 +14,7 @@ pub fn merge_group(Array[@report.Report]) -> @report.Report
 
 pub fn render_result(PipelineResult) -> String
 
-pub fn run(String, String) -> PipelineResult
+pub fn run(String, String, @core.IfaceSymTab) -> PipelineResult
 
 // Errors
 

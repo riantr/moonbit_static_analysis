@@ -8,7 +8,11 @@ fn main {
     let (file, src) = pair
     println("")
     println("=== \{file} ===")
-    println(@pipeline.render_result(@pipeline.run(src, file)))
+    println(
+      @pipeline.render_result(
+        @pipeline.run(src, file, @core.IfaceSymTab::empty()),
+      ),
+    )
   }
   println("")
   println(
@@ -34,7 +38,13 @@ fn main {
   )
   println("=== demo.mbtx (script: import block + a body defect) ===")
   println(
-    @pipeline.render_result(@pipeline.run(@samples.script_mbtx, "demo.mbtx")),
+    @pipeline.render_result(
+      @pipeline.run(
+        @samples.script_mbtx,
+        "demo.mbtx",
+        @core.IfaceSymTab::empty(),
+      ),
+    ),
   )
   println("=== demo.mbti (interface: unknown type reference) ===")
   println(

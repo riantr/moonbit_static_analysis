@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.2
+moon add riantr/moonbit_static_analysis@0.4.3
 ```
 
 ```moonbit
@@ -195,7 +195,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.2` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.3` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
@@ -230,6 +230,15 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
   会报「发现 92 个问题」而真实缺陷是 0。
 - 未解析文件**按原因分组**而不是一行一个，带示例路径。
 - `actionable + notices + unreliable = total`，这一行打印里直接断言成立。`withheld` 也印在旁边，但是 `unreliable` 的子集（无前置发现的 PARTIAL 文件的尾部发现），不计入等式。
+
+**跨文件类型符号解析**（0.4.3 新增）：单个 `.mbt` 用到别的包里的类型（如
+`@argparse` 的 `Command`）原本会报 `undefined name 'Command'`——单文件分析
+看不到外部声明。`--extern-iface-dir <dir>`（可重复）把指定目录里所有
+`.mbti` 的声明类型 + 值签名灌进跨文件符号表；结构走查和类型镜在报
+`FUndefinedName` 之前先查这张表。默认还会读目标的 `moon.mod` 自动 `moon fetch`
+直接依赖（`--no-auto-fetch-deps` 关掉）。类型命中返回 `TUnknown`、值命中
+返回 `TFunc(name, [TUnknown], TUnknown)`，调用方 `Command(...)` 因此
+不再误报 `FOpMismatch`。表里没有的名字照常报错——表只抑制、不发明。
 
 **已实测**（改可信区间前后，同一批树）：
 

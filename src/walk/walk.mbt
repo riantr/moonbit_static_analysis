@@ -105,16 +105,21 @@ priv struct Walker {
   frames : Array[Map[String, Entry]]
   orders : Array[Array[String]]
   builtins : Map[String, Bool]
+  /// names declared in `.mbti` files of OTHER modules/packages; a hit
+  /// suppresses the "no visible binding" finding because the binding lives
+  /// outside the file under analysis but IS a real binding
+  extern_iface : @core.IfaceSymTab
   findings : Array[@report.Report]
   vst : Array[@core.Frame]
 }
 
 ///|
-fn new_walker() -> Walker {
+fn new_walker(extern_iface : @core.IfaceSymTab) -> Walker {
   Walker::{
     frames: [Map([])],
     orders: [[]],
     builtins: builtin_table(),
+    extern_iface,
     findings: [],
     vst: [],
   }
@@ -170,7 +175,10 @@ fn Walker::resolve(self : Walker, name : String, sp : @core.Span) -> Unit {
       None => i -= 1
     }
   }
-  if !hit && !self.builtins.contains(name) {
+  if !hit &&
+    !self.builtins.contains(name) &&
+    !self.extern_iface.has_type(name) &&
+    !self.extern_iface.has_value(name) {
     self.findings.push(@report.Report::{
       family: @core.FUndefinedName,
       lenses: [@core.LStructural],
@@ -447,8 +455,18 @@ fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
 ///|
 /// Structural walk over the whole module. Produces the binding tables the
 /// type lens consumes plus the structural findings.
-pub fn walk_module(m : @ast.Module, file : String) -> WalkResult {
-  let w = new_walker()
+///
+/// `extern_iface` is the cross-file symbol table built from `.mbti` files
+/// outside the file under analysis (other modules in the same package, or
+/// dependencies). A name that appears there is treated as a valid binding,
+/// so the "no visible binding" finding is suppressed for it. Pass an empty
+/// table to recover the single-file behavior.
+pub fn walk_module(
+  m : @ast.Module,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+) -> WalkResult {
+  let w = new_walker(extern_iface)
   let fns : Array[FnInfo] = []
   let module_bindings : Array[Binding] = []
   let fn_bindings : Map[String, Array[Binding]] = Map([])

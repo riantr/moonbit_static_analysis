@@ -34,6 +34,83 @@ pub fn zero_span() -> Span {
 }
 
 ///|
+/// Cross-file symbol table built from `.mbti` interface files. A name that
+/// appears here is one the analyzer cannot see in the file under analysis
+/// (it lives in another file, in another package, or in the stdlib) but which
+/// IS a valid binding; the structural walk suppresses its "no visible
+/// binding" finding and the type lens returns the shape the rest of the
+/// pipeline needs to keep going.
+///
+/// Two name sets, because the AST cannot tell value calls from type
+/// references apart by position (the type annotation lives in `SLet.ann`,
+/// not in the expression tree), and the existing `lookup` returns one `Ty?`
+/// for both. The walker needs only the names; the type lens wants
+/// `TUnknown` for a type hit and `TFunc(name, [TUnknown], TUnknown)` for a
+/// value hit so a call to that value does not also fire "not callable".
+///
+/// Lives in `core` because both `walk` and `types` consume it; placing it
+/// in either would create an import cycle (the type lens already takes
+/// `Binding` / `FnInfo` from the structural walk).
+pub struct IfaceSymTab {
+  /// Declared type names: `struct Foo`, `enum Bar`, `trait Baz`, `type Quux`.
+  /// A hit returns `TUnknown` (we know it is a type, we do not model its shape).
+  types : Map[String, Bool]
+  /// Declared value names: `pub fn new(...) -> ...`, `pub const X : ... = ...`.
+  /// A hit returns `TFunc(name, [TUnknown], TUnknown)` (we know it is a value,
+  /// we do not model its signature; the one-element param list means the
+  /// "too many arguments" check on `ECall` still fires past 1 arg).
+  values : Map[String, Bool]
+}
+
+///|
+pub fn IfaceSymTab::empty() -> IfaceSymTab {
+  IfaceSymTab::{ types: Map([]), values: Map([]), }
+}
+
+///|
+/// Merge another table into this one. A name present on both sides of
+/// the merge ends up in BOTH sets — the analyzer's lookup prefers
+/// `values` over `types` when a name is in both, so the call shape wins
+/// over the type-position read. Returns the receiver so calls can be
+/// chained.
+pub fn IfaceSymTab::merge(
+  self : IfaceSymTab,
+  other : IfaceSymTab,
+) -> IfaceSymTab {
+  for k, _ in other.types {
+    if !self.types.contains(k) {
+      self.types.set(k, true)
+    }
+  }
+  for k, _ in other.values {
+    if !self.values.contains(k) {
+      self.values.set(k, true)
+    }
+  }
+  self
+}
+
+///|
+pub fn IfaceSymTab::has_type(self : IfaceSymTab, name : String) -> Bool {
+  self.types.contains(name)
+}
+
+///|
+pub fn IfaceSymTab::has_value(self : IfaceSymTab, name : String) -> Bool {
+  self.values.contains(name)
+}
+
+///|
+pub fn IfaceSymTab::n_types(self : IfaceSymTab) -> Int {
+  self.types.length()
+}
+
+///|
+pub fn IfaceSymTab::n_values(self : IfaceSymTab) -> Int {
+  self.values.length()
+}
+
+///|
 pub(all) enum Severity {
   Error
   Warning

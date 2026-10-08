@@ -339,7 +339,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
       n1 += 1
       continue
     }
-    let r = @pipeline.run(block, file)
+    let r = @pipeline.run(block, file, @core.IfaceSymTab::empty())
     for rep in r.reports {
       all.push(rep)
     }
@@ -966,6 +966,50 @@ fn top_level_paren(t : String) -> (String, String)? {
 /// parameter, nor external (`@pkg.` references are external by shape).
 pub fn iface(src : String, file : String) -> Array[@report.Report] {
   let _ = file
+  let result = parse_iface(src)
+  result.reports
+}
+
+///|
+/// Collect the type and value names declared in a `.mbti` source. Returns
+/// an `IfaceSymTab` the structural walk and the type lens can consult to
+/// suppress false-positive "no visible binding" findings when the binding
+/// lives in another file (a different `.mbt` in the same package, or a
+/// dependency's interface).
+///
+/// `parse_iface` is the only piece of the `.mbti` line grammar this code
+/// uses: a `.mbti` that this collector cannot read is a `.mbti` that
+/// `iface` would also misread, so the two views stay in lockstep.
+pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
+  let result = parse_iface(src)
+  let tab = @core.IfaceSymTab::empty()
+  for n in result.declared {
+    if !tab.types.contains(n) {
+      tab.types.set(n, true)
+    }
+  }
+  for n in result.sig_names {
+    if !tab.values.contains(n) {
+      tab.values.set(n, true)
+    }
+  }
+  tab
+}
+
+///|
+/// Internal result of a `.mbti` scan: the audit findings, the declared
+/// type names, and the value signature names. `parse_iface` is the single
+/// piece of grammar both `iface` and `collect_iface_names` walk, so any
+/// future addition to the line shapes (a new declaration kind, a new
+/// attribute) is one place to edit.
+priv struct IfaceScan {
+  reports : Array[@report.Report]
+  declared : Array[String]
+  sig_names : Array[String]
+}
+
+///|
+fn parse_iface(src : String) -> IfaceScan {
   let text = normalize(src)
   let reports : Array[@report.Report] = []
   let declared : Array[String] = []
@@ -1172,7 +1216,7 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
       vst: [],
     })
   }
-  reports
+  IfaceScan::{ reports, declared, sig_names, }
 }
 
 ///|

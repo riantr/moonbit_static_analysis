@@ -3,11 +3,14 @@ package "riantr/moonbit_static_analysis/src/moonfiles"
 
 import {
   "moonbitlang/core/debug",
+  "riantr/moonbit_static_analysis/src/core",
   "riantr/moonbit_static_analysis/src/pipeline",
   "riantr/moonbit_static_analysis/src/report",
 }
 
 // Values
+pub fn collect_iface_names(String) -> @core.IfaceSymTab
+
 pub fn fence_census(String) -> (Int, Int)
 
 pub fn fence_mode(String) -> FenceMode?

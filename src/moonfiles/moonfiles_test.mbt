@@ -454,3 +454,47 @@ test "proof .mbtp: lemma without proof_ensure reported" {
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("lemma without proof_ensure"))
 }
+
+// --- collect_iface_names: the type/value name extractor ------------------
+//
+// `collect_iface_names` reuses the same `parse_iface` as `iface`, so a
+// `.mbti` that one accepts the other must accept too. The contract being
+// pinned here: declared types go in `types`, value signatures and `const`
+// declarations go in `values`, builtin / external / bound-parameter names
+// do NOT go in either (they are not user-visible names we need to suppress
+// false positives for, since the type lens already has them or treats them
+// as TUnknown).
+
+///|
+test ".mbti: collect_iface_names separates types and values" {
+  let src = "pub struct Command { name : String }\npub fn new_cmd() -> Command {\n  Command::{ name: \"\" }\n}\npub const VERSION : Int = 1\n"
+  let tab = @moonfiles.collect_iface_names(src)
+  assert_true(tab.has_type("Command"))
+  assert_true(tab.has_value("new_cmd"))
+  assert_true(tab.has_value("VERSION"))
+  // builtins are not added (they are resolved another way)
+  assert_false(tab.has_type("Int"))
+  assert_false(tab.has_type("String"))
+}
+
+///|
+test ".mbti: collect_iface_names handles impl with bounds" {
+  // The 0.4.2 commit already fixed the impl-handler bug; the regression
+  // check here is that the bound type parameters A, B, ... end up
+  // nowhere in the symtab (they are local to the impl signature, not
+  // declarations the rest of the package can name).
+  let src = "pub impl[X : Show] Show for X with output(self : X) -> String {\n  \"\"\n}\n"
+  let tab = @moonfiles.collect_iface_names(src)
+  // X is a bound parameter, NOT a declared type
+  assert_false(tab.has_type("X"))
+  assert_false(tab.has_type("Show"))
+}
+
+///|
+test ".mbti: collect_iface_names handles type alias and re-export" {
+  let src = "pub type Fd = Int\npub using @other { type T as RenamedT }\n"
+  let tab = @moonfiles.collect_iface_names(src)
+  assert_true(tab.has_type("Fd"))
+  // the re-exported name enters the symtab
+  assert_true(tab.has_type("RenamedT"))
+}

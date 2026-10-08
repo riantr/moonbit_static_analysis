@@ -56,7 +56,18 @@ fn lens_count(lens : @core.Lens, r : @report.Report) -> Int {
 
 ///|
 /// Run the full pipeline over MoonBit-subset source.
-pub fn run(src : String, file : String) -> PipelineResult {
+///
+/// `extern_iface` is the cross-file symbol table built from `.mbti` files
+/// outside the file under analysis. A name that appears there is treated
+/// as a valid binding: the structural walk suppresses its "no visible
+/// binding" finding and the type lens returns the shape the rest of the
+/// pipeline needs to keep going. Pass an empty table to recover the
+/// single-file behavior.
+pub fn run(
+  src : String,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+) -> PipelineResult {
   let parsed = @parser.parse(src)
   let all : Array[@report.Report] = []
   // parse findings are already tagged structural
@@ -111,11 +122,11 @@ pub fn run(src : String, file : String) -> PipelineResult {
       reason = m
     }
   }
-  let wr = @walk.walk_module(parsed.tree, file)
+  let wr = @walk.walk_module(parsed.tree, file, extern_iface)
   for r in wr.findings {
     all.push(r)
   }
-  let tr = @types.infer_full(parsed.tree, wr)
+  let tr = @types.infer_full(parsed.tree, wr, extern_iface)
   for r in tr.findings {
     all.push(r)
   }

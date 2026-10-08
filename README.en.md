@@ -12,7 +12,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.2
+moon add riantr/moonbit_static_analysis@0.4.3
 ```
 
 ```moonbit
@@ -212,7 +212,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.2` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.3` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
@@ -255,6 +255,21 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
   where the true count was zero.
 - Unparsed files are grouped BY REASON rather than listed one per line.
 - `actionable + notices + unreliable` = `total`, asserted in the line.
+
+**Cross-file type symbol resolution** (new in 0.4.3): a `.mbt` that uses a
+type declared in another package (e.g. `Command` from `@argparse`) used to
+fire `undefined name 'Command'` because the single-file analyzer only sees
+the file it is reading. `--extern-iface-dir <dir>` (repeatable) walks the
+named directory for `.mbti` files and loads their declared types and value
+signatures into a **cross-file symbol table** the structural walk and the
+type lens consult before reporting `FUndefinedName`. The natural target is
+`.repos/` after you have `moon fetch`ed the dependencies you want indexed.
+The target's own tree is always indexed. By default the analyzer also reads
+the target's `moon.mod` and `moon fetch`es each direct import — pass
+`--no-auto-fetch-deps` to skip it. A type hit returns `TUnknown`; a value
+hit returns `TFunc(name, [TUnknown], TUnknown)`, so calls like
+`Command(...)` stay quiet too. Names absent from the table still report —
+the table only suppresses, never invents valid bindings.
   `withheld` is reported alongside it but is a subset of `unreliable` (the
   post-boundary findings of partial files whose pre-boundary finding count
   was zero), so it is intentionally not part of the sum.

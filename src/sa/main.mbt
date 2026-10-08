@@ -163,7 +163,22 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
 /// under an ordinary name, and on one such tree those snapshots were 1020 files
 /// and 126,687 findings — 88% of everything the scan reported, none of it the
 /// target's own code.
-pub async fn scan(target : String, excludes : Array[String]) -> Unit {
+///
+/// `extern_iface_dirs` are additional directories to scan for `.mbti` files
+/// whose declared type and value names should be treated as valid bindings
+/// even when they live outside the file under analysis. The classic case is
+/// a dependency: a `.mbt` file that uses `Command` (defined in `@argparse`)
+/// would otherwise be reported as `undefined name 'Command'`. The simplest
+/// way to provide argparse's `.mbti` is to `moon fetch moonbitlang/argparse`
+/// separately and pass `.repos` here; auto-fetching the target's own
+/// `moon.mod` imports is on by default and can be turned off with
+/// `auto_fetch_deps = false`.
+pub async fn scan(
+  target : String,
+  excludes : Array[String],
+  extern_iface_dirs : Array[String],
+  auto_fetch_deps : Bool,
+) -> Unit {
   let root = locate(target)
   if root == "" {
     println("ERROR\tcannot locate source for target: \{target}")
@@ -177,6 +192,22 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let complete = collect(root, files, excludes)
   if complete {
     println("SCANNED\t\{files.length()} files under \{root}")
+  }
+  // Build the cross-file symbol table BEFORE iterating files: a single
+  // walk over the target's tree + the user's extern dirs is cheaper than
+  // re-walking per file, and the table is immutable from here on.
+  if auto_fetch_deps {
+    fetch_moon_mod_imports(root)
+  }
+  let iface_dirs : Array[String] = [root]
+  for d in extern_iface_dirs {
+    iface_dirs.push(d)
+  }
+  let iface_tab = collect_iface_symtabs(iface_dirs)
+  if iface_tab.n_types() + iface_tab.n_values() > 0 {
+    println(
+      "IFACE\ttypes=\{iface_tab.n_types()}\tvalues=\{iface_tab.n_values()}\t(dirs=\{iface_dirs.length()})",
+    )
   }
   // Verdicts collected in the loop, then handed to `aggregate` at the end so
   // the SUMMARY-line math has a single source of truth and a unit-testable
@@ -201,7 +232,7 @@ pub async fn scan(target : String, excludes : Array[String]) -> Unit {
   let reasons : Map[String, Int] = Map([])
   let examples : Map[String, Array[String]] = Map([])
   for f in files {
-    let v = analyze(f)
+    let v = analyze(f, iface_tab)
     verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
     let d = v.findings.length() - v.notices
@@ -510,7 +541,7 @@ fn kind_of(p : String) -> String {
 }
 
 ///|
-async fn analyze(p : String) -> Verdict {
+async fn analyze(p : String, extern_iface : @core.IfaceSymTab) -> Verdict {
   let src = read_or(p)
   let n = base_of(p)
   let k = kind_of(p)
@@ -586,7 +617,7 @@ async fn analyze(p : String) -> Verdict {
       }
     }
     _ => {
-      let r = @pipeline.run(src, n)
+      let r = @pipeline.run(src, n, extern_iface)
       let total = r.reports.length()
       // The trusted region: everything before the first genuine read failure.
       //
@@ -683,4 +714,170 @@ fn base_of(path : String) -> String {
     }
   }
   out
+}
+
+// ============================================================================
+// Cross-file type symbol resolution (.mbti as a type source for .mbt analysis)
+// ============================================================================
+//
+// When a `.mbt` file under analysis uses a name that is not declared in the
+// file itself, the structural walk would fire FUndefinedName. The fix is to
+// consult the `.mbti` files of OTHER packages and modules before reporting:
+// if `Command` is a struct in `@argparse` and argparse's `.mbti` is in the
+// table, the structural walk stays quiet.
+//
+// Two ways to populate the table:
+//   - the user passes `--extern-iface-dir <dir>` (or several) and we walk
+//     them for `.mbti` files; the natural target is `.repos/` after
+//     `moon fetch` of the dependencies you want indexed.
+//   - by default we also try to auto-fetch the direct imports of the
+//     target's own `moon.mod` — `import { "moonbitlang/argparse" }` and
+//     friends — and then the second pass picks them up from `.repos/`
+//     too. Turn this off with `--no-auto-fetch-deps`.
+//
+// `collect_iface_symtabs` is a pure directory walk + read + parse; it does
+// not shell out. `fetch_moon_mod_imports` is the only subprocess point.
+
+///|
+/// Read the target's `moon.mod`, find every `import { "author/pkg" }` line,
+/// and `moon fetch` each one. Best-effort: a failure is logged at INFO level
+/// and skipped (the rest of the scan continues without that dep's types).
+/// Transitive deps are NOT followed — the user can fetch them by hand if a
+/// .mbti they wrote is not enough.
+async fn fetch_moon_mod_imports(root : String) -> Unit {
+  let mod_path = root + "/moon.mod"
+  let text = read_or(mod_path)
+  if text == "" {
+    return
+  }
+  let imports = parse_moon_mod_imports(text)
+  if imports.length() == 0 {
+    return
+  }
+  println("FETCH\t\{imports.length()} import(s) from moon.mod")
+  for coord in imports {
+    let _ = @process.run("moon", ["fetch", coord]) catch { _ => 0 }
+  }
+  // tell the user the .repos/ subdirs we now expect to find (best-effort)
+  let base = ".repos/" + first_segment(imports[0])
+  println(
+    "FETCH\tdeposited under \{base}/<version>/ — pass --extern-iface-dir .repos to index transitive types",
+  )
+}
+
+///|
+/// Find every `"author/pkg"` string inside `import { ... }` blocks. The
+/// shape is exactly what `moon fetch` accepts: a quoted path, possibly
+/// repeated. Quotes inside comments or other text are not handled because
+/// `moon.mod` is a config file, not a real source — comments are rare and
+/// the failure mode is "fetch nothing", not "fetch the wrong thing".
+fn parse_moon_mod_imports(src : String) -> Array[String] {
+  let out : Array[String] = []
+  let chars = src.to_array()
+  let mut i = 0
+  let n = chars.length()
+  let mut in_import = false
+  while i < n {
+    // a `import` keyword followed by whitespace opens a block
+    if !in_import {
+      if i + 7 <= n {
+        // Look for the seven-char prefix `import ` (with trailing space).
+        // Chars from `src.to_array()` are UInt16; literal Chars convert
+        // implicitly when one side is UInt16, but explicit comparison is
+        // clearer than letting the inference pick.
+        let mut ok = true
+        if chars[i] != 'i' ||
+          chars[i + 1] != 'm' ||
+          chars[i + 2] != 'p' ||
+          chars[i + 3] != 'o' ||
+          chars[i + 4] != 'r' ||
+          chars[i + 5] != 't' ||
+          chars[i + 6] != ' ' {
+          ok = false
+        }
+        if ok {
+          in_import = true
+          i += 7
+          continue
+        }
+      }
+      i += 1
+      continue
+    }
+    // inside a `import { ... }` block; bail when the block ends
+    let c = chars[i]
+    if c == '}' {
+      in_import = false
+      i += 1
+      continue
+    }
+    if c == '"' {
+      let buf = StringBuilder()
+      i += 1
+      while i < n && chars[i] != '"' {
+        buf.write_char(chars[i])
+        i += 1
+      }
+      if i < n {
+        i += 1
+      }
+      let s = buf.to_string()
+      if s != "" && s.contains("/") && !out.contains(s) {
+        out.push(s)
+      }
+      continue
+    }
+    i += 1
+  }
+  out
+}
+
+///|
+fn first_segment(coord : String) -> String {
+  let mut out = ""
+  for c in coord {
+    if c == '/' {
+      break
+    }
+    out = out + c.to_string()
+  }
+  out
+}
+
+///|
+/// Walk a list of directories, read every `.mbti` file found, and merge
+/// their declared type and value names into one `IfaceSymTab`. The walk
+/// reuses the file-collection rules from `collect` (skip `_build`, dot-dirs,
+/// `excludes`) so the symtab mirrors what a real package view would see.
+///
+/// Symlinks and very large files (over 4 MiB) are skipped to avoid
+/// pathological inputs. Errors are logged and skipped; one unreadable
+/// `.mbti` must not block the whole table.
+async fn collect_iface_symtabs(roots : Array[String]) -> @core.IfaceSymTab {
+  let tab = @core.IfaceSymTab::empty()
+  for root in roots {
+    let stack : Array[String] = [root]
+    while stack.length() > 0 {
+      let dir = match stack.pop() {
+        Some(d) => d
+        None => break
+      }
+      let entries = @fs.readdir(dir) catch { _ => continue }
+      for e in entries {
+        if e == "_build" || e.has_prefix(".") {
+          continue
+        }
+        let p = dir + "/" + e
+        if is_dir(p) {
+          stack.push(p)
+        } else if e.has_suffix(".mbti") {
+          let data = @fs.read_file(p) catch { _ => continue }
+          let text = data.text() catch { _ => continue }
+          let sub = @moonfiles.collect_iface_names(text)
+          let _ = tab.merge(sub)
+        }
+      }
+    }
+  }
+  tab
 }

@@ -383,11 +383,24 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 }
 
 ///|
-/// A type annotation: a head name, then any number of `[...]` argument lists.
+/// A type annotation: a head name, then any number of `[...]` argument
+/// lists and `.Tail` segments.
 ///
 /// `Array[Double]` was the single largest parse blocker measured across real
 /// projects: 74 of 84 blocked files stopped on it, counting the tuple returns
 /// that contain one (`-> (Matrix, Array[Double])`).
+///
+/// `-> @pkg.T` (a qualified package type with a `.Tail`, as in
+/// `-> @argparse.Command`) is the second-most-common shape in real code
+/// and was a blocker before: the head name and the `.Tail` are emitted as
+/// separate tokens, and the parser had no path to consume the `.` and the
+/// tail name after the head. Fixed by accepting one or more `.Name` tails
+/// and folding them into the returned name. Only the joined name is kept,
+/// and that is not a compromise: the type lens does not model containers or
+/// qualified paths, so `@pkg.T` and `@pkg` reach it identically, both
+/// Unknown. What matters here is that the parser stops failing at the `.`,
+/// which is the difference between a real file being readable and being
+/// discarded.
 ///
 /// Only the head is kept, and that is not a compromise: the type lens does not
 /// model containers. `ann_to_ty` recognises `int` / `float` / `bool` / `str` /
@@ -398,7 +411,16 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 fn Parser::type_annotation(self : Parser) -> String {
   let (name, _) = self.expect_name("type name")
   self.skip_indexed()
-  name
+  // Consume a `.Tail` chain. `@pkg.T.U.V` becomes "@pkg.T.U.V" in the name
+  // returned to the caller; the lexer does not include the `.` in TName.
+  let mut n = name
+  while self.at(TDot) {
+    let _ = self.bump()
+    let (tail, _) = self.expect_name("type tail")
+    n = n + "." + tail
+    self.skip_indexed()
+  }
+  n
 }
 
 ///|
@@ -744,7 +766,31 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
       let _ = self.bump()
       let args : Array[@ast.Expr] = []
       while !self.at(TRParen) && !self.at(TEOF) {
-        args.push(self.parse_expr())
+        // A named argument `name = value`. The label is dropped: the call
+        // lens does not consume labels, and the value expression is the
+        // one that matters for binding-table and finding purposes. Before
+        // this, a function call with any named arg — `Command(name=...)`
+        // is the canonical case from argparse-derived packages — would
+        // trip `parse_expr()` on the `=` and stop the whole file. Caught
+        // by scanning `moonbitlang/pdf2md@0.1.1`, whose `pdf2md_command`
+        // signature parses cleanly only after this loop accepts `name=value`.
+        // No two-token lookahead is available, so save `p`, consume the
+        // name, and check the next token. If it isn't `=`, restore `p`
+        // and fall back to a normal `parse_expr()`. If it is `=`, consume
+        // it and parse the value.
+        if self.peek_name() != "" {
+          let saved_p = self.p
+          let _ = self.bump()
+          if self.at(TAssign) {
+            let _ = self.bump()
+            args.push(self.parse_expr())
+          } else {
+            self.p = saved_p
+            args.push(self.parse_expr())
+          }
+        } else {
+          args.push(self.parse_expr())
+        }
         if self.at(TComma) {
           let _ = self.bump()
         } else {

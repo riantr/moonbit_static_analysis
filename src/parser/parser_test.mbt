@@ -237,6 +237,92 @@ test "package sources carry no imports" {
   assert_eq(r.tree.imports.length(), 0)
 }
 
+// --- qualified return types (`-> @pkg.T`) --------------------------------
+//
+// Found by scanning `moonbitlang/pdf2md@0.1.1`, where `pdf2md_command` returns
+// `@argparse.Command`. The lexer emits `@pkg` as a single TName and `T` as
+// another, with `TDot` between; the parser used to consume only the head and
+// stop at the dot, so every such signature triggered "unexpected token" and
+// withheld every finding in the file. Verified by both isolated probes and a
+// real scan of the package — withheld dropped 64 → 56 → 0 across the two
+// parser fixes that this commit ships.
+
+///|
+test "return type: a qualified `@pkg.T` is one type, not two" {
+  let r = @parser.parse("fn f() -> @argparse.Command {\n  1\n}\n")
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.tree.body.length(), 1)
+  // The qualified name is the third slot of the SFunc tuple: name, params,
+  // return type, body, span.
+  match r.tree.body[0].kind {
+    SFunc(_, _, ret, _, _) => assert_eq(ret, "@argparse.Command")
+    _ => fail("expected SFunc")
+  }
+}
+
+///|
+test "return type: a chained `@pkg.T.U` keeps the whole chain" {
+  let r = @parser.parse("fn f() -> @pkg.T.U {\n  1\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    SFunc(_, _, ret, _, _) => assert_eq(ret, "@pkg.T.U")
+    _ => fail("expected SFunc")
+  }
+}
+
+///|
+test "return type: a generic `@pkg.T[Int]` keeps the brackets (head name only)" {
+  // The brackets are consumed by skip_indexed; only the head name is
+  // returned. The type lens treats `@pkg.T` and `@pkg` identically (both
+  // Unknown), so losing the brackets is the documented compromise.
+  let r = @parser.parse("fn f() -> @pkg.T[Int] {\n  1\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    SFunc(_, _, ret, _, _) => assert_eq(ret, "@pkg.T")
+    _ => fail("expected SFunc")
+  }
+}
+
+// --- named arguments in calls (`Foo(name=x)`) -----------------------------
+//
+// Same scan: `moonbitlang/pdf2md@0.1.1`'s `pdf2md_command` body calls
+// `Command("pdf2md", about=..., positionals=[...])`. The call-arg loop only
+// knew how to parse positional expressions, so the `=` of `about=...` ended
+// the parse and withheld the whole file. `Foo(name=x)` and friends now parse;
+// a bare `Foo(name)` (no `=`) must NOT be treated as a named arg, or it
+// would steal the name from `parse_expr` and break `Foo(name)(...)` /
+// `Foo(name).bar` and similar shapes that don't have an `=` after the name.
+
+///|
+test "call arg: a named arg `name = value` parses" {
+  let r = @parser.parse("fn f() -> int {\n  Foo(name=1)\n}\n")
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+test "call arg: positional and named args can mix" {
+  let r = @parser.parse("fn f() -> int {\n  Foo(1, name=2)\n}\n")
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+test "call arg: a bare `Foo(name)` is still a single positional arg" {
+  // If `name` (with no `=`) were misread as a named-arg label, the parser
+  // would steal the name and try to find `=` afterwards, failing at `)`.
+  // This is the regression guard: pin that `Foo(name)` stays a positional.
+  let r = @parser.parse("fn f() -> int {\n  Foo(name)\n}\n")
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+test "call arg: a method call after a positional name still parses" {
+  // `Foo(name).bar` — the `(name)` is a positional call; the `.bar` is a
+  // postfix field access. If the named-arg path swallowed `Foo` we would
+  // mis-parse the chain.
+  let r = @parser.parse("fn f() -> int {\n  Foo(name).bar\n}\n")
+  assert_eq(r.reports.length(), 0)
+}
+
 // --- top-level modifiers and out-of-subset declarations -------------------
 //
 // Found by running this analyzer over real MoonBit code (pyroduct's audit

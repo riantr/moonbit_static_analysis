@@ -9,13 +9,20 @@ priv struct Infer {
   frames : Array[Map[String, Ty]]
   annos : Array[Map[String, Bool]]
   builtins : Map[String, Ty]
+  /// names declared in `.mbti` files of OTHER modules/packages; a hit
+  /// returns TUnknown (types) or TFunc(name, [TUnknown], TUnknown) (values)
+  /// so the type lens does not also fire FUndefinedName
+  extern_iface : @core.IfaceSymTab
   sigs : Array[Sig]
   findings : Array[@report.Report]
   vst : Array[@core.Frame]
 }
 
 ///|
-fn new_infer(fn_bindings : Map[String, Array[@walk.Binding]]) -> Infer {
+fn new_infer(
+  fn_bindings : Map[String, Array[@walk.Binding]],
+  extern_iface : @core.IfaceSymTab,
+) -> Infer {
   let builtins : Map[String, Ty] = Map([])
   builtins.set("print", TFunc("print", [TUnknown], TNone))
   builtins.set("len", TFunc("len", [TUnknown], TInt))
@@ -25,6 +32,7 @@ fn new_infer(fn_bindings : Map[String, Array[@walk.Binding]]) -> Infer {
     frames: [Map([])],
     annos: [Map([])],
     builtins,
+    extern_iface,
     sigs: [],
     findings: [],
     vst: [],
@@ -54,7 +62,23 @@ fn Infer::lookup(self : Infer, name : String) -> Ty? {
   }
   match self.builtins.get(name) {
     Some(t) => Some(t)
-    None => None
+    None =>
+      // Cross-file names from .mbti: a type hit returns TUnknown (the
+      // annotation `let x : Foo = ...` parses `Foo` as TUnknown anyway, so
+      // this keeps the type lens's treatment of unknown types consistent);
+      // a value hit returns a TFunc with one TUnknown parameter, which is
+      // what the existing ECall handler already accepts for a value whose
+      // signature is not modelled. Names present in BOTH sets are returned
+      // as values, because the call shape (`Foo(...)`) is the user's actual
+      // intent and the ECall handler is the one that would otherwise fire
+      // FOpMismatch on a TUnknown type.
+      if self.extern_iface.has_value(name) {
+        Some(TFunc(name, [TUnknown], TUnknown))
+      } else if self.extern_iface.has_type(name) {
+        Some(TUnknown)
+      } else {
+        None
+      }
   }
 }
 
@@ -411,8 +435,17 @@ fn Infer::scan_returns(self : Infer, stmts : Array[@ast.Stmt]) -> Ty {
 
 ///|
 /// Run the type lens over a full module (the pipeline entry).
-pub fn infer_full(m : @ast.Module, wr : @walk.WalkResult) -> TypeResult {
-  let inf = new_infer(wr.fn_bindings)
+///
+/// `extern_iface` is the cross-file symbol table; the type lens consults
+/// it after its own builtins so names that live in another file's `.mbti`
+/// resolve to `TUnknown` (type) or a single-`TUnknown`-param `TFunc` (value)
+/// instead of reporting FUndefinedName. Empty table = single-file behavior.
+pub fn infer_full(
+  m : @ast.Module,
+  wr : @walk.WalkResult,
+  extern_iface : @core.IfaceSymTab,
+) -> TypeResult {
+  let inf = new_infer(wr.fn_bindings, extern_iface)
   for s in m.body {
     match s.kind {
       SLet(n, ann, init) => {

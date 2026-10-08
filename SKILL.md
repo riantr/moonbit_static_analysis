@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.2 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.3 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -101,6 +101,36 @@ keeps copies of other people's code under an ordinary directory name: on one
 such tree those copies were 1020 files and 126,687 findings — 88% of everything
 the scan reported, none of it the target's own code. Dot-directories
 (`.mooncakes`, `.repos`) and `_build` are already skipped.
+
+### Cross-file type resolution
+
+A `.mbt` that uses a type from another package (e.g. `Command` from
+`@argparse`) would normally fire `undefined name 'Command'` because the
+single-file analyzer only sees the file it is reading. Two flags teach it the
+missing names:
+
+```
+moonx riantr/moonbit_static_analysis@latest moonbitlang/pdf2md@0.1.1 \
+  --extern-iface-dir .repos
+```
+
+`--extern-iface-dir <dir>` is repeatable. Every `.mbti` file under the named
+directory is parsed and its declared types + value signatures enter the
+**cross-file symbol table** the structural walk and the type lens consult
+before reporting `FUndefinedName`. The natural target is `.repos/` after you
+have `moon fetch`ed the dependencies you want indexed. The target's own tree
+is always indexed.
+
+By default the analyzer also reads the target's `moon.mod` and `moon fetch`es
+each direct import (so the simple case needs no extra flags). Pass
+`--no-auto-fetch-deps` to skip the auto-fetch.
+
+The type lens returns `TUnknown` for a name that is a type elsewhere, and
+`TFunc(name, [TUnknown], TUnknown)` for one that is a value, so calls like
+`Command(...)` stay quiet too — the existing `ECall` handler treats that shape
+as a value whose signature is not modelled rather than firing `FOpMismatch`.
+Names absent from the table still report, so the table never invents valid
+bindings — it only suppresses, never the other way around.
 
 ## What the numbers mean, and what they do not
 

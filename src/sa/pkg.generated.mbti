@@ -8,7 +8,7 @@ import {
 // Values
 pub fn aggregate(Array[Verdict]) -> Summary
 
-pub async fn scan(String, Array[String]) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool) -> Unit
 
 // Errors
 

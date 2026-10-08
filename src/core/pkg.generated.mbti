@@ -36,6 +36,17 @@ pub(all) struct Frame {
   line : Int
 } derive(Eq)
 
+pub struct IfaceSymTab {
+  types : Map[String, Bool]
+  values : Map[String, Bool]
+}
+pub fn IfaceSymTab::empty() -> Self
+pub fn IfaceSymTab::has_type(Self, String) -> Bool
+pub fn IfaceSymTab::has_value(Self, String) -> Bool
+pub fn IfaceSymTab::merge(Self, Self) -> Self
+pub fn IfaceSymTab::n_types(Self) -> Int
+pub fn IfaceSymTab::n_values(Self) -> Int
+
 pub(all) enum Lens {
   LStructural
   LType
