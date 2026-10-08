@@ -100,13 +100,63 @@ pub fn IfaceSymTab::merge(
 }
 
 ///|
+/// The bare spelling of a name, with any leading `@pkg.` qualifier removed:
+/// `@core.IfaceSymTab::empty` becomes `IfaceSymTab::empty`. A name that is
+/// not qualified is returned unchanged.
+///
+/// This exists because the two sides of the cross-file table spell the same
+/// name differently, and the difference is invisible unless you measure it.
+/// A `.mbti` declares names bare — `pub fn IfaceSymTab::empty() -> Self` —
+/// because that is how the declaration is written, while a use site must
+/// qualify anything from another package, so the parser folds it into a
+/// single string `@core.IfaceSymTab::empty` (`dotted()` in `parser`). A
+/// `.mbti` never produces the qualified spelling and a use site never
+/// produces the bare one, so an exact-match table entry is unreachable for
+/// precisely the case the table was added for.
+///
+/// Measured on 0.4.4: `collect_iface_names` over a `.mbti` holding
+/// `pub fn IfaceSymTab::empty()` answered `has_value("IfaceSymTab::empty")
+/// = true` and `has_value("@core.IfaceSymTab::empty") = false`. Every
+/// qualified cross-package reference — the normal way MoonBit code refers to
+/// another package — missed, and the 0.4.3 feature was silent no-op for it.
+///
+/// The qualifier is dropped rather than checked, so `@a.T` matches a `T`
+/// declared by any `.mbti` in the table. The table is a union over every
+/// root passed to `--extern-iface-dir`, so it cannot attribute a declaration
+/// to the package that made it anyway; this widens an existing looseness
+/// rather than introducing one. It fails toward silence on a name that only
+/// some other package declares, which is the right side to err on for a
+/// table whose entire job is suppressing "no visible binding".
+#proof_pure
+pub fn unqualified(name : String) -> String {
+  if !name.has_prefix("@") {
+    return name
+  }
+  let chars = name.to_array()
+  let mut i = 2
+  while i < chars.length() && chars[i] != '.' {
+    i += 1
+  }
+  if i >= chars.length() {
+    return name
+  }
+  let buf = StringBuilder()
+  i += 1
+  while i < chars.length() {
+    buf.write_char(chars[i])
+    i += 1
+  }
+  buf.to_string()
+}
+
+///|
 pub fn IfaceSymTab::has_type(self : IfaceSymTab, name : String) -> Bool {
-  self.types.contains(name)
+  self.types.contains(name) || self.types.contains(unqualified(name))
 }
 
 ///|
 pub fn IfaceSymTab::has_value(self : IfaceSymTab, name : String) -> Bool {
-  self.values.contains(name)
+  self.values.contains(name) || self.values.contains(unqualified(name))
 }
 
 ///|

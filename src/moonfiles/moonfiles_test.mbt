@@ -498,3 +498,90 @@ test ".mbti: collect_iface_names handles type alias and re-export" {
   // the re-exported name enters the symtab
   assert_true(tab.has_type("RenamedT"))
 }
+
+///|
+/// The 0.4.4 defect this pins: a `.mbti` declares names BARE and a use site
+/// spells the same name QUALIFIED, so an exact-match table made the whole
+/// cross-file feature a silent no-op for cross-package references — the only
+/// kind MoonBit code actually contains. Measured before the fix:
+/// `has_value("@core.IfaceSymTab::empty")` answered `false` while
+/// `has_value("IfaceSymTab::empty")` answered `true`.
+test ".mbti: collect_iface_names resolves the @pkg.-qualified spelling" {
+  let src = "pub fn IfaceSymTab::empty() -> Self\npub struct Walker { x : Int }\n"
+  let tab = @moonfiles.collect_iface_names(src)
+  // the declaration spelling
+  assert_true(tab.has_value("IfaceSymTab::empty"))
+  assert_true(tab.has_type("Walker"))
+  // the use-site spelling — this is what the analyzer's EName carries
+  assert_true(tab.has_value("@core.IfaceSymTab::empty"))
+  assert_true(tab.has_type("@core.Walker"))
+  // and a module-coordinate qualifier, which is what a dependency's use
+  // site looks like
+  assert_true(tab.has_value("@riantr/other.IfaceSymTab::empty"))
+}
+
+///|
+/// Negative control for the test above, and the one that keeps the qualifier
+/// rule from becoming "ignore everything that starts with `@`": stripping
+/// the qualifier must not manufacture a hit. `@core.Missing` has no bare
+/// form in the table and must stay absent.
+test ".mbti: an unqualified miss does not become a hit by stripping" {
+  let tab = @moonfiles.collect_iface_names("pub fn present() -> Self\n")
+  assert_true(tab.has_value("present"))
+  assert_true(tab.has_value("@anywhere.present"))
+  assert_false(tab.has_value("@anywhere.absent"))
+  assert_false(tab.has_value("absent"))
+  // a bare `@` with no `.` is not a qualified name and stays a miss
+  assert_false(tab.has_value("@present"))
+  assert_false(tab.has_value("@"))
+}
+
+///|
+test "unqualified leaves a bare name alone" {
+  assert_eq(@core.unqualified("IfaceSymTab::empty"), "IfaceSymTab::empty")
+  assert_eq(@core.unqualified("Int"), "Int")
+  // `@foo` has no `.` — there is nothing to strip, so it comes back whole
+  assert_eq(@core.unqualified("@foo"), "@foo")
+  assert_eq(@core.unqualified(""), "")
+  // the qualifier ends at the FIRST `.`; module coordinates are written
+  // `author/module`, so they contain `/` and never a second `.`, which is
+  // what makes the first one the right boundary
+  assert_eq(@core.unqualified("@core.IfaceSymTab::empty"), "IfaceSymTab::empty")
+  assert_eq(@core.unqualified("@riantr/other.Foo"), "Foo")
+  assert_eq(@core.unqualified("@a.b.c.Name"), "b.c.Name")
+}
+
+///|
+/// The end-to-end form of the 0.4.4 defect, and the test whose ABSENCE let it
+/// ship. `pipeline_test.mbt` covers this same suppression, but it builds its
+/// tables by hand — writing `"@core.IfaceSymTab::empty"` straight into
+/// `values` — so it passed no matter what the collector actually produced.
+/// The shipping table comes from a `.mbti`, and a `.mbti` writes the name
+/// bare. Only a test that feeds a real `.mbti` through the real collector can
+/// see the two spellings disagree, and this package is where it can be
+/// written: `pipeline` cannot import `moonfiles` (that is a cycle, since
+/// `moonfiles` calls `pipeline`), so the pairing test has to live here.
+test ".mbti end-to-end: a collected table silences the qualified call" {
+  let mbti = "pub fn IfaceSymTab::empty() -> Self\n"
+  let tab = @moonfiles.collect_iface_names(mbti)
+  let r = @pipeline.run("@core.IfaceSymTab::empty()\n", "x.mbt", tab)
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+/// The negative control for the test above, and the one that stops it from
+/// passing for the wrong reason: if the pipeline had stopped consulting the
+/// table altogether, "no reports" would be trivially true. A name the same
+/// `.mbti` does not declare must still be reported.
+test ".mbti end-to-end: a collected table still reports an undeclared name" {
+  let mbti = "pub fn IfaceSymTab::empty() -> Self\n"
+  let tab = @moonfiles.collect_iface_names(mbti)
+  let r = @pipeline.run("@core.NotDeclared::gone()\n", "x.mbt", tab)
+  let mut hits = 0
+  for rep in r.reports {
+    if rep.family.name() == "UndefinedName" {
+      hits += 1
+    }
+  }
+  assert_true(hits > 0)
+}

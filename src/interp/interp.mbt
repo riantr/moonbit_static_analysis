@@ -858,7 +858,12 @@ fn Interp::call(
       // is the honest answer — the alternative is reporting the name as
       // undefined, which contradicts the structural and type lenses (both of
       // which consult the same table and stay silent).
-      if self.extern_values.contains(name) {
+      // Both spellings, in the same order `IfaceSymTab::has_value` tries
+      // them. Normalizing alone would be a regression: a caller may have
+      // built the table with the qualified spelling already in it, and
+      // `unqualified` turns that key into one this map does not hold.
+      if self.extern_values.contains(name) ||
+        self.extern_values.contains(@core.unqualified(name)) {
         return AAny
       }
       // callee existence was the structural/type lenses' finding; here it

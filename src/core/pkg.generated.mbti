@@ -8,6 +8,8 @@ pub fn snapshot_vst(Array[Frame]) -> Array[Frame]
 
 pub fn span_at(Int, Int, Int) -> Span
 
+pub fn unqualified(String) -> String
+
 pub fn zero_span() -> Span
 
 // Errors
