@@ -8,6 +8,10 @@ import {
 // Values
 pub fn aggregate(Array[Verdict]) -> Summary
 
+pub fn is_module_coord(String) -> Bool
+
+pub fn parse_moon_mod_imports(String) -> Array[String]
+
 pub async fn scan(String, Array[String], Array[String], Bool) -> Unit
 
 // Errors

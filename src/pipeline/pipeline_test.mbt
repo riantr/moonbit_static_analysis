@@ -489,3 +489,50 @@ test "cross-file: merge unions both type and value sets" {
   assert_true(merged2.has_type("Color"))
   assert_true(merged2.has_value("Extra"))
 }
+
+///|
+/// The self-scan reported two findings on this very file:
+///   18:26  no visible binding for 'StringBuilder'
+///   18:27  no visible binding for '@core.IfaceSymTab::empty'
+/// Both are the analyzer's own blind spot, not defects, and both are fixed
+/// by the cross-file symbol table the 0.4.3 release added — this file's own
+/// package declares neither name. The point of the test is that the empty
+/// table is what produces the findings, and a table carrying the names
+/// removes them. Without this the helper's own cost is invisible: the
+/// scanner is telling the truth about a single file and the truth is not
+/// actionable.
+test "an extern_iface carrying the names removes the self-scan findings" {
+  let src = "@core.IfaceSymTab::empty()\n"
+  // empty table: the qualified call is not a visible binding
+  let bare = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  let mut bare_hits = 0
+  for rep in bare.reports {
+    if rep.family.name() == "UndefinedName" {
+      bare_hits += 1
+    }
+  }
+  assert_true(bare_hits > 0)
+  // table with the qualified name: no finding
+  let tab = @core.IfaceSymTab::empty()
+  tab.values.set("@core.IfaceSymTab::empty", true)
+  let known = @pipeline.run(src, "x.mbt", tab)
+  assert_eq(known.reports.length(), 0)
+}
+
+///|
+/// The negative control for the test above: a table carrying SOME name must
+/// not silence a DIFFERENT one. An empty or partially-filled table that
+/// suppresses everything would make the previous test pass for the wrong
+/// reason.
+test "a table carrying one name does not silence another" {
+  let tab = @core.IfaceSymTab::empty()
+  tab.values.set("SomethingElse", true)
+  let r = @pipeline.run("@core.IfaceSymTab::empty()\n", "x.mbt", tab)
+  let mut hits = 0
+  for rep in r.reports {
+    if rep.family.name() == "UndefinedName" {
+      hits += 1
+    }
+  }
+  assert_true(hits > 0)
+}

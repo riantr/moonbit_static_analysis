@@ -130,11 +130,11 @@ pub fn run(
   for r in tr.findings {
     all.push(r)
   }
-  let ir = @interp.analyze_module(parsed.tree, tr, wr, file)
+  let ir = @interp.analyze_module(parsed.tree, tr, wr, file, extern_iface)
   for r in ir {
     all.push(r)
   }
-  let sigs = @interp.analyzed_sigs(parsed.tree, tr, wr, file)
+  let sigs = @interp.analyzed_sigs(parsed.tree, tr, wr, file, extern_iface)
   let merged = merge_findings(all)
   let mut n1 = 0
   let mut n2 = 0

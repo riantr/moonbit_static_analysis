@@ -40,6 +40,7 @@ pub struct IfaceSymTab {
   types : Map[String, Bool]
   values : Map[String, Bool]
 }
+pub fn IfaceSymTab::all_values(Self) -> Map[String, Bool]
 pub fn IfaceSymTab::empty() -> Self
 pub fn IfaceSymTab::has_type(Self, String) -> Bool
 pub fn IfaceSymTab::has_value(Self, String) -> Bool

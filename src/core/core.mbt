@@ -68,6 +68,15 @@ pub fn IfaceSymTab::empty() -> IfaceSymTab {
 }
 
 ///|
+/// The `values` set, handed to a consumer that needs a plain
+/// `Map[String, Bool]` rather than the table. The behavioral lens uses it to
+/// decide "this callee exists but is not analysed here" instead of "this
+/// callee is undefined", which is the whole point of the table.
+pub fn IfaceSymTab::all_values(self : IfaceSymTab) -> Map[String, Bool] {
+  self.values
+}
+
+///|
 /// Merge another table into this one. A name present on both sides of
 /// the merge ends up in BOTH sets — the analyzer's lookup prefers
 /// `values` over `types` when a name is in both, so the call shape wins

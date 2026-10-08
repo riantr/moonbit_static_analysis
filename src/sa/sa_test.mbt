@@ -152,3 +152,89 @@ test "SUMMARY identity: an empty input gives all zeros" {
   // Identity holds trivially.
   assert_eq(s.actionable + s.notices + s.unreliable, s.total)
 }
+
+// --- moon.mod import extraction -------------------------------------------
+//
+// 0.4.3 shipped a `parse_moon_mod_imports` that scanned for the bare text
+// `import ` anywhere in the file and read quoted strings until the next `}`.
+// The self-scan caught what that does on a real moon.mod: this module's own
+// header comment contains the words "we never import them", which opened a
+// phantom import block, and the scanner then read the module's own `name =`
+// and `repository =` values as dependencies. The run announced 4 imports for
+// a file declaring 1, and tried to fetch the analyzer itself.
+//
+// These tests run against the REAL grammar, including this module's own
+// moon.mod shape, because a parser that only works on a hand-written sample
+// is how the last version shipped a phantom import.
+
+///|
+test "moon.mod: only the import block yields coordinates" {
+  // A name= / repository= / license= header before the import block must
+  // contribute nothing, even when the header mentions the word "import".
+  let src = "name = \"riantr/thing\"\n// we never import them.\nrepository = \"https://github.com/riantr/thing\"\nlicense = \"MIT\"\nimport {\n  \"moonbitlang/async@0.22.4\",\n}\n"
+  let got = @sa.parse_moon_mod_imports(src)
+  assert_eq(got.length(), 1)
+  assert_eq(got[0], "moonbitlang/async@0.22.4")
+}
+
+///|
+test "moon.mod: the module's own header never becomes a dependency" {
+  // The exact shape that made 0.4.3 fetch itself: a comment containing
+  // `import ` ahead of the real block.
+  let src = "// module: riantr/x — we never import them.\n// another comment line.\nname = \"riantr/x\"\nimport {\n  \"moonbitlang/core/error\",\n}\n"
+  let got = @sa.parse_moon_mod_imports(src)
+  assert_eq(got.length(), 1)
+  assert_eq(got[0], "moonbitlang/core/error")
+  // and the module's own name is NOT among them
+  for c in got {
+    assert_false(c == "riantr/x")
+  }
+}
+
+///|
+test "moon.mod: a URL is not a coordinate" {
+  // `https://…` was accepted before because it contains a `/`.
+  let src = "import {\n  \"https://github.com/riantr/x\",\n  \"moonbitlang/async\",\n}\n"
+  let got = @sa.parse_moon_mod_imports(src)
+  assert_eq(got.length(), 1)
+  assert_eq(got[0], "moonbitlang/async")
+}
+
+///|
+test "moon.mod: several coordinates, deduped, block closed by }" {
+  let src = "import {\n  \"a/b\",\n  \"c/d@1.2.3\",\n  \"a/b\",\n}\nversion = \"0.1.0\"\nimport {\n  \"e/f\",\n}\n"
+  let got = @sa.parse_moon_mod_imports(src)
+  assert_eq(got.length(), 3)
+  assert_eq(got[0], "a/b")
+  assert_eq(got[1], "c/d@1.2.3")
+  // the value AFTER the block is not an import
+  assert_eq(got[2], "e/f")
+}
+
+///|
+test "moon.mod: a file with no import block yields nothing" {
+  assert_eq(
+    @sa.parse_moon_mod_imports("name = \"a/b\"\nversion = \"1.0.0\"\n").length(),
+    0,
+  )
+  assert_eq(@sa.parse_moon_mod_imports("").length(), 0)
+}
+
+///|
+test "is_module_coord accepts coordinates and rejects everything else" {
+  assert_true(@sa.is_module_coord("a/b"))
+  assert_true(@sa.is_module_coord("moonbitlang/core/error@0.1.2"))
+  // more than two segments is a package inside a module, and `moon fetch`
+  // accepts the shape (it reaches the registry lookup rather than rejecting
+  // the name outright)
+  assert_true(@sa.is_module_coord("a/b/c"))
+  assert_true(@sa.is_module_coord("a/b/c/d"))
+  // not coordinates
+  assert_false(@sa.is_module_coord(""))
+  assert_false(@sa.is_module_coord("b")) // one segment: rejected by moon fetch
+  assert_false(@sa.is_module_coord("https://github.com/a/b"))
+  assert_false(@sa.is_module_coord("README.md"))
+  assert_false(@sa.is_module_coord("a//b")) // empty segment
+  assert_false(@sa.is_module_coord("a/../b")) // traversal
+  assert_false(@sa.is_module_coord("@0.1.2")) // version with no module
+}

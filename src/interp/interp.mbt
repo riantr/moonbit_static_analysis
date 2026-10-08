@@ -158,6 +158,19 @@ priv struct MethodDef {
 ///|
 priv struct Interp {
   methods : Map[String, MethodDef]
+  /// Names that exist but whose body is not analysed — the cross-file
+  /// symbol table's `values` set. A call to one of these is dispatched as an
+  /// unknown-returning call instead of an undefined function, because the
+  /// callee IS defined; it is defined in a file this single-file
+  /// interpreter cannot read.
+  ///
+  /// Without this, the behavioral lens contradicted the structural and type
+  /// lenses on every cross-package call: those two consult the symtab and
+  /// stay silent, while this one reported `undefined function '@core.T::m'`.
+  /// The self-scan surfaced it on this repository's own test helper
+  /// (`@core.IfaceSymTab::empty()`), which is exactly the shape the table
+  /// exists to answer.
+  extern_values : Map[String, Bool]
   file : String
   /// signature cache: key -> return value
   cache : Map[String, AbsVal]
@@ -173,9 +186,10 @@ priv struct Interp {
 }
 
 ///|
-fn new_interp(file : String) -> Interp {
+fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
   Interp::{
     methods: Map([]),
+    extern_values: extern_iface.all_values(),
     file,
     globals: Map([]),
     cache: Map([]),
@@ -258,8 +272,9 @@ pub fn analyze_module(
   tr : @types.TypeResult,
   wr : @walk.WalkResult,
   file : String,
+  extern_iface : @core.IfaceSymTab,
 ) -> Array[@report.Report] {
-  let it = new_interp(file)
+  let it = new_interp(file, extern_iface)
   // method table from the type lens's signatures (assembly point 2)
   for f in wr.fns {
     let sig : @types.Sig? = find_sig(tr, f.name)
@@ -838,6 +853,14 @@ fn Interp::call(
       self.analyze_fn(def, vals)
     }
     None => {
+      // A name the cross-file table knows: the callee exists, in a file this
+      // interpreter cannot read. Dispatching it as an unknown-returning call
+      // is the honest answer — the alternative is reporting the name as
+      // undefined, which contradicts the structural and type lenses (both of
+      // which consult the same table and stay silent).
+      if self.extern_values.contains(name) {
+        return AAny
+      }
       // callee existence was the structural/type lenses' finding; here it
       // is a runtime UndefVarError — the pipeline merges all three
       self.report(@core.FUndefinedName, "undefined function '\{name}'", sp)
@@ -990,8 +1013,9 @@ pub fn analyzed_sigs(
   tr : @types.TypeResult,
   wr : @walk.WalkResult,
   file : String,
+  extern_iface : @core.IfaceSymTab,
 ) -> Array[String] {
-  let it = new_interp(file)
+  let it = new_interp(file, extern_iface)
   for f in wr.fns {
     let sig : @types.Sig? = find_sig(tr, f.name)
     let ptypes : Array[String] = []

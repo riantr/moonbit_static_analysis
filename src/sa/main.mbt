@@ -203,10 +203,15 @@ pub async fn scan(
   for d in extern_iface_dirs {
     iface_dirs.push(d)
   }
-  let iface_tab = collect_iface_symtabs(iface_dirs)
+  let (iface_tab, skipped_dot) = collect_iface_symtabs(iface_dirs)
   if iface_tab.n_types() + iface_tab.n_values() > 0 {
     println(
       "IFACE\ttypes=\{iface_tab.n_types()}\tvalues=\{iface_tab.n_values()}\t(dirs=\{iface_dirs.length()})",
+    )
+  }
+  if skipped_dot > 0 {
+    println(
+      "IFACE\t\{skipped_dot} dot-directories under the target were NOT read for interface names (they hold a dependency's code); pass --extern-iface-dir <that path> to index them",
     )
   }
   // Verdicts collected in the loop, then handed to `aggregate` at the end so
@@ -755,107 +760,200 @@ async fn fetch_moon_mod_imports(root : String) -> Unit {
     return
   }
   println("FETCH\t\{imports.length()} import(s) from moon.mod")
+  let mut failed = 0
   for coord in imports {
-    let _ = @process.run("moon", ["fetch", coord]) catch { _ => 0 }
+    // Each failure is named. The 0.4.3 version ran the same loop with the
+    // result discarded, so a coordinate that could not be fetched produced
+    // no line at all here — only moon's own stderr — and the scan went on
+    // as if the dependency's types were present.
+    let ok = @process.run("moon", ["fetch", coord]) catch { _ => 0 }
+    if ok != 0 {
+      failed += 1
+      println("FETCH\tcould not fetch \{coord}")
+    }
   }
-  // tell the user the .repos/ subdirs we now expect to find (best-effort)
-  let base = ".repos/" + first_segment(imports[0])
   println(
-    "FETCH\tdeposited under \{base}/<version>/ — pass --extern-iface-dir .repos to index transitive types",
+    "FETCH\tdeposited under .repos/ — pass --extern-iface-dir .repos to index their interface names",
   )
+  if failed > 0 {
+    println(
+      "FETCH\t\{failed} of \{imports.length()} import(s) not fetched; their types are NOT in the table below",
+    )
+  }
 }
 
 ///|
-/// Find every `"author/pkg"` string inside `import { ... }` blocks. The
-/// shape is exactly what `moon fetch` accepts: a quoted path, possibly
-/// repeated. Quotes inside comments or other text are not handled because
-/// `moon.mod` is a config file, not a real source — comments are rare and
-/// the failure mode is "fetch nothing", not "fetch the wrong thing".
-fn parse_moon_mod_imports(src : String) -> Array[String] {
+/// Find every `"author/pkg"` string inside `import { ... }` blocks.
+///
+/// This used to scan for the bare 7-char text `import ` anywhere in the file
+/// and then read quoted strings until the next `}`. Two bugs came out of that,
+/// both measured on this module's own `moon.mod` (self-scan, 0.4.3):
+///
+///   1. It matched the word `import ` inside a COMMENT. This module's
+///      moon.mod says "we never import them." in its header, which opened a
+///      phantom import block; the quoted strings after it — the module's own
+///      `name = "riantr/moonbit_static_analysis"` and
+///      `repository = "https://github.com/..."` — were then read as
+///      dependencies. The scan announced "4 import(s) from moon.mod" for a
+///      file that declares exactly 1, and tried to fetch the module itself.
+///   2. It accepted any quoted string containing a `/`, so the `https://`
+///      repository URL became a coordinate and `moon fetch` failed twice with
+///      "path contains an invalid component".
+///
+/// The fix is to scan line by line and skip `//` comments, and to accept
+/// only a coordinate that looks like `author/module` — no scheme, no empty
+/// segments. A `moon.mod` also allows a trailing `@version`, which is part
+/// of the coordinate and is kept.
+pub fn parse_moon_mod_imports(src : String) -> Array[String] {
   let out : Array[String] = []
-  let chars = src.to_array()
-  let mut i = 0
-  let n = chars.length()
   let mut in_import = false
-  while i < n {
-    // a `import` keyword followed by whitespace opens a block
-    if !in_import {
-      if i + 7 <= n {
-        // Look for the seven-char prefix `import ` (with trailing space).
-        // Chars from `src.to_array()` are UInt16; literal Chars convert
-        // implicitly when one side is UInt16, but explicit comparison is
-        // clearer than letting the inference pick.
-        let mut ok = true
-        if chars[i] != 'i' ||
-          chars[i + 1] != 'm' ||
-          chars[i + 2] != 'p' ||
-          chars[i + 3] != 'o' ||
-          chars[i + 4] != 'r' ||
-          chars[i + 5] != 't' ||
-          chars[i + 6] != ' ' {
-          ok = false
-        }
-        if ok {
-          in_import = true
-          i += 7
-          continue
-        }
-      }
-      i += 1
+  for raw in src.split("\n") {
+    // Strip a `//` comment. moon.mod has no block comments and no string
+    // escapes that would hide a `//`, so the first one starts the comment.
+    let line = match raw.split_once("//") {
+      Some((head, _)) => head
+      None => raw
+    }
+    let t = line.trim()
+    if t == "" {
       continue
     }
-    // inside a `import { ... }` block; bail when the block ends
-    let c = chars[i]
-    if c == '}' {
+    // `import {` opens; `import` alone also opens (the `{` is on the next
+    // line in some hand-written files); `}` closes.
+    if t == "}" || t == "};" || t == "}," {
       in_import = false
-      i += 1
       continue
     }
-    if c == '"' {
-      let buf = StringBuilder()
-      i += 1
-      while i < n && chars[i] != '"' {
-        buf.write_char(chars[i])
-        i += 1
-      }
-      if i < n {
-        i += 1
-      }
-      let s = buf.to_string()
-      if s != "" && s.contains("/") && !out.contains(s) {
-        out.push(s)
+    if !in_import {
+      if t == "import" ||
+        t == "import{" ||
+        t.has_prefix("import {") ||
+        t.has_prefix("import{") {
+        in_import = true
       }
       continue
+    }
+    // inside the block: take each quoted string, and only if it is a
+    // coordinate rather than a URL or some other value. `split` yields
+    // StringViews, so the candidate is reified before it is compared or
+    // stored — the same reason `moonfiles` has `view_str`.
+    for part in t.split("\"") {
+      let q = reify(part)
+      if is_module_coord(q) && !out.contains(q) {
+        out.push(q)
+      }
+    }
+    if t.has_suffix("}") {
+      in_import = false
+    }
+  }
+  out
+}
+
+///|
+/// StringView -> String, by iterating characters. `split` returns views and
+/// the rest of this file works in `String`.
+fn reify(v : StringView) -> String {
+  let buf = StringBuilder()
+  for c in v {
+    buf.write_char(c)
+  }
+  buf.to_string()
+}
+
+///|
+/// True for `author/module` with an optional `@version` suffix — the shape
+/// `moon fetch` accepts. Deliberately strict: a URL (`https://…`), a bare
+/// `README.md`, and an empty or single-segment string are all rejected, so a
+/// quoted value that is not a coordinate cannot be mistaken for one.
+pub fn is_module_coord(s : String) -> Bool {
+  if s == "" || s.contains("://") || s.has_prefix(".") {
+    return false
+  }
+  // split off `@version`
+  let base = match s.split_once("@") {
+    Some((b, _)) => reify(b)
+    None => s
+  }
+  if base == "" {
+    return false
+  }
+  // Split by hand rather than with `String::split`. Measured on this
+  // toolchain (probe, src/sa): `split` DOES keep the empty segments —
+  // `"a//b"` yields three parts, the middle one empty — but
+  // `split(...).length()` returns 0 for every input, so a segment-count
+  // check written against it is a guard that never fires. Walking the
+  // characters makes both facts visible in the code instead of in a probe.
+  //
+  // The registry requires `<author>/<module_name>`, so TWO segments is the
+  // floor; a package inside a module adds more (`moonbitlang/core/error`).
+  // Measured against `moon fetch`: one segment is rejected outright with
+  // "must be in the form of <author>/<module_name>", while two or more
+  // reach the registry lookup.
+  let chars = base.to_array()
+  let n = chars.length()
+  let mut segs = 0
+  let mut start = 0
+  let mut i = 0
+  while i < n {
+    if chars[i] == '/' {
+      if !ok_segment(chars, start, i) {
+        return false
+      }
+      segs += 1
+      start = i + 1
     }
     i += 1
   }
-  out
+  // the segment after the final '/'; `start == n` means a trailing '/'
+  if !ok_segment(chars, start, n) {
+    return false
+  }
+  segs += 1
+  segs >= 2
 }
 
 ///|
-fn first_segment(coord : String) -> String {
-  let mut out = ""
-  for c in coord {
-    if c == '/' {
-      break
-    }
-    out = out + c.to_string()
+/// One `/`-separated segment in [from, to): non-empty, and not `.` or `..`.
+fn ok_segment(chars : Array[Char], from : Int, to : Int) -> Bool {
+  if to <= from {
+    return false
   }
-  out
+  if to - from == 1 && chars[from] == '.' {
+    return false
+  }
+  if to - from == 2 && chars[from] == '.' && chars[from + 1] == '.' {
+    return false
+  }
+  true
 }
 
 ///|
 /// Walk a list of directories, read every `.mbti` file found, and merge
-/// their declared type and value names into one `IfaceSymTab`. The walk
-/// reuses the file-collection rules from `collect` (skip `_build`, dot-dirs,
-/// `excludes`) so the symtab mirrors what a real package view would see.
+/// their declared type and value names into one `IfaceSymTab`.
 ///
-/// Symlinks and very large files (over 4 MiB) are skipped to avoid
-/// pathological inputs. Errors are logged and skipped; one unreadable
-/// `.mbti` must not block the whole table.
-async fn collect_iface_symtabs(roots : Array[String]) -> @core.IfaceSymTab {
+/// The first root is the target itself, where the dot-directory skip is
+/// right: `.repos`, `.mooncakes` and `.git` are a dependency's code, not the
+/// target's. Every LATER root is a directory the user named on the command
+/// line, and naming `.repos` is exactly how one points the analyzer at
+/// fetched dependencies — so the dot rule is dropped for them. Measured on
+/// 0.4.3: `--extern-iface-dir .repos` found the interfaces (a dot root is
+/// read directly, its own name is never tested), but a dot-directory NESTED
+/// inside a passed root was silently skipped — the walk found 1 type where
+/// the directory held 4, and said nothing about the other 3.
+///
+/// Skipped dot-directories are now counted and reported, because a symtab
+/// missing types it silently looked at is the same failure mode as a parser
+/// that silently gives up: the reader cannot tell "nothing there" from
+/// "never looked".
+async fn collect_iface_symtabs(
+  roots : Array[String],
+) -> (@core.IfaceSymTab, Int) {
   let tab = @core.IfaceSymTab::empty()
-  for root in roots {
+  let mut skipped_dot = 0
+  for ri, root in roots {
+    // the target is roots[0]; anything else was named by the user
+    let user_named = ri > 0
     let stack : Array[String] = [root]
     while stack.length() > 0 {
       let dir = match stack.pop() {
@@ -864,11 +962,18 @@ async fn collect_iface_symtabs(roots : Array[String]) -> @core.IfaceSymTab {
       }
       let entries = @fs.readdir(dir) catch { _ => continue }
       for e in entries {
-        if e == "_build" || e.has_prefix(".") {
+        if e == "_build" {
+          continue
+        }
+        if !user_named && e.has_prefix(".") {
           continue
         }
         let p = dir + "/" + e
         if is_dir(p) {
+          if !user_named && e.has_prefix(".") {
+            skipped_dot += 1
+            continue
+          }
           stack.push(p)
         } else if e.has_suffix(".mbti") {
           let data = @fs.read_file(p) catch { _ => continue }
@@ -879,5 +984,5 @@ async fn collect_iface_symtabs(roots : Array[String]) -> @core.IfaceSymTab {
       }
     }
   }
-  tab
+  (tab, skipped_dot)
 }

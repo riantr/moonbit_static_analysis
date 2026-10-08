@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.3 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.4 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -123,14 +123,24 @@ is always indexed.
 
 By default the analyzer also reads the target's `moon.mod` and `moon fetch`es
 each direct import (so the simple case needs no extra flags). Pass
-`--no-auto-fetch-deps` to skip the auto-fetch.
+`--no-auto-fetch-deps` to skip the auto-fetch. Only the real `import { … }`
+block is read: a `//` comment that happens to contain the word "import" does
+not open one, and a URL is not mistaken for a coordinate. Each import that
+could not be fetched is named on its own line, because its types are then
+absent from the table.
 
-The type lens returns `TUnknown` for a name that is a type elsewhere, and
-`TFunc(name, [TUnknown], TUnknown)` for one that is a value, so calls like
-`Command(...)` stay quiet too — the existing `ECall` handler treats that shape
-as a value whose signature is not modelled rather than firing `FOpMismatch`.
-Names absent from the table still report, so the table never invents valid
-bindings — it only suppresses, never the other way around.
+Dot-directories under the **target** are skipped (they hold a dependency's
+code, not the target's), and the count is printed so a reader knows the table
+is not complete. Directories you name yourself are read in full, dot entries
+included — that is what pointing at `.repos` means.
+
+The table is consulted by all three lenses, which is the point: the structural
+walk does not report the name, the type lens returns `TUnknown` for a type
+elsewhere and `TFunc(name, [TUnknown], TUnknown)` for a value, and the
+behavioral lens dispatches a known-but-unread callee as an
+unknown-returning call instead of calling it undefined. Names absent from the
+table still report, so the table never invents valid bindings — it only
+suppresses, never the other way around.
 
 ## What the numbers mean, and what they do not
 
