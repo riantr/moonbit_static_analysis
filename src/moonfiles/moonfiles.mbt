@@ -1236,12 +1236,11 @@ fn parse_iface(src : String) -> IfaceScan {
         })
     }
   }
-  let builtin = [
-    "Int", "Int64", "UInt", "UInt64", "Double", "Bool", "Char", "String", "StringView",
-    "Bytes", "BytesView", "Byte", "Unit", "Nil", "Array", "FixedArray", "ArrayView",
-    "ReadOnlyArray", "Option", "Result", "Map", "Set", "StringBuilder", "Error",
-    "UInt16", "Int16", "UInt8", "Float", "SourceLoc", "Json",
-  ]
+  // The shared ambient list, not a private copy. It was a separate literal
+  // here, and the `.mbt` walk carried a three-entry one; that is how `Map` came
+  // to be an unknown type in a `.mbti` signature and an unbound name in a
+  // `.mbt` expression. Built once, not per referenced type.
+  let builtin = @core.ambient_names()
   for r in referenced {
     let (ty, lineno, col) = r
     // `@pkg.Name` is external by shape; so is anything path-qualified

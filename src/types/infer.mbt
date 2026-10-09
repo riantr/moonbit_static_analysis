@@ -23,7 +23,17 @@ fn new_infer(
   fn_bindings : Map[String, Array[@walk.Binding]],
   extern_iface : @core.IfaceSymTab,
 ) -> Infer {
+  // Every ambient name seeds the table as TUnknown. The three that follow are
+  // then overwritten with their real signatures so `len(x)` still infers Int
+  // and a bad call to `abs` is still caught. Before this, the table held only
+  // those three and the type lens re-reported the ambient names the walk
+  // already suppressed, from its own private copy of the list.
   let builtins : Map[String, Ty] = Map([])
+  for n in @core.ambient_names() {
+    if !builtins.contains(n) {
+      builtins.set(n, TUnknown)
+    }
+  }
   builtins.set("print", TFunc("print", [TUnknown], TNone))
   builtins.set("len", TFunc("len", [TUnknown], TInt))
   builtins.set("abs", TFunc("abs", [TInt], TInt))

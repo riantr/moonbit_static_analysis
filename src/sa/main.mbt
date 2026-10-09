@@ -45,12 +45,13 @@ let findings_shown_per_file : Int = 40
 /// `parsed` carries the whole weight. On a file the frontend did not understand,
 /// every other number here measures the analyzer's blindness rather than the
 /// code: an unparsed `struct` body turns its fields into undefined names and its
-/// `*` into operator mismatches. Measured on a 63-file module, `moon check`
-/// reports 8 unused values where the same code yields 529 "unused locals" from
-/// this pipeline -- the difference is 66x of the tool not seeing the struct
-/// bodies. Reporting the downstream families on such a file is how a 3%
-/// coverage scan becomes 17,937 lines of noise, so they are withheld and the
-/// file is counted once, under the reason it was not understood.
+/// `*` into operator mismatches. Those are silenced by position, since the
+/// boundary drops everything from the first failure on. The families whose
+/// verdict is about a whole FUNCTION (`UnusedLocal`, `UnusedParam`,
+/// `ParamChanged`) cannot be silenced that way -- they are reported at the
+/// declaration, which is before the failure -- so the structural walk drops them
+/// for the one function the failure could have truncated. Measured on this
+/// repository's own source: 11 actionable findings, all 11 false, now 0.
 pub(all) struct Verdict {
   path : String
   kind : String

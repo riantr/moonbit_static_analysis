@@ -593,6 +593,155 @@ test "an unknown version or clock says so rather than vanishing" {
   assert_eq(mm_check(src), [])
 }
 
+// --- notices are not defects ----------------------------------------------
+//
+// A scan of this analyzer's own source produced a file with one notice and two
+// defects, and the drawing gave all three the same shape, the same id stem and
+// the same "WHY / HOW, here is what to change" note. Nothing in the rendered
+// text said which two to act on. The only way to recover it was to already
+// know that the family name `FParse` means notice — knowledge that lives in
+// the scanner, not in the diagram a downstream agent reads.
+
+///|
+/// One file, one notice, two defects — the exact shape that used to render
+/// three identical nodes.
+fn mm_mixed() -> @sa.Verdict {
+  mm_verdict(
+    "src/f.mbt",
+    [
+      mm_rep(
+        @core.FParse,
+        [@core.LStructural],
+        "test declaration is outside the analyzed subset",
+        12,
+      ),
+      mm_rep(
+        @core.FUnusedLocal,
+        [@core.LStructural],
+        "local 's' assigned but may not be used",
+        57,
+      ),
+      mm_rep(
+        @core.FArgType,
+        [@core.LType],
+        "argument 1 expected Int, got String",
+        55,
+      ),
+    ],
+    true,
+    0,
+    0,
+    1,
+  )
+}
+
+///|
+test "a notice is drawn differently from a defect" {
+  let src = @sa.mermaid_states(
+    [mm_mixed()],
+    @sa.aggregate([mm_mixed()]),
+    @sa.ScanProvenance::{
+      target: "self",
+      version: "0.4.4",
+      scanned_at: "20261009T051511Z",
+    },
+    0,
+    0,
+  )
+  // The marker, in the node a reader looks at... `ParseError` is the name the
+  // family is DRAWN under; `FParse` is the enum case behind it.
+  assert_true(src.contains("NOTICE — ParseError @12:7"))
+  // ...and in the transition label, which is what carries the family.
+  assert_true(src.contains("notice ParseError"))
+  assert_true(src.contains("defect UnusedLocal"))
+  assert_true(src.contains("defect ArgTypeMismatch"))
+  // The id stem differs too: an agent grepping node ids must not have to
+  // parse the label to tell the two apart.
+  assert_true(src.contains("as f0_n0"))
+  assert_true(src.contains("as f0_e1"))
+  assert_true(src.contains("as f0_e2"))
+  assert_false(src.contains("as f0_n1"))
+  assert_false(src.contains("as f0_n2"))
+  assert_eq(mm_check(src), [])
+}
+
+///|
+/// A notice must not carry the "here is what to change" note. That advice is
+/// written for the first genuine read failure, which never reaches this loop
+/// — everything from the trust boundary on is counted and not drawn — so on a
+/// notice it described a problem that does not exist.
+test "a notice carries no how-to-fix advice" {
+  let src = @sa.mermaid_states(
+    [mm_mixed()],
+    @sa.aggregate([mm_mixed()]),
+    @sa.ScanProvenance::{
+      target: "self",
+      version: "0.4.4",
+      scanned_at: "20261009T051511Z",
+    },
+    0,
+    0,
+  )
+  assert_true(src.contains("excluded from `actionable`"))
+  // The notice says what it is, in its own words.
+  assert_true(
+    src.contains("ParseError covers a form this analyzer does not model"),
+  )
+  // ...and the defects keep theirs.
+  assert_true(src.contains("WHY: "))
+  assert_true(src.contains("HOW: "))
+}
+
+///|
+/// The negative control for the split: a file with NO notice must not grow a
+/// notice node or a notice-marked transition. A renderer that simply labelled
+/// every node "notice" would pass the two tests above.
+test "a file with no notice draws no notice node" {
+  let src = mm_render([mm_parsed_with(3)], 0, 0)
+  assert_false(src.contains("notice ParseError"))
+  assert_false(src.contains("NOTICE — "))
+  assert_true(src.contains("defect UndefinedName"))
+  assert_eq(mm_check(src), [])
+}
+
+///|
+/// The accounting has to survive truncation. With per_file = 1 the two notices
+/// and the defect are dropped, and the note has to say how many of the dropped
+/// ones were notices — otherwise the per-inspection breakdown, which counts
+/// defects only, does not add up to the number quoted just above it.
+test "a truncated diagram says how many of the dropped findings were notices" {
+  let v = mm_verdict(
+    "src/g.mbt",
+    [
+      mm_rep(@core.FParse, [@core.LStructural], "outside the subset", 10),
+      mm_rep(@core.FParse, [@core.LStructural], "outside the subset", 11),
+      mm_rep(@core.FUnusedLocal, [@core.LStructural], "unused", 12),
+    ],
+    true,
+    0,
+    0,
+    2,
+  )
+  let src = @sa.mermaid_states(
+    [v],
+    @sa.aggregate([v]),
+    @sa.ScanProvenance::{
+      target: "self",
+      version: "0.4.4",
+      scanned_at: "20261009T051511Z",
+    },
+    1,
+    0,
+  )
+  // per_file = 1 draws findings[0] (the notice). Of the two dropped —
+  // findings[1] (notice) and findings[2] (defect) — exactly one is a notice,
+  // and that is what the note has to say.
+  assert_true(src.contains("1 of them is a NOTICE"))
+  assert_true(src.contains("2 further findings on this file were NOT drawn"))
+  assert_true(src.contains("Per inspection: 1 from struct."))
+  assert_eq(mm_check(src), [])
+}
+
 ///|
 test "the gate rejects what it is meant to reject" {
   // Only worth something if it fails on input it is meant to catch. Each of

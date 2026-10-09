@@ -684,3 +684,91 @@ test "an index write counts a read, and a truly unused parameter still reports" 
   }
   assert_true(unused2 > 0)
 }
+
+// --- the trust boundary is not positional for function-scoped families ------
+//
+// UnusedLocal / UnusedParam / ParamChanged are conclusions about a whole
+// function, not about a line. The scanner drops findings at or after
+// `first_error_line`, which does not help: these are reported at the
+// DECLARATION, which is before the cut. So the walk skips the frame audit for
+// the one function a read failure could have truncated.
+//
+// All three tests below are needed. The first two are the guard; the third is
+// what stops the guard from being "suppress the family in every partial file",
+// which would also make these pass.
+
+///|
+fn count_family(r : @pipeline.PipelineResult, name : String) -> Int {
+  let mut n = 0
+  for rep in r.reports {
+    if rep.family.name() == name {
+      n += 1
+    }
+  }
+  n
+}
+
+///|
+/// A binding read AFTER the point where the parse gave up was read; the walk
+/// never saw the read, so "assigned but may not be used" would be a lie.
+test "a truncated function yields no function-scoped finding" {
+  let src = "fn probe(n : Int) -> Int {\n  let used_later = n + 1\n  try {\n    1\n  }\n  used_later\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  // The read failure is real and is where we expect it, so this test is not
+  // passing because the file happened to parse.
+  assert_eq(r.first_error_line, 3)
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+}
+
+///|
+/// The negative control. The guard is per-function, not per-file: a function
+/// the parser CLOSED before it reached the error was walked whole, so its
+/// verdict stands. Suppressing the family across the whole file would make the
+/// test above pass too, and would throw away every real finding in a file
+/// that happens to have an unrelated syntax error later on.
+test "a complete function before the boundary still reports an unused local" {
+  let src = "fn dead(x : Int) -> Int {\n  let never_read = 1\n  x\n}\nfn broken(y : Int) -> Int {\n  try {\n    1\n  }\n  y\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(r.first_error_line, 6)
+  assert_eq(count_family(r, "UnusedLocal"), 1)
+}
+
+///|
+/// And with no read failure at all, the family still works: the guard must
+/// not have turned the audit off. `trusted_line == 0` means "the whole file
+/// was understood".
+test "an untruncated file still reports its unused local" {
+  let r = @pipeline.run(
+    "fn dead(x : Int) -> Int {\n  let never_read = 1\n  x\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedLocal"), 1)
+}
+
+// --- ambient names ---------------------------------------------------------
+//
+// The binding walk's builtin table used to hold `print`, `len` and `abs` and
+// nothing else, so ordinary code reported `Map([])` as an unbound name. That
+// is a defect in the analyzer, not in the code being analysed, and it fired on
+// this project's own source.
+
+///|
+test "ambient types and constructors resolve in expression position" {
+  let src = "fn f() -> String {\n  let m : Map[String, Int] = Map([])\n  let sb = StringBuilder()\n  let o = Some(len(m))\n  let r = Ok(o.get_or_default())\n  let _ = r\n  let _ = sb\n  m.length().to_string()\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// The other direction: a genuinely unbound name must still report. A table
+/// that answers "bound" to everything would pass the test above.
+test "a name that is not ambient and not bound still reports" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  return definitely_not_a_name\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}

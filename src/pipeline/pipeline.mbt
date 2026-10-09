@@ -122,7 +122,17 @@ pub fn run(
       reason = m
     }
   }
-  let wr = @walk.walk_module(parsed.tree, file, extern_iface)
+  // `parsed.first_error` is the line the frontend stopped reading at. The
+  // scanner uses it to drop findings from there on, but the walk needs it too
+  // and for a different reason: the families it decides in `audit_frame` are
+  // conclusions about a whole function, and a function the parser cut in half
+  // cannot support one. See `walk.truncated_fn`.
+  let wr = @walk.walk_module(
+    parsed.tree,
+    file,
+    extern_iface,
+    parsed.first_error,
+  )
   for r in wr.findings {
     all.push(r)
   }

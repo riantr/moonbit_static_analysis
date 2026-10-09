@@ -158,6 +158,16 @@ fn pick_files(verdicts : Array[Verdict], max_files : Int) -> Array[Int] {
 }
 
 ///|
+/// A notice is not a defect, and the drawing has to agree with the numbers it
+/// prints beside it. `Verdict.notices` is filled by counting exactly this
+/// family, and `actionable` is `findings.length() - notices`, so using any
+/// other predicate here would let the diagram draw a defect as a notice (or
+/// the reverse) while the same node reported the opposite total.
+fn is_notice(rep : @report.Report) -> Bool {
+  rep.family == @core.FParse
+}
+
+///|
 fn emit_file(
   out : StringBuilder,
   fid : String,
@@ -220,30 +230,61 @@ fn emit_file(
   // One state per finding, hung off the inspection that reported it.
   let limit = cap(per_file, defects)
   let counts = Map([])
+  let mut notices_dropped = 0
   for k, rep in v.findings {
     if k < limit {
-      let eid = "\{fid}_e\{k}"
+      let notice = is_notice(rep)
+      // A notice gets its own id prefix as well as its own label. The label
+      // is what a human reads; the id is what a downstream agent greps, and
+      // before this the two were indistinguishable in both. On a scan of this
+      // analyzer's own source, `f8` drew one NOTICE and two DEFECTs as the
+      // same shape carrying the same note, so the only way to tell them apart
+      // was to already know that the family name FParse means notice.
+      let eid = if notice { "\{fid}_n\{k}" } else { "\{fid}_e\{k}" }
       let lens = primary_lens(rep.lenses)
+      let tag = if notice { "notice" } else { "defect" }
       // The transition label carries only the family: it is everything after
       // the first `:`, so a location or message containing a colon would
       // otherwise be truncated mid-string by the parser.
       out.write_string(
-        "        \{fid}_\{lens} --> \{eid} : \{rep.family.name()}\n",
+        "        \{fid}_\{lens} --> \{eid} : \{tag} \{rep.family.name()}\n",
       )
       let where_ = "@\{rep.span.start.line}:\{rep.span.start.col}"
+      let lead = if notice { "NOTICE — " } else { "" }
       out.write_string(
-        "        state \"\{rep.family.name()} \{where_} — \{sanitize(rep.message)}\" as \{eid}\n",
+        "        state \"\{lead}\{rep.family.name()} \{where_} — \{sanitize(rep.message)}\" as \{eid}\n",
       )
-      let a = rep.family.advice()
-      let body = ["WHY: " + a.why, "HOW: " + a.how]
-      if rep.lenses.length() > 1 {
-        body.push(
-          "SEEN BY: " +
-          lens_list(rep.lenses) +
-          " — the lenses agree, so this is not one lens guessing.",
-        )
+      if notice {
+        // No WHY/HOW here, and that is the point of the split. The advice for
+        // FParse is written for the first genuine read failure — which never
+        // reaches this loop, because everything from the boundary on is
+        // counted and not drawn. Attaching it here gave a notice the same
+        // "here is what to change" weight as a defect while describing
+        // something that is not there.
+        //
+        // What is true for EVERY file kind, and so is all this claims: the
+        // accounting. FParse is counted in `notices` and subtracted from
+        // `actionable`, and it means a form this analyzer does not model on
+        // `.mbt`, or a per-file-kind frontend rule on the others.
+        note(out, eid, [
+          "NOTICE — counted in `notices`, excluded from `actionable`.", "ParseError covers a form this analyzer does not model and a per-file-kind",
+          "frontend rule. The message above says which; do not read it as a defect",
+          "just because it is drawn like one.",
+        ])
+      } else {
+        let a = rep.family.advice()
+        let body = ["WHY: " + a.why, "HOW: " + a.how]
+        if rep.lenses.length() > 1 {
+          body.push(
+            "SEEN BY: " +
+            lens_list(rep.lenses) +
+            " — the lenses agree, so this is not one lens guessing.",
+          )
+        }
+        note(out, eid, body)
       }
-      note(out, eid, body)
+    } else if is_notice(rep) {
+      notices_dropped += 1
     } else {
       let key = primary_lens(rep.lenses)
       let n = match counts.get(key) {
@@ -275,11 +316,23 @@ fn emit_file(
     } else {
       "\{dropped} further findings on this file were NOT drawn, because this"
     }
-    note(out, "\{fid}_struct", [
+    let body = [
       head,
       "diagram caps a file at \{limit}. Per inspection: " + parts + ".",
       "Re-run with per_file = 0 for the complete set.",
-    ])
+    ]
+    // The per-inspection breakdown above counts defects only. A file whose
+    // dropped findings are mostly notices would otherwise report a defect
+    // breakdown that does not add up to the number just quoted.
+    if notices_dropped > 0 {
+      let nt = if notices_dropped == 1 {
+        "1 of them is a NOTICE, excluded from `actionable`."
+      } else {
+        "\{notices_dropped} of them are NOTICES, excluded from `actionable`."
+      }
+      body.push(nt)
+    }
+    note(out, "\{fid}_struct", body)
   }
   out.write_string("    }\n")
 }

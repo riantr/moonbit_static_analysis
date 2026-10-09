@@ -10,7 +10,7 @@ import {
 // Values
 pub fn const_eval(@ast.Expr) -> Const?
 
-pub fn walk_module(@ast.Module, String, @core.IfaceSymTab) -> WalkResult
+pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int) -> WalkResult
 
 // Errors
 

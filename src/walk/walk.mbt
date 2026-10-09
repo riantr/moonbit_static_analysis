@@ -126,11 +126,16 @@ fn new_walker(extern_iface : @core.IfaceSymTab) -> Walker {
 }
 
 ///|
+/// Names a file may use without importing anything. The table used to hold
+/// three entries — `print`, `len`, `abs` — and no type names at all, so
+/// `Map([])` in expression position reported "no visible binding for 'Map'".
+/// The list now lives in `@core` because the `.mbti` frontend needs the same
+/// answer and the two had drifted apart.
 fn builtin_table() -> Map[String, Bool] {
   let m : Map[String, Bool] = Map([])
-  m.set("print", true)
-  m.set("len", true)
-  m.set("abs", true)
+  for n in @core.ambient_names() {
+    m.set(n, true)
+  }
   m
 }
 
@@ -200,6 +205,10 @@ fn Walker::assign_to(self : Walker, name : String) -> Unit {
 
 ///|
 /// Audit a function frame on exit (usage accounting for locals).
+///
+/// Every finding here is function-scoped, so the caller skips this entirely
+/// for the one function a read failure could have truncated — see
+/// `truncated_fn` for why a positional boundary filter cannot do it.
 fn Walker::audit_frame(self : Walker) -> Unit {
   let fi = self.frames.length() - 1
   for n in self.orders[fi] {
@@ -494,10 +503,16 @@ fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
 /// dependencies). A name that appears there is treated as a valid binding,
 /// so the "no visible binding" finding is suppressed for it. Pass an empty
 /// table to recover the single-file behavior.
+///
+/// `trusted_line` is the line of the first genuine read failure, or 0 when
+/// the whole file was understood. It is NOT a filter on findings — the
+/// scanner does that — because one class of finding cannot be filtered by
+/// position. See `fn Walker::audit_frame`.
 pub fn walk_module(
   m : @ast.Module,
   file : String,
   extern_iface : @core.IfaceSymTab,
+  trusted_line : Int,
 ) -> WalkResult {
   let w = new_walker(extern_iface)
   let fns : Array[FnInfo] = []
@@ -552,7 +567,9 @@ pub fn walk_module(
     }
   }
   // pass 3: each function in its own frame
-  for f in fns {
+  let suspect = truncated_fn(fns, trusted_line)
+  for i in 0..<fns.length() {
+    let f = fns[i]
     w.push_frame()
     let bs = or_empty(fn_bindings.get(f.name))
     for b in bs {
@@ -562,11 +579,59 @@ pub fn walk_module(
     for st in f.body {
       w.walk_stmt(st)
     }
-    w.audit_frame()
+    if i != suspect {
+      w.audit_frame()
+    }
     let _ = w.vst.pop()
     w.pop_frame()
   }
   WalkResult::{ fns, module_bindings, fn_bindings, findings: w.findings, }
+}
+
+///|
+/// Index of the one function whose frame audit cannot be trusted, or -1.
+///
+/// `UnusedLocal`, `UnusedParam` and `ParamChanged` are not statements about a
+/// LINE, they are conclusions about a WHOLE FUNCTION: "this binding was never
+/// read" is only true if the reader saw every statement. When the frontend
+/// gave up at `trusted_line`, the function containing that line was cut in
+/// half — the statements after the cut were never parsed, so a binding
+/// declared before the cut and read after it looks unread.
+///
+/// The scanner's boundary filter drops findings AT OR AFTER `trusted_line`,
+/// which does not help here: these findings are reported at the DECLARATION,
+/// which is before the cut. That is exactly how a real use-after-truncation
+/// reached a user as an actionable defect.
+///
+///    fn probe(n : Int) -> Int {
+///      let used_later = n + 1     <- line 2, before the boundary
+///      try {                      <- line 3, where the parse gives up
+///        1
+///      }
+///      used_later                 <- line 6, never parsed
+///    }
+///
+/// reported `2:3 local variable 'used_later' assigned but may not be used`.
+///
+/// Only one function can be affected. Parsing is sequential and stops at the
+/// first failure, so every function that started before `trusted_line` and is
+/// not the last such function was closed before the parser reached the error.
+/// We cannot see a function's closing brace (the `fn` span covers the
+/// signature only), so this is the conservative identification: when the
+/// error is at top level between two complete functions the last one before
+/// it is skipped too. That costs one frame audit per partial file and can
+/// never invent a finding.
+fn truncated_fn(fns : Array[FnInfo], trusted_line : Int) -> Int {
+  if trusted_line <= 0 {
+    return -1
+  }
+  let mut suspect = -1
+  for i in 0..<fns.length() {
+    if fns[i].span.start.line < trusted_line {
+      suspect = i
+    }
+  }
+  suspect
 }
 
 ///|

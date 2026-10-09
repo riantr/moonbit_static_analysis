@@ -2,6 +2,8 @@
 package "riantr/moonbit_static_analysis/src/core"
 
 // Values
+pub fn ambient_names() -> Array[String]
+
 pub fn pos(Int, Int) -> Pos
 
 pub fn snapshot_vst(Array[Frame]) -> Array[Frame]
