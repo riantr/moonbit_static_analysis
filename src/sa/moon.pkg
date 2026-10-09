@@ -14,6 +14,8 @@ import {
   "riantr/moonbit_static_analysis/src/moonfiles",
   "riantr/moonbit_static_analysis/src/report",
   "riantr/moonbit_static_analysis/src/core",
+  "moonbitlang/core/env",
+  "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",
 }

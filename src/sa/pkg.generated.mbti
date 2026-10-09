@@ -10,15 +10,32 @@ pub fn aggregate(Array[Verdict]) -> Summary
 
 pub fn is_module_coord(String) -> Bool
 
-pub fn mermaid_states(Array[Verdict], Summary, String, Int, Int) -> String
+pub fn mermaid_states(Array[Verdict], Summary, ScanProvenance, Int, Int) -> String
+
+pub fn moon_mod_version(String) -> String
 
 pub fn parse_moon_mod_imports(String) -> Array[String]
 
+pub fn prov_or_unknown(String) -> String
+
+pub async fn provenance_for(String, String) -> ScanProvenance
+
 pub async fn scan(String, Array[String], Array[String], Bool) -> Unit
+
+pub fn scan_artifact_name(ScanProvenance, String) -> String
+
+pub fn stamp_utc(Int64) -> String
 
 // Errors
 
 // Types and methods
+pub(all) struct ScanProvenance {
+  target : String
+  version : String
+  scanned_at : String
+}
+pub fn ScanProvenance::describe(Self) -> String
+
 pub struct Summary {
   parsed_files : Int
   partial_files : Int

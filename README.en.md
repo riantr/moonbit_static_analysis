@@ -109,7 +109,7 @@ real tables fails pyroduct's tests and forces a re-review.
 
 ## Rendering a scan as a diagram (public API)
 
-`@sa.mermaid_states(verdicts, summary, target, per_file, max_files)` turns a scan into a
+`@sa.mermaid_states(verdicts, summary, prov, per_file, max_files)` turns a scan into a
 mermaid `stateDiagram-v2` — the same findings the CLI prints, shaped for a program to read
 rather than a human to skim.
 
@@ -134,8 +134,10 @@ and zero defects, and ranking by raw count put it first in a diagram whose job i
 with what to fix.
 
 ```moonbit
-let verdicts = /* from your own scan */ []
-let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), "my/module", 8, 25)
+let root = /* the resolved source root */
+let prov = @sa.provenance_for("my/module@1.2.3", root)
+let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), prov, 8, 25)
+println(scan_artifact_name(prov, root))
 ```
 
 The output is valid mermaid, verified by parsing *and rendering* a real moonbitlang/core scan
@@ -150,6 +152,51 @@ both measured rather than assumed:
 `src/sa/mermaid_test.mbt` re-reads the emitted text against that grammar on every run — every
 line must be a form mermaid accepts, every node id an identifier, every transition endpoint a
 declared state — and is itself shown failing on five documents it is meant to catch.
+
+### Naming the artifact: version and scan time in the name
+
+A scan result is a claim about a specific tree at a specific moment, so
+`@sa.provenance_for(target, root)` collects both and
+`@sa.scan_artifact_name(prov, root)` puts them in the filename:
+
+```
+moonbit_static_analysis-0.4.4_20261009T052547Z.mmd
+moonbitlang-core-0.1.20260920+7d59c7ec9_20261009T051925Z.mmd
+tree-unknown_20261009T051511Z.mmd          # version not determined
+```
+
+`<label>-<version>_<stamp>.mmd`. The label is the coordinate's module, or for
+a path the **resolved** directory name — scanning `.` is the most ordinary
+invocation there is, and naming the artifact after the string the caller typed
+would produce `_.mmd`.
+
+The version comes from the coordinate's `@version` when there is one, and
+otherwise from the target's own `moon.mod` (`moon.mod.json` too — both
+spellings exist in the field). The stamp is UTC, from
+`moonbitlang/async::now()`, which was **measured** rather than read off a doc
+comment: a wasm run returned `1791522911114` against a wall clock of
+`1791522910008` taken ~1.1 s earlier, which is exactly the delay between the
+two calls. There is no timezone database available, so the stamp is UTC and
+says so with a trailing `Z` rather than being an hour wrong twice a year.
+
+Three things this deliberately does **not** do:
+
+- **It does not omit what it could not determine.** A missing version or clock
+  is written as the literal token `unknown`. Dropping the segment would produce
+  a name indistinguishable from one where the version was `0`.
+- **It does not produce a dotfile.** A name starting with `.` is invisible to
+  `ls` on Linux and macOS, and an artifact nobody can list is not one anybody
+  will find again.
+- **It does not trust the filename as the record.** The same three facts are
+  repeated as `%%` header comments *inside* the document, because a file gets
+  renamed and once it does its name is no longer evidence of anything.
+
+`@sa.stamp_utc(ms) -> String` is pure and separately usable: it converts epoch
+milliseconds to `YYYYMMDDTHHMMSSZ` with the civil date computed by Hinnant's
+`civil_from_days`, pinned in the tests against dates whose answers are not in
+dispute — the epoch, a leap day, year and month boundaries, the exact instant a
+real run reported, and both sides of the 400-year century rule (2000 is a leap
+year, 2100 is not).
 
 ## Package structure
 

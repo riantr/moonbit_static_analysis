@@ -134,12 +134,21 @@ fn mm_merged() -> @sa.Verdict {
 }
 
 ///|
+fn mm_prov() -> @sa.ScanProvenance {
+  @sa.ScanProvenance::{
+    target: "corpus",
+    version: "0.1.20260920+7d59c7ec9",
+    scanned_at: "20261009T051511Z",
+  }
+}
+
+///|
 fn mm_render(
   vs : Array[@sa.Verdict],
   per_file : Int,
   max_files : Int,
 ) -> String {
-  @sa.mermaid_states(vs, @sa.aggregate(vs), "corpus", per_file, max_files)
+  @sa.mermaid_states(vs, @sa.aggregate(vs), mm_prov(), per_file, max_files)
 }
 
 ///|
@@ -556,6 +565,31 @@ test "a count of one is written in the singular" {
   assert_true(src.contains("1 further finding on this file was NOT drawn"))
   assert_false(src.contains("finding(s)"))
   assert_false(src.contains("1 of the findings"))
+  assert_eq(mm_check(src), [])
+}
+
+///|
+test "the header carries the version and the scan time" {
+  let src = mm_render(mm_rich(), 0, 0)
+  assert_true(src.contains("target=corpus"))
+  assert_true(src.contains("version=0.1.20260920+7d59c7ec9"))
+  assert_true(src.contains("scanned_at=20261009T051511Z (UTC)"))
+  // Repeated in the BODY, not only in the filename: a file gets renamed, and
+  // then its name is no longer evidence.
+  assert_eq(mm_check(src), [])
+}
+
+///|
+test "an unknown version or clock says so rather than vanishing" {
+  let src = @sa.mermaid_states(
+    mm_rich(),
+    @sa.aggregate(mm_rich()),
+    @sa.ScanProvenance::{ target: "some/tree", version: "", scanned_at: "", },
+    0,
+    0,
+  )
+  assert_true(src.contains("version=unknown"))
+  assert_true(src.contains("scanned_at=unknown (UTC)"))
   assert_eq(mm_check(src), [])
 }
 

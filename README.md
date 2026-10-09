@@ -105,7 +105,7 @@ pyroduct 侧的真实自审计（`moon run cmd/main -- audit`）。**它 pin 的
 
 ## 把扫描结果渲染成状态图（public API）
 
-`@sa.mermaid_states(verdicts, summary, target, per_file, max_files)` 把一次扫描渲染成
+`@sa.mermaid_states(verdicts, summary, prov, per_file, max_files)` 把一次扫描渲染成
 mermaid `stateDiagram-v2`——和 CLI 打印的是同一批发现，只是形状从"给人扫一眼"换成
 "给程序读"。
 
@@ -126,8 +126,10 @@ moonbitlang/core 上，原始发现最多的那个文件是一个 402 条发现�
 notice、零缺陷——按原始数排，它会排在这张以"先看该修什么"为职责的图的第一位。
 
 ```moonbit
-let verdicts = /* 由你自己的扫描得到 */ []
-let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), "my/module", 8, 25)
+let root = /* 已解析到的源码根目录 */
+let prov = @sa.provenance_for("my/module@1.2.3", root)
+let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), prov, 8, 25)
+println(scan_artifact_name(prov, root))
 ```
 
 输出是合法 mermaid：已用 `mermaid@10.9.8` 对 moonbitlang/core 的真实扫描（1029 文件）做过
@@ -141,6 +143,41 @@ let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), "my/module", 8,
 `src/sa/mermaid_test.mbt` 每次运行都把生成的文本按这套文法重读一遍——每一行都必须是
 mermaid 接受的形态、每个节点 id 必须是标识符、每条迁移的端点必须是已声明的状态——并且
 它自己被证明能抓住五个它本该抓住的文档。
+
+### 给产物命名：版本与扫描时间写进文件名
+
+一次扫描结果是对**某一棵树、在某一时刻**的断言，所以
+`@sa.provenance_for(target, root)` 把两件事都收进来，`@sa.scan_artifact_name(prov, root)`
+把它们放进文件名：
+
+```
+moonbit_static_analysis-0.4.4_20261009T052547Z.mmd
+moonbitlang-core-0.1.20260920+7d59c7ec9_20261009T051925Z.mmd
+tree-unknown_20261009T051511Z.mmd          # 版本没找到
+```
+
+格式是 `<label>-<version>_<stamp>.mmd`。label 是坐标的模块名；路径则是**解析后**的目录名
+——扫 `.` 是最常见的用法，照着调用方写的字符串命名会得到 `_.mmd`。
+
+版本优先取坐标里的 `@version`，没有就读目标自己的 `moon.mod`（`moon.mod.json` 也读——
+两种写法在现场都存在）。时间戳是 UTC，来自 `moonbitlang/async::now()`，这一点是**实测**
+的而不是照着文档注释念：wasm 跑出 `1791522911114`，而约 1.1 秒前读到的墙上时钟是
+`1791522910008`，差值正好是两次调用之间的延迟。这里没有时区数据库，所以时间戳取 UTC
+并用结尾的 `Z` 说明，而不是一年错两次小时。
+
+这件事刻意**不做**的三件事：
+
+- **不省略它没能确定的东西。** 版本或时钟缺失时写字面量 `unknown`。省掉那一段会得到一个
+  和"版本就是 `0`"完全无法区分的文件名。
+- **不产出 dotfile。** 以 `.` 开头的名字在 Linux/macOS 上 `ls` 根本列不出来，而没人
+  列得出来的产物等于没人找得回来。
+- **不把文件名当记录。** 同样的三个字段会以 `%%` 注释**重复写在文档正文里**，因为文件
+  是会被改名的，改完名之后它的名字就不再是证据了。
+
+`@sa.stamp_utc(ms) -> String` 是纯函数、可单独使用：把 epoch 毫秒转成
+`YYYYMMDDTHHMMSSZ`，民用日期用 Hinnant 的 `civil_from_days` 算，测试把答案钉在
+"不会有争议"的日期上——epoch 本身、闰日、年界月界、一次真实运行报出的那个确切时刻，
+以及 400 年世纪规则的两侧（2000 是闰年，2100 不是）。
 
 ## 包结构
 

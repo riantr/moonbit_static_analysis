@@ -198,9 +198,22 @@ on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `.iface` / `.proof`, `@statecheck.audit`. See the adjacent
 [README.md](../../README.md) and [EXTENSIONS.md](../../EXTENSIONS.md).
 
+### Naming the artifact: version and scan time
+
+`@sa.provenance_for(target, root)` collects the target's version and the
+moment of the scan; `@sa.scan_artifact_name(prov, root)` puts both in the
+filename — `<label>-<version>_<UTC stamp>.mmd`, e.g.
+`moonbit_static_analysis-0.4.4_20261009T052547Z.mmd`.
+
+Read that name as provenance, not decoration: it is what distinguishes two
+scans of the same tree. The version comes from the coordinate's `@version`, or
+from the target's `moon.mod`. `unknown` in either slot means it could not be
+determined — not that the version was `0`. The same three facts are repeated
+as `%%` header comments inside the document, because files get renamed.
+
 ### Rendering the result as a state diagram
 
-`@sa.mermaid_states(verdicts, summary, target, per_file, max_files)` emits a
+`@sa.mermaid_states(verdicts, summary, prov, per_file, max_files)` emits a
 mermaid `stateDiagram-v2` built for an agent to read: each file is a box whose
 spine is the trust chain (`lexed → structural → type → behavioral`), each
 finding is its own state hung off the inspection that reported it, and each one
