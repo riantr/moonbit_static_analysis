@@ -14,6 +14,7 @@ pub fn lex(String) -> (Array[Tok], Array[@core.Span], Array[@report.Report])
 // Types and methods
 pub(all) enum Tok {
   TInt(Int)
+  TBigInt
   TFloat(Double)
   TStr(String)
   TName(String)

@@ -10,7 +10,7 @@ import {
 // Values
 pub fn const_eval(@ast.Expr) -> Const?
 
-pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int) -> WalkResult
+pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int, Array[String]) -> WalkResult
 
 // Errors
 
@@ -40,6 +40,7 @@ pub(all) struct WalkResult {
   module_bindings : Array[Binding]
   fn_bindings : Map[String, Array[Binding]]
   findings : Array[@report.Report]
+  partial : Bool
 }
 
 // Type aliases

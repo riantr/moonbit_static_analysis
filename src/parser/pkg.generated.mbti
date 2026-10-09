@@ -17,6 +17,7 @@ pub(all) struct ParseResult {
   reports : Array[@report.Report]
   skips : Array[String]
   first_error : Int
+  enum_ctors : Array[String]
 }
 
 // Type aliases

@@ -13,7 +13,7 @@ pub fn ann_to_ty(String) -> Ty
 
 pub fn binop_result(@ast.BOp, Ty, Ty) -> Ty?
 
-pub fn infer_full(@ast.Module, @walk.WalkResult, @core.IfaceSymTab) -> TypeResult
+pub fn infer_full(@ast.Module, @walk.WalkResult, @core.IfaceSymTab, Array[String]) -> TypeResult
 
 pub fn is_numeric(Ty) -> Bool
 
