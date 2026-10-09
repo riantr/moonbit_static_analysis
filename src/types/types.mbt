@@ -98,14 +98,25 @@ pub fn ty_name(t : Ty) -> String {
 ///|
 /// Parse a written annotation. Unknown names stay Unknown (no hard error:
 /// the name may come from outside this module).
+///
+/// The MoonBit spellings are capitalised — `Int`, `Bool`, `Float`, `Double`,
+/// `String`, `Char`, `Byte`, `Unit` — and the lowercase forms are kept only
+/// as tolerance for hand-written sample sources. This list used to hold
+/// ONLY the lowercase spellings, so `fn t(n : Int)` typed `n` as `TUnknown`:
+/// `tyann` is raw source text, so the two differed only in case and nothing
+/// in real MoonBit ever matched. Measured on 0.4.5 that turned the
+/// "not callable" check into a no-op on every real source file — see the
+/// note at the `ECall` arm in `infer.mbt`.
 pub fn ann_to_ty(ann : String) -> Ty {
   match ann {
     "" => TUnknown
-    "int" => TInt
-    "float" => TFloat
-    "bool" => TBool
-    "str" => TStr
+    "Int" | "int" => TInt
+    "Float" | "float" => TFloat
+    "Double" | "double" => TFloat
+    "Bool" | "bool" => TBool
+    "String" | "string" | "str" => TStr
     "None" => TNone
+    "Unit" => TNone
     _ =>
       if ann.length() > 2 && ann[0] == '[' && ann[ann.length() - 1] == ']' {
         TList(ann_to_ty(str_slice(ann, 1, ann.length() - 1)))

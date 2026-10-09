@@ -883,6 +883,23 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
       self.err("expected 'in' in comprehension", self.span())
     }
     sources.push(self.parse_expr())
+    // The guard belongs HERE — between the iterable and `=>`.
+    //
+    // This was written backwards first, on the strength of a probe whose
+    // error line was read as the other form. Re-probed one form per file,
+    // with a `moon.pkg` present (without one `moon check` answers "no work to
+    // do" and exits 0 — a false green, not a pass):
+    //
+    //   [ for x in a if x > 0 => x ]   0 errors
+    //   [ for x in a => x if x > 0 ]   E3002 Parse error, unexpected token
+    //                                  `if`, you may expect `]`
+    //
+    // moonbitlang/core uses the guard-before form in 9 comprehensions across
+    // 5 files, so reading it the other way left all of them unparsed.
+    if self.at_name("if") {
+      let _ = self.bump()
+      ignore(self.parse_expr())
+    }
     if self.at(TComma) {
       let _ = self.bump()
     } else {
@@ -893,36 +910,41 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
     // `=>` is lexed as `=` then `>`
     let _ = self.bump()
     let _ = self.bump()
-    body = self.parse_expr()
-    seen = true
-  } else if self.at(TLBrace) {
-    // The block-bodied form yields statements, not an expression. Keep the
-    // expression statements as a list so names used inside them still get
-    // resolved; the block's control flow is not modelled.
-    let stmts = self.parse_block()
-    let exprs : Array[@ast.Expr] = []
-    for st in stmts {
-      match st.kind {
-        @ast.SExpr(e) => exprs.push(e)
-        _ => ()
+    if self.at(TLBrace) {
+      // The block body is `[ ... => { stmts } ]`, NOT `[ ... { stmts } ]`.
+      // Probed: the first is 0 errors, the second is `E3002 Parse error,
+      // unexpected token '{', you may expect '=>'`. An earlier version
+      // handled the second (invalid) form and left the first unparsed.
+      // `core/from_json.mbt` and `core/help_render.mbt` use the valid one.
+      //
+      // The block yields statements, not an expression. The last one, when it
+      // is an expression, is the value.
+      let stmts = self.parse_block()
+      let exprs : Array[@ast.Expr] = []
+      for st in stmts {
+        match st.kind {
+          @ast.SExpr(e) => exprs.push(e)
+          _ => ()
+        }
       }
+      body = match exprs {
+        [] => { span: sp, kind: @ast.EInt(0), }
+        [last, .. rest] => {
+          for e in rest {
+            ignore(e)
+          }
+          last
+        }
+      }
+    } else {
+      body = self.parse_expr()
     }
-    body = { span: sp, kind: @ast.EList(exprs), }
     seen = true
   } else {
-    self.err("expected '=>' or '{' in comprehension", self.span())
+    self.err("expected '=>' in comprehension", self.span())
   }
   if !seen {
     self.err("comprehension has no body", sp)
-  }
-  // The guard comes AFTER the body, not before it. Probed against the
-  // toolchain: `[ for x in self => x + 1 if x > 0 ]` compiles, while
-  // `[ for x in self if x > 0 => x + 1 ]` is `E3002 Parse error, unexpected
-  // token 'if', you may expect ']'`. Consumed so it cannot leak into the
-  // enclosing statement; not modelled.
-  if self.at_name("if") {
-    let _ = self.bump()
-    ignore(self.parse_expr())
   }
   self.expect(TRBracket, "']'")
   { span: sp, kind: @ast.EComp(vars, sources, body), }

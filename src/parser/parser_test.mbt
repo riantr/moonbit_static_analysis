@@ -541,19 +541,32 @@ test "a list comprehension is read as a comprehension, not an assignment" {
 }
 
 ///|
-/// The block-bodied sibling and the guarded form must consume their tokens
-/// too, or the leftover `if` / `}` becomes a statement of its own.
-test "block-bodied and guarded comprehensions also parse clean" {
-  let r = @parser.parse(
-    "fn f(self : Array[Int]) -> Array[Int] {\n  [ for x in self { x + 1 } ]\n}\n",
+/// The two shapes an earlier version got backwards. It asserted that
+/// `[ for x in a { ... } ]` parses clean and that a guard goes after the
+/// body; the toolchain says the opposite of both — the block body needs its
+/// `=>` first, and the guard comes before it. Kept as an explicit pair so the
+/// two directions cannot drift apart again.
+test "the invalid sibling shapes are reported, the valid ones are not" {
+  // invalid: `{` without `=>`
+  let brace_first = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a { x + 1 } ]\n}\n",
   )
-  assert_eq(r.first_error, 0)
-  assert_eq(r.reports.length(), 0)
-  let g = @parser.parse(
-    "fn f(self : Array[Int]) -> Array[Int] {\n  [ for x in self => x + 1 if x > 0 ]\n}\n",
+  assert_true(brace_first.reports.length() > 0)
+  // valid: `=> {`
+  let arrow_first = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a => { x + 1 } ]\n}\n",
   )
-  assert_eq(g.first_error, 0)
-  assert_eq(g.reports.length(), 0)
+  assert_eq(arrow_first.reports.length(), 0)
+  // invalid: guard after the body
+  let guard_after = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a => x if x > 0 ]\n}\n",
+  )
+  assert_true(guard_after.reports.length() > 0)
+  // valid: guard before the body
+  let guard_before = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a if x > 0 => x ]\n}\n",
+  )
+  assert_eq(guard_before.reports.length(), 0)
 }
 
 ///|
@@ -577,15 +590,34 @@ test "a destructuring pattern and a second generator both parse clean" {
 }
 
 ///|
-/// The guard belongs AFTER the body. Probed against the toolchain:
-/// `[ for x in a => x + 1 if x > 0 ]` compiles, while
-/// `[ for x in a if x > 0 => x + 1 ]` is
-/// `E3002 Parse error, unexpected token 'if', you may expect ']'`.
-/// A first attempt at the multi-generator form moved the guard to the front
-/// and this test caught it.
-test "a guard before the body is a parse error, as in the toolchain" {
-  let bad = @parser.parse(
+/// The block body and the guard, in the positions the toolchain actually
+/// puts them. Probed one form per file with `moon check` (a directory without
+/// a `moon.pkg` answers "no work to do" and exits 0 — a false green):
+///   `[ for x in a if x > 0 => x ]`   0 errors
+///   `[ for x in a => x if x > 0 ]`   E3002 unexpected token `if`
+///   `[ for x in a => { stmts } ]`    0 errors
+///   `[ for x in a { stmts } ]`       E3002 unexpected token `{`
+/// An earlier version of this file asserted the OPPOSITE of all four, on the
+/// strength of a probe whose error line was read as the other form.
+test "block-bodied and guarded comprehensions parse clean in the real shapes" {
+  let r = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a => {\n    let y = x + 1\n    y\n  } ]\n}\n",
+  )
+  assert_eq(r.first_error, 0)
+  assert_eq(r.reports.length(), 0)
+  let g = @parser.parse(
     "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a if x > 0 => x ]\n}\n",
+  )
+  assert_eq(g.first_error, 0)
+  assert_eq(g.reports.length(), 0)
+}
+
+///|
+/// ...and the guard really is before the arrow: a post-body `if` is what
+/// `moon check` rejects, so this is the one direction that must NOT parse.
+test "a guard after the body is reported, as the toolchain rejects it" {
+  let bad = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a => x if x > 0 ]\n}\n",
   )
   assert_true(bad.reports.length() > 0)
 }

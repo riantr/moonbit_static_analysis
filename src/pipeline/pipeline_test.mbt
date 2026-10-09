@@ -588,8 +588,15 @@ test "calling a value of unknown type is not reported as not callable" {
 /// The other half of the same rule, and the one that keeps it from turning
 /// into "never report a call": a call to something the lens DOES know the type
 /// of, and knows is not a function, is still reported.
+///
+/// This must use the CAPITALISED MoonBit spellings. `ann_to_ty` used to match
+/// only `"int"` / `"bool"` / `"float"` / `"str"` while `tyann` is raw source
+/// text, so every real annotation — `n : Int` — typed as `TUnknown`, and the
+/// `is TUnknown` suppression below turned "not callable" into a no-op on every
+/// real MoonBit file. The lowercase case passing proves nothing: MoonBit does
+/// not write it.
 test "a call to a known non-function is still reported" {
-  let src = "let n = 1\nn()\n"
+  let src = "fn f(n : Int) -> Unit {\n  n(1)\n}\n"
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
   let mut hits = 0
   for rep in r.reports {
@@ -598,6 +605,30 @@ test "a call to a known non-function is still reported" {
     }
   }
   assert_true(hits > 0)
+}
+
+///|
+/// The same check across the spellings `ann_to_ty` now recognises, plus the
+/// negative control that a legal call is still legal.
+test "the non-callable check survives the real annotation spellings" {
+  let bad = "fn f(b : Bool, c : String, d : Float) -> Unit {\n  b(1)\n  c()\n  d(2)\n}\n"
+  let r = @pipeline.run(bad, "x.mbt", @core.IfaceSymTab::empty())
+  let mut hits = 0
+  for rep in r.reports {
+    if rep.family.name() == "OperatorMismatch" {
+      hits += 1
+    }
+  }
+  assert_eq(hits, 3)
+  let ok = "fn f(n : Int) -> Unit {\n  println(n)\n}\n"
+  let r2 = @pipeline.run(ok, "x.mbt", @core.IfaceSymTab::empty())
+  let mut hits2 = 0
+  for rep in r2.reports {
+    if rep.family.name() == "OperatorMismatch" {
+      hits2 += 1
+    }
+  }
+  assert_eq(hits2, 0)
 }
 
 ///|
