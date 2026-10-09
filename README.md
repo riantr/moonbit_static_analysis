@@ -132,7 +132,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 |---|---|
 | `.mbt` | 三鉴程序分析 |
 | `.mbtx` | 三鉴程序分析 + 导入块审计（条目文法 `"path" [@alias] [*]`；重复路径报 FParse；导入清单随报告回显） |
-| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件零误报 |
+| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件不会报**畸形行**——但它的**未知类型**检查完全没有跨文件感知，在生成文件上仍会误报（实测 `moonbitlang/core` 上 93 条，而那棵树 `moon check --target all` 是 0 错误通过的）。这类发现按「未验证」对待，不要当缺陷报给用户 |
 | `.mbt.md` | literate：只分析工具链**确实编译**的围栏 —— `mbt check` / `mbt test` 及其 `moonbit` 写法；第二个词是 `check` 或 `test` 才使块成为活代码。行号对齐 `.md` 真实行。裸 `mbt`、裸 `moonbit` 与 `nocheck` 是展示块，跳过——**按工具链实测**，见 EXTENSIONS.md |
 | `.mbtp` | 证明文件逻辑侧 lint（体内字符串常量、`!`/`↔` 禁形、跨包调用、lemma 缺 `proof_ensure`）——**不替代 `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码——官方也把两者放在 `parser` 的 `moon_config` 子包里，与 `syntax` / `mbti_parser` 并列而独立；理由见 EXTENSIONS.md「配置文件的边界」）|
@@ -237,8 +237,13 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 `.mbti` 的声明类型 + 值签名灌进跨文件符号表；结构走查和类型镜在报
 `FUndefinedName` 之前先查这张表。默认还会读目标的 `moon.mod` 自动 `moon fetch`
 直接依赖（`--no-auto-fetch-deps` 关掉）。类型命中返回 `TUnknown`、值命中
-返回 `TFunc(name, [TUnknown], TUnknown)`，调用方 `Command(...)` 因此
-不再误报 `FOpMismatch`。表里没有的名字照常报错——表只抑制、不发明。
+返回 `TUnknownFn`（新增的 Ty 变体：确定是个值、但**签名没读到**，所以
+调用方 `Command(...)` 既不误报 `FOpMismatch`，也不会拿一个编出来的
+arity 去判「参数过多」——`.mbti` 只给名字、从不给参数表，编出来的
+arity 是猜测，检查会把它当事实报出去）。表里没有的名字照常报错——
+表只抑制、不发明。查表前会先剥掉 `@pkg.` 限定：`.mbti` 里声明是裸名
+`pub fn T::m`，使用处必须写成 `@pkg.T::m`，两侧拼写不一致时精确匹配
+永远打不中，而那正是唯一常见的跨包写法。
 
 **已实测**（改可信区间前后，同一批树）：
 

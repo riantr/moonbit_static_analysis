@@ -155,7 +155,7 @@ and [`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.
 |---|---|
 | `.mbt` | three-inspection program analysis |
 | `.mbtx` | three-inspection program analysis + import-block audit (entry grammar `"path" [@alias] [*]`; duplicate paths report FParse; the import list is echoed in the report) |
-| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so generated files raise nothing |
+| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so a generated file raises no *malformed line* — but its **unknown-type** check has no cross-file awareness and does raise false positives on generated files (measured: 93 on `moonbitlang/core`, a tree `moon check --target all` accepts with 0 errors). Treat those as unverified, not as defects |
 | `.mbt.md` | literate: only fences the toolchain actually **compiles** — `mbt check` / `mbt test` and the `moonbit` spellings; a second word of `check` or `test` is what makes a block live code. Line numbers align to the `.md` file's real lines. A bare `mbt`, a bare `moonbit` and `nocheck` are display blocks and are skipped — measured against the toolchain, see EXTENSIONS.md |
 | `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code — upstream puts both in the parser's separate `moon_config` subpackage, alongside `syntax` and `mbti_parser` rather than inside them; see the config-boundary section of EXTENSIONS.md) |
@@ -267,9 +267,16 @@ type lens consult before reporting `FUndefinedName`. The natural target is
 The target's own tree is always indexed. By default the analyzer also reads
 the target's `moon.mod` and `moon fetch`es each direct import — pass
 `--no-auto-fetch-deps` to skip it. A type hit returns `TUnknown`; a value
-hit returns `TFunc(name, [TUnknown], TUnknown)`, so calls like
-`Command(...)` stay quiet too. Names absent from the table still report —
-the table only suppresses, never invents valid bindings.
+hit returns `TUnknownFn` — a new `Ty` variant meaning "known to be a value,
+signature not read" — so a call like `Command(...)` neither fires
+`FOpMismatch` nor has its arity checked against an invented one: a `.mbti`
+gives the name and never the parameter list, so an invented arity is a
+guess the checks would then report as fact. Names absent from the table
+still report — the table only suppresses, never invents valid bindings.
+Lookups strip a leading `@pkg.` first: a `.mbti` writes the declaration
+bare (`pub fn T::m`) while a use site must write `@pkg.T::m`, so with exact
+matching the two spellings never met and the only common way of naming
+another package never hit.
   `withheld` is reported alongside it but is a subset of `unreliable` (the
   post-boundary findings of partial files whose pre-boundary finding count
   was zero), so it is intentionally not part of the sum.

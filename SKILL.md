@@ -144,8 +144,31 @@ suppresses, never the other way around.
 
 ## What the numbers mean, and what they do not
 
-`.mbti`, `.mbt.md` and `.mbtp` are audited properly: on a real project they
-report **0 findings** unless something is actually wrong.
+`.mbt.md` and `.mbtp` are audited properly: on a real project they report
+**0 findings** unless something is actually wrong.
+
+**`.mbti` is NOT.** It used to be claimed here alongside the other two, and
+that was wrong — measured, not suspected. On `moonbitlang/core` (1029 files,
+which `moon check --target all` accepts with 0 errors and 1 warning across 716
+tasks) the 80 generated `pkg.generated.mbti` files produced **97** actionable
+findings, every one of them false. Two causes:
+
+- the lens has no cross-file awareness at all — it consults neither the
+  cross-file symbol table nor the packages a `.mbti` imports, only a
+  hardcoded 33-name builtin list. MoonBit makes `moonbitlang/core/builtin`
+  available without an import, so `debug/pkg.generated.mbti` uses `Hasher`,
+  `Iter2`, `ArgsLoc` and `InspectError` bare with **no import block in the
+  file at all**, and each one is reported as an unknown type
+  (`Iter` 60, `Iter2` 12, `Show` 5, `ArgsLoc` 4, `InspectError` 3,
+  `SnapshotError` 2, and seven singletons — 93 in all, counted from the scan
+  output rather than summed by hand);
+- a `const`'s default value used to be scanned for type references, so
+  `pub const MAX_VALUE : Byte = b'\xFF'` reported `unknown type 'b'` and
+  `unknown type 'xFF'`. Fixed.
+
+So an `unknown type ... in interface signature` finding on a `.mbti` should
+be treated as **unverified**, the same way a `.mbt` finding past the
+`PARSED` boundary should be — not as a defect to report to a user.
 
 `.mbt` is different. The program frontend covers a **subset** of MoonBit — no
 struct literals, no `match`, no `@alias` calls, no type annotations in general
@@ -160,6 +183,13 @@ reported **529** "unused locals" — the difference is the analyzer not seeing t
 struct bodies. So: **quote `PARSED` first**, and treat `actionable` as the only
 count that describes the code. Do not report `withheld` to a user as "problems
 found".
+
+The same discipline applies to `actionable` itself: a finding is only as good
+as the oracle it was checked against. Every actionable finding the analyzer
+reported on `moonbitlang/core` was a defect **in the analyzer**, found by
+running `moon check` over the same tree and comparing. A large project the
+toolchain accepts is the only oracle that catches a lens inventing a claim
+about code it could not read.
 
 ## Instead of the CLI
 
