@@ -599,3 +599,57 @@ test "a call to a known non-function is still reported" {
   }
   assert_true(hits > 0)
 }
+
+///|
+/// Writing a field or an element of a parameter is BOTH an assignment and a
+/// read — `self.inner = 1` has to evaluate `self` to find where the field
+/// lives. Counting only the assignment made a base that is written and never
+/// otherwise read look unused, and the analyzer then said two things that
+/// cannot both be true about the same parameter. Measured on
+/// moonbitlang/async: `semaphore.mbt` reports the pair for all three of its
+/// `with fn set_index(self, value)` impls.
+test "a field write to a parameter does not also report it unused" {
+  let src = "fn f(self : Ref[Int]) -> Unit {\n  self.inner = 1\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  let mut unused = 0
+  for rep in r.reports {
+    if rep.family.name() == "UnusedParam" {
+      unused += 1
+    }
+  }
+  assert_eq(unused, 0)
+  // ...while the assignment itself is still reported, which is the intended
+  // shape: exactly one finding, not two contradictory ones
+  let mut changed = 0
+  for rep in r.reports {
+    if rep.family.name() == "ParamChanged" {
+      changed += 1
+    }
+  }
+  assert_eq(changed, 1)
+}
+
+///|
+/// The same for an index write, and the negative control that the fix is
+/// about a missing read rather than about parameters in general: a parameter
+/// that is genuinely never touched still reports as unused.
+test "an index write counts a read, and a truly unused parameter still reports" {
+  let src = "fn f(v : Array[Int]) -> Unit {\n  v[0] = 1\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  let mut unused = 0
+  for rep in r.reports {
+    if rep.family.name() == "UnusedParam" {
+      unused += 1
+    }
+  }
+  assert_eq(unused, 0)
+  let src2 = "fn g(w : Int) -> Unit {\n  let _x = 1\n}\n"
+  let r2 = @pipeline.run(src2, "x.mbt", @core.IfaceSymTab::empty())
+  let mut unused2 = 0
+  for rep in r2.reports {
+    if rep.family.name() == "UnusedParam" {
+      unused2 += 1
+    }
+  }
+  assert_true(unused2 > 0)
+}

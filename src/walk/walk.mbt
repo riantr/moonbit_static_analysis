@@ -291,16 +291,32 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
 fn Walker::walk_target(self : Walker, target : @ast.Expr) -> Unit {
   match target.kind {
     EName(n) => self.assign_to(n)
-    EField(base, _) =>
+    // A field or index write is peeled to the base for ASSIGNMENT tracking,
+    // but the base is still READ to reach it: `self.inner = 1` has to
+    // evaluate `self` to find where the field lives. Counting only the
+    // assignment made a base that is never read anywhere else look unused,
+    // and the analyzer then said two things that cannot both be true about
+    // the same parameter —
+    //     parameter 'self' changed by assignment (ParamChanged)
+    //     parameter 'self' may not be used (UnusedParam)
+    // Measured on moonbitlang/async: `semaphore.mbt` reports that pair for
+    // all three of its `with fn set_index(self, value)` style impls. The
+    // same base written where the right-hand side also reads it
+    // (`self.inner = self.other + 1`) already produced only the
+    // ParamChanged, which is the intended shape.
+    EField(base, _) => {
       match base.assigned_base() {
         Some(b) => self.assign_to(b)
         None => ()
       }
+      self.walk_expr(base)
+    }
     EIndex(base, idx) => {
       match base.assigned_base() {
         Some(b) => self.assign_to(b)
         None => ()
       }
+      self.walk_expr(base)
       self.walk_expr(idx)
     }
     _ => ()

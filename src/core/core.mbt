@@ -71,10 +71,17 @@ pub fn IfaceSymTab::empty() -> IfaceSymTab {
 }
 
 ///|
-/// The `values` set, handed to a consumer that needs a plain
-/// `Map[String, Bool]` rather than the table. The behavioral lens uses it to
-/// decide "this callee exists but is not analysed here" instead of "this
-/// callee is undefined", which is the whole point of the table.
+/// The `values` set as a plain `Map[String, Bool]`, for a caller that wants
+/// the set rather than the table.
+///
+/// NO LENS USES THIS ANY MORE, and that is worth recording rather than
+/// quietly deleting. The behavioral lens used to hold this map, and holding
+/// the `values` half alone was itself a defect: a `.mbti` declares
+/// `type Builder` and `pub fn Builder::new()`, so a constructor call
+/// `Builder()` is in `types` and never in `values`, and the lens reported
+/// `undefined function 'Builder'` while the other two stayed silent. It holds
+/// the whole table now and asks both halves through `has_value` / `has_type`.
+/// Kept as public API rather than removed in a 0.x.
 pub fn IfaceSymTab::all_values(self : IfaceSymTab) -> Map[String, Bool] {
   self.values
 }

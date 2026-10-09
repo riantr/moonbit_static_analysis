@@ -557,6 +557,40 @@ test "block-bodied and guarded comprehensions also parse clean" {
 }
 
 ///|
+/// A destructuring pattern and a second generator, both of which 0.4.5 got
+/// wrong. `for` is written ONCE in MoonBit and each following generator
+/// repeats only its pattern and iterable — a first implementation that
+/// accepted only a comma-then-`for` missed the form entirely. The corpus
+/// sources: `sorted_map/debug.mbt`, `hashmap/debug.mbt`,
+/// `immut/hashmap/debug.mbt` and `hashmap/json.mbt` in moonbitlang/core.
+test "a destructuring pattern and a second generator both parse clean" {
+  let t = @parser.parse(
+    "fn f(self : Array[(Int, Int)]) -> Array[String] {\n  [ for k, v in self => \"k\" ]\n}\n",
+  )
+  assert_eq(t.first_error, 0)
+  assert_eq(t.reports.length(), 0)
+  let g = @parser.parse(
+    "fn f(a : Array[Int], b : Array[Int]) -> Array[Int] {\n  [ for x in a, y in b => x + y ]\n}\n",
+  )
+  assert_eq(g.first_error, 0)
+  assert_eq(g.reports.length(), 0)
+}
+
+///|
+/// The guard belongs AFTER the body. Probed against the toolchain:
+/// `[ for x in a => x + 1 if x > 0 ]` compiles, while
+/// `[ for x in a if x > 0 => x + 1 ]` is
+/// `E3002 Parse error, unexpected token 'if', you may expect ']'`.
+/// A first attempt at the multi-generator form moved the guard to the front
+/// and this test caught it.
+test "a guard before the body is a parse error, as in the toolchain" {
+  let bad = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a if x > 0 => x ]\n}\n",
+  )
+  assert_true(bad.reports.length() > 0)
+}
+
+///|
 /// A comprehension still yields a list. The change is that it is now its own
 /// node instead of a mangled `EList`, so `EList` must not have grown to
 /// absorb it — a plain `[1, 2]` keeps two elements.

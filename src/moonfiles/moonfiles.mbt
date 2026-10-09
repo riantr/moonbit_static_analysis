@@ -543,6 +543,49 @@ fn label_type(s : String) -> (String, String) {
 }
 
 ///|
+/// The type annotation of a `const` / `let` line, with the default value cut
+/// off.
+///
+/// `pub const MAX_VALUE : Byte = b'\xFF'` has type `Byte` and default value
+/// `b'\xFF'`; `label_type` splits on the `:` and hands back
+/// `Byte = b'\xFF'` as the type, so the identifiers in the VALUE were then
+/// collected as type references. Measured on moonbitlang/core: `byte.mbt`
+/// reported `unknown type 'b'` twice and `unknown type 'xFF'` /
+/// `unknown type 'x00'` once each, on lines `moon info` generated and
+/// `moon check` accepts with 0 errors.
+///
+/// The cut is at a depth-0 `=` that is not part of `==`, `<=`, `>=` or `!=`,
+/// so a default like `Map(capacity=1)` — whose `=` is inside parentheses —
+/// stays with the value.
+fn type_annotation_of(s : String) -> String {
+  let chars = s.to_array()
+  let mut depth = 0
+  let mut i = 0
+  while i < chars.length() {
+    let c = chars[i]
+    if c == '(' || c == '[' || c == '{' {
+      depth += 1
+    } else if c == ')' || c == ']' || c == '}' {
+      depth -= 1
+    } else if c == '=' && depth == 0 {
+      let prev_is_cmp = i > 0 &&
+        (
+          chars[i - 1] == '<' ||
+          chars[i - 1] == '>' ||
+          chars[i - 1] == '!' ||
+          chars[i - 1] == '='
+        )
+      let next_is_eq = i + 1 < chars.length() && chars[i + 1] == '='
+      if !prev_is_cmp && !next_is_eq {
+        return trim_sp(take_n(s, i))
+      }
+    }
+    i += 1
+  }
+  trim_sp(s)
+}
+
+///|
 /// Strip one layer of matching brackets, if present.
 fn strip_outer(s : String, open : Char, close : Char) -> String {
   if s.length() >= 2 &&
@@ -800,7 +843,7 @@ fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
     if name == "" {
       return None
     }
-    return Some((name, type_names(ty), []))
+    return Some((name, type_names(type_annotation_of(ty)), []))
   }
   // `pub let NAME : T` — a value declaration (no body), emitted by moon info
   // for package-level constants and re-exports
@@ -811,7 +854,7 @@ fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
     if name == "" {
       return None
     }
-    return Some((name, type_names(ty), []))
+    return Some((name, type_names(type_annotation_of(ty)), []))
   }
   let rest = strip_fn_modifiers(body)
   if !(rest.has_prefix("fn ") || rest.has_prefix("fn[")) {

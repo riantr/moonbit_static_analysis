@@ -850,54 +850,79 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
   let vars : Array[String] = []
   let mut body : @ast.Expr = { span: sp, kind: @ast.EInt(0), }
   let mut seen = false
-  while self.at_name("for") && !self.at(TEOF) {
-    let _ = self.bump() // for
+  // The grammar is
+  //   'for' pat 'in' src (',' pat 'in' src)* ( '=>' body | '{' body } )
+  // — `for` is written ONCE and every following generator repeats only its
+  // pattern and iterable. Two mistakes here, both measured against
+  // moonbitlang/core on 0.4.5:
+  //   * parsing the body per-generator made `[ for x in a, y in b => x + y ]`
+  //     look for `=>` right after `a`, find a comma, and bail;
+  //   * accepting only a comma-then-`for` for the next generator missed the
+  //     form entirely, because the comma is followed by the next PATTERN.
+  // A comma is disambiguated by POSITION, not by lookahead: right after a
+  // pattern it continues that pattern, right after an iterable it starts
+  // another generator.
+  if self.at_name("for") {
+    let _ = self.bump()
+  }
+  let mut more = true
+  while more && !self.at(TEOF) {
+    // The pattern may destructure: `[ for k, v in entries => ... ]`.
+    // `sorted_map/debug.mbt`, `hashmap/debug.mbt`, `immut/hashmap/debug.mbt`
+    // and `hashmap/json.mbt` in moonbitlang/core all use this form.
     let (pat, _) = self.expect_name("comprehension variable")
     vars.push(pat)
+    while self.at(TComma) && self.peek2_is_pattern_name() {
+      let _ = self.bump()
+      let (more_name, _) = self.expect_name("comprehension variable")
+      vars.push(more_name)
+    }
     if self.at_name("in") {
       let _ = self.bump()
     } else {
       self.err("expected 'in' in comprehension", self.span())
     }
     sources.push(self.parse_expr())
-    if self.at(TAssign) && self.peek2() == TGt {
-      // `=>` is lexed as `=` then `>`
-      let _ = self.bump()
-      let _ = self.bump()
-      body = self.parse_expr()
-      seen = true
-    } else if self.at(TLBrace) {
-      // The block-bodied form yields statements, not an expression. Keep the
-      // expression statements as a list so names used inside them still get
-      // resolved; the block's control flow is not modelled.
-      let stmts = self.parse_block()
-      let exprs : Array[@ast.Expr] = []
-      for st in stmts {
-        match st.kind {
-          @ast.SExpr(e) => exprs.push(e)
-          _ => ()
-        }
-      }
-      body = { span: sp, kind: @ast.EList(exprs), }
-      seen = true
-    } else {
-      self.err("expected '=>' or '{' in comprehension", self.span())
-      break
-    }
-    // an optional `if` guard: consumed so it cannot leak into the enclosing
-    // statement, but not modelled
-    if self.at_name("if") {
-      let _ = self.bump()
-      ignore(self.parse_expr())
-    }
     if self.at(TComma) {
       let _ = self.bump()
     } else {
-      break
+      more = false
     }
+  }
+  if self.at(TAssign) && self.peek2() == TGt {
+    // `=>` is lexed as `=` then `>`
+    let _ = self.bump()
+    let _ = self.bump()
+    body = self.parse_expr()
+    seen = true
+  } else if self.at(TLBrace) {
+    // The block-bodied form yields statements, not an expression. Keep the
+    // expression statements as a list so names used inside them still get
+    // resolved; the block's control flow is not modelled.
+    let stmts = self.parse_block()
+    let exprs : Array[@ast.Expr] = []
+    for st in stmts {
+      match st.kind {
+        @ast.SExpr(e) => exprs.push(e)
+        _ => ()
+      }
+    }
+    body = { span: sp, kind: @ast.EList(exprs), }
+    seen = true
+  } else {
+    self.err("expected '=>' or '{' in comprehension", self.span())
   }
   if !seen {
     self.err("comprehension has no body", sp)
+  }
+  // The guard comes AFTER the body, not before it. Probed against the
+  // toolchain: `[ for x in self => x + 1 if x > 0 ]` compiles, while
+  // `[ for x in self if x > 0 => x + 1 ]` is `E3002 Parse error, unexpected
+  // token 'if', you may expect ']'`. Consumed so it cannot leak into the
+  // enclosing statement; not modelled.
+  if self.at_name("if") {
+    let _ = self.bump()
+    ignore(self.parse_expr())
   }
   self.expect(TRBracket, "']'")
   { span: sp, kind: @ast.EComp(vars, sources, body), }
@@ -910,6 +935,17 @@ fn Parser::peek2(self : Parser) -> @lexer.Tok {
     self.toks[self.p + 1]
   } else {
     TEOF
+  }
+}
+
+///|
+/// Is the token after the current one a name that can continue a
+/// destructuring pattern? This is only consulted immediately after a pattern
+/// has been read, where `for` would mean something else entirely.
+fn Parser::peek2_is_pattern_name(self : Parser) -> Bool {
+  match self.peek2() {
+    TName(n) => n != "for"
+    _ => false
   }
 }
 
