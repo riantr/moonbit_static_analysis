@@ -107,11 +107,56 @@ real tables fails pyroduct's tests and forces a re-review.
 > `state_span()` (the same name always yields the same coordinate), not positions in any source
 > file — don't go looking for that line in pyroduct.
 
+## Rendering a scan as a diagram (public API)
+
+`@sa.mermaid_states(verdicts, summary, target, per_file, max_files)` turns a scan into a
+mermaid `stateDiagram-v2` — the same findings the CLI prints, shaped for a program to read
+rather than a human to skim.
+
+The spine of every file's box is the trust chain the counts depend on: `lexed → structural →
+type → behavioral`. A file the frontend did not finish stops at the line it stopped at, with
+the post-boundary findings **counted and not drawn**. Each finding is its own state, hung off
+the inspection that reported it, carrying a note with `WHY:` (the rule that fired and the
+evidence it fired on) and `HOW:` (what to change), taken from `@core.Family::advice`.
+
+Two families carry a caveat their reader must know *before* acting, and both say so in the
+note text: `ParseError` on a `.mbti` / `.mbtp` / `.mbt.md` file is usually a frontend rule
+rather than a parse boundary, and `UndefinedName` has two known blind spots (a `#doc(hidden)`
+API appears in no `.mbti`; a `@pkg.fn(1, 2)` top-level reference is not folded into a
+callable name).
+
+`per_file` and `max_files` cap the drawing, `0` meaning no cap. **Whatever a cap leaves out is
+stated in the diagram** — in the header and in a note on the file — so a truncated diagram
+cannot be read as a clean one. `summary` always describes the WHOLE scan while the drawing may
+be a subset. Files are taken in descending **actionable** count, not raw findings: on
+moonbitlang/core the largest raw-finding file is a 402-finding test file that is 402 notices
+and zero defects, and ranking by raw count put it first in a diagram whose job is to lead
+with what to fix.
+
+```moonbit
+let verdicts = /* from your own scan */ []
+let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), "my/module", 8, 25)
+```
+
+The output is valid mermaid, verified by parsing *and rendering* a real moonbitlang/core scan
+(1029 files) through `mermaid@10.9.8`. Two grammar constraints the renderer is written around,
+both measured rather than assumed:
+
+- a transition label is everything after the **first** `:`, so it may not contain one —
+  locations and messages therefore live in the quoted state label, never on the arrow
+- MoonBit has no operator continuation, so a source line beginning with `+` is a parse error;
+  the document is emitted one `write_string` at a time for that reason alone
+
+`src/sa/mermaid_test.mbt` re-reads the emitted text against that grammar on every run — every
+line must be a form mermaid accepts, every node id an identifier, every transition endpoint a
+declared state — and is itself shown failing on five documents it is meant to catch.
+
 ## Package structure
 
 ```
-src/core      Span/Severity/Lens/Family(merge_group contract)/Frame
+src/core      Span/Severity/Lens/Family(merge_group contract)/Frame + Family::advice
 src/report    Report struct and rendering (union lens tags, vst frames)
+src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
 src/ast       MoonBit abstract syntax
@@ -130,9 +175,14 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 86/86 green (86 on each of the four targets)
+moon test --deny-warn                # 158/158 on wasm; 134/134 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
+
+The per-target counts differ on purpose: `src/sa` and `src/jsoncli` declare
+`supported_targets = "+wasm+native"`, so the js and wasm-gc runs SKIP those two packages rather
+than failing them. A test count that claims one number for every target is therefore wrong, and
+the wasm number is the only one that covers the renderer and the scanner.
 
 `--deny-warn` is deliberate: the official package-configuration page says "In CI, add
 `--deny-warn` to `moon check`, `moon test`, or the equivalent command to treat enabled

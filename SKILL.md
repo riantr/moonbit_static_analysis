@@ -197,3 +197,25 @@ For the analyzer's own repository, or when you want structured output, depend
 on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `.iface` / `.proof`, `@statecheck.audit`. See the adjacent
 [README.md](../../README.md) and [EXTENSIONS.md](../../EXTENSIONS.md).
+
+### Rendering the result as a state diagram
+
+`@sa.mermaid_states(verdicts, summary, target, per_file, max_files)` emits a
+mermaid `stateDiagram-v2` built for an agent to read: each file is a box whose
+spine is the trust chain (`lexed → structural → type → behavioral`), each
+finding is its own state hung off the inspection that reported it, and each one
+carries a `WHY:` / `HOW:` note from `@core.Family::advice` saying why it was
+judged wrong and what to change.
+
+Two caveats travel inside those notes and must not be skipped: on `.mbti` /
+`.mbtp` / `.mbt.md` a `ParseError` is usually a frontend rule rather than a
+parse boundary, and `UndefinedName` cannot see a `#doc(hidden)` API (it appears
+in no `.mbti`) or a `@pkg.fn(1, 2)` top-level reference (not folded into a
+callable name).
+
+`per_file` and `max_files` cap the drawing (`0` = no cap) and whatever is
+dropped is stated in the diagram itself, so a truncated diagram never reads as a
+clean one. `summary` always describes the whole scan while the drawing may be a
+subset; files are ranked by ACTIONABLE count, because the largest raw-finding
+file on moonbitlang/core is a 402-finding test file that is all notices and zero
+defects.

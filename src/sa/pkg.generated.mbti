@@ -10,6 +10,8 @@ pub fn aggregate(Array[Verdict]) -> Summary
 
 pub fn is_module_coord(String) -> Bool
 
+pub fn mermaid_states(Array[Verdict], Summary, String, Int, Int) -> String
+
 pub fn parse_moon_mod_imports(String) -> Array[String]
 
 pub async fn scan(String, Array[String], Array[String], Bool) -> Unit

@@ -103,11 +103,51 @@ pyroduct 侧的真实自审计（`moon run cmd/main -- audit`）。**它 pin 的
 > `行:列`，那是 `state_span()` 按状态名哈希出来的**稳定伪 span**（同一名字永远同一坐标），
 > 不是任何源文件的位置——别拿它去 pyroduct 里对行号。
 
+## 把扫描结果渲染成状态图（public API）
+
+`@sa.mermaid_states(verdicts, summary, target, per_file, max_files)` 把一次扫描渲染成
+mermaid `stateDiagram-v2`——和 CLI 打印的是同一批发现，只是形状从"给人扫一眼"换成
+"给程序读"。
+
+每个文件的框的主干就是那些计数所依赖的信任链：`lexed → structural → type → behavioral`。
+前端没读完的文件停在那条线上，越界之后的发现**计数但不画**。每条发现是自己的状态，
+挂在报告它的那一鉴下面，带一条 note：`WHY:`（哪条规则、依据什么证据触发）与 `HOW:`
+（该改什么），取自 `@core.Family::advice`。
+
+有两个 family 带着读者**动手之前必须知道**的警告，而且都写在 note 正文里：
+`.mbti` / `.mbtp` / `.mbt.md` 上的 `ParseError` 通常是前端规则而不是解析边界；
+`UndefinedName` 有两个已知盲区（`#doc(hidden)` 的 API 不出现在任何 `.mbti` 里；
+`@pkg.fn(1, 2)` 这种顶层跨包引用不会被折叠成可调用名）。
+
+`per_file` 与 `max_files` 限制图的规模，`0` 表示不限制。**被截掉的部分一定会在图里写出来**
+——写在头部和该文件的 note 上，所以被截断的图不会被读成"干净的图"。`summary` 永远描述
+**整个扫描**，而画出来的可能只是子集。文件按**可行动数**降序取，不是按原始发现数：在
+moonbitlang/core 上，原始发现最多的那个文件是一个 402 条发现的测试文件，而那 402 条全是
+notice、零缺陷——按原始数排，它会排在这张以"先看该修什么"为职责的图的第一位。
+
+```moonbit
+let verdicts = /* 由你自己的扫描得到 */ []
+let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), "my/module", 8, 25)
+```
+
+输出是合法 mermaid：已用 `mermaid@10.9.8` 对 moonbitlang/core 的真实扫描（1029 文件）做过
+**解析 + 渲染**双重验证。渲染器围绕两条实测出来的文法约束写成：
+
+- 迁移标签是第一个 `:` 之后的**全部**内容，所以标签里不能再有 `:`——行号和消息因此放在
+  带引号的 state 标签里，绝不放箭头上
+- MoonBit 没有运算符续行，源码里以 `+` 开头的行是语法错误——所以文档是一段一段
+  `write_string` 拼出来的，原因就是这个
+
+`src/sa/mermaid_test.mbt` 每次运行都把生成的文本按这套文法重读一遍——每一行都必须是
+mermaid 接受的形态、每个节点 id 必须是标识符、每条迁移的端点必须是已声明的状态——并且
+它自己被证明能抓住五个它本该抓住的文档。
+
 ## 包结构
 
 ```
-src/core      Span/Severity/Lens/Family(merge_group 契约)/Frame
+src/core      Span/Severity/Lens/Family(merge_group 契约)/Frame + Family::advice
 src/report    Report 结构与渲染（lens 并集标签、vst 框架）
+src/sa        扫描入口 + aggregate() + mermaid_states()（对外 library）
 src/lexer     MoonBit 词法前端
 src/parser    MoonBit 语法 → ast（含 .mbtx 脚本的 import 块）
 src/ast       MoonBit 抽象语法
@@ -147,9 +187,13 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # 86/86 全绿（四个 target 各 86）
+moon test --deny-warn                # wasm 158/158；js 与 wasm-gc 134/134
 moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
+
+各 target 的数量不同是刻意的：`src/sa` 与 `src/jsoncli` 声明了
+`supported_targets = "+wasm+native"`，js 与 wasm-gc 会**跳过**这两个包而不是失败。
+因此"四个 target 各 N"这种写法本身就是错的；只有 wasm 的数字覆盖渲染器与扫描器。
 
 `--deny-warn` 是有意的：官方包配置页要求「In CI, add `--deny-warn` to `moon check`,
 `moon test`, or the equivalent command to treat enabled warnings as fatal errors」。

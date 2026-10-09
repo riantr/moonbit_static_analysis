@@ -15,6 +15,11 @@ pub fn zero_span() -> Span
 // Errors
 
 // Types and methods
+pub(all) struct Advice {
+  why : String
+  how : String
+}
+
 pub(all) enum Family {
   FParse
   FUndefinedName
@@ -28,6 +33,7 @@ pub(all) enum Family {
   FCondBool
   FUnreachable
 } derive(Eq)
+pub fn Family::advice(Self) -> Advice
 pub fn Family::merge_group(Self) -> String
 pub fn Family::name(Self) -> String
 pub fn Family::severity(Self) -> Severity
