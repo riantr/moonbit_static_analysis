@@ -171,7 +171,13 @@ fn dispatch_file(filename : String, source : String) -> Reply {
       ok_reply(r.reports, @pipeline.render_result(r))
     }
     "iface" => {
-      let reports = @moonfiles.iface(source, filename)
+      // one file in, no module context: the empty table is the honest one —
+      // a name is only resolvable when this file declares it
+      let reports = @moonfiles.iface(
+        source,
+        filename,
+        @core.IfaceSymTab::empty(),
+      )
       ok_reply(reports, render_reports(reports))
     }
     "proof" => {

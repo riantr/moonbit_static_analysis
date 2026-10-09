@@ -9,46 +9,47 @@
 
 One pipeline runs through both: **structural walk → types/symbols → abstract interpretation → unified report**.
 
-## What 0.4.6 changes
+## What 0.4.7 changes
 
-**The AST gained the constructs real code needs.** A method call `base.m(args)`
-previously had *nowhere to live* in the AST — `ECall` takes a callee `String` and
-`EField` only means "read a field" — so the parse stopped there. That was the
-single largest blocker on core. This version adds an `EMethodCall` node wired
-into all three lenses, and the blocker goes from 34 files to **0**. Also added:
-`0x`/`0b`/`0o` with `_` separators and the `L`/`U`/`UL` suffixes (a literal past
-the `Int` bound becomes a distinct `TBigInt` node rather than a truncated
-number), enum constructor names visible across files, and `extern "c" fn`
-modelled as a declaration — it used to be skipped whole, which lost the name,
-so every call site of an extern function read as unbound.
+**The `.mbti` interface audit resolves types across files.** Generated interface
+files heavily reference types declared in other files of the same package (or in
+extern directories) — `&Show` parameters, `raise SnapshotError` returns, `impl
+Debug for BenchError` targets. `@moonfiles.iface` used to see one file alone, so
+13 real core `.mbti` files were flagged for "unknown type". This version gives
+the interface audit a **module-wide interface symbol table**: declarations and
+`pub using` re-exports are collected file by file across the scan target and
+merged; resolution order is this-file declarations → builtins → type parameters
+→ any scanned interface (types only). Core `.mbti` defects go **13 → 0**,
+actionable **49 → 36**.
 
-**Four classes of false positive that reported the analyzer's own blindness as
-your defects are fixed.** A `Type::member` path (`@debug.Repr::opaque_(v)`) is a
-member reference, not a binding. On a file the frontend did not finish the module
-frame is *provably* incomplete, so "nothing binds this name" cannot be evidence
-there. The behavior lens now consults the ambient-name table, instead of
-reporting `undefined function 'StringBuilder'` on a line where the structural
-lens was silent. And `!` on an operand of unknown type is not an operand
-mismatch — `SIf`/`SWhile` already carried that guard and `!` was the only one
-that did not.
-
-**`--mmd` / `--mmd-auto` render a scan without writing a program.** The artifact
-name carries four fields: `<package>_<version>_<moonbit>_<stamp>`.
+Fixed along the way: the re-export collector recorded nothing for the `pub using
+@pkg {type T}` shape (24 type and 20 trait prelude segments were invisible to
+it); they now enter the table.
 
 Measured on `moonbitlang/core` (1029 files, same machine):
 
 | | files | parsed | actionable | undefined names |
 |---|---|---|---|---|
-| 0.4.5 | 1029 | 305 | 270 | 64 |
-| 0.4.6 | 1029 | **320** | **49** | **0** |
+| 0.4.6 | 1029 | 320 | 49 | 17\* |
+| 0.4.7 | 1029 | **320** | **36** | **17** |
 
-Self-scan (this repository's own source) goes from 11 actionable findings to
-**0**. Tests 192 → 231.
+\* Correction: the 0.4.6 row was published with **0** undefined names, which
+contradicts that release's own scan — the same 17 findings are present there.
+Confirmed this round against the original artifact and corrected to the measured
+values; the `.mbti` fix did not touch them.
+
+The remaining 36 (the next layer): 17 undefined names = 11 cross-file function
+references (the hex / base64 v128 bench files call `sample_bytes` /
+`encode_scalar`, defined in other files of the same package) + 3 references to
+names declared outside the subset (`E_MAX` / `b` / `N`) + 3 other shapes (`is` /
+`e`); the other 19 are unused bindings and similar defects.
+
+Self-scan (this repository's own source) stays at **0**. Tests 231 → 233.
 
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.6
+moon add riantr/moonbit_static_analysis@0.4.7
 ```
 
 ```moonbit
@@ -197,7 +198,7 @@ specific moment. All three go in the filename —
 `@sa.scan_artifact_name(prov, root)` lays them out:
 
 ```
-moonbit_static_analysis_0.4.6_0.1.20260920_20261009T052547Z.mmd
+moonbit_static_analysis_0.4.7_0.1.20260920_20261009T155222Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -430,7 +431,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.6` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.7` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
@@ -540,13 +541,17 @@ another package never hit.
 > `extern "c" fn` modelled as a declaration (it was skipped, which lost the
 > name, so every call site of an extern function read as unbound) and the
 > numeric-literal / enum-constructor gaps closed, `moonbitlang/core` goes from
-> **270 to 49** actionable with `undefined name` at **zero**, and this
-> repository stays at **0**.
+> **270 to 49** actionable with `undefined name` down from 64 to 17 (published
+> as 0 at the time; that release's own scan contradicts it, since corrected to
+> the measured value), and this repository stays at **0**. 0.4.7 then wires the
+> `.mbti` audit's unknown-type check to the module-wide interface table,
+> clearing the remaining 13 false reports: **36**.
 >
 > | moonbitlang/core | files | parsed | actionable | undefined names |
 > |---|---|---|---|---|
 > | 0.4.5 | 1029 | 305 | 270 | 64 |
-> | 0.4.6 | 1029 | **320** | **49** | **0** |
+> | 0.4.6 | 1029 | 320 | 49 | 17 |
+> | 0.4.7 | 1029 | **320** | **36** | **17** |
 
 The root package is a thin forwarder; the implementation is `src/sa`, a
 **library**. That is deliberate: a main package importing another main package

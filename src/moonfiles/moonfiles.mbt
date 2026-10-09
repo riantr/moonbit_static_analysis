@@ -1037,10 +1037,19 @@ fn line_head_identifier(t : String) -> String {
 ///   `async`/`extern` modifiers, type parameters and labeled parameters.
 /// Findings: malformed lines, duplicate value signatures, and type names
 /// referenced but neither declared in the file, builtin, a bound type
-/// parameter, nor external (`@pkg.` references are external by shape).
-pub fn iface(src : String, file : String) -> Array[@report.Report] {
+/// parameter, external by shape, nor in `extern_names` — the module-wide
+/// interface table built from every `.mbti` of the scanned target. A name
+/// that resolves there is real: generated interfaces reference the traits
+/// and errors other packages declare (`&Show` parameters, `raise
+/// SnapshotError` returns, `impl Debug for BenchError` targets), and an
+/// audit of one file in isolation cannot see any of them.
+pub fn iface(
+  src : String,
+  file : String,
+  extern_names : @core.IfaceSymTab,
+) -> Array[@report.Report] {
   let _ = file
-  let result = parse_iface(src)
+  let result = parse_iface(src, extern_names)
   result.reports
 }
 
@@ -1055,7 +1064,11 @@ pub fn iface(src : String, file : String) -> Array[@report.Report] {
 /// uses: a `.mbti` that this collector cannot read is a `.mbti` that
 /// `iface` would also misread, so the two views stay in lockstep.
 pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
-  let result = parse_iface(src)
+  // the empty table: this function BUILDS the tables, so it must not consult
+  // one — a name is collected because this file declares it, never because
+  // some table already contained it. An empty table also cannot silence the
+  // audit, which is fine: the reports are discarded here.
+  let result = parse_iface(src, @core.IfaceSymTab::empty())
   let tab = @core.IfaceSymTab::empty()
   for n in result.declared {
     if !tab.types.contains(n) {
@@ -1096,7 +1109,7 @@ priv struct IfaceScan {
 }
 
 ///|
-fn parse_iface(src : String) -> IfaceScan {
+fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   let text = normalize(src)
   let reports : Array[@report.Report] = []
   let declared : Array[String] = []
@@ -1161,10 +1174,29 @@ fn parse_iface(src : String) -> IfaceScan {
       match rsplit_at(after, "}") {
         Some((head, _)) =>
           for seg in split_top_commas(strip_outer(trim_sp(head), '{', '}')) {
-            let body_seg = if seg.has_prefix("type ") {
-              trim_sp(after_n(seg, 5))
-            } else {
-              seg
+            let mut body_seg = trim_sp(seg)
+            // A seg keeps its package qualifier and brace opener:
+            // `@builtin {type ArgsLoc` — rsplit_at above consumed the
+            // closer (non-last segs of a line keep theirs). Strip through
+            // the `{`, else the seg reaches decl_name starting with `@`,
+            // decl_name reads "" there, and the re-export is recorded as
+            // nothing. That hid every non-aliased prelude re-export (24
+            // `type` + 20 `trait` of its 44 `pub using` segs) from the
+            // module table; only `type Iter as Iterator`-shaped segs got
+            // through, via the ` as ` branch. Caught by scanning core.
+            match rsplit_at(body_seg, "{") {
+              Some((_, rest)) => body_seg = trim_sp(rest)
+              None => ()
+            }
+            // then the kind word: a seg is `<kind> <Name>` — `type T`,
+            // `trait T`. Only `type ` was stripped before, so a trait seg
+            // would record the keyword itself (`decl_name("trait Show")`
+            // is `trait`) instead of Show.
+            for kw in ["type ", "trait ", "struct ", "enum ", "suberror "] {
+              if body_seg.has_prefix(kw) {
+                body_seg = trim_sp(after_n(body_seg, kw.length()))
+                break
+              }
             }
             match rsplit_at(body_seg, " as ") {
               Some((_, renamed)) => {
@@ -1311,10 +1343,19 @@ fn parse_iface(src : String) -> IfaceScan {
     if declared.contains(ty) || builtin.contains(ty) || type_params.contains(ty) {
       continue
     }
+    // Cross-file resolution: the module-wide interface table (every `.mbti`
+    // of the scanned target, collected in `collect_iface_symtabs`). A
+    // generated interface references exactly what other packages declare —
+    // `&Show` parameters, `raise SnapshotError` returns, `impl Debug for
+    // BenchError` targets — and auditing one file in isolation flagged all
+    // of them (13 findings across moonbitlang/core, every one false).
+    if extern_names.has_type(ty) {
+      continue
+    }
     reports.push(@report.Report::{
       family: @core.FParse,
       lenses: [@core.LStructural],
-      message: "unknown type '\{ty}' in interface signature (not declared here, not builtin)",
+      message: "unknown type '\{ty}' in interface signature (not declared here, not builtin, not in any scanned interface)",
       span: @core.span_at(lineno, col, ty.length()),
       vst: [],
     })

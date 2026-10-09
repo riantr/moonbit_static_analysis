@@ -36,14 +36,14 @@ test "literate .mbt.md: blocks are independent (no cross-block bindings)" {
 ///|
 test "iface .mbti: well-formed file has no findings" {
   let src = "// Generated using `moon info`, DON'T EDIT IT\npackage \"riantr/demo\"\n\n// Values\npub fn pos(Int, Int) -> Pos\n\n// Types and methods\npub(all) struct Pos {\n  line : Int\n} derive(Eq)\npub fn Pos::shift(Self, Int) -> Pos\n"
-  let reports = @moonfiles.iface(src, "demo.mbti")
+  let reports = @moonfiles.iface(src, "demo.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 0)
 }
 
 ///|
 test "iface .mbti: duplicate signature reported" {
   let src = "package \"d\"\npub fn f(Int) -> Int\npub fn f(Int) -> Int\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_eq(reports[0].family.name(), "ParseError")
   assert_true(reports[0].message.contains("duplicate signature 'f'"))
@@ -53,7 +53,7 @@ test "iface .mbti: duplicate signature reported" {
 ///|
 test "iface .mbti: unknown type reference reported" {
   let src = "package \"d\"\npub fn f(Mystery) -> Int\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("unknown type 'Mystery'"))
 }
@@ -61,7 +61,7 @@ test "iface .mbti: unknown type reference reported" {
 ///|
 test "iface .mbti: malformed line reported" {
   let src = "package \"d\"\npub fn f(Int) -> Int\nf(  \n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("malformed interface line"))
   assert_eq(reports[0].span.start.line, 3)
@@ -74,7 +74,7 @@ test "iface .mbti: malformed line reported" {
 /// i.e. it flagged every real generated interface.
 test "iface .mbti: real 'moon info' output produces no findings" {
   let src = "// Generated using `moon info`, DON'T EDIT IT\npackage \"moonbitlang/async/io\"\n\nimport {\n  \"moonbitlang/core/debug\",\n}\n\n// Values\npub fn pipe() -> (PipeRead, PipeWrite)\n\n// Errors\npub suberror PipeClosed derive(ToJson, @debug.Debug)\n#deprecated\npub impl Show for PipeClosed\n\npub(all) suberror ReaderClosed derive(ToJson, @debug.Debug)\n#deprecated\npub impl Show for ReaderClosed\n\n// Types and methods\ntype BufferedWriter[W]\npub fn[W] BufferedWriter::capacity(Self[W]) -> Int\npub async fn[W : Writer] BufferedWriter::flush(Self[W]) -> Unit\npub impl[W : Writer] Writer for BufferedWriter[W]\n\npub(all) enum Encoding {\n  UTF8\n}\n\ntype MemoryReader\n#callsite(autofill(loc))\npub fn MemoryReader::MemoryReader(async (&Writer) -> Unit, loc~ : SourceLoc) -> Self\npub async fn MemoryReader::read_some(Self) -> String?\npub fn MemoryReader::drop(Self, Int) -> Int\npub impl Reader for MemoryReader\n\ntype PipeRead\ntype PipeWrite\ntrait Writer\ntrait Data\npub impl Data for String\npub fn &Data::text(Self) -> String raise\n\npub const HEADER_SIZE : Int = 10\npub const STAT_FILE_SIZE : UInt = 0x0020\n\n// Type aliases\npub type Fd = Int\n"
-  let reports = @moonfiles.iface(src, "io.mbti")
+  let reports = @moonfiles.iface(src, "io.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 0)
 }
 
@@ -86,7 +86,7 @@ test "iface .mbti: labeled and optional parameters name types, not labels" {
   // parameter list on bare commas used to yield "input_offset? : Int" as an
   // unknown type.
   let src = "type Decoder\npub fn Decoder::write(Self, Bytes, FixedArray[Byte], input_offset? : Int, output_offset? : Int) -> (Int, Int) raise\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 0)
 }
 
@@ -103,13 +103,17 @@ test "iface .mbti: labeled and optional parameters name types, not labels" {
 test "iface .mbti: types inside a declaration body are resolved" {
   // an unknown payload type inside an enum body IS caught
   let payload = @moonfiles.iface(
-    "package \"d\"\npub(all) enum E {\n  Other(Ghost)\n}\n", "d.mbti",
+    "package \"d\"\npub(all) enum E {\n  Other(Ghost)\n}\n",
+    "d.mbti",
+    @core.IfaceSymTab::empty(),
   )
   assert_eq(payload.length(), 1)
   assert_true(payload[0].message.contains("unknown type 'Ghost'"))
   // so is an unknown struct field type
   let field = @moonfiles.iface(
-    "package \"d\"\npub(all) struct S {\n  line : Phantom\n}\n", "d.mbti",
+    "package \"d\"\npub(all) struct S {\n  line : Phantom\n}\n",
+    "d.mbti",
+    @core.IfaceSymTab::empty(),
   )
   assert_eq(field.length(), 1)
   assert_true(field[0].message.contains("unknown type 'Phantom'"))
@@ -123,22 +127,28 @@ test "iface .mbti: labeled params, derives and builtins are not body types" {
   let labeled = @moonfiles.iface(
     "package \"d\"\npub(all) suberror OSError {\n  OSError(Int, context~ : String)\n}\n",
     "d.mbti",
+    @core.IfaceSymTab::empty(),
   )
   assert_eq(labeled.length(), 0)
   // three labeled params in one constructor
   let multi = @moonfiles.iface(
     "package \"d\"\npub(all) enum R {\n  Exp(initial~ : Int, factor~ : Double, maximum~ : Int)\n}\n",
     "d.mbti",
+    @core.IfaceSymTab::empty(),
   )
   assert_eq(multi.length(), 0)
   // derive(...) names TRAITS, not types
   let derived = @moonfiles.iface(
-    "package \"d\"\npub(all) enum E {\n  A\n} derive(Eq, @debug.Debug)\n", "d.mbti",
+    "package \"d\"\npub(all) enum E {\n  A\n} derive(Eq, @debug.Debug)\n",
+    "d.mbti",
+    @core.IfaceSymTab::empty(),
   )
   assert_eq(derived.length(), 0)
   // UInt16 is a real MoonBit type (the toolchain's own utils.mbt uses it)
   let builtin = @moonfiles.iface(
-    "package \"d\"\npub(all) enum E {\n  Other(UInt16)\n}\n", "d.mbti",
+    "package \"d\"\npub(all) enum E {\n  Other(UInt16)\n}\n",
+    "d.mbti",
+    @core.IfaceSymTab::empty(),
   )
   assert_eq(builtin.length(), 0)
 }
@@ -148,7 +158,7 @@ test "iface .mbti: labeled params, derives and builtins are not body types" {
 ///|
 test "iface .mbti: a genuinely unknown type is still caught" {
   let src = "package \"d\"\npub fn f(Mystery) -> Int\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("unknown type 'Mystery'"))
 }
@@ -158,7 +168,7 @@ test "iface .mbti: a genuinely unknown type is still caught" {
 ///|
 test "iface .mbti: a generic fn binds its own type parameter, but not a ghost" {
   let src = "package \"d\"\npub fn[W] Boxed::new(W, Ghost) -> Self\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("unknown type 'Ghost'"))
 }
@@ -178,7 +188,7 @@ test "iface .mbti: a generic impl binds its own type parameters, but not a ghost
   // that exactly one report fires, naming Ghost, and that the bound
   // parameters are NOT reported (which was the regression).
   let src = "package \"d\"\npub impl[A, B] Show for (A, Ghost)\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("unknown type 'Ghost'"))
   for rep in reports {
@@ -196,7 +206,7 @@ test "iface .mbti: a generic impl binds its own type parameters, but not a ghost
 ///|
 test "iface .mbti: real generic impl with bounds has no findings" {
   let src = "package \"d\"\npub impl[A : Default, B : Default] Default for (A, B)\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   // A, B are bound; Default is the bound type, which is a trait that the
   // analyzer does not require to be declared; the target tuple (A, B)
   // refers to types on the same line's bound list. Before the fix, this
@@ -212,7 +222,7 @@ test "iface .mbti: real generic impl with bounds has no findings" {
 ///|
 test "iface .mbti: a 16-parameter impl has no findings" {
   let src = "package \"d\"\npub impl[A : Default, B : Default, C : Default, D : Default, E : Default, F : Default, G : Default, H : Default, I : Default, J : Default, K : Default, L : Default, M : Default, N : Default, O : Default, P : Default] Default for (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)\n"
-  let reports = @moonfiles.iface(src, "d.mbti")
+  let reports = @moonfiles.iface(src, "d.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 0)
 }
 
@@ -228,8 +238,70 @@ test "iface .mbti: a 16-parameter impl has no findings" {
 /// error modifier, and the ArrayView / ReadOnlyArray builtin constructors.
 test "iface .mbti: let declarations, using re-exports and noraise are understood" {
   let src = "package \"a\"\n\nimport {\n  \"a/types\",\n}\n\n// Values\npub let current_process : UInt\n\npub let platform : @types.Platform\n\npub async fn Cond::wait(Self) -> Unit noraise\npub async fn Cond::drop(Self) -> Unit cancel\npub async fn Cond::join(Self) -> Unit noraise cancel\npub fn take(ArrayView[Int], ReadOnlyArray[Byte]) -> Int\n\n// Type aliases\npub using @types {type Platform}\npub using @cond_var {type Cond as CondVar}\npub using @aqueue {type Queue}\n"
-  let reports = @moonfiles.iface(src, "env_util.mbti")
+  let reports = @moonfiles.iface(
+    src,
+    "env_util.mbti",
+    @core.IfaceSymTab::empty(),
+  )
   assert_eq(reports.length(), 0)
+}
+
+///|
+/// Cross-file resolution: the module-wide interface table. The three real
+/// core shapes — `&Show` in parameter position, `raise SnapshotError` in
+/// return position, `impl Debug for BenchError` as the impl target — all
+/// reference types that live in ANOTHER package's `.mbti` (builtin declares
+/// the traits and the suberrors), so auditing this file in isolation
+/// flagged all of them: 13 findings across moonbitlang/core, every one
+/// false. The table lookup is what silences them, and the negative control
+/// is what proves it: the same file against an EMPTY table still reports
+/// every one — without that row, a lookup that silently resolved nothing
+/// would pass this test.
+test "iface .mbti: types declared in another package's interface are resolved" {
+  let src = "package \"buffer\"\npub fn Buffer::write(Self, &Show) -> Unit\n"
+  let src = src +
+    "pub fn Test::snapshot(Self, filename~ : String) -> Unit raise SnapshotError\n"
+  let src = src + "pub impl Debug for BenchError\n"
+  let tab = @core.IfaceSymTab::empty()
+  tab.types.set("Show", true)
+  tab.types.set("SnapshotError", true)
+  tab.types.set("BenchError", true)
+  assert_eq(@moonfiles.iface(src, "buffer.mbti", tab).length(), 0)
+  // negative control: same file, empty table — all three still fire
+  assert_eq(
+    @moonfiles.iface(src, "buffer.mbti", @core.IfaceSymTab::empty()).length(),
+    3,
+  )
+}
+
+///|
+/// The table itself is BUILT from `.mbti` files (`collect_iface_names`), and
+/// it must contain what a re-export line names. Real prelude segs keep the
+/// package qualifier and brace opener — `pub using @builtin {trait Show}`
+/// reaches the seg parser as `@builtin {trait Show` (rsplit_at ate the
+/// closer) — so decl_name, reading from the leading `@`, used to record
+/// nothing at all for non-aliased segs: 24 `type` + 20 `trait` of prelude's
+/// 44 `pub using` segs were invisible, only aliased ones got through.
+test "iface .mbti: collect_iface_names records re-exported traits and types" {
+  let prelude = "package \"prelude\"\n"
+  let prelude = prelude + "pub using @builtin {type SnapshotError}\n"
+  let prelude = prelude + "pub using @builtin {trait Show}\n"
+  let prelude = prelude + "pub using @builtin {type Iter as Iterator}\n"
+  let tab = @moonfiles.collect_iface_names(prelude)
+  assert_true(tab.has_type("SnapshotError"))
+  assert_true(tab.has_type("Show"))
+  // the alias target is the exported name; the source name is not recorded
+  assert_true(tab.has_type("Iterator"))
+  assert_false(tab.has_type("Iter"))
+  // and the audit of a user of prelude resolves through that table
+  let user = "package \"buffer\"\npub fn Buffer::write(Self, &Show) -> Unit\n"
+  let user = user + "pub fn Test::snapshot(Self) -> Unit raise SnapshotError\n"
+  assert_eq(@moonfiles.iface(user, "buffer.mbti", tab).length(), 0)
+  // negative control: empty table — both still fire
+  assert_eq(
+    @moonfiles.iface(user, "buffer.mbti", @core.IfaceSymTab::empty()).length(),
+    2,
+  )
 }
 
 ///
@@ -596,7 +668,7 @@ test ".mbti end-to-end: a collected table still reports an undeclared name" {
 /// `unknown type 'x00'`.
 test ".mbti: a const default value is not scanned for type references" {
   let src = "pub const MAX_VALUE : Byte = b'\\xFF'\npub const MIN_VALUE : Byte = b'\\x00'\npub const HEADER : String = \"hello\"\n"
-  let reports = @moonfiles.iface(src, "x.mbti")
+  let reports = @moonfiles.iface(src, "x.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 0)
 }
 
@@ -607,7 +679,10 @@ test ".mbti: a const default value is not scanned for type references" {
 /// here, so "no reports" means the values contributed no type references.
 test ".mbti: nested, tuple and comparison defaults are not scanned either" {
   let src = "pub const A_TABLE : Map[String, Int] = Map(capacity=8)\npub const A_PAIR : (Int, Int) = (1, 2)\npub const NEG : Int = -1\npub const EQ_TEST : Int = 1 == 1\n"
-  assert_eq(@moonfiles.iface(src, "x.mbti").length(), 0)
+  assert_eq(
+    @moonfiles.iface(src, "x.mbti", @core.IfaceSymTab::empty()).length(),
+    0,
+  )
 }
 
 ///|
@@ -615,7 +690,7 @@ test ".mbti: nested, tuple and comparison defaults are not scanned either" {
 /// checked, so this is not "stop looking at const lines".
 test ".mbti: a const's declared type is still checked" {
   let src = "pub const FLAG : NoSuchType = 1\n"
-  let reports = @moonfiles.iface(src, "x.mbti")
+  let reports = @moonfiles.iface(src, "x.mbti", @core.IfaceSymTab::empty())
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("NoSuchType"))
 }

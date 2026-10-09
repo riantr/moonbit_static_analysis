@@ -15,7 +15,7 @@ pub fn fence_census(String) -> (Int, Int)
 
 pub fn fence_mode(String) -> FenceMode?
 
-pub fn iface(String, String) -> Array[@report.Report]
+pub fn iface(String, String, @core.IfaceSymTab) -> Array[@report.Report]
 
 pub fn literate(String, String) -> @pipeline.PipelineResult
 

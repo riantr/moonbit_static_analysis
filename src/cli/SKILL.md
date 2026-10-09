@@ -92,7 +92,9 @@ println(@pipeline.render_result(result))
 
 // the other file kinds have their own frontends (src/moonfiles)
 let doc  = @moonfiles.literate(md_text, "README.mbt.md")   // .mbt.md, real line numbers
-let iface = @moonfiles.iface(mbti_text, "pkg.mbti")       // interface audit
+// 3rd arg = the module-wide interface table (every .mbti of the scanned target);
+// empty means "nothing beyond this file is resolvable"
+let iface = @moonfiles.iface(mbti_text, "pkg.mbti", @core.IfaceSymTab::empty()) // interface audit
 let proof = @moonfiles.proof(mbtp_text, "core.mbtp")      // proof lint
 println(@moonfiles.render_reports(iface))
 

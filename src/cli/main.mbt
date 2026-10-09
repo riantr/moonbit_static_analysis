@@ -48,7 +48,13 @@ fn main {
   )
   println("=== demo.mbti (interface: unknown type reference) ===")
   println(
-    @moonfiles.render_reports(@moonfiles.iface(@samples.iface_bad, "demo.mbti")),
+    @moonfiles.render_reports(
+      @moonfiles.iface(
+        @samples.iface_bad,
+        "demo.mbti",
+        @core.IfaceSymTab::empty(),
+      ),
+    ),
   )
   println("=== demo.mbtp (proof: string constant in a logic body) ===")
   println(

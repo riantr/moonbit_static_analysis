@@ -611,10 +611,15 @@ async fn analyze(p : String, extern_iface : @core.IfaceSymTab) -> Verdict {
     // lines, duplicate signatures, unknown type references, string constants in
     // a logic body. Suppressing those would delete the entire product.
     //
+    // The `.mbti` audit ends its type chain at the module-wide interface
+    // table: a generated interface references the traits and errors OTHER
+    // packages declare (`&Show`, `raise SnapshotError`), so `extern_iface`
+    // resolves them before anything is reported.
+    //
     // Both frontends are line-based and produce no cascade, so the whole file is
     // trusted: region_line 0, nothing withheld.
     ".mbti" => {
-      let rs = @moonfiles.iface(src, n)
+      let rs = @moonfiles.iface(src, n, extern_iface)
       Verdict::{
         path: p,
         kind: k,

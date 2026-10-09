@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.6 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.7 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -232,7 +232,7 @@ on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `@sa.provenance_for(target, root)` collects four facts and
 `@sa.scan_artifact_name(prov, root)` lays them out —
 `<package>_<version>_<moonbit>_<UTC stamp>.mmd`, e.g.
-`moonbit_static_analysis_0.4.6_0.1.20260920_20261009T052547Z.mmd`.
+`moonbit_static_analysis_0.4.7_0.1.20260920_20261009T155222Z.mmd`.
 
 Read that name as provenance, not decoration: it is what distinguishes two
 scans of the same tree. `package` is the coordinate, or the **resolved**

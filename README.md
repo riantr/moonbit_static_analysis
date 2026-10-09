@@ -9,37 +9,40 @@
 
 一条流水线贯穿两者：**结构走查 → 类型/符号 → 抽象解释 → 统一报告**。
 
-## 0.4.6 要点
+## 0.4.7 要点
 
-**AST 补齐了真实代码需要的构造。** 方法调用 `base.m(args)` 此前在 AST 里**根本没有位置**
-（`ECall` 的被调名是 `String`，`EField` 只表示读字段），解析会停在那里——这是 core 上最大的
-单一阻塞。本版新增 `EMethodCall` 节点并让三个 lens 都接上，该阻塞从 34 个文件降到 **0**。
-一并补上的还有：`0x`/`0b`/`0o` 与 `_` 分隔、`L`/`U`/`UL` 后缀（超过 `Int` 上界的字面量成为
-独立的 `TBigInt` 节点而不是被截断的数）、跨文件可见的 enum 构造器名字、以及
-`extern "c" fn` 按声明建模（原先整条跳过，名字就丢了，于是每个 extern 函数的调用点都报
-未绑定）。
+**`.mbti` 接口审计学会了跨文件解析类型。** 生成的接口文件大量引用声明在同包其它文件
+（或 extern 目录）里的类型——`&Show` 参数、`raise SnapshotError` 返回、`impl Debug for
+BenchError` 的目标——此前 `@moonfiles.iface` 只看单文件，core 上 13 个真实 `.mbti`
+因此被误报「未知类型」。本版为接口审计建立**模块级接口符号表**：对扫描目标的每个
+`.mbti` 逐文件收集声明与 `pub using` 再导出后合并，解析顺序为本文件声明 → 内建名 →
+类型参数 → 任一已扫接口（仅类型）。core 上 `.mbti` 缺陷 **13 → 0**，actionable
+**49 → 36**。
 
-**修掉了四类把自身盲区报成用户缺陷的假阳性。** `Type::member` 路径（`@debug.Repr::opaque_(v)`）
-是成员引用不是绑定；前端没读完的文件里模块帧**可证不完整**，那里「找不到绑定」证明不了任何
-事；行为鉴此前没有查内建名表，于是在结构鉴沉默的同一行上报 `undefined function 'StringBuilder'`；
-`!` 作用在未知类型上不是操作数不匹配（`SIf`/`SWhile` 本来就有这条守卫，`!` 是唯一漏掉的）。
-
-**`--mmd` / `--mmd-auto` 让扫描结果可以直接出图**，不必自己写程序调 `mermaid_states`；产物名
-带四个字段：`<包名>_<版本号>_<moonbit版本>_<时间戳>`。
+顺带修掉：`pub using @pkg {type T}` 形状的再导出此前**一条也没被收集**（24 个
+type + 20 个 trait 的 prelude 段因此不可见），现在进表。
 
 实测（moonbitlang/core，1029 文件，同一台机器）：
 
 | | 文件 | 解析 | actionable | 未定义名 |
 |---|---|---|---|---|
-| 0.4.5 | 1029 | 305 | 270 | 64 |
-| 0.4.6 | 1029 | **320** | **49** | **0** |
+| 0.4.6 | 1029 | 320 | 49 | 17\* |
+| 0.4.7 | 1029 | **320** | **36** | **17** |
 
-自检（扫本仓库自身源码）11 条 actionable → **0**。测试 192 → 231。
+\* 勘误：0.4.6 行的未定义名发布时误记为 **0**，与该版自己的扫描产物不符——0.4.6 的
+扫描里同样有这 17 条，本次核对原始产物后按实测更正；`.mbti` 修复没有触碰它们。
+
+剩余 36 条的构成（下一层的靶子）：17 条未定义名 = 11 条跨文件函数引用（hex / base64
+的 v128 bench 文件调用同包其它文件定义的 `sample_bytes` / `encode_scalar`）+ 3 条
+引用子集外声明的名字（`E_MAX` / `b` / `N`）+ 3 条其余形态（`is` / `e`）；其余 19 条
+是未用绑定等其它缺陷。
+
+自检（扫本仓库自身源码）保持 **0**。测试 231 → 233。
 
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.6
+moon add riantr/moonbit_static_analysis@0.4.7
 ```
 
 ```moonbit
@@ -177,7 +180,7 @@ mermaid 接受的形态、每个节点 id 必须是标识符、每条迁移的�
 `@sa.provenance_for(target, root)` 负责收集，`@sa.scan_artifact_name(prov, root)` 负责排布：
 
 ```
-moonbit_static_analysis_0.4.6_0.1.20260920_20261009T052547Z.mmd
+moonbit_static_analysis_0.4.7_0.1.20260920_20261009T155222Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没找到
 ```
@@ -371,7 +374,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.6` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.7` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
@@ -454,12 +457,15 @@ arity 是猜测，检查会把它当事实报出去）。表里没有的名字�
 > 不是绑定，跟字段名、方法名本来的处理一致。再把 `extern "c" fn` 当成声明建模
 > （原先整条跳过，名字就丢了，于是每个 extern 函数的调用点都报未绑定），补上数值
 > 字面量与 enum 构造器，moonbitlang/core 从 **270 条降到 49 条**，`undefined name`
-> 归 **0**，本仓库仍是 **0**。
+> 从 64 条降到 17 条（发布 0.4.6 时误记为 0，与该版扫描产物不符，后按实测勘正），
+> 本仓库仍是 **0**；0.4.7 再把 `.mbti` 审计的未知类型检查接到模块级接口符号表上，
+> 其余 13 条误报清零，降到 **36**。
 >
 > | moonbitlang/core | 文件 | 解析 | actionable | 未定义名 |
 > |---|---|---|---|---|
 > | 0.4.5 | 1029 | 305 | 270 | 64 |
-> | 0.4.6 | 1029 | **320** | **49** | **0** |
+> | 0.4.6 | 1029 | 320 | 49 | 17 |
+> | 0.4.7 | 1029 | **320** | **36** | **17** |
 
 根包是薄转发层，真正的实现在 `src/sa`（library）。设成 library 是因为「main 包 import 另一个 main 包」已被工具链标记为将来会报错；`src/sa` 与根包都声明 `supported_targets = "+wasm+native"`，因为文件 IO 与子进程来自 `moonbitlang/async`，只有 wasm / native 后端有可用的 async 运行时（js 没有，wasm-gc 缺 `run_async_main`），其余后端会**跳过**这两个包而不是失败。
 
