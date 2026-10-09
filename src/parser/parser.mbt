@@ -859,52 +859,60 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
   //     look for `=>` right after `a`, find a comma, and bail;
   //   * accepting only a comma-then-`for` for the next generator missed the
   //     form entirely, because the comma is followed by the next PATTERN.
-  // A comma is disambiguated by POSITION, not by lookahead: right after a
-  // pattern it continues that pattern, right after an iterable it starts
-  // another generator.
+  // Both were chasing a form that does not exist. A comprehension has
+  // exactly ONE generator; there is no loop here to get wrong.
   if self.at_name("for") {
     let _ = self.bump()
   }
-  let mut more = true
-  while more && !self.at(TEOF) {
-    // The pattern may destructure: `[ for k, v in entries => ... ]`.
-    // `sorted_map/debug.mbt`, `hashmap/debug.mbt`, `immut/hashmap/debug.mbt`
-    // and `hashmap/json.mbt` in moonbitlang/core all use this form.
-    let (pat, _) = self.expect_name("comprehension variable")
-    vars.push(pat)
-    while self.at(TComma) && self.peek2_is_pattern_name() {
-      let _ = self.bump()
-      let (more_name, _) = self.expect_name("comprehension variable")
-      vars.push(more_name)
-    }
-    if self.at_name("in") {
-      let _ = self.bump()
-    } else {
-      self.err("expected 'in' in comprehension", self.span())
-    }
-    sources.push(self.parse_expr())
-    // The guard belongs HERE — between the iterable and `=>`.
-    //
-    // This was written backwards first, on the strength of a probe whose
-    // error line was read as the other form. Re-probed one form per file,
-    // with a `moon.pkg` present (without one `moon check` answers "no work to
-    // do" and exits 0 — a false green, not a pass):
-    //
-    //   [ for x in a if x > 0 => x ]   0 errors
-    //   [ for x in a => x if x > 0 ]   E3002 Parse error, unexpected token
-    //                                  `if`, you may expect `]`
-    //
-    // moonbitlang/core uses the guard-before form in 9 comprehensions across
-    // 5 files, so reading it the other way left all of them unparsed.
-    if self.at_name("if") {
-      let _ = self.bump()
-      ignore(self.parse_expr())
-    }
-    if self.at(TComma) {
-      let _ = self.bump()
-    } else {
-      more = false
-    }
+  // The pattern may destructure: `[ for k, v in entries => ... ]`.
+  // `sorted_map/debug.mbt`, `hashmap/debug.mbt`, `immut/hashmap/debug.mbt`
+  // and `hashmap/json.mbt` in moonbitlang/core all use this form.
+  let (pat, _) = self.expect_name("comprehension variable")
+  vars.push(pat)
+  while self.at(TComma) && self.peek2_is_pattern_name() {
+    let _ = self.bump()
+    let (more_name, _) = self.expect_name("comprehension variable")
+    vars.push(more_name)
+  }
+  if self.at_name("in") {
+    let _ = self.bump()
+  } else {
+    self.err("expected 'in' in comprehension", self.span())
+  }
+  sources.push(self.parse_expr())
+  // The guard belongs HERE — between the iterable and `=>`.
+  //
+  // This was written backwards first, on the strength of a probe whose
+  // error line was read as the other form. Re-probed one form per file,
+  // with a `moon.pkg` present and a deliberately-broken canary file
+  // alongside (without a `moon.pkg`, or off a stale build, `moon check`
+  // answers "no work to do" and exits 0 — a false green, not a pass):
+  //
+  //   [ for x in a if x > 0 => x ]   0 errors
+  //   [ for x in a => x if x > 0 ]   E3002 Parse error, unexpected token
+  //                                  `if`, you may expect `]`
+  //
+  // moonbitlang/core uses the guard-before form in 9 comprehensions across
+  // 5 files, so reading it the other way left all of them unparsed.
+  if self.at_name("if") {
+    let _ = self.bump()
+    ignore(self.parse_expr())
+  }
+  // NO comma continuation: a comprehension has exactly ONE generator.
+  // Both candidate spellings are rejected by the toolchain —
+  //   [ for x in a, for y in b => x + y ]   E3002 unexpected token `,`
+  //   [ for x in a, y in b => x + y ]       E3002 unexpected token `,`
+  // An earlier version consumed the comma and read a second generator,
+  // which silently DROPPED the first iterable (`a`) rather than reporting
+  // anything. The destructuring comma is unaffected: it comes BEFORE the
+  // `in`, and this one comes after it.
+  if self.at(TComma) {
+    self.err(
+      "a comprehension has one generator; `,` here is not MoonBit",
+      self.span(),
+    )
+    let _ = self.bump()
+    ignore(self.parse_expr())
   }
   if self.at(TAssign) && self.peek2() == TGt {
     // `=>` is lexed as `=` then `>`

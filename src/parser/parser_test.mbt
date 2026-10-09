@@ -570,23 +570,42 @@ test "the invalid sibling shapes are reported, the valid ones are not" {
 }
 
 ///|
-/// A destructuring pattern and a second generator, both of which 0.4.5 got
-/// wrong. `for` is written ONCE in MoonBit and each following generator
-/// repeats only its pattern and iterable — a first implementation that
-/// accepted only a comma-then-`for` missed the form entirely. The corpus
-/// sources: `sorted_map/debug.mbt`, `hashmap/debug.mbt`,
-/// `immut/hashmap/debug.mbt` and `hashmap/json.mbt` in moonbitlang/core.
-test "a destructuring pattern and a second generator both parse clean" {
+/// A destructuring pattern, which moonbitlang/core uses in
+/// `sorted_map/debug.mbt`, `hashmap/debug.mbt`, `immut/hashmap/debug.mbt`
+/// and `hashmap/json.mbt`. The comma belongs to the PATTERN, before `in`.
+test "a destructuring comprehension pattern parses clean" {
   let t = @parser.parse(
     "fn f(self : Array[(Int, Int)]) -> Array[String] {\n  [ for k, v in self => \"k\" ]\n}\n",
   )
   assert_eq(t.first_error, 0)
   assert_eq(t.reports.length(), 0)
-  let g = @parser.parse(
+}
+
+///|
+/// A comprehension has exactly ONE generator. Two earlier versions of this
+/// file chased a multi-generator form that does not exist — one accepted
+/// `[ for x in a, y in b => … ]` and a test pinned it as clean. Probed with
+/// `moon check` (canary-verified):
+///   [ for x in a, for y in b => x + y ]   E3002 unexpected token `,`
+///   [ for x in a, y in b => x + y ]       E3002 unexpected token `,`
+/// Accepting it was worse than ignoring it: the second iterable was read and
+/// the first silently DROPPED, so the comprehension analysed a different
+/// expression than the source contained. Both spellings are now reported.
+test "a second generator is reported, not silently reinterpreted" {
+  let a = @parser.parse(
+    "fn f(a : Array[Int], b : Array[Int]) -> Array[Int] {\n  [ for x in a, for y in b => x + y ]\n}\n",
+  )
+  assert_true(a.reports.length() > 0)
+  let b = @parser.parse(
     "fn f(a : Array[Int], b : Array[Int]) -> Array[Int] {\n  [ for x in a, y in b => x + y ]\n}\n",
   )
-  assert_eq(g.first_error, 0)
-  assert_eq(g.reports.length(), 0)
+  assert_true(b.reports.length() > 0)
+  // ...while the single generator that DOES exist still parses clean, and
+  // the destructuring comma (which comes before `in`) is unaffected
+  let ok = @parser.parse(
+    "fn f(a : Array[Int]) -> Array[Int] {\n  [ for x in a => x ]\n}\n",
+  )
+  assert_eq(ok.reports.length(), 0)
 }
 
 ///|
