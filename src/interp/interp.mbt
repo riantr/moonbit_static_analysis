@@ -180,6 +180,17 @@ priv struct Interp {
   /// silent. Three lenses, two consulted the table, and the third invented a
   /// finding the other two contradicted.
   extern_iface : @core.IfaceSymTab
+  /// Names a file may use without importing anything, the same list the
+  /// structural lens consults (`@core.ambient_names()`).
+  ///
+  /// Without it this lens reported `undefined function 'StringBuilder'` on
+  /// `StringBuilder()` while the structural lens stayed silent on the same line
+  /// — the identical shape of contradiction the `extern_iface` note above
+  /// describes, reached through the wrong table. A builtin *type* constructor
+  /// is a call in this lens (there is no separate constructor node) and a
+  /// binding in the other one, so without this the two lenses answered the same
+  /// line differently for the same reason.
+  ambient : Map[String, Bool]
   file : String
   /// signature cache: key -> return value
   cache : Map[String, AbsVal]
@@ -196,9 +207,14 @@ priv struct Interp {
 
 ///|
 fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
+  let ambient : Map[String, Bool] = Map([])
+  for n in @core.ambient_names() {
+    ambient.set(n, true)
+  }
   Interp::{
     methods: Map([]),
     extern_iface,
+    ambient,
     file,
     globals: Map([]),
     cache: Map([]),
@@ -577,6 +593,10 @@ fn Interp::eval(
 ) -> AbsVal {
   match e.kind {
     EInt(i) => AInt(i)
+    // No value to abstract: not folding to AInt(0) would be a lie that the
+    // lattice could then compare, and folding to 0 would make `x + literal`
+    // look like arithmetic on a known number.
+    EBigInt => AAny
     EFloat(_) => AType("float")
     EBool(b) => ABool(b)
     EStr(_) => AType("str")
@@ -627,6 +647,24 @@ fn Interp::eval(
         vals.push(self.eval(a, env))
       }
       self.call(name, vals, e.span)
+    }
+    // A method call. The receiver and every argument are EVALUATED, not skipped:
+    // an undefined name inside `x.f(y)` is a real undefined name, and a branch
+    // inside the receiver expression can still be unreachable. The result is
+    // AAny because no method is modelled — returning the receiver's value would
+    // invent arithmetic the analyzer cannot justify.
+    //
+    // A qualifier receiver (`@core.f(x)`) is not evaluated, for the same reason
+    // the walk does not resolve it: `@core` is a package, and evaluating it
+    // would report an undefined variable that does not exist.
+    EMethodCall(base, _, args) => {
+      if !base.is_qualifier() {
+        let _ = self.eval(base, env)
+      }
+      for a in args {
+        let _ = self.eval(a, env)
+      }
+      AAny
     }
     EField(base, _) => {
       let _ = self.eval(base, env)
@@ -888,6 +926,12 @@ fn Interp::call(
       // `has_type` each try the exact key and then the bare one, which is the
       // same order the structural and type lenses use.
       if self.extern_iface.has_value(name) || self.extern_iface.has_type(name) {
+        return AAny
+      }
+      // An ambient name — `StringBuilder()`, `Map([])`, `Int::max`. Same rule
+      // as the line above, same reason: the name IS bound, just not in a file
+      // this lens can read. Its value is unknown to us, so AAny.
+      if self.ambient.contains(name) {
         return AAny
       }
       // callee existence was the structural/type lenses' finding; here it

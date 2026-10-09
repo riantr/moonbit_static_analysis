@@ -17,6 +17,22 @@ pub(all) struct ParseResult {
   /// all of it. Deliberate subset exclusions do not move it, so this marks the
   /// boundary of the region where findings can still be trusted.
   first_error : Int
+  /// Constructor names harvested from `enum` bodies this frontend did not
+  /// analyse, as module-level VALUES.
+  ///
+  /// The body of an `enum` is skipped, not parsed, so its members never become
+  /// bindings. Writing one of them — `TFunc` in `TFunc("f", [TInt], TInt)` —
+  /// is ordinary MoonBit, and with no binding for it the structural walk
+  /// reports `no visible binding for 'TFunc'`. That is a false positive about
+  /// the analyzer, not about the code: the same file also carries the notice
+  /// saying the enum body was not analysed.
+  ///
+  /// Harvesting the NAMES is much cheaper than modelling the body, and it is
+  /// the only part of a constructor a name lookup needs. A name found this way
+  /// resolves to "a value of unknown type" — the same shape the cross-file
+  /// symbol table gives a type from another package — so nothing downstream
+  /// infers a type or arity it has not read.
+  enum_ctors : Array[String]
 }
 
 ///|
@@ -30,6 +46,9 @@ priv struct Parser {
   /// Earliest line at which the source genuinely failed to read; 0 if it read
   /// all of it. Deliberate exclusions do not move it.
   mut first_error : Int
+  /// Constructor names seen while skipping an `enum` body. See the field of
+  /// the same name on `ParseResult`.
+  enum_ctors : Array[String]
 }
 
 ///|
@@ -59,7 +78,15 @@ pub fn parse(src : String) -> ParseResult {
       first_error = l
     }
   }
-  let p = Parser::{ toks, spans, p: 0, reports, skips: [], first_error, }
+  let p = Parser::{
+    toks,
+    spans,
+    p: 0,
+    reports,
+    skips: [],
+    first_error,
+    enum_ctors: [],
+  }
   let imports : Array[@ast.ImportSpec] = []
   let import_seen : Map[String, Bool] = Map([])
   let body : Array[@ast.Stmt] = []
@@ -133,6 +160,8 @@ pub fn parse(src : String) -> ParseResult {
     let kw = p.peek_name()
     if p.at_name("fn") {
       body.push(p.parse_fn())
+    } else if kw == "extern" {
+      body.push(p.parse_extern_fn(sp))
     } else if kw == "struct" ||
       kw == "enum" ||
       kw == "trait" ||
@@ -140,10 +169,7 @@ pub fn parse(src : String) -> ParseResult {
       kw == "derive" ||
       kw == "test" {
       p.skip_decl_braced(kw, sp)
-    } else if kw == "type" ||
-      kw == "const" ||
-      kw == "suberror" ||
-      kw == "extern" {
+    } else if kw == "type" || kw == "const" || kw == "suberror" {
       p.skip_decl_line(kw, sp)
     } else {
       body.push(p.parse_stmt())
@@ -155,6 +181,7 @@ pub fn parse(src : String) -> ParseResult {
     reports: p.reports,
     skips: p.skips,
     first_error: p.first_error,
+    enum_ctors: p.enum_ctors,
   }
 }
 
@@ -186,6 +213,17 @@ fn Parser::at(self : Parser, t : @lexer.Tok) -> Bool {
 fn Parser::at_name(self : Parser, n : String) -> Bool {
   match self.peek() {
     TName(s) => s == n
+    _ => false
+  }
+}
+
+///|
+/// Whether the next token is a string literal, whatever its contents. `at`
+/// takes a bare token and `Tok` cannot be compared for equality here, so the
+/// payload-carrying kinds need this form — the same reason `at_name` exists.
+fn Parser::at_str(self : Parser) -> Bool {
+  match self.peek() {
+    TStr(_) => true
     _ => false
   }
 }
@@ -254,8 +292,8 @@ fn Parser::skip_parens_if_present(self : Parser) -> Unit {
 /// into an undefined variable.
 ///
 /// `extern` is deliberately NOT here: its body is a raw string (`= "..."`), not
-/// a MoonBit block, so it is a declaration form the frontend does not model and
-/// is skipped as one.
+/// a MoonBit block, so it is dispatched to `parse_extern_fn`, which models the
+/// signature and leaves the body empty.
 fn Parser::skip_modifiers(self : Parser) -> Unit {
   let mut again = true
   while again {
@@ -300,6 +338,7 @@ fn Parser::skip_decl_braced(
     let _ = self.bump()
   }
   if found {
+    let open_p = self.p
     let mut depth = 0
     while !self.at(TEOF) {
       if self.at(TLBrace) {
@@ -314,8 +353,59 @@ fn Parser::skip_decl_braced(
       }
       let _ = self.bump()
     }
+    if what == "enum" {
+      self.harvest_ctors(open_p, self.p)
+    }
   }
   self.skip(what, true, sp)
+}
+
+///|
+/// Collect the constructor names of an `enum` body that is being skipped,
+/// scanning the token range `from ..< to` — the inside of the braces.
+///
+/// A member of an enum body is a name followed by an optional payload
+/// `(...)` or `{ ... }`. Every token of a payload is nested at least one level
+/// deep, so a NAME at depth 0 is a member head and nothing else. A NAME
+/// directly after `::` or `.` is the tail of a qualified path and is skipped,
+/// because `A::B` names `A`.
+///
+/// This is deliberately not a parse. The body is still reported as not
+/// analysed, and a harvested name resolves to "a value whose type is
+/// unknown" — the same shape a name from another package gets. What is
+/// recovered is the one thing a name lookup needs and nothing more.
+fn Parser::harvest_ctors(self : Parser, from : Int, to : Int) -> Unit {
+  let mut depth = 0
+  let mut i = from + 1
+  while i < to && i < self.toks.length() {
+    match self.toks[i] {
+      TLBrace | TLParen | TLBracket => depth += 1
+      TRBrace | TRParen | TRBracket => depth -= 1
+      TName(n) =>
+        if depth == 0 &&
+          !self.after_path_marker(i) &&
+          !self.enum_ctors.contains(n) {
+          self.enum_ctors.push(n)
+        }
+      _ => ()
+    }
+    i += 1
+  }
+}
+
+///|
+/// True when the token before `i` is a `.`, i.e. the name at `i` is the tail
+/// of a field or package path rather than a member head. `::` arrives as two
+/// `TColon` tokens, but a name after a colon is a type parameter in the
+/// payload and always nested, so depth 0 already excludes it.
+fn Parser::after_path_marker(self : Parser, i : Int) -> Bool {
+  if i <= 0 {
+    return false
+  }
+  match self.toks[i - 1] {
+    TDot => true
+    _ => false
+  }
 }
 
 ///|
@@ -477,6 +567,19 @@ fn Parser::expect(self : Parser, t : @lexer.Tok, what : String) -> Unit {
 fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // fn
+  let (name, params, retann) = self.parse_fn_signature()
+  let body = self.parse_block()
+  { span: sp, kind: @ast.SFunc(name, params, retann, body, sp), }
+}
+
+///|
+/// `NAME ( params ) [ -> Type ]` — the part a `fn` and an `extern fn` share.
+/// They differ only in what follows: a MoonBit block, or the raw symbol string
+/// after `=`. Splitting it out is what lets the extern form carry a REAL
+/// signature instead of being skipped as an unmodelled declaration.
+fn Parser::parse_fn_signature(
+  self : Parser,
+) -> (String, Array[@ast.Param], String) {
   let (name, _) = self.expect_name("function name")
   self.expect(TLParen, "'('")
   let params : Array[@ast.Param] = []
@@ -500,8 +603,46 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
     let _ = self.bump()
     retann = self.return_annotation()
   }
-  let body = self.parse_block()
-  { span: sp, kind: @ast.SFunc(name, params, retann, body, sp), }
+  (name, params, retann)
+}
+
+///|
+/// `extern "c" fn name(params) -> Ret = "symbol"`
+///
+/// This used to be skipped as an unmodelled declaration form, which was the
+/// right call while it was unmodelled — but skipping it loses the NAME, and
+/// every call site of an extern function was then reported as an unbound name:
+///
+///    extern "c" fn runtime_native_exit(code : Int) = "exit"
+///    fn runtime_exit_success() -> Unit {
+///      runtime_native_exit(0)          <- reported 'no visible binding'
+///    }
+///
+/// 16 of moonbitlang/core's 882 `.mbt` files declare one. The implementation is
+/// in another language, so the body is empty — which asserts nothing about what
+/// the callee does while still binding the name and carrying the signature the
+/// type lens needs.
+fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
+  let _ = self.bump() // extern
+  // `extern "c"` / `extern "wasm"` — an ABI name, not a type.
+  if self.at_str() {
+    let _ = self.bump()
+  }
+  if self.at_name("fn") {
+    let _ = self.bump()
+  }
+  if self.at_name("async") {
+    let _ = self.bump()
+  }
+  let (name, params, retann) = self.parse_fn_signature()
+  // `= "exit"` — the raw symbol in the target language. Nothing to model.
+  if self.at(TAssign) {
+    let _ = self.bump()
+    if self.at_str() {
+      let _ = self.bump()
+    }
+  }
+  { span: sp, kind: @ast.SFunc(name, params, retann, [], sp), }
 }
 
 ///|
@@ -774,49 +915,61 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
     if self.at(TLParen) {
       let csp = self.span()
       let _ = self.bump()
-      let args : Array[@ast.Expr] = []
-      while !self.at(TRParen) && !self.at(TEOF) {
-        // A named argument `name = value`. The label is dropped: the call
-        // lens does not consume labels, and the value expression is the
-        // one that matters for binding-table and finding purposes. Before
-        // this, a function call with any named arg — `Command(name=...)`
-        // is the canonical case from argparse-derived packages — would
-        // trip `parse_expr()` on the `=` and stop the whole file. Caught
-        // by scanning `moonbitlang/pdf2md@0.1.1`, whose `pdf2md_command`
-        // signature parses cleanly only after this loop accepts `name=value`.
-        // No two-token lookahead is available, so save `p`, consume the
-        // name, and check the next token. If it isn't `=`, restore `p`
-        // and fall back to a normal `parse_expr()`. If it is `=`, consume
-        // it and parse the value.
-        if self.peek_name() != "" {
-          let saved_p = self.p
-          let _ = self.bump()
-          if self.at(TAssign) {
-            let _ = self.bump()
-            args.push(self.parse_expr())
-          } else {
-            self.p = saved_p
-            args.push(self.parse_expr())
-          }
-        } else {
-          args.push(self.parse_expr())
-        }
-        if self.at(TComma) {
-          let _ = self.bump()
-        } else {
-          break
-        }
-      }
+      let args = self.parse_call_args()
       self.expect(TRParen, "')'")
       match e.kind {
         @ast.EName(n) => e = { span: csp, kind: @ast.ECall(n, args), }
-        _ => self.err("only named functions can be called", csp)
+        // A method call. `receiver.name` was an EField up to this point; the
+        // `(` is what makes it a call, and only now are the arguments known.
+        @ast.EField(base, m) =>
+          e = { span: csp, kind: @ast.EMethodCall(base, m, args), }
+        _ => self.err("only named functions and methods can be called", csp)
       }
       continue
     }
     break
   }
   e
+}
+
+///|
+/// The argument list of a call, up to but NOT including the closing `)`.
+/// Shared by `f(args)` and `receiver.f(args)` so the two forms cannot drift.
+fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
+  let args : Array[@ast.Expr] = []
+  while !self.at(TRParen) && !self.at(TEOF) {
+    // A named argument `name = value`. The label is dropped: the call
+    // lens does not consume labels, and the value expression is the
+    // one that matters for binding-table and finding purposes. Before
+    // this, a function call with any named arg — `Command(name=...)`
+    // is the canonical case from argparse-derived packages — would
+    // trip `parse_expr()` on the `=` and stop the whole file. Caught
+    // by scanning `moonbitlang/pdf2md@0.1.1`, whose `pdf2md_command`
+    // signature parses cleanly only after this loop accepts `name=value`.
+    // No two-token lookahead is available, so save `p`, consume the
+    // name, and check the next token. If it isn't `=`, restore `p`
+    // and fall back to a normal `parse_expr()`. If it is `=`, consume
+    // it and parse the value.
+    if self.peek_name() != "" {
+      let saved_p = self.p
+      let _ = self.bump()
+      if self.at(TAssign) {
+        let _ = self.bump()
+        args.push(self.parse_expr())
+      } else {
+        self.p = saved_p
+        args.push(self.parse_expr())
+      }
+    } else {
+      args.push(self.parse_expr())
+    }
+    if self.at(TComma) {
+      let _ = self.bump()
+    } else {
+      break
+    }
+  }
+  args
 }
 
 ///|
@@ -1024,6 +1177,7 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
   let sp = self.span()
   match self.bump() {
     TInt(i) => { span: sp, kind: @ast.EInt(i), }
+    TBigInt => { span: sp, kind: @ast.EBigInt, }
     TFloat(f) => { span: sp, kind: @ast.EFloat(f), }
     TStr(s) => { span: sp, kind: @ast.EStr(s), }
     TName("true") => { span: sp, kind: @ast.EBool(true), }

@@ -5,6 +5,12 @@
 ///|
 pub(all) enum Tok {
   TInt(Int)
+  /// An integer literal this analyzer gives no value to: it did not fit the
+  /// fixed `lit_max` bound, or it carried an `L` / `U` / `UL` suffix naming a
+  /// wider type. It is a real integer, not an error — the point is that
+  /// `const_eval` must not fold a dead branch on a number it could not read,
+  /// and the type lens must not claim a mismatch it cannot justify.
+  TBigInt
   TFloat(Double)
   TStr(String)
   TName(String)
@@ -239,32 +245,185 @@ fn Lexer::lex_attribute(self : Lexer) -> Unit {
 }
 
 ///|
+/// The largest integer literal this analyzer will give a VALUE to.
+///
+/// Fixed on purpose rather than taken from the target's `Int`: `Int` is 32-bit
+/// on wasm and 64-bit on js/native, so a bound derived from it would make the
+/// same source analyse differently on different backends, and this tool's
+/// findings are consumed by a program that compares them. A literal past this
+/// bound still lexes, still parses and still types as an integer — it just
+/// carries no value, which is what stops `const_eval` from folding a dead
+/// branch on a number it could not read. See `TBigInt`.
+let lit_max : Int = 2147483647
+
+///|
+/// `acc * base + d`, or `ok = false` rather than a wrapped answer.
+///
+/// The overflow check happens BEFORE the arithmetic, so nothing is ever
+/// computed in the first place. That matters because `Int` is 32-bit on wasm:
+/// a plain `acc * 16 + 15` on `0xFFFFFFFF` would trap the whole scan instead of
+/// degrading to "no value".
+fn lit_step(acc : Int, base : Int, d : Int) -> (Int, Bool) {
+  if acc > (lit_max - d) / base {
+    (-1, false)
+  } else {
+    (acc * base + d, true)
+  }
+}
+
+///|
+/// Digit value for a base, or -1 when the character is not a digit of it.
+fn digit_value(c : Char, base : Int) -> Int {
+  let mut v = -1
+  let ci = c.to_int()
+  if is_digit(c) {
+    v = ci - '0'.to_int()
+  } else if c >= 'a' && c <= 'f' {
+    v = ci - 'a'.to_int() + 10
+  } else if c >= 'A' && c <= 'F' {
+    v = ci - 'A'.to_int() + 10
+  }
+  if v >= base {
+    -1
+  } else {
+    v
+  }
+}
+
+///|
+/// One integer literal: an optional `0x` / `0b` / `0o` base prefix, digits with
+/// optional `_` separators, and an optional `L` / `U` / `UL` suffix.
+///
+/// Which forms exist is measured, not assumed — each was compiled by this
+/// toolchain before being written here:
+///
+///     0xFF   0x8000_0000   0b1010   0o17   1_000_000   0x1000L   1U   0xffffffffUL   all compile
+///     1U as UInt64                                                                          does not
+///
+/// Before this, `0x7FF8...UL` lexed as the number `0` followed by the names
+/// `x7FF8`, `000` and `L`, and each of those names was then reported as an
+/// unbound binding. That is how 54 of the 55 false positives a scan of
+/// moonbitlang/core gained from teaching the parser method calls came to exist:
+/// the parse had moved past them and they were suddenly visible.
 fn Lexer::lex_number(self : Lexer) -> Tok {
   let l = self.line
   let c0 = self.col
   let start = self.pos
-  let mut is_float = false
-  while self.pos < self.chars.length() && is_digit(self.chars[self.pos]) {
-    self.pos += 1
-    self.col += 1
-  }
-  if self.pos < self.chars.length() && self.chars[self.pos] == '.' {
-    is_float = true
-    self.pos += 1
-    self.col += 1
-    while self.pos < self.chars.length() && is_digit(self.chars[self.pos]) {
-      self.pos += 1
-      self.col += 1
+  let n = self.chars.length()
+  // Consume a base prefix only when a digit OF THAT BASE follows it. Without
+  // that lookahead `0` followed by a variable named `x` would be read as a hex
+  // literal and the variable would vanish.
+  let mut base = 10
+  let mut digits_from = self.pos
+  if self.pos + 1 < n && self.chars[self.pos] == '0' {
+    let p = self.chars[self.pos + 1]
+    let b = if p == 'x' || p == 'X' {
+      16
+    } else if p == 'b' || p == 'B' {
+      2
+    } else if p == 'o' || p == 'O' {
+      8
+    } else {
+      0
+    }
+    if b > 0 &&
+      self.pos + 2 < n &&
+      digit_value(self.chars[self.pos + 2], b) >= 0 {
+      base = b
+      digits_from = self.pos + 2
     }
   }
-  let text = self.slice(start, self.pos)
-  let len = self.pos - start
+  self.pos = digits_from
+  let mut value = 0
+  let mut exact = true
+  let mut any = false
+  while self.pos < n {
+    let c = self.chars[self.pos]
+    if c == '_' {
+      // A separator, not a digit. `0x_FF` is a leading separator and is
+      // harmless; what it must never be is a reason to stop consuming.
+      self.pos += 1
+      self.col += 1
+      continue
+    }
+    let d = digit_value(c, base)
+    if d < 0 {
+      break
+    }
+    any = true
+    if exact {
+      let (v, ok) = lit_step(value, base, d)
+      if ok {
+        value = v
+      } else {
+        exact = false
+      }
+    }
+    self.pos += 1
+    self.col += 1
+  }
+  let int_part = self.pos
+  // A fractional part makes this a float, and a float literal has no suffix
+  // and no base. Checked only when digits were actually consumed, so `0.foo`
+  // is not read as a float.
+  let mut is_float = false
+  if any && base == 10 && self.pos < n && self.chars[self.pos] == '.' {
+    let mut probe = self.pos + 1
+    while probe < n && is_digit(self.chars[probe]) {
+      probe += 1
+    }
+    // `1.to_string()` — a `.` that is NOT followed by a digit is field access,
+    // not a decimal point.
+    if probe > self.pos + 1 {
+      is_float = true
+      self.pos += 1
+      self.col += 1
+      while self.pos < n &&
+            (is_digit(self.chars[self.pos]) || self.chars[self.pos] == '_') {
+        self.pos += 1
+        self.col += 1
+      }
+    }
+  }
+  let text = self.slice(start, int_part)
+  let len = int_part - start
   if is_float {
-    self.emit(TFloat(parse_double(text)), l, c0, len)
-    TFloat(parse_double(text))
+    let f = parse_double(text)
+    self.emit(TFloat(f), l, c0, len)
+    TFloat(f)
   } else {
-    self.emit(TInt(parse_int(text)), l, c0, len)
-    TInt(parse_int(text))
+    // The suffix, only when the literal actually had digits. `L` is Int64,
+    // `U` is UInt and `UL` is UInt64; the order matters because `UL` starts
+    // with `U`.
+    let mut suffixed = false
+    if any && self.pos < n {
+      let c = self.chars[self.pos]
+      if c == 'U' {
+        suffixed = true
+        self.pos += 1
+        self.col += 1
+        if self.pos < n && self.chars[self.pos] == 'L' {
+          self.pos += 1
+          self.col += 1
+        }
+      } else if c == 'L' {
+        suffixed = true
+        self.pos += 1
+        self.col += 1
+      }
+    }
+    let total = self.pos - start
+    if !exact || suffixed {
+      // No value: either it did not fit, or it is a wider type this analyzer
+      // does not model. `const_eval` sees TBigInt and refuses to fold, and the
+      // type lens treats it as TUnknown so it never claims a mismatch it
+      // cannot justify.
+      self.emit(TBigInt, l, c0, total)
+      TBigInt
+    } else {
+      self.emit(TInt(value), l, c0, total)
+      TInt(value)
+    }
   }
 }
 
@@ -518,17 +677,6 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
   }
   self.emit(t, l, c0, 1)
   t
-}
-
-///|
-fn parse_int(s : String) -> Int {
-  let mut v = 0
-  for c in s {
-    if is_digit(c) {
-      v = v * 10 + (c.to_int() - '0'.to_int())
-    }
-  }
-  v
 }
 
 ///|

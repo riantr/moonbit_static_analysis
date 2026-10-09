@@ -132,11 +132,12 @@ pub fn run(
     file,
     extern_iface,
     parsed.first_error,
+    parsed.enum_ctors,
   )
   for r in wr.findings {
     all.push(r)
   }
-  let tr = @types.infer_full(parsed.tree, wr, extern_iface)
+  let tr = @types.infer_full(parsed.tree, wr, extern_iface, parsed.enum_ctors)
   for r in tr.findings {
     all.push(r)
   }

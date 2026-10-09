@@ -199,6 +199,20 @@ took actionable findings from 270 to 147; on this repository, from 11 to **0**
 **quote `PARSED` first**, and treat `actionable` as the only count that
 describes the code. Do not report `withheld` to a user as "problems found".
 
+The same argument extends past the function frame to the **module** frame, and
+that is worth stating as a general rule because it is easy to get backwards:
+**"not found" and "does not exist" are different claims, and a report must
+distinguish them.** Any assertion resting on a lookup has to ask whether the
+table doing the lookup is complete. On a file the frontend did not finish, the
+module frame is provably incomplete, so `UndefinedName` is withheld there — on a
+whole file it stays exactly as loud. Two name shapes also turned out not to be
+bindings at all: a `Type::member` path (`@debug.Repr::opaque_(v)`), which is a
+member reference for the same reason a field name and a method name are; and the
+name of an `extern "c" fn`, which was being skipped as an unmodelled declaration
+form, so every call site of an extern function read as unbound. Measured on
+`moonbitlang/core`: actionable **270 → 49**, undefined names **64 → 0**, parsed
+**305 → 320**.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by

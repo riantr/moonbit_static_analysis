@@ -998,6 +998,37 @@ fn top_level_paren(t : String) -> (String, String)? {
 }
 
 ///|
+/// The first identifier on a line, or "" when the line does not start with
+/// one. Used to name an enum constructor out of `TFunc(String, Array[Ty], Ty)`
+/// without parsing the payload — the payload is a type reference list and is
+/// collected separately.
+fn line_head_identifier(t : String) -> String {
+  let buf = StringBuilder()
+  let mut seen = false
+  for c in t {
+    if seen {
+      if is_ident_char(c) {
+        buf.write_char(c)
+      } else {
+        break
+      }
+    } else if is_ident_start(c) {
+      seen = true
+      buf.write_char(c)
+    } else if c == '}' || c == ')' || c == ',' {
+      // Stop at the first separator that cannot start an identifier, so a line
+      // like `} Foo` does not yield `Foo`.
+      return ""
+    }
+  }
+  if seen {
+    buf.to_string()
+  } else {
+    ""
+  }
+}
+
+///|
 /// Analyze a `.mbti` interface file. The line grammar is the one `moon info`
 /// emits, so nothing it generates is reported as malformed:
 ///   comments, `#attribute` lines, `package`, `import { }` blocks,
@@ -1036,6 +1067,15 @@ pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
       tab.values.set(n, true)
     }
   }
+  // Enum constructors are values, and they are declared inside a body this
+  // frontend skips. Without this, a `.mbt` that writes `TFunc("f", [TInt],
+  // TInt)` reports `no visible binding for 'TFunc'` — the binding is real, it
+  // is just written down in a `.mbti` body.
+  for n in result.ctors {
+    if !tab.values.contains(n) {
+      tab.values.set(n, true)
+    }
+  }
   tab
 }
 
@@ -1049,6 +1089,10 @@ priv struct IfaceScan {
   reports : Array[@report.Report]
   declared : Array[String]
   sig_names : Array[String]
+  /// Constructor names found inside `enum` bodies. See the comment where they
+  /// are collected; they exist so a `.mbt` in another file can resolve a
+  /// constructor name without this analyzer modelling the enum.
+  ctors : Array[String]
 }
 
 ///|
@@ -1062,6 +1106,13 @@ fn parse_iface(src : String) -> IfaceScan {
   let lines = split_lines(text)
   let mut decl_depth = 0
   let mut import_depth = 0
+  // Constructor names inside `enum` bodies. An enum body is skipped like every
+  // other declaration body, but its members are VALUES: a `.mbt` in another
+  // file that writes `TFunc(...)` must resolve, or the structural walk reports
+  // `no visible binding for 'TFunc'` on correct code. The names are all a
+  // cross-file lookup needs — no shape, no arity, nothing inferred from them.
+  let ctors : Array[String] = []
+  let mut in_enum = false
   for i, line in lines {
     let lineno = i + 1
     let t = trim_sp(line)
@@ -1078,6 +1129,15 @@ fn parse_iface(src : String) -> IfaceScan {
     if decl_depth > 0 {
       for n in body_type_refs(t) {
         referenced.push((n, lineno, 1))
+      }
+      if in_enum {
+        // A constructor head is the first identifier of the line, before any
+        // payload: `TFunc(String, Array[Ty], Ty)`. Everything after it is a
+        // type reference, already collected above.
+        let head = line_head_identifier(t)
+        if head != "" && !ctors.contains(head) {
+          ctors.push(head)
+        }
       }
       decl_depth += count_char(t, '{') - count_char(t, '}')
       continue
@@ -1191,6 +1251,7 @@ fn parse_iface(src : String) -> IfaceScan {
         d = 0
       }
       decl_depth = d
+      in_enum = matched == "enum " && d > 0
       continue
     }
     match iface_signature(t) {
@@ -1258,7 +1319,7 @@ fn parse_iface(src : String) -> IfaceScan {
       vst: [],
     })
   }
-  IfaceScan::{ reports, declared, sig_names, }
+  IfaceScan::{ reports, declared, sig_names, ctors, }
 }
 
 ///|

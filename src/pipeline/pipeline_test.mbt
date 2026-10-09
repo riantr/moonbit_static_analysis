@@ -709,6 +709,27 @@ fn count_family(r : @pipeline.PipelineResult, name : String) -> Int {
 }
 
 ///|
+/// The same count restricted to ONE lens.
+///
+/// Needed whenever a finding is about a decision a single lens made. The
+/// merged report is the union of three lenses walking the tree independently,
+/// so a claim like "the branch was pruned" is only observable on the lens that
+/// prunes — the other two still visit the body and still find the name.
+fn count_family_in(
+  r : @pipeline.PipelineResult,
+  name : String,
+  lens : @core.Lens,
+) -> Int {
+  let mut n = 0
+  for rep in r.reports {
+    if rep.family.name() == name && rep.lenses.contains(lens) {
+      n += 1
+    }
+  }
+  n
+}
+
+///|
 /// A binding read AFTER the point where the parse gave up was read; the walk
 /// never saw the read, so "assigned but may not be used" would be a lie.
 test "a truncated function yields no function-scoped finding" {
@@ -731,6 +752,110 @@ test "a complete function before the boundary still reports an unused local" {
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
   assert_eq(r.first_error_line, 6)
   assert_eq(count_family(r, "UnusedLocal"), 1)
+}
+
+///|
+/// The module frame is the OUTERMOST frame, so it is the one most likely to be
+/// incomplete: when the parser gives up, every top-level declaration after the
+/// cut was never read. A forward reference to one of those is ordinary code,
+/// and it was reported as an unbound name:
+///
+///    fn render() { pick_files(v, max) }   <- before the cut
+///    fn broken() { try { 1 } }            <- where the parse gives up
+///    fn pick_files(v, max) { }            <- in the unread tail
+test "a forward reference into the unread tail is not an undefined name" {
+  let src = "fn render() -> Int {\n  pick_files(1, 2)\n}\nfn broken() -> Int {\n  try {\n    1\n  }\n  2\n}\nfn pick_files(a : Int, b : Int) -> Int {\n  a + b\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  // The read failure is real, so this is not passing because the file parsed.
+  assert_eq(r.first_error_line, 5)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// The negative control, and it has to exist: a guard that suppressed
+/// UndefinedName everywhere would make the test above pass. On a WHOLE file the
+/// module frame is complete, so the finding is still made.
+test "an undefined name in a whole file is still reported" {
+  let src = "fn render() -> Int {\n  no_such_function(1)\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// `Type::method(...)` and `@pkg.Type::method(...)` flatten into one name that
+/// resolves against nothing. 27 of the 64 undefined-name findings on
+/// moonbitlang/core were this shape, all on code `moon check` accepts. The same
+/// rule already applies to a field name and to a method name: a member of a
+/// type is not a binding in the file.
+test "a qualified path call is a member reference, not an undefined name" {
+  let src = "fn render(v : Repr) -> Unit {\n  @debug.Repr::opaque_(v)\n  Repr::array(3)\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// The negative control. The `::` rule must not become "skip resolution": a
+/// plain unqualified call to a name that does not exist is still a defect.
+test "an unqualified call to a missing function is still reported" {
+  let src = "fn render() -> Int {\n  no_such_function(1)\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// An extern function's body lives in another language, so the frontend has
+/// nothing to walk — but it DOES have the name and the signature. Skipping the
+/// declaration lost the name, and every call site then read as unbound. 16 of
+/// moonbitlang/core's 882 `.mbt` files declare one.
+test "an extern fn binds its name, so its call sites are not undefined names" {
+  let src = "extern \"c\" fn runtime_native_exit(code : Int) = \"exit\"\nfn ok() -> Unit {\n  runtime_native_exit(0)\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// The behavior lens analyzes a function body only when the body is REACHED —
+/// `run_top` walks top-level statements and descends into calls. So these two
+/// fixtures call the function under test from module level, or the lens has
+/// nothing to look at and the test would pass for the wrong reason.
+test "a builtin type constructor is not an undefined function" {
+  let src = "fn build() -> Unit {\n  let b = StringBuilder()\n  ignore(b)\n}\nbuild()\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family_in(r, "UndefinedName", @core.LBehavior), 0)
+}
+
+///|
+/// The negative control: an ordinary unqualified call to a missing function is
+/// still a behavior-lens finding. Otherwise the ambient table would be a
+/// blanket suppression.
+test "a missing unqualified function is still a behavior finding" {
+  let src = "fn build() -> Unit {\n  no_such_helper()\n}\nbuild()\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family_in(r, "UndefinedName", @core.LBehavior), 1)
+}
+
+///|
+/// `Map::contains` is not in the type lens's signature table, so its result is
+/// TUnknown, and `!m.contains(k)` read as an operand mismatch. An unknown
+/// operand is not evidence of a non-bool operand — which is why SIf and SWhile
+/// already carried that guard and `!` was the one bool check in the file
+/// without it.
+test "'!' on an unknown operand is not an operand mismatch" {
+  let src = "fn probe(m : Map[String, Int], k : String) -> Bool {\n  !m.contains(k)\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family_in(r, "OperatorMismatch", @core.LType), 0)
+}
+
+///|
+/// The negative control, and the one that matters: if `!` accepted EVERYTHING
+/// the test above would pass for the wrong reason. `!` on a known non-bool is
+/// still reported.
+test "'!' on a known non-bool operand is still an operand mismatch" {
+  let src = "fn probe(n : Int) -> Bool {\n  !n\n}\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family_in(r, "OperatorMismatch", @core.LType), 1)
 }
 
 ///|
@@ -771,4 +896,160 @@ test "a name that is not ambient and not bound still reports" {
     @core.IfaceSymTab::empty(),
   )
   assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+// --- method calls -----------------------------------------------------------
+//
+// `ECall` carries its callee as a `String`, so before `EMethodCall` existed
+// there was no node that could hold `receiver.name(args)` and the parse
+// stopped on one. That was the single largest reason the `.mbt` frontend read
+// only 158 of 882 files on moonbitlang/core.
+//
+// The shape tests are in parser_test. These are the ones that matter: whether
+// the lenses still SEE inside the new node.
+
+///|
+/// The receiver is an evaluated expression. Flattening `out.write_string(s)`
+/// into a name would hide the read of `out`, and then a binding that exists
+/// only to be written to would be reported unused. This is the false positive
+/// the field-write path already documents, arriving through a different door.
+test "a binding used only as a method-call receiver is read, not unused" {
+  let r = @pipeline.run(
+    "fn f(m : Map[String, Int]) -> Unit {\n  let out = m\n  out.length()\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+}
+
+///|
+/// The negative control for the one above: a receiver that really is unbound is
+/// still an unbound name, so the test above is not passing because receivers
+/// are skipped wholesale.
+test "an unbound method-call receiver still reports" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  return not_a_receiver.length()\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// An undefined name inside an ARGUMENT is still an undefined name. Adding a
+/// node that carries arguments is exactly the kind of change that can quietly
+/// stop walking them.
+test "an undefined name inside a method-call argument still reports" {
+  let r = @pipeline.run(
+    "fn f(m : Map[String, Int]) -> Int {\n  return m.get(not_an_argument)\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// `@core` names a package, not a binding, so `@core.f(x)` must not report it
+/// unbound. Without the qualifier check this would be a NEW false positive
+/// introduced by the very change meant to remove false positives.
+test "a package-qualified call does not report the alias as unbound" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  return @core.zero_span().start.line\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+/// A method call the lenses cannot judge stays silent rather than guessed at.
+/// There is no signature for `m.get` in this model, so claiming an arity or a
+/// return type would be the tool asserting something it never read.
+test "a method call with no known signature produces no call-lens verdict" {
+  let r = @pipeline.run(
+    "fn f(m : Map[String, Int]) -> Int {\n  return m.get(\"a\", \"b\", 1, 2, 3)\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "ArgTypeMismatch"), 0)
+  assert_eq(count_family(r, "OperatorMismatch"), 0)
+}
+
+///|
+/// The arm above is only honest because it is narrow. A FREE function call
+/// with a known signature must still be checked, or "we do not judge method
+/// calls" would have quietly become "we do not judge calls".
+test "a free call with too many arguments still reports" {
+  let r = @pipeline.run(
+    "fn g(a : Int) -> Int {\n  a\n}\nfn f() -> Int {\n  return g(1, 2)\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "ArgTypeMismatch"), 1)
+}
+
+// --- integer literals -------------------------------------------------------
+
+///|
+/// The reason `EBigInt` exists.
+///
+/// `const_eval` folds `1 == 0` to a false Bool, and a false condition PRUNES
+/// the branch. A literal given a wrong value can therefore hide live code, and
+/// the shape is not exotic: `if size == 0x8000_0000 {` is ordinary code.
+///
+/// With a wrong value of 0, the `then` below is pruned and `not_a_name` inside
+/// it is never looked at — a clean report for code about to fail at runtime.
+///
+/// The count is restricted to the structural lens because that is the lens that
+/// prunes; the type and behavior lenses walk the tree independently and would
+/// find the name either way.
+test "a branch keyed on an unreadable literal is not pruned as dead" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  if 1 == 0x8000_0000 {\n    return not_a_name\n  }\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family_in(r, "UndefinedName", @core.LStructural), 1)
+}
+
+///|
+/// And the control: the same shape with a literal the analyzer CAN read is
+/// still folded and still prunes. So the test above passes because the fold
+/// DECLINED, not because pruning stopped working — without this, a broken
+/// folder would satisfy it.
+test "a branch keyed on a readable literal is still pruned" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  if 1 == 0 {\n    return not_a_name\n  }\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family_in(r, "UndefinedName", @core.LStructural), 0)
+}
+
+///|
+/// A valueless literal is a real integer, so it must not produce a type
+/// mismatch either. It is TUnknown rather than TInt because it may be the `UL`
+/// suffix naming a UInt64 this analyzer does not model, and calling an
+/// Int-typed parameter wrong with it would be a false positive on correct code.
+test "a suffixed literal does not report an argument type mismatch" {
+  let r = @pipeline.run(
+    "fn f(v : Int64) -> Int64 {\n  return v + 0xffffffffUL\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "ArgTypeMismatch"), 0)
+  assert_eq(count_family(r, "OperatorMismatch"), 0)
+}
+
+///|
+/// Every literal form the toolchain accepts, in one file. None of them may
+/// leave a fragment behind: a fragment becomes a NAME, and a name becomes
+/// `no visible binding for 'x8000'`.
+test "every accepted integer literal form leaves no fragment behind" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  let a = 0xFF\n  let b = 0b1010\n  let c = 0o17\n  let d = 1_000_000\n  let e = 0x1000L\n  let g = 1U\n  a + b + c + d\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 0)
 }

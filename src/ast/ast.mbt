@@ -51,6 +51,15 @@ pub(all) enum UOp {
 ///|
 pub(all) enum EKind {
   EInt(Int)
+  /// An integer literal with NO value attached: it exceeded the analyzer's
+  /// fixed bound, or it carried an `L` / `U` / `UL` suffix for a wider type.
+  ///
+  /// This is a separate node rather than an `EInt` with a sentinel, because a
+  /// sentinel would be a number and would be folded on. `walk.const_eval`
+  /// returns nothing for it, so a dead branch keyed on `0xFFFFFFFF` is NOT
+  /// pruned; the type lens returns TUnknown, so it does not report a mismatch
+  /// it cannot justify. Both are the failure-safe direction.
+  EBigInt
   EFloat(Double)
   EBool(Bool)
   EStr(String)
@@ -61,6 +70,22 @@ pub(all) enum EKind {
   ECall(String, Array[Expr])
   EField(Expr, String)
   EIndex(Expr, Expr)
+  /// A METHOD call: `receiver.name(args)`.
+  ///
+  /// This node exists because `ECall` cannot hold it. `ECall`'s callee is a
+  /// `String`, so it can name `f` but not `receiver.f`; and `EField(Expr,
+  /// String)` is a field READ, which has no place to put the arguments. The
+  /// receiver is therefore kept as a separate `Expr` rather than flattened
+  /// into a name, and that is not cosmetic: the receiver is an evaluated
+  /// expression and the whole binding analysis depends on reading it. Writing
+  /// `out.write_string(s)` as `ECall("out.write_string", args)` would make the
+  /// write to `out` invisible, and a local that exists only to be written to
+  /// would then be reported unused.
+  ///
+  /// Until this existed, `parse_postfix` accepted only `EName` as a callee and
+  /// reported `only named functions can be called` on `m.set(k, v)`, which is
+  /// how a method call stopped the parse in most real files.
+  EMethodCall(Expr, String, Array[Expr])
   /// A list/set comprehension: `[ for pat in <sources> => body ]` and its
   /// block-bodied sibling `[ for pat in <sources> { body } ]`.
   ///
@@ -200,6 +225,23 @@ pub fn Expr::assigned_base(self : Expr) -> String? {
 pub fn Expr::is_valid_target(self : Expr) -> Bool {
   match self.kind {
     EName(_) | EField(_, _) | EIndex(_, _) => true
+    _ => false
+  }
+}
+
+///|
+/// Whether this expression names a PACKAGE rather than a value.
+///
+/// `@core` has no binding in the file under analysis: it is an import alias.
+/// So `@core.snapshot_vst(self.vst)` is a qualified call, and resolving the
+/// receiver would report `no visible binding for '@core'` on correct code.
+/// The walk consults this before reading a method-call receiver; the `@`
+/// prefix is what distinguishes the two, because a bare name is always a
+/// binding and `@`-prefixed is always an import.
+pub fn Expr::is_qualifier(self : Expr) -> Bool {
+  match self.kind {
+    EName(n) => n.has_prefix("@")
+    EField(base, _) => base.is_qualifier()
     _ => false
   }
 }

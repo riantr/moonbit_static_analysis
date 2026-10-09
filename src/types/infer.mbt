@@ -13,6 +13,11 @@ priv struct Infer {
   /// returns TUnknown (types) or TFunc(name, [TUnknown], TUnknown) (values)
   /// so the type lens does not also fire FUndefinedName
   extern_iface : @core.IfaceSymTab
+  /// Same rule as the structural lens: on a file the frontend did not finish,
+  /// an unresolved name proves nothing. This lens keeps its OWN frame copy, so
+  /// without the flag it would report the same unprovable name the structural
+  /// lens has already decided to stay silent about.
+  partial : Bool
   sigs : Array[Sig]
   findings : Array[@report.Report]
   vst : Array[@core.Frame]
@@ -22,6 +27,7 @@ priv struct Infer {
 fn new_infer(
   fn_bindings : Map[String, Array[@walk.Binding]],
   extern_iface : @core.IfaceSymTab,
+  partial : Bool,
 ) -> Infer {
   // Every ambient name seeds the table as TUnknown. The three that follow are
   // then overwritten with their real signatures so `len(x)` still infers Int
@@ -43,6 +49,7 @@ fn new_infer(
     annos: [Map([])],
     builtins,
     extern_iface,
+    partial,
     sigs: [],
     findings: [],
     vst: [],
@@ -121,6 +128,12 @@ fn Infer::report(
 fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
   match e.kind {
     EInt(_) => TInt
+    // TUnknown, not TInt. The literal is a real integer, but it may be an
+    // Int64 or UInt64 that this analyzer does not model, and calling
+    // `f(0xffffffffUL)` where `f` takes Int64 an Int-shaped argument wrong
+    // would be a false positive on correct code. Unknown suppresses the
+    // check in both directions, which is the right trade.
+    EBigInt => TUnknown
     EFloat(_) => TFloat
     EBool(_) => TBool
     EStr(_) => TStr
@@ -137,7 +150,9 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       match self.lookup(n) {
         Some(t) => t
         None => {
-          self.report(@core.FUndefinedName, "undefined name '\{n}'", e.span)
+          if !self.partial {
+            self.report(@core.FUndefinedName, "undefined name '\{n}'", e.span)
+          }
           hint
         }
       }
@@ -147,6 +162,13 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         UNot =>
           match self.ty_of(a, TUnknown) {
             TBool => TBool
+            // Same guard as SIf / SWhile below: an unknown operand is not
+            // evidence of a non-bool operand. This branch was the one bool
+            // check in this file without it, and the method-call work exposed
+            // it — `Map::contains` is not in the type lens's signature table,
+            // so its result is TUnknown and `!m.contains(k)` read as a mismatch
+            // on code `moon check` accepts.
+            TUnknown => TBool
             other => {
               self.report(
                 @core.FOpMismatch,
@@ -229,6 +251,24 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         }
         None => TUnknown
       }
+    // A method call. The receiver and every argument are typed, so a wrong
+    // receiver or an undefined name inside an argument is still found. The
+    // METHOD itself is not checked at all: this lens has no signature for it,
+    // so an arity error or a "not callable" claim would be the tool asserting
+    // something about a signature it never read. Same reason the TUnknownFn arm
+    // above deliberately does not fall through.
+    //
+    // The result is TUnknown rather than the receiver's type. `x.f()` is not
+    // necessarily an `x`.
+    EMethodCall(base, _, args) => {
+      if !base.is_qualifier() {
+        ignore(self.ty_of(base, TUnknown))
+      }
+      for arg in args {
+        ignore(self.ty_of(arg, TUnknown))
+      }
+      TUnknown
+    }
     EField(base, _) => self.ty_of(base, TUnknown)
     EIndex(base, idx) => {
       let bt = self.ty_of(base, TUnknown)
@@ -498,12 +538,23 @@ fn Infer::scan_returns(self : Infer, stmts : Array[@ast.Stmt]) -> Ty {
 /// it after its own builtins so names that live in another file's `.mbti`
 /// resolve to `TUnknown` (type) or a single-`TUnknown`-param `TFunc` (value)
 /// instead of reporting FUndefinedName. Empty table = single-file behavior.
+///
+/// `enum_ctors` are constructor names harvested from enum bodies this frontend
+/// did not parse. They seed the module frame as `TUnknown` for exactly the
+/// same reason a cross-file name does: the name is real and the type is not
+/// known, so the lens must neither report it nor infer a shape for it.
 pub fn infer_full(
   m : @ast.Module,
   wr : @walk.WalkResult,
   extern_iface : @core.IfaceSymTab,
+  enum_ctors : Array[String],
 ) -> TypeResult {
-  let inf = new_infer(wr.fn_bindings, extern_iface)
+  let inf = new_infer(wr.fn_bindings, extern_iface, wr.partial)
+  for c in enum_ctors {
+    if !inf.frames[0].contains(c) {
+      inf.frames[0].set(c, TUnknown)
+    }
+  }
   for s in m.body {
     match s.kind {
       SLet(n, ann, init) => {

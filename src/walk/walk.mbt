@@ -35,6 +35,12 @@ pub(all) struct WalkResult {
   fn_bindings : Map[String, Array[Binding]]
   /// structural findings (lens = LStructural)
   findings : Array[@report.Report]
+  /// True when the frontend gave up partway through the file. The module
+  /// frame is then provably incomplete, so "this name is not bound" is not
+  /// evidence of anything. Carried here because the type lens keeps its OWN
+  /// frame copy and would otherwise report the same unprovable name from its
+  /// own table — three lenses, one rule. See `fn Walker::resolve`.
+  partial : Bool
 }
 
 ///|
@@ -52,6 +58,12 @@ pub(all) enum Const {
 pub fn const_eval(e : @ast.Expr) -> Const? {
   match e.kind {
     EInt(i) => Some(CInt(i))
+    // Past the `Int` bound the literal is a DIFFERENT NODE, and it must not
+    // fold. It would fall into the catch-all below and return `None` anyway,
+    // which is the right answer — but only by accident, and an accident is not
+    // a decision. Written out, so that adding arms below cannot quietly start
+    // folding a value this analyzer never read.
+    EBigInt => None
     EBool(b) => Some(CBool(b))
     EUnary(op, a) =>
       match (op, const_eval(a)) {
@@ -109,17 +121,23 @@ priv struct Walker {
   /// suppresses the "no visible binding" finding because the binding lives
   /// outside the file under analysis but IS a real binding
   extern_iface : @core.IfaceSymTab
+  /// True when the frontend gave up partway through this file
+  /// (`trusted_line > 0`). On such a file the module frame is provably
+  /// incomplete: every top-level declaration after the cut was never read, so
+  /// "no visible binding" carries no information. See `fn Walker::resolve`.
+  partial : Bool
   findings : Array[@report.Report]
   vst : Array[@core.Frame]
 }
 
 ///|
-fn new_walker(extern_iface : @core.IfaceSymTab) -> Walker {
+fn new_walker(extern_iface : @core.IfaceSymTab, partial : Bool) -> Walker {
   Walker::{
     frames: [Map([])],
     orders: [[]],
     builtins: builtin_table(),
     extern_iface,
+    partial,
     findings: [],
     vst: [],
   }
@@ -167,6 +185,41 @@ fn Walker::bind(self : Walker, b : Binding) -> Unit {
 }
 
 ///|
+/// Whether `name` resolves in any frame. Used only to avoid rebinding a name
+/// the module already declared — a real declaration must win over a harvested
+/// enum constructor of the same name, or the enum's (entirely unknown) shape
+/// would silently replace the function's real signature.
+fn Walker::is_bound(self : Walker, name : String) -> Bool {
+  for i in 0..<self.frames.length() {
+    if self.frames[i].contains(name) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// Record a read of `name`, or report that nothing visible binds it.
+///
+/// The finding is gated on `partial`, and the gate is the point. When the
+/// frontend gave up partway through the file, the module frame is missing
+/// every top-level declaration after the cut — and a use of one of those looks
+/// exactly like a use of a name that does not exist anywhere. A forward
+/// reference to a `fn` defined further down the file is ordinary code, and the
+/// scanner reported it as a defect:
+///
+///    fn render(...) -> String {
+///      ...
+///      pick_files(verdicts, max)   <- line 73, before the cut
+///    }
+///    ...
+///    fn pick_files(...) { }       <- line 108, in the unread tail
+///
+/// reported `73:26 no visible binding for 'pick_files'` on code `moon check`
+/// accepts with 0 errors. `truncated_fn` already refuses the frame audit of the
+/// one cut function for the same reason; this is the module-frame version, and
+/// the module frame is the outermost one, so it is the frame most likely to be
+/// incomplete. The finding stays exactly as loud on a whole file.
 fn Walker::resolve(self : Walker, name : String, sp : @core.Span) -> Unit {
   // innermost -> outermost
   let mut i = self.frames.length() - 1
@@ -181,6 +234,7 @@ fn Walker::resolve(self : Walker, name : String, sp : @core.Span) -> Unit {
     }
   }
   if !hit &&
+    !self.partial &&
     !self.builtins.contains(name) &&
     !self.extern_iface.has_type(name) &&
     !self.extern_iface.has_value(name) {
@@ -251,6 +305,11 @@ fn Walker::audit_frame(self : Walker) -> Unit {
 fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
   match e.kind {
     EName(n) => self.resolve(n, e.span)
+    // Literals have nothing to resolve. A literal too large for `Int` is a
+    // distinct node for a reason: a sentinel VALUE would be folded as a
+    // number, so `const_eval` would return a wrong number instead of "I do
+    // not know". See `EBigInt` in `@ast`.
+    EBigInt => ()
     EList(elems) =>
       for x in elems {
         self.walk_expr(x)
@@ -261,7 +320,36 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(b)
     }
     ECall(name, args) => {
-      self.resolve(name, e.span)
+      // A `::` path is not a binding in this file. `parse_postfix` flattens
+      // `@debug.Repr::opaque_(v)` into ECall("@debug.Repr::opaque_", ...), and
+      // that string resolves against nothing: `opaque_` is a member of `Repr`,
+      // and `Repr` is a member of `@debug`. Same rule as the field and method
+      // names below — a member of a type is not a binding in the file.
+      //
+      // This is not a corner case. It was 27 of the 64 undefined-name findings
+      // on moonbitlang/core, all on code `moon check` accepts with 0 errors.
+      if !name.contains("::") {
+        self.resolve(name, e.span)
+      }
+      for a in args {
+        self.walk_expr(a)
+      }
+    }
+    // The receiver is an evaluated expression and MUST be read:
+    // `out.write_string(s)` evaluates `out`. Skipping it would make a local
+    // that exists only to be written to look unused — the same defect the
+    // field-write path documents at `walk_target`.
+    //
+    // The method NAME is not resolved, for the same reason a field name is
+    // not: it is a member of the receiver's type, not a binding in this file.
+    //
+    // One exception, and it is not cosmetic: `@alias.f(...)` is a qualified
+    // call, not a call on a variable. `@core` is a package, so resolving it
+    // would report `no visible binding for '@core'` on perfectly good code.
+    EMethodCall(base, _, args) => {
+      if !base.is_qualifier() {
+        self.walk_expr(base)
+      }
       for a in args {
         self.walk_expr(a)
       }
@@ -508,13 +596,21 @@ fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
 /// the whole file was understood. It is NOT a filter on findings — the
 /// scanner does that — because one class of finding cannot be filtered by
 /// position. See `fn Walker::audit_frame`.
+///
+/// `enum_ctors` are constructor names harvested from `enum` bodies the parser
+/// skipped, plus the ones `.mbti` files declared. They are module-level VALUES
+/// and their names are visible to every function in the file; without them
+/// writing one reads as an unbound name, which is the analyzer's blindness
+/// showing up as a defect in the code. Only the NAMES are collected — no
+/// shape, no arity, nothing inferred from the payload.
 pub fn walk_module(
   m : @ast.Module,
   file : String,
   extern_iface : @core.IfaceSymTab,
   trusted_line : Int,
+  enum_ctors : Array[String],
 ) -> WalkResult {
-  let w = new_walker(extern_iface)
+  let w = new_walker(extern_iface, trusted_line > 0)
   let fns : Array[FnInfo] = []
   let module_bindings : Array[Binding] = []
   let fn_bindings : Map[String, Array[Binding]] = Map([])
@@ -555,6 +651,16 @@ pub fn walk_module(
   for b in module_bindings {
     w.bind(b)
   }
+  // Enum constructors join the module frame as ordinary top-level bindings —
+  // but only after every real declaration, and `is_bound` keeps it that way.
+  // A real `fn TFunc` must win over a harvested constructor of the same name,
+  // or the enum's (entirely unknown) shape would silently replace a real
+  // signature that the type lens can actually check.
+  for c in enum_ctors {
+    if !w.is_bound(c) {
+      w.bind({ name: c, tyann: "", param: false, decl_span: @core.zero_span(), })
+    }
+  }
   for f in fns {
     let bs = collect_fn_bindings(f)
     fn_bindings.set(f.name, bs)
@@ -585,7 +691,13 @@ pub fn walk_module(
     let _ = w.vst.pop()
     w.pop_frame()
   }
-  WalkResult::{ fns, module_bindings, fn_bindings, findings: w.findings, }
+  WalkResult::{
+    fns,
+    module_bindings,
+    fn_bindings,
+    findings: w.findings,
+    partial: w.partial,
+  }
 }
 
 ///|

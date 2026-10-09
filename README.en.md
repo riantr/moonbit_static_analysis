@@ -391,10 +391,12 @@ another package never hit.
 > with the toolchain's compiler: `moon check` has a real parser and ~90 built-in
 > warnings at 100% coverage — measured 2.3 s for 128 diagnostics, each with
 > `file:line:col`, the source line and a fix. This tool's `.mbt` frontend reads a
-> **subset**, and on `moonbitlang/core` it parses **158 of 882** `.mbt` files
-> (17.9%); `.mbti` and `.mbt.md` are 100%. The single largest reason is that
-> **method calls cannot be represented in the AST at all** — `ECall` takes a
-> `String`, so `m.set(k, v)` has nowhere to go and the parse stops there. That
+> **subset**, and on `moonbitlang/core` it parses **173 of 882** `.mbt` files
+> (19.6%); `.mbti` and `.mbt.md` are 100%. The single largest reason used to be
+> that **method calls could not be represented in the AST at all** — `ECall` takes
+> a `String`, so `m.set(k, v)` had nowhere to go and the parse stopped there.
+> **That is fixed** (a dedicated `EMethodCall` node, wired into all three
+> lenses); the blocker went from 34 files to **0**. That
 > is the honest headline number, and it is why `PARSED` is printed first.
 > What this tool can do that the compiler cannot is the three file kinds it does
 > not audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
@@ -407,6 +409,23 @@ another package never hit.
 > because "never read" is a claim about a whole function and a half-read
 > function cannot support one. That fix alone took `moonbitlang/core` from 270
 > actionable findings to 147, and this repository from 11 to **0**.
+>
+> Reading further, the same principle turned out to apply to the module frame
+> too, and to a class of names the resolver had never been taught: a file the
+> frontend did not finish has a **provably incomplete** module frame, so
+> "nothing visible binds this name" is not evidence of anything there; and a
+> `Type::member` path — `@debug.Repr::opaque_(v)` — is a member reference, not
+> a binding, exactly as a field name and a method name already were. With
+> `extern "c" fn` modelled as a declaration (it was skipped, which lost the
+> name, so every call site of an extern function read as unbound) and the
+> numeric-literal / enum-constructor gaps closed, `moonbitlang/core` goes from
+> **270 to 49** actionable with `undefined name` at **zero**, and this
+> repository stays at **0**.
+>
+> | moonbitlang/core | files | parsed | actionable | undefined names |
+> |---|---|---|---|---|
+> | 0.4.5 | 1029 | 305 | 270 | 64 |
+> | this round | 1029 | **320** | **49** | **0** |
 
 The root package is a thin forwarder; the implementation is `src/sa`, a
 **library**. That is deliberate: a main package importing another main package

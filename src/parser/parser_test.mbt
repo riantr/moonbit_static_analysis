@@ -347,15 +347,28 @@ test "top level: pub(all) and pub async still parse as functions" {
 }
 
 ///|
-test "top level: extern is a declaration form, not a modifier" {
-  // `pub extern "js" fn f(..) = "raw"` has a raw-string body, not a MoonBit
-  // block, so it is not a function the frontend can model. One finding, and the
-  // function after it still parses.
+test "top level: extern fn is modelled, with a real signature and an empty body" {
+  // It used to be skipped as an unmodelled form. That was right while it WAS
+  // unmodelled, but skipping loses the NAME, and every call site of an extern
+  // function then read as an unbound name. The signature is real (so the type
+  // lens can check calls); the body is empty because the implementation lives
+  // in another language.
   let r = @parser.parse(
-    "pub extern \"js\" fn f() -> int = \"0\"\nfn g() -> int {\n  1\n}\n",
+    "pub extern \"js\" fn f(x : int) -> int = \"0\"\nfn g() -> int {\n  f(1)\n}\n",
   )
-  assert_eq(r.reports.length(), 1)
-  assert_true(r.reports[0].message.contains("extern"))
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.tree.body.length(), 2)
+  // f is a real top-level function binding, g is the one that calls it.
+  let ff = top_level_fns(r.tree)
+  assert_true(ff.contains("f"))
+  assert_true(ff.contains("g"))
+}
+
+///|
+test "extern fn with no ABI string and no return annotation" {
+  // Both are optional in real code; neither may cost a parse error.
+  let r = @parser.parse("extern \"c\" fn native_exit(code : int)\n")
+  assert_eq(r.reports.length(), 0)
   assert_eq(r.tree.body.length(), 1)
 }
 
@@ -437,8 +450,12 @@ test "an attribute is consumed, and the declaration after it is named" {
   let r = @parser.parse(
     "#cfg(target=\"native\")\nextern \"libloading\" fn load(p : string) -> int\n",
   )
-  assert_eq(r.reports.length(), 1)
-  assert_true(r.reports[0].message.contains("extern"))
+  // Zero findings: the attribute is consumed AND the extern is modelled. This
+  // test used to assert one 'extern is outside the subset' notice, which was
+  // the contract at the time; the notice is gone because the form is now read.
+  assert_eq(r.reports.length(), 0)
+  let ff = top_level_fns(r.tree)
+  assert_true(ff.contains("load"))
 }
 
 ///|
@@ -514,14 +531,156 @@ test "'::' after a call result is still a read failure" {
 }
 
 ///|
-/// Calling a struct field (`a.b(1)`) is a separate, deliberate limitation:
-/// deciding whether `b` is a method or a plain field needs type information
-/// the single-file frontend does not have. Pinning it here so the `::` fix is
-/// not later mistaken for having solved it.
-test "calling a field is still reported, not silently accepted" {
-  let r = @parser.parse("a.b(1)\n")
-  assert_eq(r.reports.length(), 1)
-  assert_true(r.reports[0].message.contains("only named functions"))
+/// A method call is a node of its own, and the receiver stays an expression.
+///
+/// This test used to assert the OPPOSITE — that `a.b(1)` was reported as
+/// "only named functions can be called". That limitation is gone, and the old
+/// comment explained why it was hard: deciding whether `b` is a method or a
+/// plain field needs type information the single-file frontend does not have.
+/// The fix does not need that answer. `EMethodCall` keeps the receiver and the
+/// name side by side and NO lens resolves the name, so the question never has
+/// to be answered — a field read, a method call, and an unknown method are all
+/// representable, and the ones the analyzer cannot judge stay silent.
+///
+/// The receiver matters: flattening `a.b(1)` into a name would hide the read of
+/// `a`, and then a binding that exists only to be written to would look unused.
+/// That is asserted below, not just the shape.
+test "a method call parses into its own node, receiver included" {
+  let r = @parser.parse("fn f() -> int {\n  a.b(1)\n  0\n}\n")
+  assert_eq(r.reports.length(), 0)
+  let found = find_method_calls(r.tree)
+  assert_eq(found.length(), 1)
+  assert_eq(found[0], ("b", "a"))
+}
+
+///|
+/// The negative control for the one above. `a.b` with NO parentheses is a field
+/// read, not a call, and must not become a method call — otherwise every field
+/// access would drag an empty argument list through all three lenses.
+test "a field read with no parentheses is still a field read" {
+  let r = @parser.parse("fn f() -> int {\n  let x = a.b\n  0\n}\n")
+  assert_eq(r.reports.length(), 0)
+  assert_eq(find_method_calls(r.tree).length(), 0)
+}
+
+///|
+/// Chained calls are method calls all the way down, and each link keeps its own
+/// receiver: `a.b().c()` is `EMethodCall(EMethodCall(a, b, []), c, [])`. The
+/// inner one is a receiver, so if the walk ever stopped evaluating receivers it
+/// would be the inner link that loses `a`.
+test "a chained method call nests, and each link keeps its receiver" {
+  let r = @parser.parse("fn f() -> int {\n  a.b().c()\n  0\n}\n")
+  assert_eq(r.reports.length(), 0)
+  assert_eq(find_method_calls(r.tree).length(), 2)
+}
+
+///|
+/// Names of every top-level `fn` in a module, in source order. The instrument
+/// that says "this declaration was read as a function", which is exactly what
+/// the extern form has to earn: skipping it produced no name, and a call to an
+/// unnamed function reads as an unbound name.
+fn top_level_fns(m : @ast.Module) -> Array[String] {
+  let out : Array[String] = []
+  for s in m.body {
+    match s.kind {
+      @ast.SFunc(n, _, _, _, _) => out.push(n)
+      _ => ()
+    }
+  }
+  out
+}
+
+///|
+/// Collect `(method, receiver-root)` for every method call in a module, in
+/// source order. Written here rather than exposed from the parser because it is
+/// a test instrument; the parser has no reason to offer it.
+fn find_method_calls(m : @ast.Module) -> Array[(String, String)] {
+  let out : Array[(String, String)] = []
+  fn root(e : @ast.Expr) -> String {
+    match e.kind {
+      @ast.EName(n) => n
+      @ast.EField(b, _) => root(b)
+      @ast.EMethodCall(b, _, _) => root(b)
+      _ => "?"
+    }
+  }
+  fn ex(e : @ast.Expr) -> Unit {
+    match e.kind {
+      @ast.EMethodCall(b, name, args) => {
+        out.push((name, root(b)))
+        ex(b)
+        for a in args {
+          ex(a)
+        }
+      }
+      @ast.EList(xs) =>
+        for x in xs {
+          ex(x)
+        }
+      @ast.EUnary(_, a) => ex(a)
+      @ast.EBin(_, a, b) => {
+        ex(a)
+        ex(b)
+      }
+      @ast.ECall(_, args) =>
+        for a in args {
+          ex(a)
+        }
+      @ast.EField(b, _) => ex(b)
+      @ast.EIndex(b, i) => {
+        ex(b)
+        ex(i)
+      }
+      @ast.EComp(_, sources, body) => {
+        for s in sources {
+          ex(s)
+        }
+        ex(body)
+      }
+      _ => ()
+    }
+  }
+  fn st(stmts : Array[@ast.Stmt]) -> Unit {
+    for s in stmts {
+      match s.kind {
+        @ast.SExpr(e) => ex(e)
+        @ast.SLet(_, _, e) => ex(e)
+        @ast.SAssign(a, b) => {
+          ex(a)
+          ex(b)
+        }
+        @ast.SIf(c, t, eis, el) => {
+          ex(c)
+          st(t)
+          for ei in eis {
+            ex(ei.cond)
+            st(ei.body)
+          }
+          match el {
+            Some(b) => st(b)
+            None => ()
+          }
+        }
+        @ast.SWhile(c, b) => {
+          ex(c)
+          st(b)
+        }
+        @ast.SFor(_, _, s, b) => {
+          ex(s)
+          st(b)
+        }
+        @ast.SFunc(_, _, _, body, _) => st(body)
+        @ast.SReturn(e) =>
+          match e {
+            Some(x) => ex(x)
+            None => ()
+          }
+        _ => ()
+      }
+    }
+  }
+  st(m.body)
+  out
 }
 
 ///|
