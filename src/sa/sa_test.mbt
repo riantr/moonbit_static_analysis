@@ -251,9 +251,14 @@ test "is_module_coord accepts coordinates and rejects everything else" {
 /// `scan .` hands back `.`, whose last segment is `.`, so a name built from it
 /// would be `_.mmd` and would tell nobody anything.
 test "artifact name: '.' resolves against the working directory, not to '_'" {
-  let p = @sa.ScanProvenance::{ target: ".", version: "0.4.5", scanned_at: "", }
+  let p = @sa.ScanProvenance::{
+    target: ".",
+    version: "0.4.5",
+    scanned_at: "",
+    moonbit: "0.1.20260920",
+  }
   let name = @sa.scan_artifact_name(p, ".")
-  assert_false(name.has_prefix("_-"))
+  assert_false(name.has_prefix("_"))
   assert_true(name.has_suffix(".mmd"))
 }
 
@@ -268,21 +273,41 @@ test "artifact name: a coordinate contributes the module, not the path" {
     target: "moonbitlang/core@latest",
     version: "0.1.20260920",
     scanned_at: "20261009T051925Z",
+    moonbit: "0.1.20260920",
   }
   assert_eq(
     @sa.scan_artifact_name(p, "some/local/path"),
-    "moonbitlang-core-0.1.20260920_20261009T051925Z.mmd",
+    "moonbitlang-core_0.1.20260920_0.1.20260920_20261009T051925Z.mmd",
   )
 }
 
 ///|
-/// The missing-clock case. `scan_mmd_at` is empty for the CLI, because the only
-/// clock in the dependency tree sits behind an `internal` package that cannot
-/// be imported. The segment must say `unknown` rather than vanish — a name that
-/// quietly lacks a stamp reads exactly like one stamped at midnight.
+/// The four fields, in order: package, target version, toolchain, stamp. The
+/// toolchain is a separate fact from the target's version and both are kept —
+/// a scan is only reproducible against a known parser.
+test "artifact name: all four fields appear in the agreed order" {
+  let p = @sa.ScanProvenance::{
+    target: "my_pkg",
+    version: "1.2.3",
+    scanned_at: "20261009T051925Z",
+    moonbit: "9.9.9",
+  }
+  assert_eq(
+    @sa.scan_artifact_name(p, "my_pkg"),
+    "my_pkg_1.2.3_9.9.9_20261009T051925Z.mmd",
+  )
+}
+
+///|
+/// The missing-clock case. The segment must say `unknown` rather than vanish.
 test "artifact name: an unavailable clock is written as 'unknown', not dropped" {
-  let p = @sa.ScanProvenance::{ target: "t", version: "1.0.0", scanned_at: "", }
-  assert_eq(@sa.scan_artifact_name(p, "t"), "t-1.0.0_unknown.mmd")
+  let p = @sa.ScanProvenance::{
+    target: "t",
+    version: "1.0.0",
+    scanned_at: "",
+    moonbit: "0.1.20260920",
+  }
+  assert_eq(@sa.scan_artifact_name(p, "t"), "t_1.0.0_0.1.20260920_unknown.mmd")
 }
 
 ///|
@@ -292,8 +317,45 @@ test "artifact name: an unavailable version is written as 'unknown', not dropped
     target: "t",
     version: "",
     scanned_at: "20261009T051925Z",
+    moonbit: "0.1.20260920",
   }
-  assert_eq(@sa.scan_artifact_name(p, "t"), "t-unknown_20261009T051925Z.mmd")
+  assert_eq(
+    @sa.scan_artifact_name(p, "t"),
+    "t_unknown_0.1.20260920_20261009T051925Z.mmd",
+  )
+}
+
+///|
+/// The missing-TOOLCHAIN case, and the reason four fields are more fragile than
+/// three. A dropped segment does not merely lose information, it SHIFTS: a
+/// reader parsing `t_1.0.0_20261009T051925Z` would take the stamp for the
+/// toolchain version. So this one says `unknown` in place, and the four
+/// segments are still four.
+test "artifact name: an unavailable toolchain says 'unknown' IN PLACE" {
+  let p = @sa.ScanProvenance::{
+    target: "t",
+    version: "1.0.0",
+    scanned_at: "20261009T051925Z",
+    moonbit: "",
+  }
+  assert_eq(
+    @sa.scan_artifact_name(p, "t"),
+    "t_1.0.0_unknown_20261009T051925Z.mmd",
+  )
+}
+
+///|
+/// The negative control for the test above: four `unknown`-able fields must
+/// still produce FOUR segments. A name that collapses them is the failure this
+/// format is most exposed to.
+test "artifact name: every field missing still yields four segments" {
+  let p = @sa.ScanProvenance::{
+    target: "t",
+    version: "",
+    scanned_at: "",
+    moonbit: "",
+  }
+  assert_eq(@sa.scan_artifact_name(p, "t"), "t_unknown_unknown_unknown.mmd")
 }
 
 ///|
@@ -306,11 +368,13 @@ test "artifact name: the stamp separates two scans of the same tree" {
     target: "t",
     version: "1.0.0",
     scanned_at: "20261009T051925Z",
+    moonbit: "0.1.20260920",
   }
   let b = @sa.ScanProvenance::{
     target: "t",
     version: "1.0.0",
     scanned_at: "20261009T051926Z",
+    moonbit: "0.1.20260920",
   }
   assert_true(@sa.scan_artifact_name(a, "t") != @sa.scan_artifact_name(b, "t"))
 }

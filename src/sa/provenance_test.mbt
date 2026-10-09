@@ -13,7 +13,37 @@
 
 ///|
 fn p(name : String, version : String, stamp : String) -> @sa.ScanProvenance {
-  @sa.ScanProvenance::{ target: name, version, scanned_at: stamp, }
+  @sa.ScanProvenance::{
+    target: name,
+    version,
+    scanned_at: stamp,
+    moonbit: "0.1.20260920",
+  }
+}
+
+///|
+/// `moon version` prints exactly this on the toolchain this was developed
+/// against. It is pinned because the name it produces ends up in a filename:
+/// if the output shape ever changes, the honest result is `unknown`, and this
+/// test is what notices.
+test "the toolchain version is read out of `moon version`, not guessed" {
+  assert_eq(
+    @sa.parse_moon_version("moon 0.1.20260920 (914d7da 2026-09-20)"),
+    "0.1.20260920",
+  )
+}
+
+///|
+/// The negative controls for the parse. Each of these shapes could plausibly
+/// appear, and each must yield "" rather than a substring: a filename carrying
+/// `moon` or `(914d7da` as a version is worse than one admitting ignorance.
+test "an unrecognised `moon version` line yields nothing, not a substring" {
+  assert_eq(@sa.parse_moon_version(""), "")
+  assert_eq(@sa.parse_moon_version("moon"), "")
+  assert_eq(@sa.parse_moon_version("rustc 1.80.0"), "")
+  assert_eq(@sa.parse_moon_version("moonbit 0.1.20260920"), "")
+  // second field present but empty
+  assert_eq(@sa.parse_moon_version("moon "), "")
 }
 
 ///|
@@ -129,7 +159,7 @@ test "a coordinate is named by its module" {
       p("moonbitlang/core", "0.1.20260920+7d59c7ec9", "20261009T051511Z"),
       "",
     ),
-    "moonbitlang-core-0.1.20260920+7d59c7ec9_20261009T051511Z.mmd",
+    "moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051511Z.mmd",
   )
 }
 
@@ -142,7 +172,7 @@ test "a coordinate's inline version is not printed twice" {
       p("moonbitlang/core@0.4.4", "0.4.4", "20261009T051511Z"),
       "",
     ),
-    "moonbitlang-core-0.4.4_20261009T051511Z.mmd",
+    "moonbitlang-core_0.4.4_0.1.20260920_20261009T051511Z.mmd",
   )
 }
 
@@ -156,12 +186,12 @@ test "a path is named by its RESOLVED directory, not by what was typed" {
       p(".", "0.4.4", "20261009T052045Z"),
       "D:/work/deepseek/moonbit_static_analysis",
     ),
-    "moonbit_static_analysis-0.4.4_20261009T052045Z.mmd",
+    "moonbit_static_analysis_0.4.4_0.1.20260920_20261009T052045Z.mmd",
   )
   // A trailing separator and a redundant `.` change nothing.
   assert_eq(
     @sa.scan_artifact_name(p("./tree/", "1.0", "20261009T052045Z"), "./tree/"),
-    "tree-1.0_20261009T052045Z.mmd",
+    "tree_1.0_0.1.20260920_20261009T052045Z.mmd",
   )
   // A `..` inside the path pops the segment before it, the way a filesystem
   // does — `a/b/..` IS `a`, so naming the artifact `b` would be wrong. This
@@ -171,7 +201,7 @@ test "a path is named by its RESOLVED directory, not by what was typed" {
       p("x", "1.0", "20261009T052045Z"),
       "D:/work/deepseek/moonbit_static_analysis/..",
     ),
-    "deepseek-1.0_20261009T052045Z.mmd",
+    "deepseek_1.0_0.1.20260920_20261009T052045Z.mmd",
   )
 }
 
@@ -184,7 +214,7 @@ test "a Windows path becomes a legal filename" {
     p("..\\_mbcore", "0.1.20260920", "20261009T051511Z"),
     "..\\_mbcore",
   )
-  assert_eq(name, "_mbcore-0.1.20260920_20261009T051511Z.mmd")
+  assert_eq(name, "_mbcore_0.1.20260920_0.1.20260920_20261009T051511Z.mmd")
   for c in name {
     assert_true(
       c != '/' &&
@@ -209,22 +239,23 @@ test "a name is never a dotfile" {
     ".hidden",
   )
   assert_false(name.has_prefix("."))
-  assert_eq(name, "_.hidden-1.0_20261009T051511Z.mmd")
+  assert_eq(name, "_.hidden_1.0_0.1.20260920_20261009T051511Z.mmd")
 }
 
 ///|
 test "a name that could not determine a version says unknown" {
-  // Dropping the segment would produce `tree_20261009T051511Z.mmd`, which is
-  // indistinguishable from a name where the version WAS determined. The target
-  // is path-shaped on purpose: `some/tree` is a valid COORDINATE and takes the
+  // Dropping the segment would produce `tree_<toolchain>_<stamp>.mmd`, which is
+  // indistinguishable from a name where the version WAS determined — and worse,
+  // it would SHIFT the toolchain into the version's slot. The target is
+  // path-shaped on purpose: `some/tree` is a valid COORDINATE and takes the
   // coordinate branch, which is a different test.
   assert_eq(
     @sa.scan_artifact_name(p("..\\tree", "", "20261009T051511Z"), "..\\tree"),
-    "tree-unknown_20261009T051511Z.mmd",
+    "tree_unknown_0.1.20260920_20261009T051511Z.mmd",
   )
   assert_eq(
     @sa.scan_artifact_name(p("..\\tree", "1.0", ""), "..\\tree"),
-    "tree-1.0_unknown.mmd",
+    "tree_1.0_0.1.20260920_unknown.mmd",
   )
 }
 
@@ -232,7 +263,7 @@ test "a name that could not determine a version says unknown" {
 test "an empty target still yields a usable name" {
   assert_eq(
     @sa.scan_artifact_name(p("", "1.0", "20261009T051511Z"), ""),
-    "target-1.0_20261009T051511Z.mmd",
+    "target_1.0_0.1.20260920_20261009T051511Z.mmd",
   )
 }
 
@@ -240,7 +271,7 @@ test "an empty target still yields a usable name" {
 test "describe states every field, with unknown where missing" {
   assert_eq(
     @sa.ScanProvenance::describe(p("a/b", "1.0", "20261009T051511Z")),
-    "target=a/b version=1.0 scanned_at=20261009T051511Z",
+    "target=a/b version=1.0 moonbit=0.1.20260920 scanned_at=20261009T051511Z",
   )
   assert_true(
     @sa.ScanProvenance::describe(p("a/b", "", "")).contains("version=unknown"),

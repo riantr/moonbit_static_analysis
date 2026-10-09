@@ -382,13 +382,17 @@ pub async fn scan(
 /// files; dropping an artifact into someone's source repository would break a
 /// promise the docs make and would dirty a tree the user may not own.
 ///
-/// `scanned_at` is left `unknown` here and NOT invented. The only clock in the
-/// dependency tree is `moonbitlang/async`'s `internal::event_loop::now()`, and
-/// `internal` is not importable — verified, not assumed:
-/// "Cannot import internal package ... due to internal visibility rules". A
-/// stamp fabricated from anything else would be a wrong time confidently
-/// printed, which is worse than the literal `unknown` this produces. A caller
-/// that has a real clock can supply one through `scan_mmd_at` below.
+/// The provenance — target, version, TOOLCHAIN, stamp — comes from the same
+/// `provenance_for` every other caller uses, so the filename and the document
+/// header cannot disagree about what a scan was.
+///
+/// An earlier version of this function assembled its own provenance and left
+/// `scanned_at` empty, on the belief that no clock was reachable because
+/// `moonbitlang/async`'s `event_loop` sits under `internal`. That was wrong:
+/// `moonbitlang/async` re-exports it publicly as `pub using @event_loop {now}`,
+/// and `provenance_for` had been calling it since 0.4.5. The symptom was a file
+/// named `..._unknown.mmd` on a scan whose header knew perfectly well when it
+/// ran. Both the workaround and its stated reason are gone.
 ///
 /// A failure to write is reported and then swallowed, like every other I/O
 /// failure here: there is no non-zero exit available (see the root `main.mbt`),
@@ -400,11 +404,7 @@ async fn emit_mmd(
   target : String,
   root : String,
 ) -> Unit {
-  let prov = ScanProvenance::{
-    target,
-    version: target_version(root),
-    scanned_at: scan_mmd_at,
-  }
+  let prov = provenance_for(target, root)
   let text = mermaid_states(
     verdicts, s, prov, findings_shown_per_file, max_files,
   )
@@ -416,33 +416,6 @@ async fn emit_mmd(
     }
   }
   println("MMD\t\{path}")
-}
-
-///|
-/// The timestamp stamped into a scan artifact written by the CLI. Empty here,
-/// which `scan_artifact_name` renders as the literal `unknown` rather than
-/// dropping the segment — a name that quietly lacks a stamp is
-/// indistinguishable from one where the stamp was midnight.
-///
-/// Exposed as a mutable binding rather than a hardcoded "" so a host that does
-/// have a clock can set it once at startup instead of this module reaching into
-/// an `internal` package it is not allowed to name.
-pub let scan_mmd_at : String = ""
-
-///|
-/// The version in the target's own `moon.mod`, or "" when there is none.
-///
-/// Read from the resolved root rather than the coordinate string: a coordinate
-/// may carry an `@version` that is a registry pin, and the artifact should name
-/// the code that was actually read. An empty string renders as `unknown` in the
-/// file name, which is the honest outcome.
-async fn target_version(root : String) -> String {
-  if root == "" {
-    return ""
-  }
-  let data = @fs.read_file(root + "/moon.mod") catch { _ => return "" }
-  let text = data.text() catch { _ => return "" }
-  moon_mod_version(text)
 }
 
 ///|

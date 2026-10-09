@@ -139,6 +139,7 @@ fn mm_prov() -> @sa.ScanProvenance {
     target: "corpus",
     version: "0.1.20260920+7d59c7ec9",
     scanned_at: "20261009T051511Z",
+    moonbit: "0.1.20260920",
   }
 }
 
@@ -584,11 +585,17 @@ test "an unknown version or clock says so rather than vanishing" {
   let src = @sa.mermaid_states(
     mm_rich(),
     @sa.aggregate(mm_rich()),
-    @sa.ScanProvenance::{ target: "some/tree", version: "", scanned_at: "", },
+    @sa.ScanProvenance::{
+      target: "some/tree",
+      version: "",
+      scanned_at: "",
+      moonbit: "",
+    },
     0,
     0,
   )
   assert_true(src.contains("version=unknown"))
+  assert_true(src.contains("moonbit=unknown"))
   assert_true(src.contains("scanned_at=unknown (UTC)"))
   assert_eq(mm_check(src), [])
 }
@@ -644,6 +651,7 @@ test "a notice is drawn differently from a defect" {
       target: "self",
       version: "0.4.4",
       scanned_at: "20261009T051511Z",
+      moonbit: "0.1.20260920",
     },
     0,
     0,
@@ -678,6 +686,7 @@ test "a notice carries no how-to-fix advice" {
       target: "self",
       version: "0.4.4",
       scanned_at: "20261009T051511Z",
+      moonbit: "0.1.20260920",
     },
     0,
     0,
@@ -729,6 +738,7 @@ test "a truncated diagram says how many of the dropped findings were notices" {
       target: "self",
       version: "0.4.4",
       scanned_at: "20261009T051511Z",
+      moonbit: "0.1.20260920",
     },
     1,
     0,

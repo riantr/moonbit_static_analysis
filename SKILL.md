@@ -227,17 +227,23 @@ on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `.iface` / `.proof`, `@statecheck.audit`. See the adjacent
 [README.md](../../README.md) and [EXTENSIONS.md](../../EXTENSIONS.md).
 
-### Naming the artifact: version and scan time
+### Naming the artifact: what was read, by what, and when
 
-`@sa.provenance_for(target, root)` collects the target's version and the
-moment of the scan; `@sa.scan_artifact_name(prov, root)` puts both in the
-filename — `<label>-<version>_<UTC stamp>.mmd`, e.g.
-`moonbit_static_analysis-0.4.5_20261009T052547Z.mmd`.
+`@sa.provenance_for(target, root)` collects four facts and
+`@sa.scan_artifact_name(prov, root)` lays them out —
+`<package>_<version>_<moonbit>_<UTC stamp>.mmd`, e.g.
+`moonbit_static_analysis_0.4.5_0.1.20260920_20261009T052547Z.mmd`.
 
 Read that name as provenance, not decoration: it is what distinguishes two
-scans of the same tree. The version comes from the coordinate's `@version`, or
-from the target's `moon.mod`. `unknown` in either slot means it could not be
-determined — not that the version was `0`. The same three facts are repeated
+scans of the same tree. `package` is the coordinate, or the **resolved**
+directory for a path. `version` comes from the coordinate's `@version` or the
+target's `moon.mod`. `moonbit` is the toolchain that did the reading, from
+`moon version` — it cannot be recovered from the tree, and it is the field that
+decides whether two results are comparable, because this analyzer's `.mbt`
+subset moved from 158 to 173 files on an unchanged checkout when method calls
+were modelled. `unknown` in any slot means it could not be determined — not that
+the value was `0`, and not that the segment may be dropped, because with four
+fields a dropped segment SHIFTS every later one. The same facts are repeated
 as `%%` header comments inside the document, because files get renamed.
 
 ### Rendering the result as a state diagram
@@ -254,10 +260,9 @@ or `--mmd-auto`. Both *also* write the file and print `MMD<TAB><path>`; the
 text report on stdout is unchanged and stays authoritative. Treat the drawing
 as a supplement, never a replacement: it is lossy by construction, ranking
 files by actionable count and stopping at its own cap, and it says so in a
-`%% THIS DRAWING IS A SUBSET` comment. One field is weaker on the CLI path:
-the stamp is `unknown`, because the only clock in the dependency tree sits
-behind an `internal` package that cannot be imported. The version is still
-read for real.
+`%% THIS DRAWING IS A SUBSET` comment. All four provenance fields are real on
+this path; only the toolchain lookup can degrade, to `unknown`, if the `moon
+version` subprocess fails.
 
 Two caveats travel inside those notes and must not be skipped: on `.mbti` /
 `.mbtp` / `.mbt.md` a `ParseError` is usually a frontend rule rather than a

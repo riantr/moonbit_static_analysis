@@ -56,6 +56,7 @@ pub fn mermaid_states(
   )
   out.write_string("    %% target=" + sanitize(target) + "\n")
   out.write_string("    %% version=\{prov_or_unknown(prov.version)}\n")
+  out.write_string("    %% moonbit=\{prov_or_unknown(prov.moonbit)}\n")
   out.write_string(
     "    %% scanned_at=\{prov_or_unknown(prov.scanned_at)} (UTC)\n",
   )

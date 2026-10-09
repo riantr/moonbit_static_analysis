@@ -153,37 +153,74 @@ both measured rather than assumed:
 line must be a form mermaid accepts, every node id an identifier, every transition endpoint a
 declared state — and is itself shown failing on five documents it is meant to catch.
 
-### Naming the artifact: version and scan time in the name
+### Naming the artifact: what was read, by what, and when
 
-A scan result is a claim about a specific tree at a specific moment, so
-`@sa.provenance_for(target, root)` collects both and
-`@sa.scan_artifact_name(prov, root)` puts them in the filename:
+A scan result is a claim about a specific tree, read by a specific toolchain, at a
+specific moment. All three go in the filename —
+`@sa.provenance_for(target, root)` collects them and
+`@sa.scan_artifact_name(prov, root)` lays them out:
 
 ```
-moonbit_static_analysis-0.4.5_20261009T052547Z.mmd
-moonbitlang-core-0.1.20260920+7d59c7ec9_20261009T051925Z.mmd
-tree-unknown_20261009T051511Z.mmd          # version not determined
+moonbit_static_analysis_0.4.5_0.1.20260920_20261009T052547Z.mmd
+moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
+tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
 
-`<label>-<version>_<stamp>.mmd`. The label is the coordinate's module, or for
-a path the **resolved** directory name — scanning `.` is the most ordinary
-invocation there is, and naming the artifact after the string the caller typed
-would produce `_.mmd`.
+`<package>_<version>_<moonbit>_<stamp>.mmd`. Four fields, each answering a
+different question:
 
-The version comes from the coordinate's `@version` when there is one, and
-otherwise from the target's own `moon.mod` (`moon.mod.json` too — both
-spellings exist in the field). The stamp is UTC, from
-`moonbitlang/async::now()`, which was **measured** rather than read off a doc
-comment: a wasm run returned `1791522911114` against a wall clock of
-`1791522910008` taken ~1.1 s earlier, which is exactly the delay between the
-two calls. There is no timezone database available, so the stamp is UTC and
-says so with a trailing `Z` rather than being an hour wrong twice a year.
+| field | question | source |
+|---|---|---|
+| `package` | what was read | the coordinate, or the **resolved** directory |
+| `version` | which revision of it | the target's `moon.mod` (`moon.mod.json` too) |
+| `moonbit` | **which toolchain read it** | `moon version`, run as a subprocess |
+| `stamp` | when | `@async.now()`, UTC |
+
+`moonbit` is the field that cannot be recovered from the tree, and it is the one
+that decides whether a scan can be compared with a later one. `moon.mod` records
+the module's own version and its imports, never the compiler that built it, and
+there is no `MOONBITS_*` environment variable to ask (checked — `env:` filtered
+on MOON is empty). It is measured, not read off a doc comment: `moon version`
+prints
+
+```
+moon 0.1.20260920 (914d7da 2026-09-20)
+```
+
+and the second field is taken. It costs a subprocess, so it runs once per
+artifact and only when a diagram is actually being written; if that fails the
+field reads `unknown` rather than being wrong.
+
+Why it matters here specifically: this analyzer's own `.mbt` subset went from
+158 files to 173 on one **unchanged** core checkout when method calls were
+modelled. Results move with the toolchain, so a scan that does not name its
+toolchain is not comparable with a later one.
+
+`package` is the coordinate's module, or for a path the **resolved** directory
+name — scanning `.` is the most ordinary invocation there is, and naming the
+artifact after the string the caller typed would produce `_.mmd`.
+
+The stamp is UTC, from `@async.now()`, which was **measured** rather than read
+off a doc comment: a wasm run returned `1791522911114` against a wall clock of
+`1791522910008` taken ~1.1 s earlier, which is exactly the delay between the two
+calls. There is no timezone database available, so the stamp is UTC and says so
+with a trailing `Z` rather than being an hour wrong twice a year.
+
+> **Corrected in this round.** The previous version of this section claimed the
+> CLI could not stamp a time at all, because "the only clock is behind an
+> `internal` package". That was wrong: `moonbitlang/async` re-exports it
+> publicly as `pub using @event_loop {now}`, and `provenance_for` had been
+> calling `@async.now()` since 0.4.5. The CLI was stamping `unknown` only
+> because it had been given a hand-rolled empty stamp instead of calling the
+> function that already worked.
 
 Three things this deliberately does **not** do:
 
-- **It does not omit what it could not determine.** A missing version or clock
-  is written as the literal token `unknown`. Dropping the segment would produce
-  a name indistinguishable from one where the version was `0`.
+- **It does not omit what it could not determine.** A missing version, toolchain
+  or clock is written as the literal token `unknown`. Dropping the segment would
+  produce a name that looks complete and is not — and with four fields it is
+  worse than that: the gap would SHIFT, so a reader parsing
+  `core_0.1.2_20261009` would take the stamp for the toolchain version.
 - **It does not produce a dotfile.** A name starting with `.` is invisible to
   `ls` on Linux and macOS, and an artifact nobody can list is not one anybody
   will find again.
@@ -222,20 +259,17 @@ Three decisions here, none of them incidental:
   into someone's source repository would break that promise and dirty a tree
   the user may not own.
 
-One honest limitation: **the CLI's stamp is `unknown`.** The only clock in the
-dependency tree is `moonbitlang/async`'s `internal::event_loop::now()`, and
-`internal` cannot be imported — verified, not assumed:
+Every field is real. Measured on a full 1029-file scan of `moonbitlang/core`:
 
 ```
-Cannot import internal package moonbitlang/async/internal/event_loop@0.22.4
-  due to internal visibility rules
+MMD  _mbcore_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T132547Z.mmd
 ```
 
-So the CLI stamps `unknown` rather than inventing a time, which is why
-`@sa.scan_mmd_at` exists as a settable binding: a host that does have a clock
-sets it once at startup. The **version** is read for real, from the target's
-own `moon.mod`. A caller that drives `mermaid_states` itself has the full
-`ScanProvenance` and can stamp it properly.
+`_mbcore` is the resolved directory, `0.1.20260920+7d59c7ec9` the target's own
+version from its `moon.mod`, `0.1.20260920` the toolchain from `moon version`,
+and `20261009T132547Z` a real UTC stamp — which against a local wall clock of
+`20261009T212552` is exactly the expected +8. If the `moon version` subprocess
+fails, that field reads `unknown` and the rest is unaffected.
 
 A write failure prints `ERROR --mmd: cannot write <path>` and leaves stdout
 otherwise intact — `write_file` does not create parent directories, so

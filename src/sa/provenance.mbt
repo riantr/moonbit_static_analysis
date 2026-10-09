@@ -24,9 +24,10 @@
 // indistinguishable from one where the version was `0`.
 
 ///|
-/// Where a scan came from and when. `version` and `scanned_at` are `""` when
-/// they could not be determined — see `scan_artifact_name`, which renders that
-/// as `unknown` rather than omitting the segment.
+/// Where a scan came from, when, and what read it. `version`, `scanned_at` and
+/// `moonbit` are `""` when they could not be determined — see
+/// `scan_artifact_name`, which renders that as `unknown` rather than omitting
+/// the segment.
 pub(all) struct ScanProvenance {
   /// Exactly what the caller asked for: a coordinate, or a path.
   target : String
@@ -35,6 +36,13 @@ pub(all) struct ScanProvenance {
   version : String
   /// `stamp_utc` of the moment the scan ran, or `""` for no clock.
   scanned_at : String
+  /// The MoonBit TOOLCHAIN that performed the scan, or `""` when it could not
+  /// be determined. A separate fact from `version`: that says what code was
+  /// read, this says what read it. Without it a scan is not reproducible
+  /// against a known parser — this module's own `.mbt` subset grew from 158 to
+  /// 173 files on one unchanged core checkout, so the analyzer's version moves
+  /// the results.
+  moonbit : String
 }
 
 ///|
@@ -44,6 +52,8 @@ pub fn ScanProvenance::describe(self : ScanProvenance) -> String {
   self.target +
   " version=" +
   or_unknown(self.version) +
+  " moonbit=" +
+  or_unknown(self.moonbit) +
   " scanned_at=" +
   or_unknown(self.scanned_at)
 }
@@ -181,21 +191,37 @@ fn pad4(n : Int) -> String {
 }
 
 ///|
-/// The filename for a scan artifact: `<label>-<version>_<stamp>.mmd`.
+/// The filename for a scan artifact:
+/// `<package>_<version>_<moonbit>_<stamp>.mmd`.
 ///
-/// `label` is the thing a human browsing a folder of scans would recognise.
+/// Four fields, and each answers a different question about one scan:
+///   - `package`  — what was read
+///   - `version`  — which revision of it
+///   - `moonbit`  — which toolchain read it
+///   - `stamp`    — when
+///
+/// `moonbit` is the one that cannot be recovered from the tree. The target's
+/// `moon.mod` records the module's own version and its imports, never the
+/// compiler; and this analyzer's results MOVE with its frontend — on one
+/// unchanged core checkout the `.mbt` subset went from 158 files to 173 in one
+/// change. An artifact that does not name its analyzer cannot be reproduced,
+/// or even correctly compared against a later one.
+///
+/// `package` is the thing a human browsing a folder of scans would recognise.
 /// For a coordinate that is the module name; for a path it is the resolved
 /// directory name, NOT the string the caller passed. The two differ in exactly
 /// the case that matters — scanning `.` would otherwise produce an artifact
 /// called `_.mmd`. Pass `root = ""` to fall back to the target text.
 ///
-/// The label is slugged because `< > : " / \ | ? *` are illegal in a Windows
-/// path and a coordinate is full of `/`. An inline `@version` on a coordinate
-/// is dropped because the version is already its own segment; keeping it would
+/// Every field is slugged because `< > : " / \ | ? *` are illegal in a Windows
+/// path and a coordinate is full of `/`. An inline `@version` on a coordinate is
+/// dropped because the version is already its own segment; keeping it would
 /// print it twice.
 ///
-/// A missing version or stamp becomes the literal `unknown`. Dropping the
-/// segment instead would produce a name that looks complete and is not.
+/// A field that could not be determined becomes the literal `unknown`. Dropping
+/// the segment instead would produce a name that looks complete and is not —
+/// and with four fields, dropping one shifts every later field into the wrong
+/// slot, so a reader would parse `core_0.1.2_20261009` as the moonbit version.
 pub fn scan_artifact_name(p : ScanProvenance, root : String) -> String {
   let stem = if is_coordinate(p.target) {
     let (mod, _) = split_coord(p.target)
@@ -209,8 +235,10 @@ pub fn scan_artifact_name(p : ScanProvenance, root : String) -> String {
     }
   }
   slug(stem) +
-  "-" +
+  "_" +
   slug(or_unknown(p.version)) +
+  "_" +
+  slug(or_unknown(p.moonbit)) +
   "_" +
   slug(or_unknown(p.scanned_at)) +
   ".mmd"
@@ -352,7 +380,84 @@ pub async fn provenance_for(target : String, root : String) -> ScanProvenance {
       moon_mod_version(read_quietly(join_path(root, "moon.mod.json")))
     }
   }
-  ScanProvenance::{ target, version, scanned_at: stamp_utc(@async.now()), }
+  ScanProvenance::{
+    target,
+    version,
+    scanned_at: stamp_utc(@async.now()),
+    moonbit: moonbit_version(),
+  }
+}
+
+///|
+/// The version of the MoonBit TOOLCHAIN doing the scanning, or "" when it
+/// cannot be determined.
+///
+/// A different fact from the target's `version`: that says what code was read,
+/// this says what read it. The artifact needs both, because a scan is only
+/// reproducible against a known parser — this analyzer's own `.mbt` subset went
+/// from 158 files to 173 on one UNCHANGED core checkout, so the analyzer's
+/// version moves its results.
+///
+/// Nothing in the tree can answer this. `moon.mod` records the module's own
+/// version and its imports, never the compiler that built it, and there is no
+/// `MOONBITS_*` environment variable to ask (checked — `env:` filtered on MOON
+/// is empty). So it is asked of the toolchain, by running it.
+///
+/// Measured, not read off a doc comment: `moon version` prints
+///
+///     moon 0.1.20260920 (914d7da 2026-09-20)
+///
+/// and the second field is the version. It is a subprocess, so it costs
+/// something; that is paid once per artifact and only when a diagram is
+/// actually being written. Failure is not fatal — the field renders `unknown`,
+/// the same honest fallback the version and stamp already use.
+async fn moonbit_version() -> String {
+  let args : Array[String] = ["version"]
+  let (_, out, _) = @process.collect_output("moon", args) catch {
+    _ => return ""
+  }
+  let text = out.text() catch { _ => return "" }
+  parse_moon_version(first_line(text))
+}
+
+///|
+/// `moon 0.1.20260920 (914d7da 2026-09-20)` -> `0.1.20260920`.
+///
+/// Returns "" for anything it does not recognise rather than guessing at a
+/// substring. The shape was measured on this toolchain but is not a contract,
+/// and an artifact named from a mis-parsed version is worse than one that
+/// admits it does not know.
+///
+/// Public so the parse can be tested directly rather than only through a
+/// subprocess: the version ends up in a filename, and a filename is not a place
+/// to be approximately right.
+pub fn parse_moon_version(line : String) -> String {
+  let parts = line.split(" ").to_array()
+  if parts.length() < 2 {
+    return ""
+  }
+  if parts[0].to_owned() != "moon" {
+    return ""
+  }
+  parts[1].to_owned()
+}
+
+///|
+/// The first line of some output, without the terminator.
+fn first_line(s : String) -> String {
+  let out = StringBuilder()
+  let mut done = false
+  for c in s {
+    if done {
+      continue
+    }
+    if c == '\n' || c == '\r' {
+      done = true
+    } else {
+      out.write_char(c)
+    }
+  }
+  out.to_string()
 }
 
 ///|
