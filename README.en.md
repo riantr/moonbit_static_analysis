@@ -12,7 +12,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.4
+moon add riantr/moonbit_static_analysis@0.4.5
 ```
 
 ```moonbit
@@ -160,7 +160,7 @@ A scan result is a claim about a specific tree at a specific moment, so
 `@sa.scan_artifact_name(prov, root)` puts them in the filename:
 
 ```
-moonbit_static_analysis-0.4.4_20261009T052547Z.mmd
+moonbit_static_analysis-0.4.5_20261009T052547Z.mmd
 moonbitlang-core-0.1.20260920+7d59c7ec9_20261009T051925Z.mmd
 tree-unknown_20261009T051511Z.mmd          # version not determined
 ```
@@ -309,7 +309,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.4` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.5` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

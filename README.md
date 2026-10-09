@@ -12,7 +12,7 @@
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.4
+moon add riantr/moonbit_static_analysis@0.4.5
 ```
 
 ```moonbit
@@ -151,7 +151,7 @@ mermaid 接受的形态、每个节点 id 必须是标识符、每条迁移的�
 把它们放进文件名：
 
 ```
-moonbit_static_analysis-0.4.4_20261009T052547Z.mmd
+moonbit_static_analysis-0.4.5_20261009T052547Z.mmd
 moonbitlang-core-0.1.20260920+7d59c7ec9_20261009T051925Z.mmd
 tree-unknown_20261009T051511Z.mmd          # 版本没找到
 ```
@@ -276,7 +276,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.4` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.5` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

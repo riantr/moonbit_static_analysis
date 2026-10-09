@@ -211,8 +211,16 @@ members = [
   与 `type` / `const` / `suberror` / `extern`（行终结）——**整块消费、只报一条 FParse**
   并指名是哪种声明，不逐字段解析，因此不级联。顶层 `fn` 是哨兵：无体的
   `pub impl Eq for T` 不会把文件后续吃掉。
-- **不在子集内的表达式**：`match`、`mut`、字符串插值、lambda、泛型、`@pkg.` 调用
-  —— 这些出现在**函数体内部**，目前会级联，是下述实测缺口的主要来源。
+- **不在子集内的表达式**：`match`、`mut`、字符串插值、lambda、泛型、`@pkg.` 调用，
+  以及**方法调用 `base.m(args)`** —— 这些出现在**函数体内部**，目前会级联，
+  是下述实测缺口的主要来源。
+- **方法调用为什么单独说**（2026-10-09 补）：`ExprKind::ECall(String, Array[Expr])`
+  的被调名是 `String`，`EField(Expr, String)` 又只表示「取字段」。所以 `m.set(k, v)`
+  在 AST 里**没有任何节点能放**——不是 parser 少写了几行，是数据结构表达不了。
+  碰到 `(` 时只接受 `EName` 当被调名，于是报 `only named functions can be called`
+  并停在那里。实测 moonbitlang/core 882 个 `.mbt` 只解析 158 个（17.9%），
+  而 `.mbti` 80/80、`.mbt.md` 67/67——同一个仓库、三个前端、差 5 倍，差距全在这里。
+  修它要加 AST 节点并让三个 lens 都认，属于改设计而不是打补丁，尚未做。
 
 ### 真实代码上的实测缺口（2026-10-06）
 
