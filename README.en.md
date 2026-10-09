@@ -191,6 +191,57 @@ Three things this deliberately does **not** do:
   repeated as `%%` header comments *inside* the document, because a file gets
   renamed and once it does its name is no longer evidence of anything.
 
+### Writing one from the CLI: `--mmd` / `--mmd-auto`
+
+The renderer is a library call, and it is now also reachable without writing
+any code:
+
+```
+moonx riantr/moonbit_static_analysis@latest <target> --mmd out/scan.mmd
+moonx riantr/moonbit_static_analysis@latest <target> --mmd-auto
+```
+
+Both **also** write the diagram and print `MMD<TAB><path>` as the last line;
+the text report on stdout is unchanged and remains the authoritative output.
+`--mmd-auto` picks the name above and writes it to the **working directory**.
+
+Three decisions here, none of them incidental:
+
+- **Opt-in, never the default.** The drawing is lossy by construction:
+  `mermaid_states` ranks files by actionable count and stops at its own cap,
+  saying so in a `%% THIS DRAWING IS A SUBSET` comment. A tool that made the
+  picture the only output would hide that, and would silently break every
+  script grepping `SUMMARY`.
+- **`--mmd` requires its path; `--mmd-auto` is a separate flag.** An optional
+  value is ambiguous here: in `<target> --mmd <path>` the bare word after
+  `--mmd` could equally be a second, unexpected target, and there is no way to
+  tell the two apart. Rather than guess and fail with "unexpected extra
+  argument", the value is mandatory.
+- **The artifact never lands inside the analysed tree.** This module's stated
+  invariant is that it only ever *reads* the target's files; dropping a file
+  into someone's source repository would break that promise and dirty a tree
+  the user may not own.
+
+One honest limitation: **the CLI's stamp is `unknown`.** The only clock in the
+dependency tree is `moonbitlang/async`'s `internal::event_loop::now()`, and
+`internal` cannot be imported — verified, not assumed:
+
+```
+Cannot import internal package moonbitlang/async/internal/event_loop@0.22.4
+  due to internal visibility rules
+```
+
+So the CLI stamps `unknown` rather than inventing a time, which is why
+`@sa.scan_mmd_at` exists as a settable binding: a host that does have a clock
+sets it once at startup. The **version** is read for real, from the target's
+own `moon.mod`. A caller that drives `mermaid_states` itself has the full
+`ScanProvenance` and can stamp it properly.
+
+A write failure prints `ERROR --mmd: cannot write <path>` and leaves stdout
+otherwise intact — `write_file` does not create parent directories, so
+`--mmd no/such/dir/x.mmd` fails cleanly rather than leaving a half-written
+file.
+
 `@sa.stamp_utc(ms) -> String` is pure and separately usable: it converts epoch
 milliseconds to `YYYYMMDDTHHMMSSZ` with the civil date computed by Hinnant's
 `civil_from_days`, pinned in the tests against dates whose answers are not in

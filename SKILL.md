@@ -249,6 +249,16 @@ finding is its own state hung off the inspection that reported it, and each one
 carries a `WHY:` / `HOW:` note from `@core.Family::advice` saying why it was
 judged wrong and what to change.
 
+To produce one from the CLI instead of writing a program, pass `--mmd <path>`
+or `--mmd-auto`. Both *also* write the file and print `MMD<TAB><path>`; the
+text report on stdout is unchanged and stays authoritative. Treat the drawing
+as a supplement, never a replacement: it is lossy by construction, ranking
+files by actionable count and stopping at its own cap, and it says so in a
+`%% THIS DRAWING IS A SUBSET` comment. One field is weaker on the CLI path:
+the stamp is `unknown`, because the only clock in the dependency tree sits
+behind an `internal` package that cannot be imported. The version is still
+read for real.
+
 Two caveats travel inside those notes and must not be skipped: on `.mbti` /
 `.mbtp` / `.mbt.md` a `ParseError` is usually a frontend rule rather than a
 parse boundary, and `UndefinedName` cannot see a `#doc(hidden)` API (it appears

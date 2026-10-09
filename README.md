@@ -174,6 +174,45 @@ tree-unknown_20261009T051511Z.mmd          # 版本没找到
 - **不把文件名当记录。** 同样的三个字段会以 `%%` 注释**重复写在文档正文里**，因为文件
   是会被改名的，改完名之后它的名字就不再是证据了。
 
+### 从 CLI 直接写出一张图：`--mmd` / `--mmd-auto`
+
+渲染器本来只是库函数，现在不写代码也能用上：
+
+```
+moonx riantr/moonbit_static_analysis@latest <target> --mmd out/scan.mmd
+moonx riantr/moonbit_static_analysis@latest <target> --mmd-auto
+```
+
+两者都**额外**写出图，并在最后一行打印 `MMD<TAB><路径>`；stdout 上的文本报告一字未改，
+仍然是权威输出。`--mmd-auto` 用上面那套命名，写进**工作目录**。
+
+这里有三个决定，都不是随手定的：
+
+- **要显式开，永远不是默认。** 这张图天生有损：`mermaid_states` 按 actionable 数排序、
+  到自己的上限就停，并在正文里写明 `%% THIS DRAWING IS A SUBSET`。把图当唯一输出等于把
+  这句话藏起来，而且会悄悄弄坏所有 grep `SUMMARY` 的脚本。
+- **`--mmd` 必须带路径，自动命名另给一个 `--mmd-auto`。** 可选值在这里是歧义的：
+  `<target> --mmd <path>` 里 `--mmd` 后面那个裸词同样可能是第二个目标，两种读法无法区分。
+  与其猜、然后以 "unexpected extra argument" 失败，不如让这个值必填。
+- **产物绝不落进被扫描的树里。** 本模块写明的约束是只**读**目标的文件；往别人的源码仓库
+  里丢文件既违背这个承诺，也会弄脏一棵用户未必拥有的树。
+
+一个要说清楚的限制：**CLI 写出的文件时间戳是 `unknown`。** 依赖树里唯一的时钟是
+`moonbitlang/async` 的 `internal::event_loop::now()`，而 `internal` 无法 import——这是实测的，
+不是猜的：
+
+```
+Cannot import internal package moonbitlang/async/internal/event_loop@0.22.4
+  due to internal visibility rules
+```
+
+所以 CLI 写 `unknown` 而不是编一个时间出来——这也是 `@sa.scan_mmd_at` 存在的理由：它是一个
+可设置的绑定，手上有真时钟的宿主启动时设一次即可。**版本**是真读的，来自目标自己的
+`moon.mod`。自己调用 `mermaid_states` 的调用方拿得到完整 `ScanProvenance`，可以正确打戳。
+
+写失败会打印 `ERROR --mmd: cannot write <path>`，stdout 其余部分不受影响——`write_file`
+不会创建父目录，所以 `--mmd no/such/dir/x.mmd` 是干净失败，而不是留下半个文件。
+
 `@sa.stamp_utc(ms) -> String` 是纯函数、可单独使用：把 epoch 毫秒转成
 `YYYYMMDDTHHMMSSZ`，民用日期用 Hinnant 的 `civil_from_days` 算，测试把答案钉在
 "不会有争议"的日期上——epoch 本身、闰日、年界月界、一次真实运行报出的那个确切时刻，

@@ -179,6 +179,7 @@ pub async fn scan(
   excludes : Array[String],
   extern_iface_dirs : Array[String],
   auto_fetch_deps : Bool,
+  mmd_out : String,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -362,6 +363,86 @@ pub async fn scan(
       "NOTE\tthis tree exceeded the \{max_files}-file cap; the counts above cover only what was walked",
     )
   }
+  if mmd_out != "" {
+    emit_mmd(mmd_out, verdicts, s, target, root)
+  }
+}
+
+///|
+/// Write the scan as a mermaid diagram, if the user asked for one.
+///
+/// Opt-in, and stdout above is untouched either way: the text report is the
+/// authoritative output, and the drawing is lossy BY CONSTRUCTION —
+/// `mermaid_states` ranks files by actionable count and stops at its own cap,
+/// saying so in a `%% THIS DRAWING IS A SUBSET` comment. A tool that made the
+/// picture the only output would hide that.
+///
+/// The default lands in the WORKING DIRECTORY, never inside the analysed tree.
+/// This module's stated invariant is that it only ever reads the target's
+/// files; dropping an artifact into someone's source repository would break a
+/// promise the docs make and would dirty a tree the user may not own.
+///
+/// `scanned_at` is left `unknown` here and NOT invented. The only clock in the
+/// dependency tree is `moonbitlang/async`'s `internal::event_loop::now()`, and
+/// `internal` is not importable — verified, not assumed:
+/// "Cannot import internal package ... due to internal visibility rules". A
+/// stamp fabricated from anything else would be a wrong time confidently
+/// printed, which is worse than the literal `unknown` this produces. A caller
+/// that has a real clock can supply one through `scan_mmd_at` below.
+///
+/// A failure to write is reported and then swallowed, like every other I/O
+/// failure here: there is no non-zero exit available (see the root `main.mbt`),
+/// so the best this can do is say what went wrong.
+async fn emit_mmd(
+  dest : String,
+  verdicts : Array[Verdict],
+  s : Summary,
+  target : String,
+  root : String,
+) -> Unit {
+  let prov = ScanProvenance::{
+    target,
+    version: target_version(root),
+    scanned_at: scan_mmd_at,
+  }
+  let text = mermaid_states(
+    verdicts, s, prov, findings_shown_per_file, max_files,
+  )
+  let path = if dest == "@" { scan_artifact_name(prov, root) } else { dest }
+  @fs.write_file(path, text) catch {
+    _ => {
+      println("ERROR\t--mmd: cannot write \{path}")
+      return
+    }
+  }
+  println("MMD\t\{path}")
+}
+
+///|
+/// The timestamp stamped into a scan artifact written by the CLI. Empty here,
+/// which `scan_artifact_name` renders as the literal `unknown` rather than
+/// dropping the segment — a name that quietly lacks a stamp is
+/// indistinguishable from one where the stamp was midnight.
+///
+/// Exposed as a mutable binding rather than a hardcoded "" so a host that does
+/// have a clock can set it once at startup instead of this module reaching into
+/// an `internal` package it is not allowed to name.
+pub let scan_mmd_at : String = ""
+
+///|
+/// The version in the target's own `moon.mod`, or "" when there is none.
+///
+/// Read from the resolved root rather than the coordinate string: a coordinate
+/// may carry an `@version` that is a registry pin, and the artifact should name
+/// the code that was actually read. An empty string renders as `unknown` in the
+/// file name, which is the honest outcome.
+async fn target_version(root : String) -> String {
+  if root == "" {
+    return ""
+  }
+  let data = @fs.read_file(root + "/moon.mod") catch { _ => return "" }
+  let text = data.text() catch { _ => return "" }
+  moon_mod_version(text)
 }
 
 ///|

@@ -20,9 +20,11 @@ pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
+
+pub let scan_mmd_at : String
 
 pub fn stamp_utc(Int64) -> String
 

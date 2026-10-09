@@ -238,3 +238,79 @@ test "is_module_coord accepts coordinates and rejects everything else" {
   assert_false(@sa.is_module_coord("a/../b")) // traversal
   assert_false(@sa.is_module_coord("@0.1.2")) // version with no module
 }
+
+// --- the --mmd artifact name ----------------------------------------------
+//
+// The CLI writes the diagram under an auto-generated name, and that name is
+// the only record of WHICH scan produced the file. Two failure modes make it
+// lie, and both are silent: a name that omits the version is indistinguishable
+// from one where the version was `0`, and two scans a minute apart collide.
+
+///|
+/// The negative control first: the label for the most ordinary invocation.
+/// `scan .` hands back `.`, whose last segment is `.`, so a name built from it
+/// would be `_.mmd` and would tell nobody anything.
+test "artifact name: '.' resolves against the working directory, not to '_'" {
+  let p = @sa.ScanProvenance::{ target: ".", version: "0.4.5", scanned_at: "", }
+  let name = @sa.scan_artifact_name(p, ".")
+  assert_false(name.has_prefix("_-"))
+  assert_true(name.has_suffix(".mmd"))
+}
+
+///|
+/// A coordinate names its own module, so the artifact says which module was
+/// scanned even when the tree it landed in is someone else's. The whole
+/// `owner/module` is kept, not just the leaf: `core` alone would not say
+/// whether this was `moonbitlang/core` or a private `core`, and the slug exists
+/// precisely because a coordinate is full of `/`.
+test "artifact name: a coordinate contributes the module, not the path" {
+  let p = @sa.ScanProvenance::{
+    target: "moonbitlang/core@latest",
+    version: "0.1.20260920",
+    scanned_at: "20261009T051925Z",
+  }
+  assert_eq(
+    @sa.scan_artifact_name(p, "some/local/path"),
+    "moonbitlang-core-0.1.20260920_20261009T051925Z.mmd",
+  )
+}
+
+///|
+/// The missing-clock case. `scan_mmd_at` is empty for the CLI, because the only
+/// clock in the dependency tree sits behind an `internal` package that cannot
+/// be imported. The segment must say `unknown` rather than vanish — a name that
+/// quietly lacks a stamp reads exactly like one stamped at midnight.
+test "artifact name: an unavailable clock is written as 'unknown', not dropped" {
+  let p = @sa.ScanProvenance::{ target: "t", version: "1.0.0", scanned_at: "", }
+  assert_eq(@sa.scan_artifact_name(p, "t"), "t-1.0.0_unknown.mmd")
+}
+
+///|
+/// And the missing-version case, same reasoning.
+test "artifact name: an unavailable version is written as 'unknown', not dropped" {
+  let p = @sa.ScanProvenance::{
+    target: "t",
+    version: "",
+    scanned_at: "20261009T051925Z",
+  }
+  assert_eq(@sa.scan_artifact_name(p, "t"), "t-unknown_20261009T051925Z.mmd")
+}
+
+///|
+/// Two scans of the same tree seconds apart must not overwrite each other. The
+/// stamp is the only thing separating them, which is why it is `unknown` rather
+/// than absent — two `unknown` names still collide, and that is visible, whereas
+/// a missing segment would not be.
+test "artifact name: the stamp separates two scans of the same tree" {
+  let a = @sa.ScanProvenance::{
+    target: "t",
+    version: "1.0.0",
+    scanned_at: "20261009T051925Z",
+  }
+  let b = @sa.ScanProvenance::{
+    target: "t",
+    version: "1.0.0",
+    scanned_at: "20261009T051926Z",
+  }
+  assert_true(@sa.scan_artifact_name(a, "t") != @sa.scan_artifact_name(b, "t"))
+}
