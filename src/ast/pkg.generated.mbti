@@ -39,6 +39,7 @@ pub(all) enum EKind {
   ECall(String, Array[Expr])
   EField(Expr, String)
   EIndex(Expr, Expr)
+  EComp(Array[String], Array[Expr], Expr)
 } derive(Eq)
 
 pub(all) struct ElseIf {

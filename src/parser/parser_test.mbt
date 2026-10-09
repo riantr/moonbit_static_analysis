@@ -523,3 +523,52 @@ test "calling a field is still reported, not silently accepted" {
   assert_eq(r.reports.length(), 1)
   assert_true(r.reports[0].message.contains("only named functions"))
 }
+
+///|
+/// A list comprehension read as a plain element list runs off the end of the
+/// list and hands the statement parser `self => ...`, which — because the
+/// lexer maps `'='` to `TAssign` and has no `=>` token — is an assignment to
+/// `self`. Measured on 0.4.4: one line of valid MoonBit produced BOTH
+/// "parameter 'self' changed by assignment" and "parameter 'self' may not be
+/// used" on the same token. Neither is true, and they contradict each other.
+test "a list comprehension is read as a comprehension, not an assignment" {
+  let r = @parser.parse(
+    "fn f(self : Array[Int]) -> Array[Int] {\n  [ for x in self => x + 1 ]\n}\n",
+  )
+  // fully read: `first_error` is 0 only when nothing failed to parse
+  assert_eq(r.first_error, 0)
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+/// The block-bodied sibling and the guarded form must consume their tokens
+/// too, or the leftover `if` / `}` becomes a statement of its own.
+test "block-bodied and guarded comprehensions also parse clean" {
+  let r = @parser.parse(
+    "fn f(self : Array[Int]) -> Array[Int] {\n  [ for x in self { x + 1 } ]\n}\n",
+  )
+  assert_eq(r.first_error, 0)
+  assert_eq(r.reports.length(), 0)
+  let g = @parser.parse(
+    "fn f(self : Array[Int]) -> Array[Int] {\n  [ for x in self => x + 1 if x > 0 ]\n}\n",
+  )
+  assert_eq(g.first_error, 0)
+  assert_eq(g.reports.length(), 0)
+}
+
+///|
+/// A comprehension still yields a list. The change is that it is now its own
+/// node instead of a mangled `EList`, so `EList` must not have grown to
+/// absorb it — a plain `[1, 2]` keeps two elements.
+test "a plain list literal is still a plain list literal" {
+  let r = @parser.parse("[1, 2]\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SExpr(e) =>
+      match e.kind {
+        @ast.EList(items) => assert_eq(items.length(), 2)
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}

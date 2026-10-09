@@ -16,6 +16,15 @@ pub(all) enum Ty {
   TStr
   TList(Ty)
   TFunc(String, Array[Ty], Ty)
+  /// A name we know is a VALUE but whose signature we cannot read — a hit in
+  /// the cross-file `.mbti` table, where only the declaration name is known.
+  /// Distinct from `TUnknown` because a call to this one is certainly a call,
+  /// so it must not be reported as "not callable"; and distinct from
+  /// `TFunc` because its arity is UNKNOWN, so neither the argument-type check
+  /// nor the "too many arguments" check may run against it. Both checks are
+  /// sound only against a real parameter list. See the note on
+  /// `IfaceSymTab::has_value` for the measured false positives this avoids.
+  TUnknownFn(String)
   TUnion(Array[Ty])
 } derive(Eq)
 
@@ -75,6 +84,7 @@ pub fn ty_name(t : Ty) -> String {
     TStr => "str"
     TList(e) => "[\{ty_name(e)}]"
     TFunc(n, _, _) => "fn \{n}"
+    TUnknownFn(n) => "fn \{n} (signature not read)"
     TUnion(ms) => {
       let ns : Array[String] = []
       for m in ms {

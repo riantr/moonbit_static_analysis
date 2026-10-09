@@ -61,6 +61,17 @@ pub(all) enum EKind {
   ECall(String, Array[Expr])
   EField(Expr, String)
   EIndex(Expr, Expr)
+  /// A list/set comprehension: `[ for pat in <sources> => body ]` and its
+  /// block-bodied sibling `[ for pat in <sources> { body } ]`.
+  ///
+  /// This node exists because the two halves must BOTH be walked. Modelling a
+  /// comprehension as a plain `EList` of the body alone leaves the iterable
+  /// unvisited, so the parameter a comprehension most often iterates over
+  /// (`[ for x in self => ... ]`) is never read and is reported unused. The
+  /// `sources` are kept separate from `body` for the same reason: a
+  /// comprehension is not a two-element list, and folding it into one would
+  /// hand the type lens and the interpreter a list that never existed.
+  EComp(Array[String], Array[Expr], Expr)
 } derive(Eq)
 
 ///|

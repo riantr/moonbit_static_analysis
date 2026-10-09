@@ -45,8 +45,9 @@ pub fn zero_span() -> Span {
 /// references apart by position (the type annotation lives in `SLet.ann`,
 /// not in the expression tree), and the existing `lookup` returns one `Ty?`
 /// for both. The walker needs only the names; the type lens wants
-/// `TUnknown` for a type hit and `TFunc(name, [TUnknown], TUnknown)` for a
-/// value hit so a call to that value does not also fire "not callable".
+/// `TUnknown` for a type hit and `TUnknownFn` for a value hit — a call to a
+/// known value must not fire "not callable", and its arity is unknown, so no
+/// arity or argument check may run against it either.
 ///
 /// Lives in `core` because both `walk` and `types` consume it; placing it
 /// in either would create an import cycle (the type lens already takes
@@ -56,9 +57,11 @@ pub struct IfaceSymTab {
   /// A hit returns `TUnknown` (we know it is a type, we do not model its shape).
   types : Map[String, Bool]
   /// Declared value names: `pub fn new(...) -> ...`, `pub const X : ... = ...`.
-  /// A hit returns `TFunc(name, [TUnknown], TUnknown)` (we know it is a value,
-  /// we do not model its signature; the one-element param list means the
-  /// "too many arguments" check on `ECall` still fires past 1 arg).
+  /// A hit returns `TUnknownFn` (we know it is a value; we do not model its
+  /// signature, so no arity or argument check may run against it). A `.mbti`
+  /// gives us the declaration name and never the parameter list, so any
+  /// arity invented here would be a guess the checks would then report as
+  /// fact.
   values : Map[String, Bool]
 }
 

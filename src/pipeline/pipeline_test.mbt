@@ -536,3 +536,66 @@ test "a table carrying one name does not silence another" {
   }
   assert_true(hits > 0)
 }
+
+///|
+/// A `.mbti` gives the type lens a VALUE NAME and nothing else — never a
+/// parameter list. The placeholder it used to invent (`TFunc(name,
+/// [TUnknown], TUnknown)`, one parameter) made every cross-file call with two
+/// or more arguments report "too many arguments ... expected 1, got 2", which
+/// the code even documented as deliberate. Measured on moonbitlang/core,
+/// a package `moon check` accepts with 0 errors: 12 such errors.
+test "a cross-file call is not checked against an invented arity" {
+  let tab = @core.IfaceSymTab::empty()
+  // what a `.mbti` produces for `pub fn[A, B] pair(A, B) -> Bool`
+  tab.values.set("pair", true)
+  let r = @pipeline.run("pair(1, 2)\n", "x.mbt", tab)
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+/// The negative control for the test above: a call to a name the table does
+/// not carry is still a name we cannot resolve, and must not be excused.
+test "a call to a name outside the table is not excused by the arity change" {
+  let tab = @core.IfaceSymTab::empty()
+  tab.values.set("pair", true)
+  let r = @pipeline.run("triple(1, 2, 3)\n", "x.mbt", tab)
+  let mut hits = 0
+  for rep in r.reports {
+    if rep.family.name() == "UndefinedName" {
+      hits += 1
+    }
+  }
+  assert_true(hits > 0)
+}
+
+///|
+/// A constructor call on a name the table knows only as a TYPE. The type lens
+/// resolved it to `TUnknown` — "we could not resolve this" — and then
+/// reported that as "has type 'Unknown' and is not callable". That is the one
+/// claim this lens cannot make: it is evidence of nothing. Measured on
+/// moonbitlang/core: 12 findings of exactly this shape, every one of them a
+/// constructor call on a type the analyzer merely failed to resolve.
+test "calling a value of unknown type is not reported as not callable" {
+  let tab = @core.IfaceSymTab::empty()
+  // what a `.mbti` produces for `type Builder` + `pub fn Builder::new()`
+  tab.types.set("Builder", true)
+  tab.values.set("Builder::new", true)
+  let r = @pipeline.run("Builder()\n", "x.mbt", tab)
+  assert_eq(r.reports.length(), 0)
+}
+
+///|
+/// The other half of the same rule, and the one that keeps it from turning
+/// into "never report a call": a call to something the lens DOES know the type
+/// of, and knows is not a function, is still reported.
+test "a call to a known non-function is still reported" {
+  let src = "let n = 1\nn()\n"
+  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  let mut hits = 0
+  for rep in r.reports {
+    if rep.family.name() == "OperatorMismatch" {
+      hits += 1
+    }
+  }
+  assert_true(hits > 0)
+}

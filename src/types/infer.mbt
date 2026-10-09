@@ -66,14 +66,22 @@ fn Infer::lookup(self : Infer, name : String) -> Ty? {
       // Cross-file names from .mbti: a type hit returns TUnknown (the
       // annotation `let x : Foo = ...` parses `Foo` as TUnknown anyway, so
       // this keeps the type lens's treatment of unknown types consistent);
-      // a value hit returns a TFunc with one TUnknown parameter, which is
-      // what the existing ECall handler already accepts for a value whose
-      // signature is not modelled. Names present in BOTH sets are returned
-      // as values, because the call shape (`Foo(...)`) is the user's actual
-      // intent and the ECall handler is the one that would otherwise fire
-      // FOpMismatch on a TUnknown type.
+      // a value hit returns TUnknownFn — we know the name IS a value but not
+      // what it takes, so the call handler must check neither the argument
+      // types nor the arity against it. Names present in BOTH sets are
+      // returned as values, because the call shape (`Foo(...)`) is the user's
+      // actual intent and the ECall handler is the one that would otherwise
+      // fire FOpMismatch on a TUnknown type.
+      //
+      // Measured on 0.4.4 against moonbitlang/core: this used to return
+      // `TFunc(name, [TUnknown], TUnknown)`, and the one-element parameter
+      // list was documented as deliberate ("the arity check still fires past
+      // 1 arg"). It is not sound — a `.mbti` gives us the NAME, never the
+      // parameter list — so every cross-file call with two or more arguments
+      // reported "too many arguments to 'f': expected 1, got 2". 12 of those
+      // on a clean 882-file stdlib that `moon check` accepts with 0 errors.
       if self.extern_iface.has_value(name) {
-        Some(TFunc(name, [TUnknown], TUnknown))
+        Some(TUnknownFn(name))
       } else if self.extern_iface.has_type(name) {
         Some(TUnknown)
       } else {
@@ -181,12 +189,32 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
           }
           ret
         }
+        Some(TUnknownFn(_)) => {
+          // Known to be a value, signature not read: the call is real, the
+          // arguments are unchecked, and the result is unknown. Deliberately
+          // does NOT fall through to the "not callable" arm below.
+          for arg in args {
+            ignore(self.ty_of(arg, TUnknown))
+          }
+          TUnknown
+        }
         Some(t) => {
-          self.report(
-            @core.FOpMismatch,
-            "'\{name}' has type '\{ty_name(t)}' and is not callable",
-            e.span,
-          )
+          // `TUnknown` here means the name resolved to something whose type
+          // we could not determine — a cross-file type hit, most often.
+          // Calling it is therefore not evidence of anything. Reporting
+          // "not callable" about a type we do not know is the one claim this
+          // lens cannot make. Measured on 0.4.4: 12 findings of the form
+          // "'StringBuilder' has type 'Unknown' and is not callable" on
+          // moonbitlang/core, a package `moon check` accepts with 0 errors —
+          // every one of them a constructor call on a type the analyzer
+          // merely could not resolve.
+          if !(t is TUnknown) {
+            self.report(
+              @core.FOpMismatch,
+              "'\{name}' has type '\{ty_name(t)}' and is not callable",
+              e.span,
+            )
+          }
           TUnknown
         }
         None => TUnknown
@@ -206,6 +234,26 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         TList(elem) => elem
         _ => TUnknown
       }
+    }
+    // A comprehension yields a list, but its element type is the body's type
+    // under an iterable we may not model, so `TUnknown` is the honest answer.
+    // The sources and the body are still TYPED, so the argument-type and
+    // index checks inside them still run.
+    EComp(vars, sources, body) => {
+      self.frames.push(Map([]))
+      self.annos.push(Map([]))
+      let fi = self.frames.length() - 1
+      for v in vars {
+        self.frames[fi].set(v, TUnknown)
+        self.annos[fi].set(v, false)
+      }
+      for s in sources {
+        let _ = self.ty_of(s, TUnknown)
+      }
+      let _ = self.ty_of(body, TUnknown)
+      let _ = self.frames.pop()
+      let _ = self.annos.pop()
+      TUnknown
     }
   }
 }

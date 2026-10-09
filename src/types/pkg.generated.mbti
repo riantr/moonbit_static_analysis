@@ -45,6 +45,7 @@ pub(all) enum Ty {
   TStr
   TList(Ty)
   TFunc(String, Array[Ty], Ty)
+  TUnknownFn(String)
   TUnion(Array[Ty])
 } derive(Eq)
 

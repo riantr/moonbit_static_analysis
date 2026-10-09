@@ -266,6 +266,23 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(base)
       self.walk_expr(idx)
     }
+    EComp(vars, sources, body) => {
+      // The loop variables are bound for the whole comprehension, including
+      // its own iterables: a later generator's iterable may read an earlier
+      // one (`[ for x in a, y in pairs_of(x) => ... ]`). The over-approximation
+      // this allows — a variable also visible in an EARLIER iterable — fails
+      // toward silence on a name that should have been reported, which is the
+      // safe direction for a suppression-shaped decision.
+      self.push_frame()
+      for v in vars {
+        self.bind({ name: v, tyann: "", param: false, decl_span: e.span, })
+      }
+      for s in sources {
+        self.walk_expr(s)
+      }
+      self.walk_expr(body)
+      self.pop_frame()
+    }
     EInt(_) | EFloat(_) | EBool(_) | EStr(_) => ()
   }
 }

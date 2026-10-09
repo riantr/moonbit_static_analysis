@@ -158,11 +158,10 @@ priv struct MethodDef {
 ///|
 priv struct Interp {
   methods : Map[String, MethodDef]
-  /// Names that exist but whose body is not analysed — the cross-file
-  /// symbol table's `values` set. A call to one of these is dispatched as an
-  /// unknown-returning call instead of an undefined function, because the
-  /// callee IS defined; it is defined in a file this single-file
-  /// interpreter cannot read.
+  /// Names that exist but whose body is not analysed — the cross-file symbol
+  /// table. A call to one of these is dispatched as an unknown-returning call
+  /// instead of an undefined function, because the callee IS defined; it is
+  /// defined in a file this single-file interpreter cannot read.
   ///
   /// Without this, the behavioral lens contradicted the structural and type
   /// lenses on every cross-package call: those two consult the symtab and
@@ -170,7 +169,17 @@ priv struct Interp {
   /// The self-scan surfaced it on this repository's own test helper
   /// (`@core.IfaceSymTab::empty()`), which is exactly the shape the table
   /// exists to answer.
-  extern_values : Map[String, Bool]
+  ///
+  /// The whole TABLE, not just its `values` half. A `.mbti` declares
+  /// `type Builder` and `pub fn Builder::new()`, so a constructor call
+  /// `Builder()` lands in `types` and never in `values` — the table records
+  /// declarations, and a constructor is not one. Measured on 0.4.4 against
+  /// moonbitlang/core: the behavioral lens reported `undefined function
+  /// 'Builder'` on code `moon check` accepts with 0 errors, while the
+  /// structural and type lenses, which both check `has_type` as well, stayed
+  /// silent. Three lenses, two consulted the table, and the third invented a
+  /// finding the other two contradicted.
+  extern_iface : @core.IfaceSymTab
   file : String
   /// signature cache: key -> return value
   cache : Map[String, AbsVal]
@@ -189,7 +198,7 @@ priv struct Interp {
 fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
   Interp::{
     methods: Map([]),
-    extern_values: extern_iface.all_values(),
+    extern_iface,
     file,
     globals: Map([]),
     cache: Map([]),
@@ -323,6 +332,7 @@ fn ret_name(t : @types.Ty) -> String {
     @types.TStr => "str"
     @types.TList(_) => "List"
     @types.TFunc(n, _, _) => "fn \{n}"
+    @types.TUnknownFn(n) => "fn \{n}"
     @types.TUnion(_) => "Any"
   }
 }
@@ -421,6 +431,12 @@ fn Interp::exec_stmt(
         EIndex(base, idx) => {
           let _ = self.eval(base, env)
           let _ = self.eval(idx, env)
+        }
+        EComp(_, sources, body) => {
+          for s in sources {
+            let _ = self.eval(s, env)
+          }
+          let _ = self.eval(body, env)
         }
         _ => ()
       }
@@ -625,6 +641,16 @@ fn Interp::eval(
         AAny => AAny
         _ => AAny
       }
+    }
+    // A comprehension builds a list, but the lens does not model iteration,
+    // so the result is unknown. The sources and the body are still EVALUATED,
+    // so a call with a side effect inside a comprehension is not skipped.
+    EComp(_, sources, body) => {
+      for s in sources {
+        let _ = self.eval(s, env)
+      }
+      let _ = self.eval(body, env)
+      AAny
     }
   }
 }
@@ -858,12 +884,10 @@ fn Interp::call(
       // is the honest answer — the alternative is reporting the name as
       // undefined, which contradicts the structural and type lenses (both of
       // which consult the same table and stay silent).
-      // Both spellings, in the same order `IfaceSymTab::has_value` tries
-      // them. Normalizing alone would be a regression: a caller may have
-      // built the table with the qualified spelling already in it, and
-      // `unqualified` turns that key into one this map does not hold.
-      if self.extern_values.contains(name) ||
-        self.extern_values.contains(@core.unqualified(name)) {
+      // Both halves of the table, and both spellings — `has_value` /
+      // `has_type` each try the exact key and then the bare one, which is the
+      // same order the structural and type lenses use.
+      if self.extern_iface.has_value(name) || self.extern_iface.has_type(name) {
         return AAny
       }
       // callee existence was the structural/type lenses' finding; here it

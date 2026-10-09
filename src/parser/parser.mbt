@@ -827,6 +827,93 @@ fn Parser::at_next(self : Parser, t : @lexer.Tok) -> Bool {
 }
 
 ///|
+/// A `[` has been consumed and the current token is the name `for`. Parse the
+/// whole comprehension: generators, the `=>` / `{ }` body, and any `if`
+/// guard, then the closing `]`.
+///
+/// Why this is not just left to the list branch: the lexer has no `=>` token,
+/// so `=>` arrives as `TAssign` followed by `TGt` (lexer maps `'='` to
+/// `TAssign`). A comprehension parsed as a list therefore ran off the end of
+/// the element list, and the statement parser then saw `self => ...` as
+/// `self = ...` — an assignment. Measured on 0.4.4: the single line
+/// `[ for x in self => x + 1 ]` produced "parameter 'self' changed by
+/// assignment" AND "parameter 'self' may not be used" on the same token, two
+/// findings that contradict each other, and neither true. 13 such
+/// ParamChanged findings on moonbitlang/core, a package `moon check` accepts
+/// with 0 errors.
+///
+/// The iterable is kept in `sources` rather than folded into the body: it is
+/// the only read of `self` in the common `[ for x in self => ... ]` shape, so
+/// dropping it would trade the phantom assignment for a phantom "unused".
+fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
+  let sources : Array[@ast.Expr] = []
+  let vars : Array[String] = []
+  let mut body : @ast.Expr = { span: sp, kind: @ast.EInt(0), }
+  let mut seen = false
+  while self.at_name("for") && !self.at(TEOF) {
+    let _ = self.bump() // for
+    let (pat, _) = self.expect_name("comprehension variable")
+    vars.push(pat)
+    if self.at_name("in") {
+      let _ = self.bump()
+    } else {
+      self.err("expected 'in' in comprehension", self.span())
+    }
+    sources.push(self.parse_expr())
+    if self.at(TAssign) && self.peek2() == TGt {
+      // `=>` is lexed as `=` then `>`
+      let _ = self.bump()
+      let _ = self.bump()
+      body = self.parse_expr()
+      seen = true
+    } else if self.at(TLBrace) {
+      // The block-bodied form yields statements, not an expression. Keep the
+      // expression statements as a list so names used inside them still get
+      // resolved; the block's control flow is not modelled.
+      let stmts = self.parse_block()
+      let exprs : Array[@ast.Expr] = []
+      for st in stmts {
+        match st.kind {
+          @ast.SExpr(e) => exprs.push(e)
+          _ => ()
+        }
+      }
+      body = { span: sp, kind: @ast.EList(exprs), }
+      seen = true
+    } else {
+      self.err("expected '=>' or '{' in comprehension", self.span())
+      break
+    }
+    // an optional `if` guard: consumed so it cannot leak into the enclosing
+    // statement, but not modelled
+    if self.at_name("if") {
+      let _ = self.bump()
+      ignore(self.parse_expr())
+    }
+    if self.at(TComma) {
+      let _ = self.bump()
+    } else {
+      break
+    }
+  }
+  if !seen {
+    self.err("comprehension has no body", sp)
+  }
+  self.expect(TRBracket, "']'")
+  { span: sp, kind: @ast.EComp(vars, sources, body), }
+}
+
+///|
+/// The token after the current one, TEOF at the end of input.
+fn Parser::peek2(self : Parser) -> @lexer.Tok {
+  if self.p + 1 < self.toks.length() {
+    self.toks[self.p + 1]
+  } else {
+    TEOF
+  }
+}
+
+///|
 /// Flatten a name-rooted field chain into its dotted spelling:
 /// `EName("a") -> "a"`, `EField(EField(EName("a"), "b"), "c") -> "a.b.c"`.
 /// Returns "" for anything that does not bottom out in a name — an index, a
@@ -906,19 +993,22 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       self.expect(TRParen, "')'")
       e
     }
-    TLBracket => {
-      let elems : Array[@ast.Expr] = []
-      while !self.at(TRBracket) && !self.at(TEOF) {
-        elems.push(self.parse_expr())
-        if self.at(TComma) {
-          let _ = self.bump()
-        } else {
-          break
+    TLBracket =>
+      if self.at_name("for") {
+        self.parse_comprehension(sp)
+      } else {
+        let elems : Array[@ast.Expr] = []
+        while !self.at(TRBracket) && !self.at(TEOF) {
+          elems.push(self.parse_expr())
+          if self.at(TComma) {
+            let _ = self.bump()
+          } else {
+            break
+          }
         }
+        self.expect(TRBracket, "']'")
+        { span: sp, kind: @ast.EList(elems), }
       }
-      self.expect(TRBracket, "']'")
-      { span: sp, kind: @ast.EList(elems), }
-    }
     TNewline => {
       self.err("unexpected end of line", sp)
       { span: sp, kind: @ast.EInt(0), }
