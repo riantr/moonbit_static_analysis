@@ -150,21 +150,26 @@ suppresses, never the other way around.
 **`.mbti` is NOT.** It used to be claimed here alongside the other two, and
 that was wrong — measured, not suspected. On `moonbitlang/core` (1029 files,
 which `moon check --target all` accepts with 0 errors and 1 warning across 716
-tasks) the 80 generated `pkg.generated.mbti` files produced **97** actionable
-findings, every one of them false. Two causes:
+tasks) the 80 generated `pkg.generated.mbti` files produced **93** actionable
+findings, every one of them false. Three causes, and the first two are now
+fixed:
 
-- the lens has no cross-file awareness at all — it consults neither the
-  cross-file symbol table nor the packages a `.mbti` imports, only a
-  hardcoded 33-name builtin list. MoonBit makes `moonbitlang/core/builtin`
-  available without an import, so `debug/pkg.generated.mbti` uses `Hasher`,
-  `Iter2`, `ArgsLoc` and `InspectError` bare with **no import block in the
-  file at all**, and each one is reported as an unknown type
-  (`Iter` 60, `Iter2` 12, `Show` 5, `ArgsLoc` 4, `InspectError` 3,
-  `SnapshotError` 2, and seven singletons — 93 in all, counted from the scan
-  output rather than summed by hand);
+- the lens had **its own** builtin list, 33 names, while the `.mbt` walk had a
+  different one of **three** (`print`, `len`, `abs`) and no type names at all.
+  MoonBit makes `moonbitlang/core/builtin` available without an import, so
+  `debug/pkg.generated.mbti` uses `Hasher`, `Iter2` and `ArgsLoc` bare with
+  **no import block in the file at all**, and each was reported as an unknown
+  type. All three frontends now share one list (`@core.ambient_names`, read out
+  of the toolchain's own `lib/core/builtin/pkg.generated.mbti`). That alone
+  removed 80 of the 93 — `Iter` 60, `Iter2` 12, `ArgsLoc` 4, `Hasher`,
+  `MutArrayView`, `UninitializedArray`, `Failure`;
 - a `const`'s default value used to be scanned for type references, so
   `pub const MAX_VALUE : Byte = b'\xFF'` reported `unknown type 'b'` and
-  `unknown type 'xFF'`. Fixed.
+  `unknown type 'xFF'`. Fixed;
+- **still open**: the lens has no cross-file awareness — it consults neither
+  the cross-file symbol table nor the packages a `.mbti` imports. So the
+  remaining **13** (`Show` 5, `InspectError` 3, `SnapshotError` 2, `Logger`,
+  `ToJson`, `BenchError`) are types genuinely declared in a sibling file.
 
 So an `unknown type ... in interface signature` finding on a `.mbti` should
 be treated as **unverified**, the same way a `.mbt` finding past the
@@ -172,17 +177,27 @@ be treated as **unverified**, the same way a `.mbt` finding past the
 
 `.mbt` is different. The program frontend covers a **subset** of MoonBit — no
 struct literals, no `match`, no `@alias` calls, no type annotations in general
-position, no lambdas or interpolation. On real code it therefore produces a large
-number of findings that are **all subset edges, not defects**.
+position, no lambdas or interpolation, and **no method calls at all**: `ECall`
+carries the callee as a `String`, so `m.set(k, v)` has nowhere to be
+represented and the parse stops on the spot. That last one is why the subset
+looks so small: on `moonbitlang/core` the frontend parses **158 of 882** `.mbt`
+files (17.9%), while `.mbti` and `.mbt.md` are 100%. On real code it therefore
+produces a large number of findings that are **all subset edges, not defects**.
 
-That is why the scan now withholds them. An unparsed `struct` body turns its
+That is why the scan withholds them. An unparsed `struct` body turns its
 fields into undefined names and its `*` into operator mismatches, so the
-downstream families on an unread file are noise with a real-looking shape. On a
-63-file module `moon check` reports **8** unused values where this pipeline
-reported **529** "unused locals" — the difference is the analyzer not seeing the
-struct bodies. So: **quote `PARSED` first**, and treat `actionable` as the only
-count that describes the code. Do not report `withheld` to a user as "problems
-found".
+downstream families on an unread file are noise with a real-looking shape.
+
+The families that could not be silenced that way are the ones whose verdict is
+about a whole **function** rather than a line: `UnusedLocal`, `UnusedParam` and
+`ParamChanged` are decided when the function's frame is audited, so a function
+the frontend truncated halfway cannot support "this was never read". Those are
+now skipped outright for the one function a read failure could have cut — the
+other functions in the same file keep their verdict. On `moonbitlang/core` that
+took actionable findings from 270 to 147; on this repository, from 11 to **0**
+(verified one by one: each was a binding read below the boundary). So:
+**quote `PARSED` first**, and treat `actionable` as the only count that
+describes the code. Do not report `withheld` to a user as "problems found".
 
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer

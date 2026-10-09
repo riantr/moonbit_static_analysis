@@ -224,7 +224,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 158/158；js 与 wasm-gc 134/134
+moon test --deny-warn                # wasm 192/192；js 与 wasm-gc 139/139
 moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
 
@@ -337,10 +337,20 @@ arity 是猜测，检查会把它当事实报出去）。表里没有的名字�
 
 > **与 `moon check` 的关系要说清楚**：在 `.mbt` 上，本工具**不与工具链的编译器
 > 竞争**——`moon check` 有真正的解析器和约 90 条内建告警，覆盖率恒为 100%，
-> 实测 2.3 秒 / 128 条，且每条都带 `file:line:col`、源码片段与修复建议
-> （同一份 ML/CI 代码本工具曾报 529 条「未使用局部」，而编译器报 8 条——
-> 差的那 66 倍是 struct 函数体没解析）。本工具能说「编译器做不到」的地方是
+> 实测 2.3 秒 / 128 条，且每条都带 `file:line:col`、源码片段与修复建议。本工具的
+> `.mbt` 前端只读一个**子集**：在 moonbitlang/core 上，882 个 `.mbt` 只解析了
+> **158 个（17.9%）**，而 `.mbti` 与 `.mbt.md` 是 100%。最大的单一原因是
+> **方法调用在 AST 里根本没有位置**——`ECall` 的被调名是 `String`，所以
+> `m.set(k, v)` 无处安放，解析就停在那里。这才是诚实的头条数字，也是
+> `PARSED` 要印在第一行的原因。本工具能说「编译器做不到」的地方是
 > `.mbti` / `.mbt.md` / `.mbtp` 三类文件与跨包语义。
+>
+> 早先版本在同一份 ML/CI 代码上报过 **529** 条「未使用局部」，而编译器报 8 条。
+> 那不是两种意见，而是没解析的 struct 函数体里那些字段被当成了没被读的绑定。
+> 现在它报不出来了——被前端截断的函数会整函数退出未使用局部 / 未使用参数 /
+> 参数被改写这三族审计，因为「从未被读」是关于**整个函数**的结论，半个函数
+> 支撑不了这个结论。仅此一项修复就把 moonbitlang/core 从 270 条 actionable
+> 降到 147 条，把本仓库从 11 条降到 **0 条**。
 
 根包是薄转发层，真正的实现在 `src/sa`（library）。设成 library 是因为「main 包 import 另一个 main 包」已被工具链标记为将来会报错；`src/sa` 与根包都声明 `supported_targets = "+wasm+native"`，因为文件 IO 与子进程来自 `moonbitlang/async`，只有 wasm / native 后端有可用的 async 运行时（js 没有，wasm-gc 缺 `run_async_main`），其余后端会**跳过**这两个包而不是失败。
 

@@ -222,7 +222,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 158/158 on wasm; 134/134 on js and wasm-gc
+moon test --deny-warn                # 192/192 on wasm; 139/139 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -390,11 +390,23 @@ another package never hit.
 > **Where this stands against `moon check`.** On `.mbt` this tool does NOT compete
 > with the toolchain's compiler: `moon check` has a real parser and ~90 built-in
 > warnings at 100% coverage — measured 2.3 s for 128 diagnostics, each with
-> `file:line:col`, the source line and a fix (on the same ML/CI source this tool
-> once reported 529 "unused locals" where the compiler reports 8; the missing 66x
-> was struct bodies it never parsed). What this tool can do that the compiler
-> cannot is the three file kinds it does not audit at all — `.mbti`, `.mbt.md`,
-> `.mbtp` — plus cross-package semantics.
+> `file:line:col`, the source line and a fix. This tool's `.mbt` frontend reads a
+> **subset**, and on `moonbitlang/core` it parses **158 of 882** `.mbt` files
+> (17.9%); `.mbti` and `.mbt.md` are 100%. The single largest reason is that
+> **method calls cannot be represented in the AST at all** — `ECall` takes a
+> `String`, so `m.set(k, v)` has nowhere to go and the parse stops there. That
+> is the honest headline number, and it is why `PARSED` is printed first.
+> What this tool can do that the compiler cannot is the three file kinds it does
+> not audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
+>
+> An earlier version of this tool reported **529** "unused locals" on that ML/CI
+> source where the compiler reports 8. Those were not a different opinion: they
+> were struct bodies it had never parsed, and it reported the unread fields as
+> unread bindings. It no longer can — a function the frontend truncated is now
+> excluded from the unused-local / unused-param / param-changed audit outright,
+> because "never read" is a claim about a whole function and a half-read
+> function cannot support one. That fix alone took `moonbitlang/core` from 270
+> actionable findings to 147, and this repository from 11 to **0**.
 
 The root package is a thin forwarder; the implementation is `src/sa`, a
 **library**. That is deliberate: a main package importing another main package
