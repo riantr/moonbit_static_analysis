@@ -39,6 +39,36 @@ type + 20 个 trait 的 prelude 段因此不可见），现在进表。
 
 自检（扫本仓库自身源码）保持 **0**。测试 231 → 233。
 
+## 0.4.9 —— `@latest` 扫描把自己的产物命名成 `unknown`
+
+用文档里那条命令、通过它自己扫已发布的包：
+
+```
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_static_analysis@latest --mmd-auto
+```
+
+结果是 `46/46 parsed, actionable=0`——**已发布的产物扫自己是干净的**，这是工作树
+给不了的那个检查。但产物名是
+`riantr-moonbit_static_analysis_unknown_0.1.20260920_…mmd`，头部写着
+`version=unknown`，而这次扫的正是在读
+`.repos/riantr/moonbit_static_analysis/0.4.8/`，它的 `moon.mod` 里明明白白是
+`version = "0.4.8"`。
+
+`provenance_for` 在目标是坐标时只从坐标取版本，从不回退到那棵树。`@latest`
+本身不带版本：`split_coord` 故意把它抹成空，好让 `moon fetch` 收到一个裸模块名。
+于是**工具自己头部举的那条例子命令，永远写出 `unknown`**——而版本正是用来把两次
+扫描区分开的那个字段。
+
+**钉了**版本的坐标仍然优先于树（调用方要的就是那一个），只有空的情况才回退。
+修复后重跑同一条坐标扫描实测：
+
+```
+MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
+  %% version=0.4.8
+```
+
+测试：js 207 / wasm 277 / wasm-gc 207。
+
 ## 0.4.8 —— 以 mermaid 工件为证据的三轮自检
 
 把扫描器对准自己跑了三轮，每一轮以上一轮的输出作为本轮的靶子。证据取 mermaid
@@ -81,7 +111,7 @@ type + 20 个 trait 的 prelude 段因此不可见），现在进表。
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.8
+moon add riantr/moonbit_static_analysis@0.4.9
 ```
 
 ```moonbit
@@ -413,7 +443,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.8` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.9` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

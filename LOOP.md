@@ -194,3 +194,25 @@ walk 的 `EStr` 分支逐个 `resolve`。探针实测（修复前 → 修复后�
   （证明 body-covering 才起作用，不是守卫线）；H1/H3 各还原一个分支→对应测试红；
   L1 停掉 resolve→5 红、L2 去掉 member/keyword 守卫→3 红、L3 去掉数字规则→1 红。
 - **突变隔离本身就是结论**：G2 只让 pin3 红，才敢说 pass3 与 local-func 是两条独立通路。
+
+### 0.4.9：文档里那条例子命令，产物名永远是 `unknown`
+
+0.4.8 发出去之后，用**它自己文档里的那条命令**扫它自己：
+
+```
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_static_analysis@latest --mmd-auto
+```
+
+`46/46 parsed, actionable=0`——已发布产物扫自己干净（这是工作树给不了的检查）。
+但产物名是 `..._unknown_0.1.20260920_....mmd`，头部 `version=unknown`，
+而它读的就是 `.repos/.../0.4.8/`，那棵树的 `moon.mod` 写着 `version = "0.4.8"`。
+
+`provenance_for` 对坐标目标只从坐标取版本，**不回退到树**；而 `@latest` 恰恰没有版本
+（`split_coord` 故意抹空，好让 `moon fetch` 收到裸模块名）。于是**自己文档举例的那条命令，
+永远产出 `unknown`**——而版本正是区分两次扫描的字段。
+
+> **教训：自检用自己，会漏掉「自己的输出格式」。** 三轮自检验证的是**报告的结论**
+> （actionable / parsed），从没有人检查过**报告自己的名字和头部**。一个只在文件名里
+> 出现的错误，三轮全部看不见——因为三轮看的都是 SUMMARY 那一行。
+> **⇒ 工件的「名字 + 头部」也是被测对象**，它和 SUMMARY 一样是产物的一部分。
+> 顺带：坐标**钉了**版本仍优先于树（调用方要的就是它），只有空的情况才回退。

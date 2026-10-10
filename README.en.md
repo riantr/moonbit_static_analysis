@@ -46,6 +46,38 @@ names declared outside the subset (`E_MAX` / `b` / `N`) + 3 other shapes (`is` /
 
 Self-scan (this repository's own source) stays at **0**. Tests 231 → 233.
 
+## 0.4.9 — a `@latest` scan named its own artifact `unknown`
+
+Scanning the published package through itself with the documented invocation:
+
+```
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_static_analysis@latest --mmd-auto
+```
+
+reported `46/46 parsed, actionable=0` — the published artifact scans itself
+clean, which is the check the working tree cannot give you. But the artifact came
+out named `riantr-moonbit_static_analysis_unknown_0.1.20260920_…mmd`, with
+`version=unknown` in its own header, while the scan was reading
+`.repos/riantr/moonbit_static_analysis/0.4.8/` — whose `moon.mod` declares
+`version = "0.4.8"`.
+
+`provenance_for` took the version from the coordinate when the target was one,
+and never fell back to the tree. `@latest` names no version: `split_coord` blanks
+it on purpose so `moon fetch` receives a bare module. So the one invocation the
+tool's own header recommends as the example always wrote `unknown` — on the field
+that exists to tell two scans apart.
+
+A coordinate that **pinned** a version is still believed over the tree, since the
+caller asked for that one; only the empty case falls back. Verified by running
+the same coordinate scan after the fix:
+
+```
+MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
+  %% version=0.4.8
+```
+
+Tests: 207 js / 277 wasm / 207 wasm-gc.
+
 ## 0.4.8 — three self-scan rounds, mermaid artifact as the evidence
 
 The scanner was pointed at itself for three rounds, each round taking the
@@ -99,7 +131,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.8
+moon add riantr/moonbit_static_analysis@0.4.9
 ```
 
 ```moonbit
@@ -481,7 +513,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.8` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.9` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

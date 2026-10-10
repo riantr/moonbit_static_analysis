@@ -122,6 +122,56 @@ test "a moon.mod.json version is read too" {
 }
 
 ///|
+/// A coordinate that pinned a version is believed over the tree, because the
+/// caller asked for that one and it is the fact that decided what was fetched.
+/// The tree here says something else on purpose, so the test fails if the
+/// precedence ever inverts.
+test "a pinned coordinate reports the version the caller asked for" {
+  assert_eq(
+    @sa.target_version("riantr/moonbit_static_analysis@0.4.8", "9.9.9"),
+    "0.4.8",
+  )
+}
+
+///|
+/// The case that was wrong. `@latest` names no version — `split_coord` blanks
+/// it on purpose so `moon fetch` gets a bare module — and the coordinate
+/// branch used to return that empty string without ever reading the tree it
+/// had just materialised. The artifact was then named `..._unknown_...mmd` with
+/// `version=unknown` in its header, on a scan whose own directory read
+/// `version = "0.4.8"`. Measured, not assumed: the published 0.4.8 run of
+/// `moonx riantr/moonbit_static_analysis@latest riantr/...@latest --mmd-auto`
+/// wrote `riantr-moonbit_static_analysis_unknown_0.1.20260920_20261010T234949Z.mmd`
+/// while reading `.repos/riantr/moonbit_static_analysis/0.4.8/`.
+test "a `@latest` coordinate falls back to the version its tree declares" {
+  assert_eq(
+    @sa.target_version("riantr/moonbit_static_analysis@latest", "0.4.8"),
+    "0.4.8",
+  )
+}
+
+///|
+/// A bare `author/module` is the same case with no `@` at all, and it is what
+/// `locate` passes to `moon fetch`, so it is the shape most likely to arrive.
+test "a bare coordinate falls back to the version its tree declares" {
+  assert_eq(@sa.target_version("a/b", "7.8.9"), "7.8.9")
+}
+
+///|
+/// The negative control, and the reason the fallback cannot turn into a
+/// blanket "believe the tree": a target with no version anywhere must still
+/// admit it, and render as `unknown` rather than borrow a neighbouring fact.
+test "a target with no version anywhere still admits it" {
+  assert_eq(@sa.target_version("a/b@latest", ""), "")
+  assert_eq(@sa.target_version("a/b", ""), "")
+  // A path never names a version; the tree is all there ever was.
+  assert_eq(@sa.target_version(".", ""), "")
+  assert_eq(@sa.target_version("./some/tree", ""), "")
+  // ...and it is still the tree's answer when the tree has one.
+  assert_eq(@sa.target_version(".", "0.4.8"), "0.4.8")
+}
+
+///|
 test "a build version with a plus sign survives" {
   // The real shape of a moonbitlang/core version.
   assert_eq(

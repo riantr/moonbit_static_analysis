@@ -366,26 +366,55 @@ fn slug(s : String) -> String {
 /// last week's. A missing or unreadable `moon.mod` is normal, not an error, so
 /// it is read quietly and reported as `""`.
 pub async fn provenance_for(target : String, root : String) -> ScanProvenance {
-  let version = if is_coordinate(target) {
-    let (_, ver) = split_coord(target)
-    ver
+  // `moon.mod` first, `moon.mod.json` second. The two are alternative
+  // spellings of the same fact, so exactly one is taken — reading both and
+  // concatenating would print two versions for one target.
+  //
+  // Read for BOTH kinds of target, not just paths. A coordinate that named no
+  // version (`@latest`) has none to report, yet the tree it just fetched
+  // declares one: scanning `author/module@latest` writes the artifact for
+  // `.repos/author/module/0.4.8/` and used to name it `..._unknown_...mmd`
+  // while its own header said `version=unknown`, on a scan that had just
+  // read `version = "0.4.8"` out of that very directory. The version is the
+  // field that tells two scans apart, so reporting `unknown` where it was
+  // sitting on disk is the one answer that cannot be defended.
+  let from_tree = moon_mod_version(read_quietly(join_path(root, "moon.mod")))
+  let tree_version = if from_tree != "" {
+    from_tree
   } else {
-    // `moon.mod` first, `moon.mod.json` second. The two are alternative
-    // spellings of the same fact, so exactly one is taken — reading both and
-    // concatenating would print two versions for one target.
-    let a = moon_mod_version(read_quietly(join_path(root, "moon.mod")))
-    if a != "" {
-      a
-    } else {
-      moon_mod_version(read_quietly(join_path(root, "moon.mod.json")))
-    }
+    moon_mod_version(read_quietly(join_path(root, "moon.mod.json")))
   }
   ScanProvenance::{
     target,
-    version,
+    version: target_version(target, tree_version),
     scanned_at: stamp_utc(@async.now()),
     moonbit: moonbit_version(),
   }
+}
+
+///|
+/// Which version a scan of `target` should report, given what `target`'s own
+/// `moon.mod` declares as `tree_version`.
+///
+/// A coordinate that PINNED a version is believed over the tree: the caller
+/// asked for that one, and it is the fact that decides what was fetched. A
+/// coordinate that named none — `@latest`, or a bare `author/module` — has
+/// nothing to say, so the tree answers instead. A path never names a version,
+/// so the tree is all there ever was.
+///
+/// Split out from `provenance_for` so the rule can be tested without a
+/// filesystem: the version-reading half is async and needs a real directory,
+/// and this half is where the decision that was wrong actually lives.
+
+///|
+pub fn target_version(target : String, tree_version : String) -> String {
+  if is_coordinate(target) {
+    let (_, ver) = split_coord(target)
+    if ver != "" {
+      return ver
+    }
+  }
+  tree_version
 }
 
 ///|
