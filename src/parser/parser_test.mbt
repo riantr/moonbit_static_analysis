@@ -649,10 +649,10 @@ fn find_method_calls(m : @ast.Module) -> Array[(String, String)] {
           ex(a)
           ex(b)
         }
-        @ast.SIf(c, t, eis, el) => {
+        @ast.SIf(c, t, elseifs, el) => {
           ex(c)
           st(t)
-          for ei in eis {
+          for ei in elseifs {
             ex(ei.cond)
             st(ei.body)
           }
@@ -1234,18 +1234,18 @@ test "an else-if chain parses as one SIf with its else-if list" {
   match r.tree.body[0].kind {
     @ast.SFunc(_, _, _, body, _) =>
       match body[0].kind {
-        @ast.SIf(cond, then, eis, els) => {
+        @ast.SIf(cond, then, elseifs, els) => {
           match cond.kind {
             @ast.EName(x) => assert_eq(x, "a")
             _ => assert_true(false)
           }
           assert_eq(then.length(), 1)
-          assert_eq(eis.length(), 1)
-          match eis[0].cond.kind {
+          assert_eq(elseifs.length(), 1)
+          match elseifs[0].cond.kind {
             @ast.EName(x) => assert_eq(x, "b")
             _ => assert_true(false)
           }
-          assert_eq(eis[0].body.length(), 1)
+          assert_eq(elseifs[0].body.length(), 1)
           match els {
             Some(b) => assert_eq(b.length(), 1)
             None => assert_true(false)
