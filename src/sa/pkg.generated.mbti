@@ -28,6 +28,8 @@ pub fn scan_artifact_name(ScanProvenance, String) -> String
 
 pub fn stamp_utc(Int64) -> String
 
+pub fn tally_partial_reasons(Array[Verdict]) -> (Map[String, Int], Map[String, Array[String]])
+
 // Errors
 
 // Types and methods

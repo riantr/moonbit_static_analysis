@@ -816,3 +816,450 @@ test "a plain list literal is still a plain list literal" {
     _ => assert_true(false)
   }
 }
+
+///|
+/// Operator of a binary expression, as its source symbol. `BOp` derives Eq
+/// but not Show, so tests compare operators through `symbol()`.
+fn bin_op(e : @ast.Expr) -> String {
+  match e.kind {
+    @ast.EBin(op, _, _) => op.symbol()
+    _ => "?"
+  }
+}
+
+///|
+/// The constructs the 0.4.8 self-scan exposed. The 0.4.7 self-scan of this
+/// module's own source parsed 20 of 46 files; every construct below stopped a
+/// real file at its first parse error, so each now has a pin. The last test
+/// is the negative control: the subset has no ternary, and in a call's
+/// argument list one breaks at the `)` the parser expects — the shape the
+/// self-scan actually met.
+test "a struct literal with a type path parses as EStruct with its fields" {
+  let r = @parser.parse("fn f() -> Int {\n  let p = Pos::{ line: 1 }\n  0\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SLet(name, ann, init) => {
+          assert_eq(name, "p")
+          assert_eq(ann, "")
+          match init.kind {
+            @ast.EStruct(path, fields) => {
+              assert_eq(path, "Pos")
+              assert_eq(fields.length(), 1)
+              match fields[0] {
+                (fname, fval) => {
+                  assert_eq(fname, "line")
+                  match fval.kind {
+                    @ast.EInt(n) => assert_eq(n, 1)
+                    _ => assert_true(false)
+                  }
+                }
+              }
+            }
+            _ => assert_true(false)
+          }
+        }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "an anonymous struct literal parses with an empty path" {
+  let r = @parser.parse("fn f() -> Int {\n  let s = { a: 1, b }\n  0\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SLet(_, _, init) =>
+          match init.kind {
+            @ast.EStruct(path, fields) => {
+              assert_eq(path, "")
+              assert_eq(fields.length(), 2)
+              match fields[0] {
+                (n1, v1) => {
+                  assert_eq(n1, "a")
+                  match v1.kind {
+                    @ast.EInt(n) => assert_eq(n, 1)
+                    _ => assert_true(false)
+                  }
+                }
+              }
+              match fields[1] {
+                (n2, v2) => {
+                  assert_eq(n2, "b")
+                  match v2.kind {
+                    @ast.EName(v) => assert_eq(v, "b")
+                    _ => assert_true(false)
+                  }
+                }
+              }
+            }
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "tuples parse: two elements, unit, and one-with-trailing-comma" {
+  let r = @parser.parse(
+    "fn f() -> Int {\n  let t = (1, 2)\n  let u = ()\n  let s = (1,)\n  0\n}\n",
+  )
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) => {
+      match body[0].kind {
+        @ast.SLet(_, _, init) =>
+          match init.kind {
+            @ast.ETuple(elems) => assert_eq(elems.length(), 2)
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+      match body[1].kind {
+        @ast.SLet(_, _, init) =>
+          match init.kind {
+            @ast.ETuple(elems) => assert_eq(elems.length(), 0)
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+      match body[2].kind {
+        @ast.SLet(_, _, init) =>
+          match init.kind {
+            @ast.ETuple(elems) => assert_eq(elems.length(), 1)
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "parenthesized grouping keeps precedence and never becomes a tuple" {
+  let r = @parser.parse("fn f() -> Int {\n  (1 + 2) * 3\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SExpr(e) => {
+          assert_eq(bin_op(e), "*")
+          match e.kind {
+            @ast.EBin(_, lhs, rhs) => {
+              assert_eq(bin_op(lhs), "+")
+              match rhs.kind {
+                @ast.EInt(n) => assert_eq(n, 3)
+                _ => assert_true(false)
+              }
+            }
+            _ => assert_true(false)
+          }
+        }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "an exclusive range parses as one ERange in loop and let positions" {
+  let r = @parser.parse(
+    "fn f(n : Int) -> Int {\n  for i in 1..<n {\n    let y = i\n  }\n  let r = a..<b\n  0\n}\n",
+  )
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) => {
+      match body[0].kind {
+        @ast.SFor(v, _, seq, _) => {
+          assert_eq(v, "i")
+          match seq.kind {
+            @ast.ERange(lo, hi) => {
+              match lo.kind {
+                @ast.EInt(n) => assert_eq(n, 1)
+                _ => assert_true(false)
+              }
+              match hi.kind {
+                @ast.EName(x) => assert_eq(x, "n")
+                _ => assert_true(false)
+              }
+            }
+            _ => assert_true(false)
+          }
+        }
+        _ => assert_true(false)
+      }
+      match body[1].kind {
+        @ast.SLet(_, _, init) =>
+          match init.kind {
+            @ast.ERange(lo, hi) => {
+              match lo.kind {
+                @ast.EName(x) => assert_eq(x, "a")
+                _ => assert_true(false)
+              }
+              match hi.kind {
+                @ast.EName(x) => assert_eq(x, "b")
+                _ => assert_true(false)
+              }
+            }
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "a mutable binding parses as the same SLet shape" {
+  let r = @parser.parse("fn f() -> Int {\n  let mut x = 1\n  x\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SLet(name, ann, init) => {
+          assert_eq(name, "x")
+          assert_eq(ann, "")
+          match init.kind {
+            @ast.EInt(n) => assert_eq(n, 1)
+            _ => assert_true(false)
+          }
+        }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "a tuple destructuring let binds each name flat" {
+  let r = @parser.parse("fn f(pair) -> Int {\n  let (a, b) = pair\n  a\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SLetDestruct(names, init) => {
+          assert_eq(names.length(), 2)
+          assert_eq(names[0], "a")
+          assert_eq(names[1], "b")
+          match init.kind {
+            @ast.EName(x) => assert_eq(x, "pair")
+            _ => assert_true(false)
+          }
+        }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "a named function inside a block is its own statement kind" {
+  let r = @parser.parse(
+    "fn outer() -> Int {\n  fn go(k : Int) -> Int {\n    k\n  }\n  go(1)\n}\n",
+  )
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) => {
+      match body[0].kind {
+        @ast.SLocalFunc(name, params, ret, fnbody, _) => {
+          assert_eq(name, "go")
+          assert_eq(ret, "Int")
+          assert_eq(params.length(), 1)
+          assert_eq(params[0].name, "k")
+          assert_eq(params[0].tyann, "Int")
+          assert_eq(fnbody.length(), 1)
+        }
+        _ => assert_true(false)
+      }
+      match body[1].kind {
+        @ast.SExpr(e) =>
+          match e.kind {
+            @ast.ECall(callee, args) => {
+              assert_eq(callee, "go")
+              assert_eq(args.length(), 1)
+            }
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "optional and defaulted parameters parse with their annotations kept" {
+  let a = @parser.parse("fn f(x? : Int) -> Int {\n  x\n}\n")
+  assert_eq(a.reports.length(), 0)
+  let b = @parser.parse("fn g(y : Int = 2) -> Int {\n  y\n}\n")
+  assert_eq(b.reports.length(), 0)
+  let c = @parser.parse("fn h(p : Int, q? : String = \"s\") -> Int {\n  p\n}\n")
+  assert_eq(c.reports.length(), 0)
+  match a.tree.body[0].kind {
+    @ast.SFunc(_, params, _, _, _) => {
+      assert_eq(params[0].name, "x")
+      assert_eq(params[0].tyann, "Int")
+    }
+    _ => assert_true(false)
+  }
+  match b.tree.body[0].kind {
+    @ast.SFunc(_, params, _, _, _) => {
+      assert_eq(params[0].name, "y")
+      assert_eq(params[0].tyann, "Int")
+    }
+    _ => assert_true(false)
+  }
+  match c.tree.body[0].kind {
+    @ast.SFunc(_, params, _, _, _) => {
+      assert_eq(params[1].name, "q")
+      assert_eq(params[1].tyann, "String")
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "an optional type annotation folds into the annotation string" {
+  let a = @parser.parse("fn f() -> Int {\n  let x : Int? = none\n  0\n}\n")
+  assert_eq(a.reports.length(), 0)
+  let b = @parser.parse("fn g() -> Int? {\n  none\n}\n")
+  assert_eq(b.reports.length(), 0)
+  match a.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SLet(name, ann, _) => {
+          assert_eq(name, "x")
+          assert_eq(ann, "Int?")
+        }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+  match b.tree.body[0].kind {
+    @ast.SFunc(_, _, ret, _, _) => assert_eq(ret, "Int?")
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "a match expression is skipped whole and yields its scrutinee" {
+  let r = @parser.parse(
+    "fn f(e) -> Int {\n  let v = match e { Some(x) => x, None => 0 }\n  v\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("match expression"))
+  assert_eq(r.skips.length(), 1)
+  assert_eq(r.first_error, 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) => {
+      assert_eq(body.length(), 2)
+      match body[0].kind {
+        @ast.SLet(_, _, init) =>
+          match init.kind {
+            @ast.EName(x) => assert_eq(x, "e")
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "an anonymous function literal is skipped and its call still parses" {
+  let r = @parser.parse(
+    "fn f(arr) -> Int {\n  arr.iter(fn(x) {\n    x + 1\n  })\n  0\n}\n",
+  )
+  assert_eq(r.reports.length(), 1)
+  assert_true(r.reports[0].message.contains("anonymous function"))
+  assert_eq(r.skips.length(), 1)
+  assert_eq(r.first_error, 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) => {
+      assert_eq(body.length(), 2)
+      match body[0].kind {
+        @ast.SExpr(e) =>
+          match e.kind {
+            @ast.EMethodCall(recv, name, args) => {
+              match recv.kind {
+                @ast.EName(x) => assert_eq(x, "arr")
+                _ => assert_true(false)
+              }
+              assert_eq(name, "iter")
+              assert_eq(args.length(), 1)
+              match args[0].kind {
+                @ast.EBigInt => assert_true(true)
+                _ => assert_true(false)
+              }
+            }
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "a paren-less main parses with empty params and empty return" {
+  let r = @parser.parse("fn main {\n  println(\"x\")\n}\n")
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(name, params, ret, body, _) => {
+      assert_eq(name, "main")
+      assert_eq(params.length(), 0)
+      assert_eq(ret, "")
+      assert_eq(body.length(), 1)
+    }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "an else-if chain parses as one SIf with its else-if list" {
+  let r = @parser.parse(
+    "fn f(a, b) -> Int {\n  if a {\n    1\n  } else if b {\n    2\n  } else {\n    3\n  }\n}\n",
+  )
+  assert_eq(r.reports.length(), 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SIf(cond, then, eis, els) => {
+          match cond.kind {
+            @ast.EName(x) => assert_eq(x, "a")
+            _ => assert_true(false)
+          }
+          assert_eq(then.length(), 1)
+          assert_eq(eis.length(), 1)
+          match eis[0].cond.kind {
+            @ast.EName(x) => assert_eq(x, "b")
+            _ => assert_true(false)
+          }
+          assert_eq(eis[0].body.length(), 1)
+          match els {
+            Some(b) => assert_eq(b.length(), 1)
+            None => assert_true(false)
+          }
+        }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
+}
+
+///|
+test "a ternary in call-argument position is still outside the subset" {
+  let r = @parser.parse("fn f(a, b, c : Int) -> Int {\n  g(a ? b : c)\n}\n")
+  assert_true(r.reports.length() > 0)
+  assert_true(r.first_error > 0)
+}

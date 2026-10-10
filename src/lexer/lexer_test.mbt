@@ -6,10 +6,11 @@
 /// "unterminated block string" on anything containing a block string.
 ///
 /// Note what these tests are NOT: they are not a response to a self-scan
-/// complaint about src/samples/samples.mbt. That file has 107 `#|` markers, an
-/// odd count, so its last one really does run to end of input and the report is
-/// true. The rule was wrong on the five measured counts below, not because of
-/// that report.
+/// complaint about src/samples/samples.mbt. That file's marker count was 107,
+/// odd, when this rule was written, so its last block really did run to end of
+/// input and the report was true at the time; the file has since gained one
+/// marker and parses clean. The rule was wrong on the five measured counts
+/// below, not because of that report.
 ///
 /// Measured with `moon run`:
 ///   #|AAA\n#|BBB          -> "AAA\nBBB"           closed, rest of line is content
@@ -28,7 +29,7 @@ test "block string closes on a line-leading #| and ends at that line" {
   let mut v = "<none>"
   for t in toks {
     match t {
-      TStr(s) => if s.contains("AAA") { v = s }
+      TStr(s, _) => if s.contains("AAA") { v = s }
       _ => ()
     }
   }
@@ -46,7 +47,7 @@ test "block string value and line counter" {
   let mut v = "<none>"
   for t in toks {
     match t {
-      TStr(s) => if s.contains("AAA") { v = s }
+      TStr(s, _) => if s.contains("AAA") { v = s }
       _ => ()
     }
   }
@@ -69,7 +70,7 @@ test "a mid-line #| does not close" {
   let mut v = ""
   for t in toks {
     match t {
-      TStr(s) => v = s
+      TStr(s, _) => v = s
       _ => ()
     }
   }
@@ -125,7 +126,7 @@ fn name_at(s : String, i : Int) -> String {
 /// How many NAME tokens the source produces. This is the invariant that
 /// matters: a literal the lexer does not understand does not fail, it SPLITS,
 /// and every fragment it leaves behind is then reported as an unbound binding.
-/// Token counts are deliberately not asserted — they are an implementation
+/// Token counts are deliberately not asserted 鈥?they are an implementation
 /// detail, and a whitespace change would make the test lie about the bug.
 fn count_names(s : String) -> Int {
   let (toks, _, _) = @lexer.lex(s)
@@ -153,7 +154,7 @@ test "hex, binary and octal all carry their value" {
 /// The base prefix needs a digit of that base IMMEDIATELY after it. The
 /// toolchain agrees: `0x_1F` does not compile, and reading the `_` as the first
 /// digit would accept a literal the compiler rejects. A leading `0` followed
-/// by a variable named `x` is the other side of the same rule — the variable
+/// by a variable named `x` is the other side of the same rule 鈥?the variable
 /// must survive, which it does not if `0x` is taken as a prefix.
 test "a base prefix needs a digit immediately after it" {
   assert_eq(count_names("0x1F_"), 0)
@@ -167,7 +168,7 @@ test "a base prefix needs a digit immediately after it" {
 
 ///|
 /// The bound is fixed, not the target's `Int`, so the same source gives the
-/// same answer on wasm and on js. Past it the literal still lexes — it just
+/// same answer on wasm and on js. Past it the literal still lexes 鈥?it just
 /// carries no value, which is what stops a dead branch being folded on a
 /// number the analyzer could not read.
 test "a literal past the bound carries no value but still lexes" {
@@ -185,7 +186,7 @@ test "the L, U and UL suffixes are consumed, not read as names" {
   // This is the exact shape that used to yield `no visible binding for 'UL'`.
   assert_eq(count_names("0xffffffffUL\n"), 0)
   let (_, spans, _) = @lexer.lex("0xffffffffUL\n")
-  // 12 characters from column 1, so the span ends at column 13 — the suffix
+  // 12 characters from column 1, so the span ends at column 13 鈥?the suffix
   // is inside the token, not trailing past it.
   assert_eq(spans[0].end.col, 13)
 }
@@ -215,4 +216,148 @@ test "a float still lexes as a float" {
   assert_eq(kind_at("0.25"), "float")
   assert_eq(kind_at("1_000.5"), "float")
   assert_eq(count_names("3.5\n"), 0)
+}
+
+// --- the `?`, `..<` and char-literal tokens ---------------------------------
+//
+// Same failure class as the integer literals above: a token the lexer does
+// not know does not fail, it SPLITS into names that are then reported as
+// unbound bindings. `T?`, `x? : T`, `a..<b` and char literals are real
+// MoonBit, so each must lex as its own token.
+
+///|
+fn count_question(s : String) -> Int {
+  let (toks, _, _) = @lexer.lex(s)
+  let mut n = 0
+  for t in toks {
+    match t {
+      TQuestion => n += 1
+      _ => ()
+    }
+  }
+  n
+}
+
+///|
+fn count_range(s : String) -> Int {
+  let (toks, _, _) = @lexer.lex(s)
+  let mut n = 0
+  for t in toks {
+    match t {
+      TRange => n += 1
+      _ => ()
+    }
+  }
+  n
+}
+
+///|
+fn count_dots(s : String) -> Int {
+  let (toks, _, _) = @lexer.lex(s)
+  let mut n = 0
+  for t in toks {
+    match t {
+      TDot => n += 1
+      _ => ()
+    }
+  }
+  n
+}
+
+///|
+/// The string payload of token `i`, or a sentinel when it is not a string.
+fn str_at(s : String, i : Int) -> String {
+  let (toks, _, _) = @lexer.lex(s)
+  match toks[i] {
+    TStr(v, _) => v
+    _ => "<not a str>"
+  }
+}
+
+///|
+test "the question mark lexes as one token in both annotation positions" {
+  assert_eq(count_question("?"), 1)
+  assert_eq(count_question("let x : Int? = none\n"), 1)
+  assert_eq(count_question("fn f(x? : Int) -> Int {\n  x\n}\n"), 1)
+  // and it is not invented where none was written
+  assert_eq(count_question("let x = 1\n"), 0)
+}
+
+///|
+test "an exclusive range is one token, its siblings are dot pairs" {
+  assert_eq(count_range("a ..< b\n"), 1)
+  assert_eq(count_dots("a ..< b\n"), 0)
+  // `..` and `..=` are not modelled: they stay two dots each
+  assert_eq(count_range("a..b\n"), 0)
+  assert_eq(count_dots("a..b\n"), 2)
+  assert_eq(count_range("a ..= b\n"), 0)
+  assert_eq(count_dots("a ..= b\n"), 2)
+}
+
+///|
+test "a char literal is a string holding one character" {
+  assert_eq(str_at("'x'", 0), "x")
+  // the escapes map to the character they name
+  assert_eq(str_at("'\\n'", 0), "\n")
+  assert_eq(str_at("'\\t'", 0), "\t")
+  assert_eq(str_at("'\\r'", 0), "\r")
+  // any other escaped character maps to ITSELF, which is what keeps `'\''`
+  // and `'\\'` from producing an empty payload or eating the closer
+  assert_eq(str_at("'\\''", 0), "'")
+  assert_eq(str_at("'\\\\'", 0), "\\")
+}
+
+///|
+test "a char literal holding two characters is reported but still emitted" {
+  let (toks, _, reports) = @lexer.lex("'ab'\n")
+  assert_eq(reports.length(), 1)
+  assert_true(
+    reports[0].message.contains(
+      "character literal must hold exactly one character",
+    ),
+  )
+  // the payload still reaches the parser as a string, so the parser sees the
+  // same token stream it would have seen without the rule
+  let mut v = "<none>"
+  for t in toks {
+    match t {
+      TStr(s, _) => v = s
+      _ => ()
+    }
+  }
+  assert_eq(v, "ab")
+  // and it carries NO interpolated names: a character literal has no `\{...}`
+  // to read, so the second field must be empty rather than defaulted to
+  // something that would resolve names that are not there
+  for t in toks {
+    match t {
+      TStr(_, names) => assert_eq(names.length(), 0)
+      _ => ()
+    }
+  }
+}
+
+///|
+test "an unterminated char literal is reported and does not swallow the newline" {
+  let (toks, spans, reports) = @lexer.lex("'x\ny\n")
+  assert_eq(reports.length(), 1)
+  assert_true(reports[0].message.contains("unterminated character literal"))
+  // the newline is NOT consumed by the literal: two newlines are still
+  // emitted, and the name after the first sits on line 2. A swallowed
+  // newline would shift every statement after the literal onto one line.
+  let mut found = false
+  let mut newlines = 0
+  for i in 0..<toks.length() {
+    match toks[i] {
+      TName(n) =>
+        if n == "y" {
+          found = true
+          assert_eq(spans[i].start.line, 2)
+        }
+      TNewline => newlines += 1
+      _ => ()
+    }
+  }
+  assert_true(found)
+  assert_eq(newlines, 2)
 }

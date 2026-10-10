@@ -39,10 +39,49 @@ type + 20 个 trait 的 prelude 段因此不可见），现在进表。
 
 自检（扫本仓库自身源码）保持 **0**。测试 231 → 233。
 
+## 0.4.8 —— 以 mermaid 工件为证据的三轮自检
+
+把扫描器对准自己跑了三轮，每一轮以上一轮的输出作为本轮的靶子。证据取 mermaid
+工件（`--mmd '@'`）；但 **stdout 文本报告才是权威**——图天生有损
+（`findings_shown_per_file = 40`），只用来定位。
+
+| 轮 | 已解析 | actionable | 那一轮修了什么 |
+|---|---|---|---|
+| 起点（0.4.7） | 46/46 | **104** | —— |
+| 第二轮后 | 46/46 | **8** | 被跳过的表达式、`walk_target` 穿透写、过期 `.mbti` |
+| 第三轮后 | 46/46 | **0** | 字符串插值里的名字不可见 |
+
+覆盖率全程没有回退。测试：js 208 / wasm 274 / wasm-gc 208，`--deny-warn` 干净。
+
+**被跳过的子表达式也是帧上的一个洞。** `match` / `try` / 函数面量是「声明的子集
+边界」——它不移动错误行、不扣覆盖率，但它跳过的那块区域恰恰可能是某个绑定唯一的
+赋值处，因此含它的函数现在整函数退出
+`UnusedLocal` / `UnusedParam` / `ParamChanged` 审计。这要求函数有**完整区间**
+（从头部到右花括号），`SFunc` / `SLocalFunc` 现在带的就是它。**104 → 8**。
+
+**穿透参数写是读，不是重绑定。** MoonBit 的结构体是引用，`self.field = v`、
+`v[0] = x`、`pair.0 = x` 改的是参数所指的对象，参数本身没变。这三种以前都算
+`ParamChanged`，于是报出一条它自己的解释（「不再持有调用方传入的值」）为假的结论。
+`ParamChanged` 现在只针对裸名重绑定。
+
+**经 `\{...}` 读到的名字就是读到了。** 插值体被原样抄进字符串 payload，所以它从来
+不是 token——只经插值读的名字看起来没被读，而插值里**不存在**的名字则根本不报。
+`TStr` 现在携带其插值引用的名字，walk 逐个解析。上一轮活下来的 **8** 条**全是**
+这一个缺陷：`mermaid.mbt` `anchor`、`pipeline.mbt` `i`/`s`/`r`、
+`parser.mbt` `what` ×2、`interp.mbt` `name`、`cli/main.mbt` `live`。**8 → 0**。
+
+这两个数字是怎么拿到的，值得单列，因为两条都容易被当成规矩重复下去：
+
+- **第三轮的起点就是错的。** 那 8 条本来准备当死代码清理。它们不是死代码——照着清理
+  就是删掉能跑的代码去迎合一条误报。那一轮找到的是分析器自己的缺陷。
+- **插值那个修复立刻又造出两条误报**：`no visible binding for '1'` 和 `'10'`，
+  出在 `\{i + 1}` 与 `\{pct / 10}`——标识符被允许以数字开头。只有拿真实代码再扫一遍
+  才会浮出来。**修误报和制造误报是同一类动作**，区别只在于有没有再跑一次扫描。
+
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.7
+moon add riantr/moonbit_static_analysis@0.4.8
 ```
 
 ```moonbit
@@ -374,7 +413,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.7` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.8` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

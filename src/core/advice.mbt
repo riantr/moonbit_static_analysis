@@ -33,17 +33,17 @@ pub fn Family::advice(self : Family) -> Advice {
     FUnusedLocal =>
       Advice::{
         why: "A local binding was assigned and never read anywhere in the function. The scan is not flow-sensitive, so a read inside an unreachable or dead branch still counts as a use.",
-        how: "Remove the binding, or read it. An underscore-prefixed name is NOT exempt from this check — if a binding exists only to be discarded, the honest fix is to delete the statement, not to rename it.",
+        how: "Remove the binding, or read it. The bare `_` is exempt: a binding named `_` exists only to be discarded (`let _ = f(x)`, a `for k, _ in pairs` binder), so reporting it would contradict the language's own discard idiom. An underscore-PREFIXED name like `_unused` is still reported — a name is not a discard pile; if a binding exists only to be discarded, the honest fix is to delete the statement, not to rename it.",
       }
     FUnusedParam =>
       Advice::{
         why: "A parameter was never read in the function body. Writing THROUGH a parameter counts as a read, so `self.field = v` and `v[0] = x` do not trigger this; only a parameter that is genuinely never touched does.",
-        how: "Remove the parameter and its argument at every call site, or keep it for signature compatibility and accept the warning. An underscore-prefixed name is NOT exempt from this check.",
+        how: "Remove the parameter and its argument at every call site, or keep it for signature compatibility and accept the warning. A parameter named exactly `_` is exempt — the same discard idiom as locals; an underscore-PREFIXED name is not exempt.",
       }
     FParamChanged =>
       Advice::{
-        why: "A parameter's binding was reassigned, or mutated through (`self.field = ...`, `v[0] = ...`). The parameter therefore no longer holds the value the caller passed.",
-        how: "Copy into a local and mutate the copy: `let m = self` then assign to `m.field`. That keeps the parameter meaningful and makes the mutation local to the call.",
+        why: "A parameter's BINDING was rebound by a bare assignment — `p = expr` or `p += 1` — so from the next read on, `p` names something the caller never passed. Writing THROUGH a parameter is not this: MoonBit structs are references, so `self.field = v`, `v[0] = x` and `pair.0 = x` mutate the object the parameter points at and leave the parameter itself alone, and those do not report.",
+        how: "If the rebinding is deliberate, accept the finding as advisory. If you meant to reach a field or an element, write that target directly instead of the parameter. If you need the original value after the write, copy it first: `let mut copy = p`, then assign to `copy` — that is also the fix for a genuine rebind, because it makes the change local to the call.",
       }
     FAssignType =>
       Advice::{

@@ -46,10 +46,60 @@ names declared outside the subset (`E_MAX` / `b` / `N`) + 3 other shapes (`is` /
 
 Self-scan (this repository's own source) stays at **0**. Tests 231 → 233.
 
+## 0.4.8 — three self-scan rounds, mermaid artifact as the evidence
+
+The scanner was pointed at itself for three rounds, each round taking the
+previous round's output as its work list. Evidence was the mermaid artifact
+(`--mmd '@'`); the **stdout text report is authoritative**, because the drawing
+is lossy by construction (`findings_shown_per_file = 40`).
+
+| round | parsed | actionable | what it fixed |
+|---|---|---|---|
+| start (0.4.7) | 46/46 | **104** | — |
+| after round 2 | 46/46 | **8** | substitution skips, `walk_target` write-through, stale `.mbti` |
+| after round 3 | 46/46 | **0** | string-interpolation reads were invisible |
+
+Coverage never regressed. Suite: 208 js / 274 wasm / 208 wasm-gc, `--deny-warn`
+clean.
+
+**A substitution skip is a hole in the function frame.** A `match`, a `try` or
+an fn literal is a declared scope limit — it moves no error line and costs no
+coverage — but the region it skipped is where a binding's only assignment could
+be, so `UnusedLocal` / `UnusedParam` / `ParamChanged` are now skipped for any
+function containing one. This required the function's **whole extent** (header
+to closing brace), which `SFunc` / `SLocalFunc` now carry. `104 → 8`.
+
+**Writing through a parameter is a read, not a rebinding.** MoonBit structs are
+references, so `self.field = v`, `v[0] = x` and `pair.0 = x` mutate the object
+the parameter points at and leave the parameter alone. All three previously
+counted as `ParamChanged`, producing a "changed by assignment" report whose own
+advice ("no longer holds the value the caller passed") was false. `ParamChanged`
+is now a bare-name rebinding only.
+
+**A name read through `\{...}` is a read.** The interpolation body is copied
+raw into the string payload, so it was never a token — a name read only that
+way looked unread, and a name that does *not* exist inside one was never
+reported at all. `TStr` now carries the names its interpolations reference and
+the walk resolves them. **All 8** findings that survived the previous step were
+this one defect: `mermaid.mbt` `anchor`, `pipeline.mbt` `i`/`s`/`r`, `parser.mbt`
+`what` ×2, `interp.mbt` `name`, `cli/main.mbt` `live`. `8 → 0`.
+
+Two notes on how those numbers were reached, because both are the kind of thing
+that gets repeated as a rule:
+
+- **Round 3's premise was wrong.** The 8 findings were slated for cleanup as
+  dead code. They were not dead — deleting them would have removed working code
+  to satisfy a false positive. The round found a defect in the analyzer instead.
+- **The interpolation fix immediately manufactured two new false positives**,
+  `no visible binding for '1'` and `'10'`, on `\{i + 1}` and `\{pct / 10}`: an
+  identifier was allowed to start with a digit. Only the rescan over real code
+  found them. Fixing a false positive and introducing one are the same class of
+  action; the difference is running the scan again.
+
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.7
+moon add riantr/moonbit_static_analysis@0.4.8
 ```
 
 ```moonbit
@@ -431,7 +481,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.7` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.8` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

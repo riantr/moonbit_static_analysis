@@ -129,3 +129,68 @@
 
 五步全部完成，HEAD `1c28462`，门禁 86/86 × 4 target。**尚未发布**——下一步应定
 0.4.0（输出契约变了：新增 `notices` / `BYKIND`，`src/jsoncli` 移到 wasm/native）再走 CI。
+
+---
+
+## 自检三轮（0.4.7 → 0.4.8）：以 mermaid 工件为证据
+
+这一轮的规矩和上面不同：**证据是 mermaid 工件**（`--mmd '@'`），但
+**mermaid 工件是有损的**（`findings_shown_per_file = 40`），所以 **stdout 文本报告才是权威**，
+工件只用来定位。工件名里的版本号来自 `scan_artifact_name(prov, root)`，根取自 CWD。
+
+### 三轮的数（同一份 46 个文件的自检）
+
+| 轮 | 已解析 | actionable | notices | 那一轮做了什么 |
+|---|---|---|---|---|
+| 起点（0.4.7） | 46/46 | **104** | 523 | 分类：UnusedLocal 34 / UnusedParam 32 / ParamChanged 15 / UndefinedName 12 |
+| 第二轮后 | 46/46 | **8** | 528 | 修 G（跳过的表达式 = 帧有洞）、H（`walk_target` 引用语义）、J（`.mbti` 过期） |
+| 第三轮后 | 46/46 | **0** | 535 | 发现并修 Class L（`\{...}` 里的名字不可见） |
+
+**104 → 8 → 0**，46/46 从未回退过。门禁：js 208 / wasm 274 / wasm-gc 208，`--deny-warn` 干净。
+
+### 三处「我以为会怎样」被实测推翻
+
+1. **`walk_module` 的调用点不是 `sa/main.mbt`。** 一直以为它在扫描器入口里，
+   grep 全仓后：唯一调用点是 `pipeline.mbt:130`。
+2. **测试 `SAMPLE_STRUCTURE` 不需要改。** 以为 Fix H（字段写不再是重绑定）会推翻它，
+   实测样本里只有裸名写（`y = 3`），H 之后仍是 2 条（ParamChanged + UnusedParam 同落 `y`）。
+3. **8 条「真实阳性」全是误报。** 第三轮我准备按 Class K 清理死代码，
+   结果 8 条**全部**是只经 `\{...}` 读的名字（`mermaid.mbt` `anchor`、`pipeline.mbt` `i`/`s`/`r`、
+   `parser.mbt` `what` ×2、`interp.mbt` `name`、`cli/main.mbt` `live`）。
+   **照着「清理死代码」做，就是删掉能跑的代码去迎合误报。**
+
+### Class L：修一个误报，结果自己又造了两个
+
+`Lexer::copy_interp` 把 `\{expr}` **原样**抄进字符串 payload，所以插值里的表达式
+从来不是 token——**两个方向都是错的**：
+
+- 只在插值里被读的名字 → 看起来没被读（8 条误报）；
+- 插值里**不存在**的名字 → 根本不报（漏报，而且是对不编译的代码沉默）。
+
+修法：`TStr(String, Array[String])` 带上插值引用的名字，`EStr` 同步，
+walk 的 `EStr` 分支逐个 `resolve`。探针实测（修复前 → 修复后）：
+
+| 探针 | 前 | 后 |
+|---|---|---|
+| L1 插值里未定义的名字 | undef **0**（漏报） | undef **1** |
+| L2 只在插值里被读 | unusedLocal **1**（误报） | **0** |
+| L3 `\{m.length()}` | unusedParam **1** | **0** |
+
+**然后重扫立刻抓到我自己的 bug**：`no visible binding for '1'` 和 `'10'`，
+出在 `\{i + 1}` 和 `\{pct / 10}`——`is_ident_char` 允许数字**开头**。
+数字是字面量不是绑定，标识符只能**以数字结尾**。这条只有拿真实代码重扫才会浮出来。
+
+> **教训**：「修误报的改动」和「制造新误报的改动」是同一类动作，
+> 区别只在于有没有再跑一次真实重扫。探针能证伪意图，重扫能证伪实现。
+
+### 这一轮的规矩（补进硬规矩）
+
+- **兄弟构造函数 UndefinedName 先查 `.mbti` 新鲜度。** 12 条 UndefinedName 全部
+  是 `pkg.generated.mbti` 过期（缺 7 个 lexer ctor、5 个 `BOp` 变体），重扫前 `moon info` 即可，
+  **一行代码都不用改**。
+- **每条新防护都要突变验证**（revert→红→restore→绿）。本轮 8 次：
+  G1/G2 撤 pass3 守卫→pin1/2 红、撤 `:548` 守卫→**仅** pin3 红（证明两个守卫独立）；
+  G3 `audit_suppressed→false`→三 pin 全红而对照组仍绿；G4 第 5 字段还原 header span→pin 红
+  （证明 body-covering 才起作用，不是守卫线）；H1/H3 各还原一个分支→对应测试红；
+  L1 停掉 resolve→5 红、L2 去掉 member/keyword 守卫→3 红、L3 去掉数字规则→1 红。
+- **突变隔离本身就是结论**：G2 只让 pin3 红，才敢说 pass3 与 local-func 是两条独立通路。

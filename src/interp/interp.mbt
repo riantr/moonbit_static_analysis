@@ -191,6 +191,13 @@ priv struct Interp {
   /// binding in the other one, so without this the two lenses answered the same
   /// line differently for the same reason.
   ambient : Map[String, Bool]
+  /// Names of local functions defined in this file (`fn add(t : Ty) { ... }`
+  /// inside a body). The behavioral lens does not execute their bodies —
+  /// they capture the enclosing frame, which analyze_fn's environment cannot
+  /// model — so references to them resolve and calls to them are dispatched
+  /// as unknown-returning calls instead of being reported as undefined.
+  /// Same fail-toward-silence trade as EMethodCall.
+  local_fns : Map[String, Bool]
   file : String
   /// signature cache: key -> return value
   cache : Map[String, AbsVal]
@@ -215,6 +222,7 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
     methods: Map([]),
     extern_iface,
     ambient,
+    local_fns: Map([]),
     file,
     globals: Map([]),
     cache: Map([]),
@@ -329,7 +337,10 @@ pub fn analyze_module(
       line: f.span.start.line,
     })
   }
-  // phase 2 (dry): populate the cache
+  // phase 2 (dry): populate the cache. Local fn names are collected first:
+  // their bodies are not executed (they capture the enclosing frame), but
+  // their names must resolve and their calls must not report undefined.
+  collect_local_fns(m.body, it.local_fns)
   let itg = it
   itg.run_top(m, true)
   // phase 3 (report): replay with complete stacks
@@ -448,6 +459,12 @@ fn Interp::exec_stmt(
           let _ = self.eval(base, env)
           let _ = self.eval(idx, env)
         }
+        // `pair.0 = v`: a write reaches through the base, so the base is
+        // evaluated; there is no tuple value in the lattice, so nothing is
+        // assigned.
+        ETupleField(base, _) => {
+          let _ = self.eval(base, env)
+        }
         EComp(_, sources, body) => {
           for s in sources {
             let _ = self.eval(s, env)
@@ -550,6 +567,25 @@ fn Interp::exec_stmt(
     SBreak => self.flow = FBreak
     SContinue => self.flow = FContinue
     SFunc(_, _, _, _, _) => ()
+    // `let (a, b) = pair`: the initializer is evaluated ONCE (a second eval
+    // would re-report the same finding), and every destructured name is set.
+    SLetDestruct(names, init) => {
+      let v = self.eval(init, env)
+      for n in names {
+        env.set(n, v)
+      }
+    }
+    // A local function definition. Its body is NOT executed here — it
+    // captures the enclosing frame, which the abstract environment cannot
+    // model — so the statement is a no-op, exactly like SFunc above. Calls
+    // to it are dispatched from the local_fns table (see Interp::call).
+    SLocalFunc(_, _, _, _, _) => ()
+    // A nested `{ ... }` block introduces no new scope in this AST, so the
+    // statements run in the SAME environment (bindings escape the block,
+    // exactly as the walk's SBlock arm models them). exec_block carries the
+    // flow-termination check, so a terminator inside the block still marks
+    // the following statement unreachable.
+    SBlock(body) => self.exec_block(body, env)
   }
 }
 
@@ -599,7 +635,7 @@ fn Interp::eval(
     EBigInt => AAny
     EFloat(_) => AType("float")
     EBool(b) => ABool(b)
-    EStr(_) => AType("str")
+    EStr(_, _) => AType("str")
     EList(_) => AType("List")
     EName(n) =>
       match env.get(n) {
@@ -608,11 +644,18 @@ fn Interp::eval(
           match self.globals.get(n) {
             Some(v) => v
             None =>
-              if self.methods.contains(n) ||
+              if self.local_fns.contains(n) ||
+                self.methods.contains(n) ||
                 n == "print" ||
                 n == "len" ||
                 n == "abs" {
                 AType("Function")
+              } else if n.has_prefix("@") {
+                // A cross-package reference (`@pkg.fn`, `@pkg.T::m`). The
+                // walk and the type lens both refuse to resolve `@`-prefixed
+                // names and stay silent — `@pkg` is a package, not a
+                // variable — and the interpreter must not contradict them.
+                AAny
               } else {
                 // UndefVarErrorReport (jetanalyzer.jl:862)
                 self.report(
@@ -690,6 +733,54 @@ fn Interp::eval(
       let _ = self.eval(body, env)
       AAny
     }
+    // A struct literal. Field VALUES are evaluated (an undefined name inside
+    // them is a real undefined name), but the lens models no struct types,
+    // so the result is the type name — the same trade as EComp above.
+    EStruct(_, fields) => {
+      for f in fields {
+        let (_, v) = f
+        let _ = self.eval(v, env)
+      }
+      AType("Struct")
+    }
+    // A tuple literal; `(e)` grouping is folded at parse time, so every
+    // ETuple is a real tuple. Elements are evaluated; there is no tuple
+    // value in the lattice, so the result is the type name.
+    ETuple(elems) => {
+      for x in elems {
+        let _ = self.eval(x, env)
+      }
+      AType("Tuple")
+    }
+    // A range. Both ends are evaluated; the lens models no range value, so
+    // the result is the type name (SFor's element therefore stays Any).
+    ERange(a, b) => {
+      let _ = self.eval(a, env)
+      let _ = self.eval(b, env)
+      AType("Range")
+    }
+    // `pair.0`: the base is evaluated (an undefined name inside it is a real
+    // undefined name); there is no tuple value in the lattice, so the result
+    // is unknown.
+    ETupleField(base, _) => {
+      let _ = self.eval(base, env)
+      AAny
+    }
+    // An `is` pattern test. The base is evaluated and the binding a
+    // successful match introduces is set to Any. The result is AAny
+    // deliberately, NOT ABool: an ABool would prune one branch of an
+    // enclosing `if` and drop the bindings that branch was analyzed with,
+    // while AAny keeps both branches live (SIf's unknown-condition arm) and
+    // vboolean(AAny) is true so a `while` still runs once. The branch env
+    // copies are taken AFTER the condition eval, so the binding survives
+    // into both branches.
+    EIs(base, binding) => {
+      let _ = self.eval(base, env)
+      if binding != "" {
+        env.set(binding, AAny)
+      }
+      AAny
+    }
   }
 }
 
@@ -720,6 +811,18 @@ fn Interp::binop(
         OpGe => ABool(i >= j)
         OpEq => ABool(i == j)
         OpNe => ABool(i != j)
+        // The bitwise ops get explicit arms on PURPOSE, though the wildcard
+        // below would keep this compiling: the wildcard returns
+        // AType("bool"), and `1 + (h & 1023)` (the measured Class F death,
+        // statecheck.mbt:275) would then flow a bool-typed operand into the
+        // type-level OpAdd branch and report a FALSE method error —
+        // trading a parse death for a wrong finding. Two ints bitwise'd are
+        // an int.
+        OpBitAnd => AInt(i & j)
+        OpBitOr => AInt(i | j)
+        OpBitXor => AInt(i ^ j)
+        OpShl => AInt(i << j)
+        OpShr => AInt(i >> j)
         _ => AType("bool")
       }
     (ABool(i), ABool(j)) =>
@@ -807,6 +910,20 @@ fn Interp::binop(
         OpAnd | OpOr =>
           if boolean(l) && boolean(r) {
             AType("bool")
+          } else {
+            self.report(
+              @core.FMethodError,
+              "no method matching \{op.symbol()}(\{val_name(l)}, \{val_name(r)})",
+              sp,
+            )
+            ABottom
+          }
+        OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr =>
+          // Int-on-Int at the type level too, matching binop_result. This
+          // match has no wildcard, so the arms are also what lets new BOp
+          // variants compile at all.
+          if numeric(l) && numeric(r) {
+            AType("int")
           } else {
             self.report(
               @core.FMethodError,
@@ -934,6 +1051,15 @@ fn Interp::call(
       if self.ambient.contains(name) {
         return AAny
       }
+      // A local function defined in this file but outside the top-level
+      // method table. Its body captures the enclosing frame, which the
+      // params-only env of analyze_fn cannot model, so it dispatches as an
+      // unknown-returning call — the same fail-toward-silence trade as the
+      // two checks above. Dispatching it as undefined would contradict the
+      // structural and type lenses, both of which see its binding.
+      if self.local_fns.contains(name) {
+        return AAny
+      }
       // callee existence was the structural/type lenses' finding; here it
       // is a runtime UndefVarError — the pipeline merges all three
       self.report(@core.FUndefinedName, "undefined function '\{name}'", sp)
@@ -1049,6 +1175,41 @@ fn fn_pnames(f : @walk.FnInfo) -> Array[String] {
 }
 
 ///|
+/// Index every locally-defined function name (`fn helper(...) { }` inside a
+/// body) reachable from `stmts`, including nested ones. The interpreter uses
+/// this table to know that a bare-name callee is DEFINED in this file even
+/// though it is not in the top-level method table — see eval (name
+/// resolution) and call (unknown-returning dispatch). Local fn bodies are NOT
+/// executed here or anywhere in this lens: they capture the enclosing frame,
+/// which the params-only env of analyze_fn cannot model, so calls to them
+/// dispatch as unknown-returning instead of being abstractly run.
+fn collect_local_fns(stmts : Array[@ast.Stmt], out : Map[String, Bool]) -> Unit {
+  for s in stmts {
+    match s.kind {
+      SFunc(_, _, _, body, _) => collect_local_fns(body, out)
+      SLocalFunc(n, _, _, body, _) => {
+        out.set(n, true)
+        collect_local_fns(body, out)
+      }
+      SIf(_, then, elseifs, els) => {
+        collect_local_fns(then, out)
+        for ei in elseifs {
+          collect_local_fns(ei.body, out)
+        }
+        match els {
+          Some(e) => collect_local_fns(e, out)
+          None => ()
+        }
+      }
+      SWhile(_, body) => collect_local_fns(body, out)
+      SFor(_, _, _, body) => collect_local_fns(body, out)
+      SBlock(body) => collect_local_fns(body, out)
+      _ => ()
+    }
+  }
+}
+
+///|
 fn Interp::summarize_sigs(self : Interp) -> Array[String] {
   let out : Array[String] = []
   for name, def in self.methods {
@@ -1117,6 +1278,7 @@ pub fn analyzed_sigs(
       line: f.span.start.line,
     })
   }
+  collect_local_fns(m.body, it.local_fns)
   it.run_top(m, true)
   it.run_top(m, false)
   it.summarize_sigs()

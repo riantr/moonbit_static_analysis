@@ -176,13 +176,14 @@ be treated as **unverified**, the same way a `.mbt` finding past the
 `PARSED` boundary should be — not as a defect to report to a user.
 
 `.mbt` is different. The program frontend covers a **subset** of MoonBit — no
-struct literals, no `match`, no `@alias` calls, no type annotations in general
-position, no lambdas or interpolation, and **no method calls at all**: `ECall`
-carries the callee as a `String`, so `m.set(k, v)` has nowhere to be
-represented and the parse stops on the spot. That last one is why the subset
-looks so small: on `moonbitlang/core` the frontend parses **158 of 882** `.mbt`
-files (17.9%), while `.mbti` and `.mbt.md` are 100%. On real code it therefore
-produces a large number of findings that are **all subset edges, not defects**.
+`match`, no `try` bodies, no lambdas, and no full modelling of a string's
+interpolation: `\{expr}` is consumed and its **names** recorded as reads, but
+the expression itself is not parsed, so `\{a + b}` makes no claim about the
+addition. Method calls ARE modelled (`EMethodCall`). The subset boundary that
+actually costs the most is `match`: it parses, but its arms are skipped whole,
+which is why frame-scoped families are suppressed for any function containing
+one. On real code the frontend therefore still produces many findings that are
+**all subset edges, not defects**.
 
 That is why the scan withholds them. An unparsed `struct` body turns its
 fields into undefined names and its `*` into operator mismatches, so the
@@ -212,6 +213,28 @@ name of an `extern "c" fn`, which was being skipped as an unmodelled declaration
 form, so every call site of an extern function read as unbound. Measured on
 `moonbitlang/core`: actionable **270 → 49**, undefined names **64 → 0**, parsed
 **305 → 320**.
+
+### Two more "not found ≠ does not exist" boundaries
+
+**A substitution skip is a hole in the frame, even when the file parses fine.**
+A `match`, a `try`, or an fn literal is a *declared* scope limit: it moves no
+error line, it costs no coverage, and the rest of the file stays readable. But
+the region it skipped is exactly where a binding's only assignment could be, so
+a function containing one cannot support "this was never read" either. Those
+functions now skip the frame audit too — a second boundary, independent of
+`first_error_line`, because it guards a different fact. This needs the
+function's *whole extent*, header to closing brace, not just its signature:
+that is why `SFunc` / `SLocalFunc` carry a body-covering span. On this
+repository it took actionable findings from **104 to 8**.
+
+**A name read through a string interpolation is a read.** `\{x}` is copied raw
+into the string payload, so before this the literal was opaque to every lens:
+a name read ONLY that way looked unread, and — worse — a name that does not
+exist inside an interpolation was never reported at all. `TStr` now carries the
+names its interpolations reference and the structural walk resolves them. All 8
+findings that survived the previous step were this: `mermaid.mbt` `anchor`,
+`pipeline.mbt` `i`/`s`/`r`, `parser.mbt` `what` ×2, `interp.mbt` `name`,
+`cli/main.mbt` `live`. Actionable **8 → 0**.
 
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer

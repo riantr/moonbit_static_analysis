@@ -105,7 +105,7 @@ pub fn parse(src : String) -> ParseResult {
       while !p.at(TRBrace) && !p.at(TEOF) {
         let sp = p.span()
         match p.bump() {
-          TStr(path) => {
+          TStr(path, _) => {
             let mut alias_name = ""
             // the lexer glues '@' into the alias name: `@q` is ONE TName
             if p.peek() is TName(tag) && tag.has_prefix("@") {
@@ -282,6 +282,78 @@ fn Parser::skip_parens(self : Parser) -> Unit {
 fn Parser::skip_parens_if_present(self : Parser) -> Unit {
   if self.at(TLParen) {
     self.skip_parens()
+  }
+}
+
+///|
+/// Consume a balanced `{ ... }` if one starts here, else do nothing. Used
+/// where the subset skips a whole brace group it does not model — a `match`
+/// expression's arms — so the group's tokens cannot cascade.
+fn Parser::skip_braces(self : Parser) -> Unit {
+  if !self.at(TLBrace) {
+    return
+  }
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if self.at(TLBrace) {
+      depth += 1
+    } else if self.at(TRBrace) {
+      depth -= 1
+    }
+    let _ = self.bump()
+    if depth <= 0 {
+      break
+    }
+  }
+}
+
+///|
+/// Defensive scan for a malformed `try` whose body block is missing — input
+/// valid MoonBit never reaches (`try {` is required), so this only runs on
+/// text `moon check` itself would reject. Walk forward WITHOUT consuming
+/// until a top-level `catch` keyword, a closer, or EOF: the caller's catch
+/// loop takes a `catch` stopped at, and a closer is left for the enclosing
+/// grammar so the scan never eats a bracket it did not open.
+fn Parser::skip_to_catch(self : Parser) -> Unit {
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if self.at(TLBrace) || self.at(TLParen) || self.at(TLBracket) {
+      depth += 1
+    } else if self.at(TRBrace) || self.at(TRParen) || self.at(TRBracket) {
+      if depth == 0 {
+        return
+      }
+      depth -= 1
+    } else if depth == 0 && self.at_name("catch") {
+      return
+    }
+    let _ = self.bump()
+  }
+}
+
+///|
+/// Consume the pattern after a `catch` keyword, up to (not past) the handler
+/// body's `{`. Patterns may bind struct fields (`catch Some({ x }) {`),
+/// destructure a tuple (`catch (a, b) {`), or alternate (`catch Some(_) |
+/// None {`) — none modelled by the subset, all read past so the handler body
+/// the caller skips next stays balanced.
+fn Parser::skip_pattern(self : Parser) -> Unit {
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if self.at(TLBrace) {
+      if depth == 0 {
+        return
+      }
+      depth += 1
+    } else if self.at(TRBrace) || self.at(TRParen) || self.at(TRBracket) {
+      if depth == 0 {
+        return
+      }
+      depth -= 1
+    } else if self.at(TLParen) || self.at(TLBracket) {
+      depth += 1
+    }
+    let _ = self.bump()
   }
 }
 
@@ -463,7 +535,7 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
       self.err("expected \{what}", sp)
       (
         match other {
-          TStr(s) => s
+          TStr(s, _) => s
           _ => "?"
         },
         sp,
@@ -510,6 +582,13 @@ fn Parser::type_annotation(self : Parser) -> String {
     n = n + "." + tail
     self.skip_indexed()
   }
+  // `Int?` — an optional/nullable type. Folded into the name rather than
+  // dropped: `ann_to_ty` maps it to Unknown either way, but dropping the `?`
+  // would claim `Int?` was read as plain `Int`, which it was not.
+  if self.at(TQuestion) {
+    let _ = self.bump()
+    n = n + "?"
+  }
   n
 }
 
@@ -549,6 +628,11 @@ fn Parser::return_annotation(self : Parser) -> String {
       }
     }
     self.expect(TRParen, "')'")
+    // `(A, B)?` — an optional tuple. The `?` must go, or the `{` that opens
+    // the body is never reached; the tuple is "" (Unknown) either way.
+    if self.at(TQuestion) {
+      let _ = self.bump()
+    }
     return ""
   }
   self.type_annotation()
@@ -568,8 +652,17 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // fn
   let (name, params, retann) = self.parse_fn_signature()
-  let body = self.parse_block()
-  { span: sp, kind: @ast.SFunc(name, params, retann, body, sp), }
+  let (body, endsp) = self.parse_block()
+  // The statement span stays the header (it is what `FUnreachable` and the
+  // binding decl_spans localize against), while the SFunc's 5th field is now
+  // the WHOLE function: header start to closing brace. See `parse_block`.
+  {
+    span: sp,
+    kind: @ast.SFunc(name, params, retann, body, {
+      start: sp.start,
+      end: endsp.end,
+    }),
+  }
 }
 
 ///|
@@ -577,18 +670,60 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
 /// They differ only in what follows: a MoonBit block, or the raw symbol string
 /// after `=`. Splitting it out is what lets the extern form carry a REAL
 /// signature instead of being skipped as an unmodelled declaration.
+///
+/// The name may be qualified — `fn Queue::from_iter(...)` — and folds into
+/// one name, exactly as the expression-side `::` fold does. The parameter
+/// list may be absent — `fn main { ... }` — and is then empty: a paren-less
+/// function's braces open its BODY, not a second parameter list.
 fn Parser::parse_fn_signature(
   self : Parser,
 ) -> (String, Array[@ast.Param], String) {
   let (name, _) = self.expect_name("function name")
-  self.expect(TLParen, "'('")
+  let mut full = name
+  if self.at(TColon) && self.at_next(TColon) {
+    let _ = self.bump()
+    let _ = self.bump()
+    let (m, _) = self.expect_name("name after '::'")
+    full = full + "::" + m
+  }
+  let params = self.parse_param_list()
+  let mut retann = ""
+  if self.at(TArrow) {
+    let _ = self.bump()
+    retann = self.return_annotation()
+  }
+  (full, params, retann)
+}
+
+///|
+/// The parameter list of a function, shared by every `fn` form so the shapes
+/// cannot drift: `( name (: Type)? (= default)?, ... )`.
+///
+/// A paren-less function has an EMPTY list — `fn main { ... }` opens its body
+/// where the old parser demanded a `(`, and that was a measured blocker on
+/// this analyzer's own source. `name?` is an optional parameter: the `?` is
+/// consumed and the parameter stays a plain name, which is the same string
+/// the type lens reads. `name = default` has its value parsed to keep the
+/// token stream in step and then dropped: no lens reads defaults.
+fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
   let params : Array[@ast.Param] = []
+  if !self.at(TLParen) {
+    return params
+  }
+  let _ = self.bump()
   while !self.at(TRParen) && !self.at(TEOF) {
     let (pname, psp) = self.expect_name("parameter name")
+    if self.at(TQuestion) {
+      let _ = self.bump()
+    }
     let mut ann = ""
     if self.at(TColon) {
       let _ = self.bump()
       ann = self.type_annotation()
+    }
+    if self.at(TAssign) {
+      let _ = self.bump()
+      ignore(self.parse_expr())
     }
     params.push({ name: pname, tyann: ann, span: psp, })
     if self.at(TComma) {
@@ -598,12 +733,7 @@ fn Parser::parse_fn_signature(
     }
   }
   self.expect(TRParen, "')'")
-  let mut retann = ""
-  if self.at(TArrow) {
-    let _ = self.bump()
-    retann = self.return_annotation()
-  }
-  (name, params, retann)
+  params
 }
 
 ///|
@@ -642,11 +772,29 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
       let _ = self.bump()
     }
   }
+  // Header-only on purpose, and it is not an inconsistency: this body lives in
+  // another language and was never read, so there is nothing inside it that
+  // could carry an unanalysed region. `sp` is therefore already the whole
+  // extent there is.
   { span: sp, kind: @ast.SFunc(name, params, retann, [], sp), }
 }
 
 ///|
-fn Parser::parse_block(self : Parser) -> Array[@ast.Stmt] {
+/// Parse a `{ ... }` block and return its statements TOGETHER WITH the span of
+/// the closing brace.
+///
+/// The span is why the return is a tuple. `SFunc` / `SLocalFunc` used to carry
+/// the header span only, so a function's extent was unknown to everything
+/// downstream — and a body the reader did not analyse (a `match`, a `try`, a
+/// fn literal; see `Parser::note_skip`) could sit anywhere inside it without
+/// the walk being able to tell "this frame was fully read" from "this frame
+/// has a hole in it". `audit_suppressed` needs that extent.
+///
+/// The EOF path yields the EOF span: an unterminated block was not closed, and
+/// claiming a span it does not have would invent coverage.
+
+///|
+fn Parser::parse_block(self : Parser) -> (Array[@ast.Stmt], @core.Span) {
   self.expect(TLBrace, "'{'")
   let body : Array[@ast.Stmt] = []
   while !self.at(TRBrace) && !self.at(TEOF) {
@@ -655,16 +803,31 @@ fn Parser::parse_block(self : Parser) -> Array[@ast.Stmt] {
       break
     }
     if self.at_name("fn") {
-      self.err("function definitions must be top-level", self.span())
+      // A named function INSIDE a block: `fn add(t : Ty) { ... }`. Ordinary
+      // MoonBit — this analyzer's own types.mbt defines one — so it is parsed
+      // as its own statement kind instead of being rejected. Rejection used
+      // to cost the whole file: the error moved first_error, and everything
+      // after the local function went unread.
+      let fsp = self.span()
       let _ = self.bump()
+      let (fname, fparams, fret) = self.parse_fn_signature()
+      let (fbody, fendsp) = self.parse_block()
+      body.push({
+        span: fsp,
+        kind: @ast.SLocalFunc(fname, fparams, fret, fbody, {
+          start: fsp.start,
+          end: fendsp.end,
+        }),
+      })
       self.skip_seps()
       continue
     }
     body.push(self.parse_stmt())
     self.skip_seps()
   }
+  let endsp = self.span()
   self.expect(TRBrace, "'}'")
-  body
+  (body, endsp)
 }
 
 ///|
@@ -672,6 +835,32 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   if self.at_name("let") {
     let _ = self.bump()
+    // `let mut x = ...` — the mutability marker is consumed and dropped. The
+    // subset treats assignment as binding, so a mutable binding is the same
+    // shape here as an ordinary one.
+    if self.at_name("mut") {
+      let _ = self.bump()
+    }
+    if self.at(TLParen) {
+      // `let (a, b) = expr` — tuple destructuring. FLAT only: the names are
+      // read, the init is parsed once, and each name binds the type of the
+      // whole init — the subset has no tuple types to per-element it.
+      let _ = self.bump()
+      let names : Array[String] = []
+      while !self.at(TRParen) && !self.at(TEOF) {
+        let (n, _) = self.expect_name("destructured name")
+        names.push(n)
+        if self.at(TComma) {
+          let _ = self.bump()
+        } else {
+          break
+        }
+      }
+      self.expect(TRParen, "')'")
+      self.expect(TAssign, "'='")
+      let init = self.parse_expr()
+      return { span: sp, kind: @ast.SLetDestruct(names, init), }
+    }
     let (name, _) = self.expect_name("binding name")
     let mut ann = ""
     if self.at(TColon) {
@@ -703,20 +892,70 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   if self.at_name("while") {
     let _ = self.bump()
     let cond = self.parse_expr()
-    let body = self.parse_block()
+    let (body, _) = self.parse_block()
     return { span: sp, kind: @ast.SWhile(cond, body), }
   }
   if self.at_name("for") {
     let _ = self.bump()
-    let (v, vsp) = self.expect_name("loop variable")
+    // One binder, or a comma-separated list of them: `for x in xs` is the
+    // common form, `for k, v in entries { ... }` is pair destructuring
+    // (measured blockers: `for k, _ in other.types {`, `for i, _ in
+    // verdicts {`). A tuple-paren pattern `for (a, b) in ...` is not
+    // modelled and still reports. The comma is only another binder when a
+    // pattern name follows it — `peek2_is_pattern_name` also refuses `in`,
+    // so a malformed `for k, in` cannot eat the keyword.
+    let (first, vsp) = self.expect_name("loop variable")
+    let names : Array[String] = [first]
+    while self.at(TComma) && self.peek2_is_pattern_name() {
+      let _ = self.bump()
+      let (n, _) = self.expect_name("loop variable")
+      names.push(n)
+    }
     if !self.at_name("in") {
       self.err("expected 'in'", self.span())
     } else {
       let _ = self.bump()
     }
     let seq = self.parse_expr()
-    let body = self.parse_block()
-    return { span: sp, kind: @ast.SFor(v, vsp, seq, body), }
+    let (body, _) = self.parse_block()
+    if names.length() == 1 {
+      return { span: sp, kind: @ast.SFor(names[0], vsp, seq, body), }
+    }
+    // Multi-binder desugar. The lenses only know single-binder SFor, so
+    // the sugar is expanded here rather than taught to every lens:
+    //   for k, v in entries { body }
+    // becomes
+    //   for $pair in entries { let (k, v) = $pair; body }
+    // `$` never lexes into a name, so the head binder cannot collide with
+    // user code; a `_` binder is covered by the audit's discard exemption.
+    let body2 : Array[@ast.Stmt] = []
+    body2.push({
+      span: sp,
+      kind: @ast.SLetDestruct(names, { span: sp, kind: @ast.EName("$pair"), }),
+    })
+    for st in body {
+      body2.push(st)
+    }
+    return { span: sp, kind: @ast.SFor("$pair", vsp, seq, body2), }
+  }
+  if self.at(TLBrace) && !self.at_struct_literal() {
+    // A bare `{ ... }` block in statement position — `fn main`'s inner
+    // block, a test block. It is a plain statement list: parse_block reads
+    // it whole and the lenses treat SBlock exactly like an `if` body (no
+    // new scope). Without this arm the brace reached parse_atom's struct
+    // literal arm, whose field grammar rejects statements and cascaded —
+    // cli/main.mbt:28 was blocked on exactly that.
+    //
+    // The lookahead guard is the other half: `{ line, col, }` in statement
+    // or tail position is a STRUCT LITERAL, not a block — MoonBit's own
+    // tail-value style. Sending it to parse_block made the field `name:`
+    // read as `expr : type` and the shorthand `line,` as a tuple, and the
+    // block grammar died at the first colon. When at_struct_literal says
+    // literal, fall through to the expression path below: parse_atom's
+    // TLBrace arm produces EStruct there. Measured deaths: core/walk/
+    // parser/jsoncli/mermaid_test all blocked on exactly this brace.
+    let (body, _) = self.parse_block()
+    return { span: sp, kind: @ast.SBlock(body), }
   }
   // expression or assignment
   let e = self.parse_expr()
@@ -729,6 +968,36 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     let rhs = self.parse_expr()
     return { span: sp, kind: @ast.SAssign(e, rhs), }
   }
+  // Compound assignment `lhs op= rhs`, desugared to `lhs op rhs` on the
+  // right-hand side: the lenses only know SAssign + EBin, so the sugar is
+  // expanded here rather than taught to every lens. `i += 1` becomes
+  // SAssign(i, EBin(OpAdd, i, 1)) — the walk counts the read of `i` through
+  // EBin's left operand, and the type lens checks the same operator it
+  // would check for `i = i + 1`. The target expression is aliased into both
+  // positions on purpose: it is an immutable struct.
+  if self.at(TPlusEq) ||
+    self.at(TMinusEq) ||
+    self.at(TStarEq) ||
+    self.at(TSlashEq) ||
+    self.at(TPercentEq) {
+    let op = match self.peek() {
+      TPlusEq => @ast.OpAdd
+      TMinusEq => @ast.OpSub
+      TStarEq => @ast.OpMul
+      TSlashEq => @ast.OpDiv
+      _ => @ast.OpMod
+    }
+    let asp = self.span()
+    let _ = self.bump()
+    if !e.is_valid_target() {
+      self.err("invalid assignment target", asp)
+    }
+    let rhs = self.parse_expr()
+    return {
+      span: sp,
+      kind: @ast.SAssign(e, { span: e.span, kind: @ast.EBin(op, e, rhs), }),
+    }
+  }
   { span: sp, kind: @ast.SExpr(e), }
 }
 
@@ -737,7 +1006,7 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // if
   let cond = self.parse_expr()
-  let then = self.parse_block()
+  let (then, _) = self.parse_block()
   let elseifs : Array[@ast.ElseIf] = []
   let mut els : Array[@ast.Stmt]? = None
   let mut going = true
@@ -749,11 +1018,12 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
       if self.at_name("if") {
         let _ = self.bump()
         let c2 = self.parse_expr()
-        let b2 = self.parse_block()
+        let (b2, _) = self.parse_block()
         elseifs.push({ cond: c2, body: b2, })
         going = true
       } else {
-        els = Some(self.parse_block())
+        let (eb, _) = self.parse_block()
+        els = Some(eb)
       }
     }
   }
@@ -802,15 +1072,122 @@ fn Parser::parse_eq(self : Parser) -> @ast.Expr {
 }
 
 ///|
-fn Parser::parse_cmp(self : Parser) -> @ast.Expr {
-  let mut l = self.parse_add()
-  while self.at(TLt) || self.at(TLe) || self.at(TGt) || self.at(TGe) {
-    let op = match self.peek() {
-      TLt => @ast.OpLt
-      TLe => @ast.OpLe
-      TGt => @ast.OpGt
-      _ => @ast.OpGe
+/// The `is` test tier: `e is Pattern`. It sits between comparison and the
+/// bitwise tiers — tighter than `<`, looser than `| ^ & << >>`, which sit
+/// just above `+` — because
+/// every measured use feeds a boolean operator or a negation
+/// (`p.peek() is TName(tag) && tag.has_prefix("@")`, `!(m is TInt)`), and
+/// no corpus line puts a comparison on an `is` result. The pattern is
+/// reduced to the binding name it introduces ("" when it has none); the
+/// TEXT is consumed and discarded, so no lens ever parses strings (MoonBit
+/// string indexing is by byte, and pattern text would have to be re-lexed
+/// to be sliced safely).
+fn Parser::parse_is(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_bitor()
+  while self.at_name("is") {
+    let _ = self.bump()
+    let binding = self.parse_is_pattern()
+    l = { span: l.span, kind: @ast.EIs(l, binding), }
+  }
+  l
+}
+
+///|
+/// The pattern of an `is` test, reduced to its BINDING name: the head is
+/// one constructor name (`TName`, `Some`, `ABool`), an optional payload
+/// follows in one paren group, and the first non-`_` name inside that
+/// group is the binding — `TName(tag)` -> "tag", `TEOF` -> "",
+/// `Some(_)` -> "". A name immediately followed by `(` inside the payload
+/// is a nested constructor, not a binding (`Some(Some(x))` binds nothing
+/// here and reports honestly at the `x` use). Unmodelled shapes stay in
+/// step as far as the balanced paren and report at the first token they
+/// cannot place.
+fn Parser::parse_is_pattern(self : Parser) -> String {
+  if self.peek_name() != "" {
+    let _ = self.bump()
+  } else {
+    return ""
+  }
+  let mut binding = ""
+  if self.at(TLParen) {
+    let _ = self.bump()
+    let mut depth = 1
+    while depth > 0 && !self.at(TEOF) {
+      if self.at(TLParen) {
+        depth += 1
+      } else if self.at(TRParen) {
+        depth -= 1
+        if depth == 0 {
+          // Consume the closing paren BEFORE leaving the loop: returning
+          // while still sitting on it makes the caller's next token a `)`,
+          // which is how `v is Some(k)` died at line 2 while `v is Int`
+          // parsed fine. Inner closes of `Some(Some(x))` fall through to
+          // the loop-bottom bump, so every `)` is eaten exactly once.
+          let _ = self.bump()
+          break
+        }
+      } else if depth == 1 &&
+        binding == "" &&
+        self.peek_name() != "" &&
+        self.peek_name() != "_" &&
+        !self.at_next(TLParen) {
+        let (n, _) = self.expect_name("pattern binding")
+        binding = n
+        continue
+      }
+      let _ = self.bump()
     }
+  }
+  binding
+}
+
+///|
+/// The bitwise tiers, loosest to tightest: `|`, then `^`, then `&`, then the
+/// shifts — the standard precedence-climbing shape of parse_or/parse_and,
+/// each delegating one tier down and looping on its own token. They sit
+/// between `is` and additive, matching real MoonBit: every bitwise op binds
+/// tighter than comparison and `is`, looser than `+`, so `1 + (h & 1023)`
+/// (the measured Class F death at statecheck.mbt:275) parses as
+/// `1 + (h & 1023)` with the mask applied to `h`. Before these tiers the
+/// tokens existed only to stop the lexer reporting, and one reaching
+/// expression position broke the parse.
+fn Parser::parse_bitor(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_bitxor()
+  while self.at(TBar) {
+    let _ = self.bump()
+    let r = self.parse_bitxor()
+    l = { span: l.span, kind: @ast.EBin(OpBitOr, l, r), }
+  }
+  l
+}
+
+///|
+fn Parser::parse_bitxor(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_bitand()
+  while self.at(TCaret) {
+    let _ = self.bump()
+    let r = self.parse_bitand()
+    l = { span: l.span, kind: @ast.EBin(OpBitXor, l, r), }
+  }
+  l
+}
+
+///|
+fn Parser::parse_bitand(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_shift()
+  while self.at(TAmp) {
+    let _ = self.bump()
+    let r = self.parse_shift()
+    l = { span: l.span, kind: @ast.EBin(OpBitAnd, l, r), }
+  }
+  l
+}
+
+///|
+fn Parser::parse_shift(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_add()
+  while self.at(TShl) || self.at(TShr) {
+    let op = if self.at(TShl) { @ast.OpShl } else { @ast.OpShr }
     let _ = self.bump()
     let r = self.parse_add()
     l = { span: l.span, kind: @ast.EBin(op, l, r), }
@@ -819,13 +1196,43 @@ fn Parser::parse_cmp(self : Parser) -> @ast.Expr {
 }
 
 ///|
+fn Parser::parse_cmp(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_is()
+  while self.at(TLt) || self.at(TLe) || self.at(TGt) || self.at(TGe) {
+    let op = match self.peek() {
+      TLt => @ast.OpLt
+      TLe => @ast.OpLe
+      TGt => @ast.OpGt
+      _ => @ast.OpGe
+    }
+    let _ = self.bump()
+    let r = self.parse_is()
+    l = { span: l.span, kind: @ast.EBin(op, l, r), }
+  }
+  l
+}
+
+///|
 fn Parser::parse_add(self : Parser) -> @ast.Expr {
   let mut l = self.parse_mul()
-  while self.at(TPlus) || self.at(TMinus) {
-    let op = if self.at(TPlus) { @ast.OpAdd } else { @ast.OpSub }
-    let _ = self.bump()
-    let r = self.parse_mul()
-    l = { span: l.span, kind: @ast.EBin(op, l, r), }
+  while self.at(TPlus) || self.at(TMinus) || self.at(TRange) {
+    if self.at(TRange) {
+      // `a..<b` — the exclusive range, one token since the lexer learned it.
+      // The right side is read at UNARY precedence on purpose: ranges occur
+      // almost only in `for i in a..<b` heads, where both this reading and
+      // the strict reading parse and walk identically, and `1..<n*2` reading
+      // as `(1..<n)*2` costs nothing — the walk visits every operand either
+      // way. A whole precedence tier for one operator would be the dearer
+      // mistake.
+      let _ = self.bump()
+      let r = self.parse_unary()
+      l = { span: l.span, kind: @ast.ERange(l, r), }
+    } else {
+      let op = if self.at(TPlus) { @ast.OpAdd } else { @ast.OpSub }
+      let _ = self.bump()
+      let r = self.parse_mul()
+      l = { span: l.span, kind: @ast.EBin(op, l, r), }
+    }
   }
   l
 }
@@ -868,6 +1275,21 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
   while true {
     if self.at(TDot) {
       let _ = self.bump()
+      // `pair.0` — a tuple FIELD is an Int literal, not a name. The number
+      // lexer makes the forms honest: `pair.0` is TDot + TInt(0), while
+      // `x.0.1` lexes `0.1` as one TFloat, which refuses to be a field and
+      // reports here. `pair.0(` is not a call form — only named functions
+      // and methods can be called — and reports at the TLParen branch
+      // below. Measured blocker: statecheck.mbt:76 `pair.0 == trigger`.
+      if self.peek() is TInt(_) {
+        let i = match self.peek() {
+          TInt(n) => n
+          _ => 0
+        }
+        let _ = self.bump()
+        e = { span: e.span, kind: @ast.ETupleField(e, i), }
+        continue
+      }
       let (f, fsp) = self.expect_name("field name")
       e = { span: e.span, kind: @ast.EField(e, f), }
       ignore(fsp)
@@ -875,9 +1297,34 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
     }
     if self.at(TLBracket) {
       let _ = self.bump()
-      let idx = self.parse_expr()
+      // `[a:b]` — a colon-slice is an index with a range: it reuses
+      // EIndex(base, ERange(a, b)), the one shape the lenses already walk
+      // and type, instead of a new node. An open END (`s[n:]`) yields
+      // EBigInt for the missing side — the opaque placeholder, not a
+      // value: const_eval must not fold a bound it never read. An open
+      // START (`[:n]`) is not in the corpus and reports honestly. A list
+      // literal cannot misfire here: its commas make `at(TColon)` false,
+      // and colons inside string elements are inside TStr tokens.
+      let first = self.parse_expr()
+      if self.at(TColon) {
+        let _ = self.bump()
+        let end : @ast.Expr = if self.at(TRBracket) {
+          { span: first.span, kind: @ast.EBigInt, }
+        } else {
+          self.parse_expr()
+        }
+        self.expect(TRBracket, "']'")
+        e = {
+          span: e.span,
+          kind: @ast.EIndex(e, {
+            span: first.span,
+            kind: @ast.ERange(first, end),
+          }),
+        }
+        continue
+      }
       self.expect(TRBracket, "']'")
-      e = { span: e.span, kind: @ast.EIndex(e, idx), }
+      e = { span: e.span, kind: @ast.EIndex(e, first), }
       continue
     }
     // `Name::Name` — a path reference, and usually a path CALL when a `(` follows.
@@ -908,6 +1355,20 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
       }
       let _ = self.bump()
       let _ = self.bump()
+      if self.at(TLBrace) {
+        // `Type::{ field: value, shorthand, }` — a struct literal. MoonBit
+        // marks the literal with `::`, and that mark is what makes the brace
+        // safe to consume HERE: nothing but a struct literal follows a
+        // `Type::` path, unlike a bare `{ ... }` block, which can appear in
+        // plain expression position. The brace's span is captured before
+        // the bump — it is where a non-literal block reports, at the brace
+        // the misparse began at.
+        let brace_sp = self.span()
+        let _ = self.bump()
+        let fields = self.parse_struct_fields(brace_sp)
+        e = { span: e.span, kind: @ast.EStruct(path, fields), }
+        continue
+      }
       let (m, _) = self.expect_name("name after '::'")
       e = { span: e.span, kind: @ast.EName(path + "::" + m), }
       continue
@@ -927,6 +1388,20 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
       }
       continue
     }
+    // `expr catch { pattern => handler }` — MoonBit's postfix error
+    // handling on a call. The `catch { ... }` group is consumed and
+    // discarded: the handler's body (patterns, `return`s) lives inside the
+    // braces and says nothing the lenses read, while the CALL — whose
+    // arguments ARE read — must survive, or every line shaped like
+    // `@process.collect_output(cmd) catch { _ => return "" }` (the measured
+    // Class E deaths at provenance.mbt:416 and jsoncli/main.mbt:252) dies
+    // at the `catch` keyword instead of yielding its call. `catch` is a
+    // keyword in MoonBit, so at_name here can never capture an identifier.
+    if self.at_name("catch") {
+      let _ = self.bump()
+      self.skip_braces()
+      continue
+    }
     break
   }
   e
@@ -938,6 +1413,39 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
 fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
   let args : Array[@ast.Expr] = []
   while !self.at(TRParen) && !self.at(TEOF) {
+    // A short lambda `param => body`, detected BEFORE the named-argument
+    // path below — whose `=` check would otherwise swallow the arrow, since
+    // `=>` is not a lexer token and arrives as TAssign + TGt, and
+    // `name = >...` is not an expression anyone writes. Both corpus body
+    // shapes are handled: a brace body (`frame => { ... }`) is skipped
+    // balanced; a bare expression body (`lens => lens.name()`) is skipped
+    // token-wise to the depth-0 comma or the call's own `)`, which is left
+    // for the comma handling below. The parameters are NOT parsed: a parsed
+    // param would bind in the ENCLOSING scope and report a phantom unused.
+    // The lambda yields an opaque EBigInt and a note; findings after it
+    // stay trustworthy because the parse stayed in step.
+    if self.at_arrow_lambda() {
+      let lsp = self.span()
+      let _ = self.bump()
+      let _ = self.bump()
+      let _ = self.bump()
+      if self.at(TLBrace) {
+        self.skip_braces()
+      } else {
+        self.skip_to_arg_boundary()
+      }
+      self.note_skip(
+        "short lambda is outside the analyzed subset; it was read but not analysed",
+        lsp,
+      )
+      args.push({ span: lsp, kind: @ast.EBigInt, })
+      if self.at(TComma) {
+        let _ = self.bump()
+      } else {
+        break
+      }
+      continue
+    }
     // A named argument `name = value`. The label is dropped: the call
     // lens does not consume labels, and the value expression is the
     // one that matters for binding-table and finding purposes. Before
@@ -973,10 +1481,146 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
 }
 
 ///|
+/// Is the current argument position the head of a short lambda
+/// `param => body`? The arrow is a TAssign immediately followed by TGt —
+/// the lexer has no `=>` token — and the head must be a name. `name = x`
+/// never matches (the token after `=` is the value, not `>`), and
+/// `a >= b` never matches either (`>=` is its own token).
+fn Parser::at_arrow_lambda(self : Parser) -> Bool {
+  self.peek_name() != "" &&
+  self.peek2() == TAssign &&
+  self.p + 2 < self.toks.length() &&
+  self.toks[self.p + 2] == TGt
+}
+
+///|
+/// Skip a short lambda's bare expression body up to, but not consuming, the
+/// depth-0 `,` that starts the next argument or the `)` that closes the
+/// call. Bracket depth keeps nested calls, blocks and lists inside the
+/// body; string literals are single tokens, so their contents cannot fool
+/// the depth count.
+fn Parser::skip_to_arg_boundary(self : Parser) -> Unit {
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if depth == 0 && (self.at(TComma) || self.at(TRParen)) {
+      return
+    }
+    if self.at(TLParen) || self.at(TLBrace) || self.at(TLBracket) {
+      depth += 1
+    } else if self.at(TRParen) || self.at(TRBrace) || self.at(TRBracket) {
+      depth -= 1
+    }
+    let _ = self.bump()
+  }
+}
+
+///|
+/// The fields of a struct literal, from the first field through the closing
+/// `}`. The opening brace is consumed by the caller — the `Type::` fold or
+/// the atom arm — and `open_sp` is that brace's span.
+///
+/// Only two field shapes exist in this subset: `name : value` and a
+/// bare-NAME shorthand, separated by commas (newlines tolerated), trailing
+/// comma fine. Anything else means the braces were never a struct literal —
+/// a real case is a plain block in expression position (`let x = { 1 }`),
+/// which arrives through the bare-brace atom arm. That is reported ONCE, at
+/// the opening brace: the misparse began there, and the brace's line is the
+/// boundary the scanner records. The rest of the braces is then skipped
+/// whole, so one strange token cannot cascade and the file stays readable
+/// past it.
+fn Parser::parse_struct_fields(
+  self : Parser,
+  open_sp : @core.Span,
+) -> Array[(String, @ast.Expr)] {
+  let fields : Array[(String, @ast.Expr)] = []
+  while !self.at(TRBrace) && !self.at(TEOF) {
+    self.skip_seps()
+    if self.at(TRBrace) || self.at(TEOF) {
+      break
+    }
+    // A field starts with a name. Anything else here — a number (`{ 1 }`),
+    // a punctuation token — is not a struct literal at all.
+    if self.peek_name() == "" {
+      self.err("expected a struct literal field here", open_sp)
+      self.skip_rest_of_block()
+      return fields
+    }
+    let (fname, fsp) = self.expect_name("field name")
+    // Shorthand: the bare name is both the field and its value, so the read
+    // still counts as a use of the name.
+    let mut value : @ast.Expr = { span: fsp, kind: @ast.EName(fname), }
+    if self.at(TColon) {
+      let _ = self.bump()
+      value = self.parse_expr()
+    }
+    fields.push((fname, value))
+    if self.at(TComma) {
+      let _ = self.bump()
+    } else if !self.at(TRBrace) &&
+      !self.at(TEOF) &&
+      !self.at(TNewline) &&
+      !self.at(TSemi) &&
+      self.peek_name() == "" {
+      // After a field, only a comma, a close brace, a separator, or the next
+      // field's name can follow. A plain block holding a call (`{ f(1) }`)
+      // lands here on the `(`.
+      self.err("expected a struct literal field here", open_sp)
+      self.skip_rest_of_block()
+      return fields
+    }
+  }
+  self.expect(TRBrace, "'}'")
+  fields
+}
+
+///|
+/// Skip the remainder of a `{ ... }` block whose opening brace is already
+/// consumed: read to the token that closes those braces. Used to recover
+/// from content inside braces that is not what the surrounding parse
+/// expected, so the rest of the file stays readable.
+fn Parser::skip_rest_of_block(self : Parser) -> Unit {
+  let mut depth = 1
+  while !self.at(TEOF) && depth > 0 {
+    if self.at(TLBrace) {
+      depth += 1
+    } else if self.at(TRBrace) {
+      depth -= 1
+    }
+    let _ = self.bump()
+  }
+}
+
+///|
 /// True when the CURRENT token is `t` and the one after it is `u`. Used to
 /// recognise `::`, which the lexer emits as two `TColon` tokens rather than one.
 fn Parser::at_next(self : Parser, t : @lexer.Tok) -> Bool {
   self.p + 1 < self.toks.length() && self.toks[self.p + 1] == t
+}
+
+///|
+/// Whether the `{` at the current token opens a STRUCT LITERAL rather than a
+/// block — the one brace ambiguity MoonBit carries at statement/tail
+/// position (`fn pos(...) -> Position { { line, col, } }`). The grammar is
+/// resolved by content: a block's first statement never reaches a bare
+/// `NAME :` or ends at a bare `NAME ,`, while a literal's first field is
+/// exactly one of those (`name: value` or a shorthand `name,`), possibly one
+/// or two newlines deeper when the brace stands alone on its own line.
+/// Every other opening — `let`, a keyword, a call, a lone expression —
+/// stays a block. Measured: without this the analyzer's OWN core, walk,
+/// parser, jsoncli and mermaid_test all died at the closing brace line of
+/// their tail literals.
+fn Parser::at_struct_literal(self : Parser) -> Bool {
+  let mut i = self.p + 1
+  while i < self.toks.length() && self.toks[i] is TNewline {
+    i += 1
+  }
+  if i + 1 >= self.toks.length() {
+    return false
+  }
+  match (self.toks[i], self.toks[i + 1]) {
+    (TName(_), TColon) | (TName(_), TComma) => true
+    _ => false
+  }
 }
 
 ///|
@@ -1080,7 +1724,7 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
       //
       // The block yields statements, not an expression. The last one, when it
       // is an expression, is the value.
-      let stmts = self.parse_block()
+      let (stmts, _) = self.parse_block()
       let exprs : Array[@ast.Expr] = []
       for st in stmts {
         match st.kind {
@@ -1123,11 +1767,12 @@ fn Parser::peek2(self : Parser) -> @lexer.Tok {
 
 ///|
 /// Is the token after the current one a name that can continue a
-/// destructuring pattern? This is only consulted immediately after a pattern
-/// has been read, where `for` would mean something else entirely.
+/// destructuring pattern? Consulted immediately after a pattern has been
+/// read, where `for` means the pattern list is over and `in` means a
+/// malformed `for k, in` — either way the comma is not another binder.
 fn Parser::peek2_is_pattern_name(self : Parser) -> Bool {
   match self.peek2() {
-    TName(n) => n != "for"
+    TName(n) => n != "for" && n != "in"
     _ => false
   }
 }
@@ -1179,7 +1824,7 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     TInt(i) => { span: sp, kind: @ast.EInt(i), }
     TBigInt => { span: sp, kind: @ast.EBigInt, }
     TFloat(f) => { span: sp, kind: @ast.EFloat(f), }
-    TStr(s) => { span: sp, kind: @ast.EStr(s), }
+    TStr(s, names) => { span: sp, kind: @ast.EStr(s, names), }
     TName("true") => { span: sp, kind: @ast.EBool(true), }
     TName("false") => { span: sp, kind: @ast.EBool(false), }
     // `if` in expression position: `let d = if a { x } else { y }`. Measured as
@@ -1189,29 +1834,151 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     // grounds as `test` blocks and `const`: the AST has no conditional node,
     // adding one would mean teaching all three lenses about it, and a value we
     // cannot model is exactly the case that should not cascade. The expression
-    // yields 0 and a notice; the rest of the line stays readable.
+    // yields EBigInt — the opaque placeholder, not a value — and a notice;
+    // the rest of the line stays readable. (It used to yield EInt(0), which
+    // the type lens read as a real int and turned into an argument-type
+    // mismatch on correct code — provenance.mbt:237 was the measured case.)
     //
     // This arm must sit ABOVE the `TName(n)` catch-all below, which matches
     // every TName including "if".
     TName("if") => {
       let _ = self.parse_expr()
-      let _ = self.parse_block()
-      self.skip_seps()
-      if self.at_name("else") {
-        let _ = self.bump()
-        let _ = self.parse_block()
+      let (_, _) = self.parse_block()
+      // The chain is LOOPED, not read once: `if a { x } else if b { y }`
+      // arrives here as `else` then `if`, and a single `else { block }` read
+      // stops at the `if` and cascades.
+      let mut going = true
+      while going {
+        going = false
+        self.skip_seps()
+        if self.at_name("else") {
+          let _ = self.bump()
+          if self.at_name("if") {
+            let _ = self.bump()
+            let _ = self.parse_expr()
+            let (_, _) = self.parse_block()
+            going = true
+          } else {
+            let (_, _) = self.parse_block()
+          }
+        }
       }
       self.note_skip(
         "if expression is outside the analyzed subset; it was read but not analysed",
         sp,
       )
-      { span: sp, kind: @ast.EInt(0), }
+      { span: sp, kind: @ast.EBigInt, }
+    }
+    TName("match") => {
+      // A `match` expression, statement or value position alike. The subset
+      // has no pattern matching and no node for the arms, so the arms are
+      // skipped whole — balanced braces, whatever they hold. The SCRUTINEE
+      // is read and yielded: it is an ordinary expression, and dropping it
+      // would drop its reads — the same trade the comprehension's `sources`
+      // made.
+      let scrutinee = self.parse_expr()
+      self.skip_braces()
+      self.note_skip(
+        "match expression is outside the analyzed subset; it was read but not analysed",
+        sp,
+      )
+      scrutinee
+    }
+    TName("fn") => {
+      // An anonymous function literal in expression position:
+      // `arr.iter(fn(x) { x + 1 })`. The subset has no closure node, so the
+      // literal is read PAST — generic brackets, parameters via the shared
+      // parameter parser, body via a block parse — and then discarded,
+      // yielding an opaque node. Reading the body and dropping it is not a
+      // waste: it keeps the token stream in step, so what FOLLOWS the
+      // literal is analysed. Statement-level named functions take the
+      // SLocalFunc path in `parse_block` and never reach this arm.
+      if self.at(TLBracket) {
+        self.skip_indexed()
+      }
+      let _ = self.parse_param_list()
+      let (_, _) = self.parse_block()
+      self.note_skip(
+        "anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed",
+        sp,
+      )
+      { span: sp, kind: @ast.EBigInt, }
+    }
+    TName("try") => {
+      // A `try` expression. The subset has no error-handling node: the body
+      // block and every `catch`/`finally` arm are skipped WHOLE, not read —
+      // a handler body would introduce pattern bindings the lenses cannot
+      // attribute, and reading it without those bindings manufactures
+      // undefined names. Consuming the group keeps the token stream in step
+      // for whatever follows it.
+      if self.at(TQuestion) || self.at(TBang) {
+        // `try? e` / `try! e` carry no handler block: the operand is an
+        // ordinary expression whose reads are real, and only the wrapper is
+        // skipped.
+        let _ = self.bump()
+        let _ = self.parse_expr()
+      } else {
+        if self.at(TLBrace) {
+          self.skip_braces()
+        } else {
+          // A `try` without its body block — input valid MoonBit never
+          // produces, so the defensive scan only runs on text `moon check`
+          // itself would reject.
+          self.skip_to_catch()
+        }
+        while self.at_name("catch") {
+          let _ = self.bump()
+          self.skip_pattern()
+          self.skip_braces()
+        }
+        while self.at_name("finally") {
+          let _ = self.bump()
+          self.skip_braces()
+        }
+      }
+      self.note_skip(
+        "try expression is outside the analyzed subset; it was read but not analysed",
+        sp,
+      )
+      { span: sp, kind: @ast.EBigInt, }
     }
     TName(n) => { span: sp, kind: @ast.EName(n), }
-    TLParen => {
-      let e = self.parse_expr()
-      self.expect(TRParen, "')'")
-      e
+    TLParen =>
+      // `()` is the unit value and `(a, b)` a tuple; a parenthesized
+      // GROUPING `(e)` is not a tuple and never becomes one — it yields `e`
+      // itself, so precedence and spans stay honest. The comma is what makes
+      // a tuple: one element with a trailing comma is still a tuple.
+      if self.at(TRParen) {
+        let _ = self.bump()
+        { span: sp, kind: @ast.ETuple([]), }
+      } else {
+        let e = self.parse_expr()
+        if self.at(TComma) {
+          let elems : Array[@ast.Expr] = [e]
+          while self.at(TComma) {
+            let _ = self.bump()
+            if self.at(TRParen) {
+              break
+            }
+            elems.push(self.parse_expr())
+          }
+          self.expect(TRParen, "')'")
+          { span: sp, kind: @ast.ETuple(elems), }
+        } else {
+          self.expect(TRParen, "')'")
+          e
+        }
+      }
+    TLBrace => {
+      // A bare `{ ... }` in expression position — a struct literal without
+      // the `Type::` prefix, in a context where the type is already known.
+      // The field grammar is the same as the prefixed form; the path is ""
+      // because there is none. This arm is also what a plain block in
+      // expression position (`let x = { 1 }`) reaches: the field grammar
+      // rejects the content and reports at the brace, which is the boundary
+      // the scanner trusts.
+      let fields = self.parse_struct_fields(sp)
+      { span: sp, kind: @ast.EStruct("", fields), }
     }
     TLBracket =>
       if self.at_name("for") {

@@ -128,10 +128,24 @@ priv struct Walker {
   partial : Bool
   findings : Array[@report.Report]
   vst : Array[@core.Frame]
+  /// The file under analysis. A local function pushes its own VST frame from
+  /// inside the walk, where `walk_module`'s `file` parameter is out of reach;
+  /// carrying it here keeps that frame honest instead of dropping provenance.
+  file : String
+  /// Lines the frontend deliberately did NOT analyse, taken from the skip
+  /// markers the parser emitted. A frame containing one of these has a hole
+  /// in it, so `audit_frame`'s whole-function conclusions cannot be drawn
+  /// from it — see `audit_suppressed`.
+  unread : Array[@core.Span]
 }
 
 ///|
-fn new_walker(extern_iface : @core.IfaceSymTab, partial : Bool) -> Walker {
+fn new_walker(
+  extern_iface : @core.IfaceSymTab,
+  partial : Bool,
+  file : String,
+  unread : Array[@core.Span],
+) -> Walker {
   Walker::{
     frames: [Map([])],
     orders: [[]],
@@ -140,6 +154,8 @@ fn new_walker(extern_iface : @core.IfaceSymTab, partial : Bool) -> Walker {
     partial,
     findings: [],
     vst: [],
+    file,
+    unread,
   }
 }
 
@@ -235,6 +251,11 @@ fn Walker::resolve(self : Walker, name : String, sp : @core.Span) -> Unit {
   }
   if !hit &&
     !self.partial &&
+    // An `@`-prefixed name is an import alias, not a binding in this file
+    // — the same reason a method-call receiver is skipped when
+    // `is_qualifier()`. `@core` reaching resolve through a field-chain
+    // base is correct code reporting as undefined.
+    !name.has_prefix("@") &&
     !self.builtins.contains(name) &&
     !self.extern_iface.has_type(name) &&
     !self.extern_iface.has_value(name) {
@@ -258,6 +279,46 @@ fn Walker::assign_to(self : Walker, name : String) -> Unit {
 }
 
 ///|
+/// Does a function whose extent is `sp` contain a region the frontend chose
+/// not to analyse?
+///
+/// This is the second half of `truncated_fn`'s argument, and it exists because
+/// a skip is not a read failure. A parse failure moves `first_error_line` and
+/// names the one function it could have cut; a `match`, a `try`, or a fn
+/// literal is a DECLARED scope limit — it moves no boundary, it leaves the
+/// rest of the file readable, and it cost the file nothing on the coverage
+/// counter. But it still leaves a hole inside whatever function encloses it,
+/// and the three families `audit_frame` decides are conclusions about a whole
+/// function:
+///
+///    fn binop(op : Op) -> Int {
+///      let neg = -1
+///      match op { Add => 1 _ => neg }   <- arms never read
+///      neg
+///    }
+///
+/// The `match` arms are where a `let` binding of theirs would live. A binding
+/// only ever assigned inside them looks dead, and the analyzer says so — the
+/// classic finding the frame audit exists to make, drawn from a frame with a
+/// hole in it.
+///
+/// Overlap is by LINE range against the function's full extent, which is why
+/// the 5th field of `SFunc` / `SLocalFunc` is the closing brace and not the
+/// header. A skip on a line outside every function (a top-level `test` block,
+/// a struct declaration) suppresses nothing here, and a `partial` walk is
+/// unaffected — the two are independent guards on independent facts.
+
+///|
+fn Walker::audit_suppressed(self : Walker, sp : @core.Span) -> Bool {
+  for t in self.unread {
+    if t.start.line >= sp.start.line && t.start.line <= sp.end.line {
+      return true
+    }
+  }
+  false
+}
+
+///|
 /// Audit a function frame on exit (usage accounting for locals).
 ///
 /// Every finding here is function-scoped, so the caller skips this entirely
@@ -268,6 +329,10 @@ fn Walker::audit_frame(self : Walker) -> Unit {
   for n in self.orders[fi] {
     match self.frames[fi].get(n) {
       Some(e) =>
+        // The bare `_` is exempt from both usage findings: it exists to be
+        // discarded (`for k, _ in`, `let _ = f(x)`), and warning on the
+        // idiomatic spelling is the analyzer contradicting the language's
+        // own convention. A `_`-PREFIXED name is still reported.
         if e.param {
           if e.assigns > 0 {
             self.findings.push(@report.Report::{
@@ -278,7 +343,7 @@ fn Walker::audit_frame(self : Walker) -> Unit {
               vst: @core.snapshot_vst(self.vst),
             })
           }
-          if e.varuses == 0 {
+          if e.varuses == 0 && n != "_" {
             self.findings.push(@report.Report::{
               family: @core.FUnusedParam,
               lenses: [@core.LStructural],
@@ -287,7 +352,7 @@ fn Walker::audit_frame(self : Walker) -> Unit {
               vst: @core.snapshot_vst(self.vst),
             })
           }
-        } else if e.varuses == 0 {
+        } else if e.varuses == 0 && n != "_" {
           self.findings.push(@report.Report::{
             family: @core.FUnusedLocal,
             lenses: [@core.LStructural],
@@ -380,7 +445,57 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(body)
       self.pop_frame()
     }
-    EInt(_) | EFloat(_) | EBool(_) | EStr(_) => ()
+    EStruct(_, fields) =>
+      // The PATH is a type name, not a binding: `Infer::{ ... }` opens the
+      // definition of `ty_of` in this analyzer's own source, and resolving
+      // the path would report the analyzer on itself. Only the field VALUES
+      // are evaluated. A shorthand field is stored as (name, EName(name)) —
+      // the value is a real expression, so the shorthand still counts as a
+      // use of the name.
+      for f in fields {
+        let (_, v) = f
+        self.walk_expr(v)
+      }
+    ETuple(elems) =>
+      for x in elems {
+        self.walk_expr(x)
+      }
+    ERange(a, b) => {
+      self.walk_expr(a)
+      self.walk_expr(b)
+    }
+    // `pair.0`: only the base is read; the position is a column, not a
+    // variable — the same rule as EField's name above.
+    ETupleField(base, _) => self.walk_expr(base)
+    // An `is` test: the base is read, and a pattern binding binds in the
+    // CURRENT frame for the uses that follow (`p.peek() is TName(tag) &&
+    // tag.has_prefix("@")` resolves `tag` on the rhs because EBin walks
+    // lhs before rhs, and SIf walks its condition before its branches).
+    // A use BEFORE the test is the accepted known limitation: the frame is
+    // flat, not flow-scoped.
+    EIs(base, binding) => {
+      self.walk_expr(base)
+      if binding != "" {
+        self.bind({ name: binding, tyann: "", param: false, decl_span: e.span, })
+      }
+    }
+    // A string's INTERPOLATED names are real reads, and they are resolved here
+    // rather than ignored. `println("k=\{k}")` is the only mention of `k` in
+    // the function, and treating the literal as opaque made every such name
+    // look unread — the false positive this arm's second field exists to
+    // remove, measured on this analyzer's own source (all 8 remaining
+    // self-scan findings).
+    //
+    // The other direction matters just as much: resolving them means a name
+    // that does NOT exist inside an interpolation is reported, where before
+    // it was invisible. The span is the whole literal because the lexer
+    // records names, not their columns — and a finding pinned to the string
+    // that contains the reference is honest about where the reader can see it.
+    EStr(_, names) =>
+      for n in names {
+        self.resolve(n, e.span)
+      }
+    EInt(_) | EFloat(_) | EBool(_) => ()
   }
 }
 
@@ -388,34 +503,36 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
 fn Walker::walk_target(self : Walker, target : @ast.Expr) -> Unit {
   match target.kind {
     EName(n) => self.assign_to(n)
-    // A field or index write is peeled to the base for ASSIGNMENT tracking,
-    // but the base is still READ to reach it: `self.inner = 1` has to
-    // evaluate `self` to find where the field lives. Counting only the
-    // assignment made a base that is never read anywhere else look unused,
-    // and the analyzer then said two things that cannot both be true about
-    // the same parameter —
+    // Writing THROUGH a base is NOT rebinding that base — it is a read.
+    // MoonBit structs are references, so `self.inner = 1` mutates the object
+    // the parameter points at; the parameter still holds exactly what the
+    // caller passed. Counting it as an assignment produced two false
+    // positives per write-through:
+    //
     //     parameter 'self' changed by assignment (ParamChanged)
     //     parameter 'self' may not be used (UnusedParam)
-    // Measured on moonbitlang/async: `semaphore.mbt` reports that pair for
-    // all three of its `with fn set_index(self, value)` style impls. The
-    // same base written where the right-hand side also reads it
-    // (`self.inner = self.other + 1`) already produced only the
-    // ParamChanged, which is the intended shape.
-    EField(base, _) => {
-      match base.assigned_base() {
-        Some(b) => self.assign_to(b)
-        None => ()
-      }
-      self.walk_expr(base)
-    }
+    //
+    // The first is wrong by construction ("no longer holds the value the
+    // caller passed" — it does), and the second was the count of an
+    // assignment made before the base was also walked as a read. Measured on
+    // moonbitlang/async: `semaphore.mbt` reports the pair for all three of its
+    // `with fn set_index(self, value)` impls.
+    //
+    // What survives is the READ, and it is load-bearing: `self.pos += 1` in a
+    // state machine is written this way everywhere, and the base must count
+    // as used or every such parameter reports unused.
+    //
+    // The companion consequence: a parameter that is ONLY ever written
+    // through is no longer reported at all. That is the honest outcome — the
+    // signature is load-bearing for the call, the analyzer cannot see
+    // through the reference, and silence beats a claim it cannot support.
+    EField(base, _) => self.walk_expr(base)
     EIndex(base, idx) => {
-      match base.assigned_base() {
-        Some(b) => self.assign_to(b)
-        None => ()
-      }
       self.walk_expr(base)
       self.walk_expr(idx)
     }
+    // `pair.0 = v`: the position is a column, not a variable — same rule.
+    ETupleField(base, _) => self.walk_expr(base)
     _ => ()
   }
 }
@@ -466,6 +583,42 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
       }
     SBreak | SContinue => ()
     SFunc(_, _, _, _, _) => ()
+    SLetDestruct(_, init) => self.walk_expr(init)
+    // A local function owns a scope exactly like a top-level one. It is
+    // walked HERE, inside the enclosing walk, because pass 3 of walk_module
+    // only knows the top-level list. Its own name is NOT bound in the inner
+    // frame on purpose: a self-call must resolve against the ENCLOSING
+    // binding, or a recursive local whose only caller is outside itself
+    // would be reported unused by its own frame audit.
+    SLocalFunc(name, params, _, body, sp) => {
+      let lf : FnInfo = { name, params, retann: "", body, span: sp, }
+      let bs = collect_fn_bindings(lf)
+      self.push_frame()
+      for b in bs {
+        self.bind(b)
+      }
+      self.vst.push({ func: name, file: self.file, line: sp.start.line, })
+      for st in body {
+        self.walk_stmt(st)
+      }
+      // Same guard as pass 3, and for the same reason: `sp` here is the local
+      // function's whole extent, so a `match` inside ITS body suppresses its
+      // frame audit the same way. A local function is not reachable through
+      // `fns` and so was never covered by `truncated_fn` either.
+      if !self.audit_suppressed(sp) {
+        self.audit_frame()
+      }
+      let _ = self.vst.pop()
+      self.pop_frame()
+    }
+    // A bare block is a plain statement list in the CURRENT frame — no new
+    // scope, the same treatment SIf bodies get. The binding analysis is not
+    // flow-scoped anywhere else either, and a new frame here would make
+    // bindings declared in the block unreadable to the statements after it.
+    SBlock(body) =>
+      for st in body {
+        self.walk_stmt(st)
+      }
   }
 }
 
@@ -572,7 +725,21 @@ fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
             None => ()
           }
         }
+        SLetDestruct(names, _) =>
+          for n in names {
+            add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
+          }
+        // A local function's OWN name is a binding of the ENCLOSING scope —
+        // its calls there must resolve, and a self-call resolves through it
+        // too (the inner frame deliberately does not hold the name). Its
+        // BODY is not collected here: it owns a frame of its own, walked at
+        // the SLocalFunc arm of walk_stmt.
+        SLocalFunc(n, _, _, _, _) =>
+          add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
         SWhile(_, body) => scan(bs, body)
+        // A bare block is a plain statement list: its bindings join the
+        // enclosing frame, same as an `if` body's.
+        SBlock(body) => scan(bs, body)
         _ => ()
       }
     }
@@ -603,51 +770,97 @@ fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
 /// writing one reads as an unbound name, which is the analyzer's blindness
 /// showing up as a defect in the code. Only the NAMES are collected — no
 /// shape, no arity, nothing inferred from the payload.
+///
+/// `unread` are the spans of regions the frontend deliberately did not
+/// analyse — the skip markers the parser recorded for a `match`, a `try`, an
+/// unmodelled declaration. They are a SECOND trust boundary, independent of
+/// `trusted_line`: a skip costs no coverage and moves no error line, but it
+/// still leaves a hole in whichever function encloses it, so the frame audit
+/// is skipped for that function. See `Walker::audit_suppressed`.
 pub fn walk_module(
   m : @ast.Module,
   file : String,
   extern_iface : @core.IfaceSymTab,
   trusted_line : Int,
   enum_ctors : Array[String],
+  unread : Array[@core.Span],
 ) -> WalkResult {
-  let w = new_walker(extern_iface, trusted_line > 0)
+  let w = new_walker(extern_iface, trusted_line > 0, file, unread)
   let fns : Array[FnInfo] = []
   let module_bindings : Array[Binding] = []
   let fn_bindings : Map[String, Array[Binding]] = Map([])
   // pass 1: module bindings + function registration (forward references OK)
-  for s in m.body {
-    match s.kind {
-      SLet(n, ann, _) =>
-        if !module_bindings.contains(name_binding(n)) {
-          module_bindings.push({
-            name: n,
-            tyann: ann,
-            param: false,
-            decl_span: s.span,
-          })
-        }
-      SAssign(target, _) =>
-        match target.assigned_base() {
-          Some(b) =>
-            if !module_bindings.contains(name_binding(b)) {
+  fn collect_top(stmts : Array[@ast.Stmt]) -> Unit {
+    for s in stmts {
+      match s.kind {
+        SLet(n, ann, _) =>
+          if !module_bindings.contains(name_binding(n)) {
+            module_bindings.push({
+              name: n,
+              tyann: ann,
+              param: false,
+              decl_span: s.span,
+            })
+          }
+        SAssign(target, _) =>
+          match target.assigned_base() {
+            Some(b) =>
+              if !module_bindings.contains(name_binding(b)) {
+                module_bindings.push({
+                  name: b,
+                  tyann: "",
+                  param: false,
+                  decl_span: target.span,
+                })
+              }
+            None => ()
+          }
+        SLetDestruct(names, _) =>
+          for n in names {
+            if !module_bindings.contains(name_binding(n)) {
               module_bindings.push({
-                name: b,
+                name: n,
                 tyann: "",
                 param: false,
-                decl_span: target.span,
+                decl_span: s.span,
               })
             }
-          None => ()
+          }
+        SFunc(name, params, retann, body, sp) => {
+          fns.push({ name, params, retann, body, span: sp, })
+          if !module_bindings.contains(name_binding(name)) {
+            module_bindings.push({
+              name,
+              tyann: "",
+              param: false,
+              decl_span: sp,
+            })
+          }
         }
-      SFunc(name, params, retann, body, sp) => {
-        fns.push({ name, params, retann, body, span: sp, })
-        if !module_bindings.contains(name_binding(name)) {
-          module_bindings.push({ name, tyann: "", param: false, decl_span: sp, })
+        // A top-level `for` executes at module level: its binder — the
+        // desugared `$pair` head among them — and every binding inside its
+        // body live in the module frame, so pass 1 must descend. Without
+        // the descent, the destructuring let of a multi-binder head reads
+        // `$pair` and the analyzer reports its own desugar as an undefined
+        // name.
+        SFor(v, vsp, _, body) => {
+          if !module_bindings.contains(name_binding(v)) {
+            module_bindings.push({
+              name: v,
+              tyann: "",
+              param: false,
+              decl_span: vsp,
+            })
+          }
+          collect_top(body)
         }
+        SBlock(body) => collect_top(body)
+        _ => ()
       }
-      _ => ()
     }
   }
+
+  collect_top(m.body)
   for b in module_bindings {
     w.bind(b)
   }
@@ -685,7 +898,7 @@ pub fn walk_module(
     for st in f.body {
       w.walk_stmt(st)
     }
-    if i != suspect {
+    if i != suspect && !w.audit_suppressed(f.span) {
       w.audit_frame()
     }
     let _ = w.vst.pop()

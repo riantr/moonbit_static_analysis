@@ -359,12 +359,14 @@ test "a deliberate subset skip does not cost the file its coverage" {
 /// beside it -- and the reason names the read failure rather than the skip,
 /// which is why the dominant reason is re-picked after the subtraction.
 ///
-/// `try { ... }` is the sample. It was `a : FixedArray[Double]` until the
-/// indexed-type work made annotations parse -- a test that rots silently when
-/// the subset grows under it, so the sample is stated rather than left implicit.
+/// The sample is an unterminated string. It was `try { ... }` until the try
+/// guard made that a deliberate skip, and `a : FixedArray[Double]` before
+/// that, when the indexed-type work made annotations parse -- a test that
+/// rots silently when the subset grows under it, so the sample is stated
+/// rather than left implicit.
 test "a real parse failure still counts next to a skip" {
   let r = @pipeline.run(
-    "struct P {\n  x : int\n}\nfn f() -> int {\n  try {\n    1\n  }\n}\n",
+    "struct P {\n  x : int\n}\nfn f() -> int {\n  let s = \"unterminated\n}\n",
     "x.mbt",
     empty_iface(),
   )
@@ -386,12 +388,12 @@ test "first_error_line marks the read failure, not the skip" {
   )
   assert_eq(clean.first_error_line, 0)
   let broken = @pipeline.run(
-    "fn f() -> int {\n  try {\n    1\n  }\n}\n",
+    "fn f() -> int {\n  let s = \"unterminated\n  1\n}\n",
     "x.mbt",
     empty_iface(),
   )
   assert_true(broken.n_parse >= 1)
-  assert_eq(broken.first_error_line, 2) // the line carrying `try`
+  assert_eq(broken.first_error_line, 2) // the line carrying the unterminated string
 }
 
 ///|
@@ -399,11 +401,55 @@ test "first_error_line marks the read failure, not the skip" {
 /// earliest genuine failure and nothing else.
 test "the boundary is the earliest real failure" {
   let r = @pipeline.run(
-    "fn f() -> int {\n  try {\n    1\n  }\n}\ntest \"t\" {\n  1\n}\n",
+    "fn f() -> int {\n  let s = 1 +\n}\ntest \"t\" {\n  1\n}\n",
     "x.mbt",
     empty_iface(),
   )
-  assert_eq(r.first_error_line, 2) // the `try` line, not the later skip
+  assert_eq(r.first_error_line, 3) // `+` suppresses the newline (lexer line continuation), so the RHS reads the `}` on line 3
+}
+
+///|
+/// The `try` guard is a deliberate exclusion, not a read failure: the group is
+/// consumed whole and the file keeps reading afterwards. The handler's pattern
+/// binding (`e`) lives inside the skipped region — the walk never sees it and
+/// must not be asked to resolve it either way.
+test "a try group is skipped whole and stays in step" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  try {\n    g()\n  } catch e {\n    e\n  }\n  1\n}\n",
+    "x.mbt",
+    empty_iface(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// `try?` / `try!` carry no handler block: the operand is read so the token
+/// stream stays in step, only the wrapper is skipped — the boundary must not
+/// move for it.
+test "try? reads past its operand without a boundary" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  try? risky()\n  1\n}\n",
+    "x.mbt",
+    empty_iface(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// The defensive scan for a malformed `try` whose body block is missing:
+/// valid MoonBit never produces it, but a truncated edit can, and "stays in
+/// step" is the whole contract of the guard — the file must keep reading
+/// past the group.
+test "a malformed try without a body block still stays in step" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  try 1 catch e {\n    2\n  }\n  3\n}\n",
+    "x.mbt",
+    empty_iface(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
 }
 
 // --- cross-file type symbol resolution ------------------------------------
@@ -632,59 +678,106 @@ test "the non-callable check survives the real annotation spellings" {
 }
 
 ///|
-/// Writing a field or an element of a parameter is BOTH an assignment and a
-/// read — `self.inner = 1` has to evaluate `self` to find where the field
-/// lives. Counting only the assignment made a base that is written and never
-/// otherwise read look unused, and the analyzer then said two things that
-/// cannot both be true about the same parameter. Measured on
-/// moonbitlang/async: `semaphore.mbt` reports the pair for all three of its
-/// `with fn set_index(self, value)` impls.
-test "a field write to a parameter does not also report it unused" {
+/// Writing a field of a parameter is a READ of that parameter, not a
+/// rebinding of it. MoonBit structs are references: `self.inner = 1` mutates
+/// the object the parameter points at, and the parameter still holds exactly
+/// what the caller passed. So this reports NOTHING.
+///
+/// It used to report two things that cannot both be true about the same
+/// parameter — "changed by assignment" AND "may not be used" — because the
+/// base was peeled for assignment counting and only then walked as a read.
+/// Measured on moonbitlang/async: `semaphore.mbt` produced that pair for all
+/// three of its `with fn set_index(self, value)` impls.
+test "a field write to a parameter is a read, not a rebinding" {
   let src = "fn f(self : Ref[Int]) -> Unit {\n  self.inner = 1\n}\n"
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
-  let mut unused = 0
-  for rep in r.reports {
-    if rep.family.name() == "UnusedParam" {
-      unused += 1
-    }
-  }
-  assert_eq(unused, 0)
-  // ...while the assignment itself is still reported, which is the intended
-  // shape: exactly one finding, not two contradictory ones
-  let mut changed = 0
-  for rep in r.reports {
-    if rep.family.name() == "ParamChanged" {
-      changed += 1
-    }
-  }
-  assert_eq(changed, 1)
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(count_family(r, "ParamChanged"), 0)
 }
 
 ///|
-/// The same for an index write, and the negative control that the fix is
-/// about a missing read rather than about parameters in general: a parameter
-/// that is genuinely never touched still reports as unused.
-test "an index write counts a read, and a truly unused parameter still reports" {
-  let src = "fn f(v : Array[Int]) -> Unit {\n  v[0] = 1\n}\n"
-  let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
-  let mut unused = 0
-  for rep in r.reports {
-    if rep.family.name() == "UnusedParam" {
-      unused += 1
-    }
-  }
-  assert_eq(unused, 0)
-  let src2 = "fn g(w : Int) -> Unit {\n  let _x = 1\n}\n"
-  let r2 = @pipeline.run(src2, "x.mbt", @core.IfaceSymTab::empty())
-  let mut unused2 = 0
-  for rep in r2.reports {
-    if rep.family.name() == "UnusedParam" {
-      unused2 += 1
-    }
-  }
-  assert_true(unused2 > 0)
+/// The negative control, and it is the load-bearing half: a BARE-name
+/// assignment still rebinds, so this cannot have become "never report a
+/// changed parameter". `p = 1` renames what `p` refers to for every later
+/// read, which is a real defect and is still reported.
+///
+/// The unused-param finding alongside it is expected and is not the subject of
+/// this assertion: `p` is written and never read, so the frame audit says so
+/// independently. The two families are counted separately on purpose.
+
+///|
+test "a bare-name assignment to a parameter is still a rebinding" {
+  let r = @pipeline.run(
+    "fn f(p : Int) -> Unit {\n  p = 1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "ParamChanged"), 1)
 }
 
+///|
+/// The same for an index write — `v[0] = 1` mutates through the reference, so
+/// `v` is read and never rebound — plus the tuple-field form, which is a third
+/// edited branch of `walk_target` and is what makes this test non-vacuous for
+/// the third case rather than re-covering the first.
+///
+/// The negative control is unchanged in spirit: a parameter genuinely never
+/// touched still reports as unused, so the fix is about a missing read, not
+/// about parameters in general.
+test "index and tuple-field writes count a read; a truly unused parameter still reports" {
+  let r = @pipeline.run(
+    "fn f(v : Array[Int]) -> Unit {\n  v[0] = 1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(count_family(r, "ParamChanged"), 0)
+  let t = @pipeline.run(
+    "fn h(pair : Pair) -> Unit {\n  pair.0 = 1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(t.first_error_line, 0)
+  assert_eq(count_family(t, "UnusedParam"), 0)
+  assert_eq(count_family(t, "ParamChanged"), 0)
+  let src2 = "fn g(w : Int) -> Unit {\n  let _x = 1\n}\n"
+  let r2 = @pipeline.run(src2, "x.mbt", @core.IfaceSymTab::empty())
+  assert_true(count_family(r2, "UnusedParam") > 0)
+}
+
+///|
+/// The `_` binding is a discard, not a name: it cannot be "assigned but may
+/// not be used" as a local or "may not be used" as a parameter. The negative
+/// controls (a truly dead parameter `q`, a truly unread local `u`) keep the
+/// exemption from silently becoming "never warn".
+test "a discard binding is never reported unused" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  let _ = 1\n  2\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+  let p = @pipeline.run(
+    "fn g(_: Int) -> Int {\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(p.first_error_line, 0)
+  assert_eq(count_family(p, "UnusedParam"), 0)
+  let n = @pipeline.run(
+    "fn h(q : Int) -> Int {\n  1\n}\nfn k() -> Int {\n  let u = 1\n  2\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(n, "UnusedParam"), 1)
+  assert_eq(count_family(n, "UnusedLocal"), 1)
+}
+
+///|
 // --- the trust boundary is not positional for function-scoped families ------
 //
 // UnusedLocal / UnusedParam / ParamChanged are conclusions about a whole
@@ -733,7 +826,7 @@ fn count_family_in(
 /// A binding read AFTER the point where the parse gave up was read; the walk
 /// never saw the read, so "assigned but may not be used" would be a lie.
 test "a truncated function yields no function-scoped finding" {
-  let src = "fn probe(n : Int) -> Int {\n  let used_later = n + 1\n  try {\n    1\n  }\n  used_later\n}\n"
+  let src = "fn probe(n : Int) -> Int {\n  let used_later = n + 1\n  let s = \"unterminated\n  used_later\n}\n"
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
   // The read failure is real and is where we expect it, so this test is not
   // passing because the file happened to parse.
@@ -748,7 +841,7 @@ test "a truncated function yields no function-scoped finding" {
 /// test above pass too, and would throw away every real finding in a file
 /// that happens to have an unrelated syntax error later on.
 test "a complete function before the boundary still reports an unused local" {
-  let src = "fn dead(x : Int) -> Int {\n  let never_read = 1\n  x\n}\nfn broken(y : Int) -> Int {\n  try {\n    1\n  }\n  y\n}\n"
+  let src = "fn dead(x : Int) -> Int {\n  let never_read = 1\n  x\n}\nfn broken(y : Int) -> Int {\n  let s = \"unterminated\n  y\n}\n"
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
   assert_eq(r.first_error_line, 6)
   assert_eq(count_family(r, "UnusedLocal"), 1)
@@ -760,11 +853,11 @@ test "a complete function before the boundary still reports an unused local" {
 /// cut was never read. A forward reference to one of those is ordinary code,
 /// and it was reported as an unbound name:
 ///
-///    fn render() { pick_files(v, max) }   <- before the cut
-///    fn broken() { try { 1 } }            <- where the parse gives up
-///    fn pick_files(v, max) { }            <- in the unread tail
+///    fn render() { pick_files(v, max) }      <- before the cut
+///    fn broken() { let s = "unterminated }   <- where the parse gives up
+///    fn pick_files(v, max) { }               <- inside the unterminated string, never read
 test "a forward reference into the unread tail is not an undefined name" {
-  let src = "fn render() -> Int {\n  pick_files(1, 2)\n}\nfn broken() -> Int {\n  try {\n    1\n  }\n  2\n}\nfn pick_files(a : Int, b : Int) -> Int {\n  a + b\n}\n"
+  let src = "fn render() -> Int {\n  pick_files(1, 2)\n}\nfn broken() -> Int {\n  let s = \"unterminated\n  2\n}\nfn pick_files(a : Int, b : Int) -> Int {\n  a + b\n}\n"
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
   // The read failure is real, so this is not passing because the file parsed.
   assert_eq(r.first_error_line, 5)
@@ -791,6 +884,21 @@ test "an undefined name in a whole file is still reported" {
 test "a qualified path call is a member reference, not an undefined name" {
   let src = "fn render(v : Repr) -> Unit {\n  @debug.Repr::opaque_(v)\n  Repr::array(3)\n}\n"
   let r = @pipeline.run(src, "x.mbt", @core.IfaceSymTab::empty())
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// An `is` test with a binding pattern: the bound name enters the CURRENT
+/// frame, so the use that follows resolves (`&&` reads left to right, and the
+/// frame is flat — a use BEFORE the test is the documented limitation). The
+/// pattern head and payload are consumed as text and never reach resolution.
+test "an is-pattern binding resolves in the following expression" {
+  let r = @pipeline.run(
+    "fn f(v : Int) -> Bool {\n  v is Some(k) && k > 0\n}\n",
+    "x.mbt",
+    empty_iface(),
+  )
+  assert_eq(r.first_error_line, 0)
   assert_eq(count_family(r, "UndefinedName"), 0)
 }
 
@@ -870,6 +978,214 @@ test "an untruncated file still reports its unused local" {
   )
   assert_eq(r.first_error_line, 0)
   assert_eq(count_family(r, "UnusedLocal"), 1)
+}
+
+// --- a SUBSTITUTION skip is also a hole in the frame -------------------------
+//
+// `truncated_fn` guards the frame audit against a READ FAILURE: the parse
+// stopped, so the tail of one function was never seen. A substitution skip is
+// the other shape of the same problem — the file is perfectly readable, the
+// coverage counter is untouched, and no error line moved, but the region
+// itself was never analysed and could be holding a binding's only write.
+//
+// The four tests below are needed. The first three are the guard, the last is
+// what stops it from becoming "suppress the family in every file that happens
+// to contain a `match`", which would also make all three pass.
+
+///|
+/// The pin. A `match` inside a function means that function's frame has a hole
+/// in it, so "this parameter was never read" is not something the reader is in
+/// a position to conclude.
+///
+/// The `n_subset` assertion is what makes this test non-vacuous: it proves the
+/// skip was really recorded and really reached the walk. Without it, a guard
+/// that suppressed EVERY function's audit would pass this test, and so would
+/// a build where the `match` silently stopped being a skip at all.
+
+///|
+test "a function containing an unanalysed match yields no function-scoped finding" {
+  let r = @pipeline.run(
+    "fn f(unused : Int) -> Int {\n  match 1 {\n    _ => 0\n  }\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  // The file parsed, and the skip is the declared kind — not a read failure.
+  assert_eq(r.first_error_line, 0)
+  assert_eq(r.n_subset, 1)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+}
+
+///|
+/// The motivation case, unchanged in shape: a dead local plus the match that
+/// could have been its only reader. This is the form measured on this
+/// analyzer's own `interp/binop` — `self`, `op` and `sp` reported as unused
+/// because the arms that use them were never read.
+test "a dead local is not reported when a match could have read it" {
+  let r = @pipeline.run(
+    "fn g(n : Int) -> Int {\n  let dead = 1\n  match n {\n    _ => 0\n  }\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(r.n_subset, 1)
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+}
+
+///|
+/// A local function owns its own frame and is walked from inside the enclosing
+/// walk, so it never passes through pass 3 — it needs the guard in its own
+/// right, or a `match` inside a local function is still a hole nobody notices.
+test "a local function containing a match also yields no finding" {
+  let r = @pipeline.run(
+    "fn outer() -> Int {\n  fn inner(dead : Int) -> Int {\n    match 1 {\n      _ => 0\n    }\n  }\n  inner(1)\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(r.n_subset, 1)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+}
+
+///|
+/// The over-suppression control, and the one that keeps the guard honest. The
+/// skip here is on line 6, AFTER every function closed, so no function's
+/// extent contains it: the overlap test must not fire, and the frame audit
+/// must run as before. A suppression keyed on "this FILE has a match" would
+/// make all three tests above pass and this one fail.
+test "a match outside every function still leaves the families working" {
+  let r = @pipeline.run(
+    "fn f(dead : Int) -> Int {\n  let u = 1\n  2\n}\nmatch 1 {\n  _ => 0\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(r.n_subset, 1)
+  assert_eq(count_family(r, "UnusedParam"), 1)
+  assert_eq(count_family(r, "UnusedLocal"), 1)
+}
+
+// --- a string's INTERPOLATION is a read ------------------------------------
+//
+// `\{expr}` is copied raw into the string payload, so before this the literal
+// was opaque to every lens. Both directions were wrong, and both were measured
+// on this analyzer's own source: all 8 findings remaining in the 0.4.7
+// self-scan were names read ONLY through an interpolation — `mermaid.mbt`
+// `anchor`, `pipeline.mbt` `i` / `s` / `r`, `parser.mbt` `what` twice,
+// `interp.mbt` `name`, `cli/main.mbt` `live`. Every one of them was a false
+// positive about the code and a true finding about the analyzer.
+
+///|
+/// A name read only inside an interpolation IS read. This is the false
+/// positive, and it is the one that reached a user: 8 of them, on source that
+/// `moon check` accepts with 0 errors.
+test "a name read only inside a string interpolation is not unused" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  let v = 7\n  println(\"v=\\{v}\")\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+}
+
+///|
+/// The other direction, and the more dangerous one: a name that does NOT exist
+/// inside an interpolation was invisible, so the analyzer stayed silent on
+/// code that will not compile. Resolving interpolations is what makes this
+/// report — the fix is not only about silencing false positives.
+test "an undefined name inside a string interpolation is reported" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  println(\"v=\\{no_such_name}\")\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family_in(r, "UndefinedName", @core.LStructural), 1)
+}
+
+///|
+/// A method call inside an interpolation reads its RECEIVER and nothing else:
+/// `\{xs.join(" ")}` reads `xs`, and `join` is a member of a type, not a
+/// binding — the same rule `EMethodCall` follows. Getting this wrong in
+/// either direction is measurable: recording the member reports a nonexistent
+/// binding for `join`, and dropping the base reports `xs` unused, which is the
+/// `interp.mbt:244` case the Class B fix was written for.
+test "a method call inside an interpolation reads its receiver only" {
+  let r = @pipeline.run(
+    "fn f(xs : Array[String]) -> Unit {\n  println(\"E \\{xs.join(\" \")}\")\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// A longer chain: only the HEAD of `r.family.merge_group()` is a binding. This
+/// is the shape in `pipeline.mbt`'s own `merge_key`, and it is the case that
+/// separates "skip everything after the first dot" (which would lose the head)
+/// from "record every dotted head" (which would invent `family`).
+test "only the head of an interpolated path is a binding" {
+  let r = @pipeline.run(
+    "fn f(r : Rep) -> Unit {\n  println(\"\\{r.family.merge_group()}\")\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// A literal inside an interpolation is not a name. `true` / `false` reach the
+/// lexer as ordinary identifiers, so without the keyword guard this reports
+/// `no visible binding for 'true'` on code the toolchain accepts — a false
+/// positive manufactured by the fix itself, which is the failure mode a
+/// suppression-shaped change has to be checked for.
+test "a boolean literal inside an interpolation is not a name" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  println(\"\\{true} \\{false}\")\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// A number inside an interpolation is a literal, not a name — and this one
+/// exists because the fix for Class L got it WRONG first: an identifier was
+/// allowed to start with a digit, and the very next self-scan reported
+/// `no visible binding for '1'` and `'10'` on `\{i + 1}` and `\{pct / 10}`
+/// in this repo's own source. A false-positive fix that manufactures its own
+/// false positives is worse than the bug, and only the rescan over real code
+/// found it. The digit is skipped while a name CONTINUES with digits, so
+/// `xs0` still reads.
+test "a number inside an interpolation is a literal, not a name" {
+  let r = @pipeline.run(
+    "fn f(i : Int) -> Unit {\n  println(\"step \\{i + 1}: \\{i * 10}\")\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+  assert_eq(count_family(r, "UnusedParam"), 0)
+}
+
+///|
+/// The over-broad control: the same body WITHOUT interpolation still reports
+/// the same way it always did. If collecting names had turned the literal
+/// arm into a blanket suppression, this would pass while the tests above
+/// passed for the wrong reason.
+test "an undefined name outside any interpolation is still reported once" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  println(\"v=\\{no_such_name}\")\n  no_such_name_outside\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 2)
 }
 
 // --- ambient names ---------------------------------------------------------

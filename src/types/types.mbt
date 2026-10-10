@@ -212,6 +212,16 @@ pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
         None
       }
     OpAnd | OpOr => if l is TBool && r is TBool { Some(TBool) } else { None }
+    OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr =>
+      // Bitwise ops are Int-on-Int only in this subset: no Float claim is
+      // made (Float bitwise is not in the corpus and would be an invented
+      // widening), and a non-Int operand is a type error, reported by the
+      // caller like any other operator mismatch.
+      if l is TInt && r is TInt {
+        Some(TInt)
+      } else {
+        None
+      }
   }
 }
 

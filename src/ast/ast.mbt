@@ -21,6 +21,19 @@ pub(all) enum BOp {
   OpGe
   OpAnd
   OpOr
+  /// The bitwise family, added for the measured Class F deaths
+  /// (`h & 1023`, `(h >> 10) & 63` — statecheck.mbt:275): before these
+  /// existed, the characters died in the lexer's unknown-char arm and the
+  /// whole file went partial. Typed Int-on-Int in `types.binop_result`,
+  /// evaluated in `Interp::binop`. `walk.const_eval` deliberately does NOT
+  /// fold them: the dead-branch lens gains nothing from folding mask
+  /// arithmetic that is never literal-keyed in the corpus, and shift
+  /// folding would be a new overflow surface for nothing.
+  OpBitAnd
+  OpBitOr
+  OpBitXor
+  OpShl
+  OpShr
 } derive(Eq)
 
 ///|
@@ -39,6 +52,11 @@ pub fn BOp::symbol(self : BOp) -> String {
     OpGe => ">="
     OpAnd => "&&"
     OpOr => "||"
+    OpBitAnd => "&"
+    OpBitOr => "|"
+    OpBitXor => "^"
+    OpShl => "<<"
+    OpShr => ">>"
   }
 }
 
@@ -62,7 +80,14 @@ pub(all) enum EKind {
   EBigInt
   EFloat(Double)
   EBool(Bool)
-  EStr(String)
+  /// A string literal, plus the names it REFERENCES inside `\{...}`
+  /// interpolations. The payload alone cannot answer that: the interpolation
+  /// body is copied raw, so `"\{v}"` and `"no interpolation"` are both just a
+  /// string to every lens. The second field is what lets the structural walk
+  /// count a read that happens only inside an interpolation, and lets it
+  /// report a name that does not exist inside one. See `@lexer`'s `TStr`,
+  /// which is where these are collected.
+  EStr(String, Array[String])
   EName(String)
   EList(Array[Expr])
   EUnary(UOp, Expr)
@@ -97,6 +122,37 @@ pub(all) enum EKind {
   /// comprehension is not a two-element list, and folding it into one would
   /// hand the type lens and the interpreter a list that never existed.
   EComp(Array[String], Array[Expr], Expr)
+  /// A struct literal: `path { field: value, shorthand, }` where `path` is
+  /// either empty (a plain literal) or a type name accumulated from the `::`
+  /// fold — `Infer::{ ... }`, `Lexer::{ ... }`, `@report.Report::{ ... }`.
+  ///
+  /// The path is a TYPE NAME, not a binding, and walk must not resolve it as
+  /// one: `Infer::{` opens the very definition of `ty_of` in this analyzer's
+  /// own source, and reporting the type's own name as an undefined binding is
+  /// exactly the class of self-report this node exists to stop. Shorthand
+  /// fields are stored as `(name, EName(name))` — the value is a real
+  /// expression, so a shorthand read still counts as a use of the name.
+  EStruct(String, Array[(String, Expr)])
+  /// A tuple expression, or the unit value: `(a, b)` is two elements and `()`
+  /// is `ETuple([])`. A parenthesized GROUPING `(e)` is not a tuple and never
+  /// becomes one — it yields `e` itself, so precedence and spans stay honest.
+  ETuple(Array[Expr])
+  /// An exclusive range expression `a..<b`, from the single `TRange` token.
+  /// Bare `..` and `..=` are not modelled and still error.
+  ERange(Expr, Expr)
+  /// A tuple field access `pair.0`. The position is an Int literal the
+  /// lexer emits as one token — the float probe means `x.0.1` arrives as a
+  /// TFloat and reports honestly instead of misparsing. There is no tuple
+  /// Ty to per-element, so the lenses type the base and leave the element
+  /// unknown.
+  ETupleField(Expr, Int)
+  /// An `is` test `base is Pattern`. The pattern is reduced AT PARSE TIME
+  /// to the binding name it introduces — `TName(tag)` -> "tag", `TEOF` ->
+  /// "" — and no lens ever sees pattern text: MoonBit string indexing is
+  /// by byte, so pattern text would have to be re-lexed to be sliced
+  /// safely. A pattern without a binding ("") is a pure test; or-patterns
+  /// never reach here because match bodies are skipped whole.
+  EIs(Expr, String)
 } derive(Eq)
 
 ///|
@@ -123,7 +179,7 @@ pub(all) enum SKind {
   SExpr(Expr)
   /// let name (: T)? = init — tyann "" means unannotated
   SLet(String, String, Expr)
-  /// assignment; target is EName / EField / EIndex
+  /// assignment; target is EName / EField / EIndex / ETupleField
   SAssign(Expr, Expr)
   SIf(Expr, Array[Stmt], Array[ElseIf], Array[Stmt]?)
   SWhile(Expr, Array[Stmt])
@@ -133,6 +189,22 @@ pub(all) enum SKind {
   SContinue
   /// top-level only: fn name(params) -> T { body }
   SFunc(String, Array[Param], String, Array[Stmt], @core.Span)
+  /// `let (a, b) = expr` — a tuple destructuring let. FLAT only: a nested
+  /// pattern like `let (a, (b, c)) = ...` is not modelled and still errors.
+  /// Each name binds the type of the init expression as a whole; the subset
+  /// has no tuple types, so per-element types are unknown and no claim is
+  /// made that would need one.
+  SLetDestruct(Array[String], Expr)
+  /// A named function defined INSIDE a block: `fn go(n : Int) -> Int { ... }`.
+  /// It owns a scope exactly like SFunc but lives in a statement list, so it
+  /// is its own statement kind rather than an SFunc (whose contract says
+  /// top-level only) smuggled into a body.
+  SLocalFunc(String, Array[Param], String, Array[Stmt], @core.Span)
+  /// A bare `{ ... }` block in statement position — an inner block of a
+  /// `fn main` body, a test block. It is a plain statement list: the
+  /// lenses treat it exactly like an `if` body (no new scope), because
+  /// the binding analysis is not flow-scoped anywhere else either.
+  SBlock(Array[Stmt])
 } derive(Eq)
 
 ///|
@@ -217,6 +289,7 @@ pub fn Expr::assigned_base(self : Expr) -> String? {
     EName(n) => Some(n)
     EField(base, _) => base.assigned_base()
     EIndex(base, _) => base.assigned_base()
+    ETupleField(base, _) => base.assigned_base()
     _ => None
   }
 }
@@ -224,7 +297,7 @@ pub fn Expr::assigned_base(self : Expr) -> String? {
 ///|
 pub fn Expr::is_valid_target(self : Expr) -> Bool {
   match self.kind {
-    EName(_) | EField(_, _) | EIndex(_, _) => true
+    EName(_) | EField(_, _) | EIndex(_, _) | ETupleField(_, _) => true
     _ => false
   }
 }

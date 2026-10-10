@@ -127,12 +127,30 @@ pub fn run(
   // and for a different reason: the families it decides in `audit_frame` are
   // conclusions about a whole function, and a function the parser cut in half
   // cannot support one. See `walk.truncated_fn`.
+  //
+  // The SUBSTITUTION skips are the same reasoning about a different fact.
+  // Every message below is a declared scope limit, never a read failure, so
+  // none of them moves `first_error` and none of them costs the file coverage
+  // — but a region the frontend never read can still be where a binding is
+  // assigned, so a function containing one cannot support a whole-function
+  // conclusion either. This is an EXACT set, not a heuristic: every one of the
+  // parser's seven skip messages carries this substring, and no read-failure
+  // message does. (`moonfiles` phrases its own skips differently — "outside
+  // the analyzer's MoonBit subset" — and does not reach this path at all.)
+  let unread : Array[@core.Span] = []
+  for r in parsed.reports {
+    if r.family == @core.FParse &&
+      r.message.contains("outside the analyzed subset") {
+      unread.push(r.span)
+    }
+  }
   let wr = @walk.walk_module(
     parsed.tree,
     file,
     extern_iface,
     parsed.first_error,
     parsed.enum_ctors,
+    unread,
   )
   for r in wr.findings {
     all.push(r)

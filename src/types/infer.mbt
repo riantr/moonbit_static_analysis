@@ -136,7 +136,7 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     EBigInt => TUnknown
     EFloat(_) => TFloat
     EBool(_) => TBool
-    EStr(_) => TStr
+    EStr(_, _) => TStr
     EList(elems) => {
       let mut elem : Ty = TUnknown
       for x in elems {
@@ -150,7 +150,11 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       match self.lookup(n) {
         Some(t) => t
         None => {
-          if !self.partial {
+          // An `@`-prefixed name is an import alias, not a binding in this
+          // file — the same reason walk's resolve gate skips it. Reporting
+          // it here would contradict the structural lens on code `moon
+          // check` accepts.
+          if !self.partial && !n.has_prefix("@") {
             self.report(@core.FUndefinedName, "undefined name '\{n}'", e.span)
           }
           hint
@@ -305,6 +309,57 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       let _ = self.annos.pop()
       TUnknown
     }
+    // A struct literal `{ field : value, shorthand, }` or `Type::{ ... }`.
+    // The path is NOT resolved as a binding (parse guarantees the shorthand
+    // form re-binds existing names instead). Field VALUES are typed, so a
+    // wrong argument or an undefined name inside them is still found; the
+    // constructor's own field types are not modelled, so the literal's type
+    // is unknown — the honest answer, same trade as EComp above.
+    EStruct(_, fields) => {
+      for f in fields {
+        let (_, v) = f
+        let _ = self.ty_of(v, TUnknown)
+      }
+      TUnknown
+    }
+    // A tuple literal; `(e)` grouping is folded away at parse time, so every
+    // ETuple is a real tuple. Elements are typed; there is no tuple Ty to
+    // name, so the result is unknown.
+    ETuple(elems) => {
+      for x in elems {
+        let _ = self.ty_of(x, TUnknown)
+      }
+      TUnknown
+    }
+    // A range `a..<b`. Both ends are typed; there is no range Ty, so the
+    // result is unknown (SFor's loop variable therefore starts Unknown too).
+    ERange(a, b) => {
+      let _ = self.ty_of(a, TUnknown)
+      let _ = self.ty_of(b, TUnknown)
+      TUnknown
+    }
+    // `pair.0`: there is no tuple Ty to per-element, so the element is
+    // unknown; the base is still TYPED, so a wrong name inside it is still
+    // found. The int-index check EIndex runs does not apply here — the
+    // position is a literal Int by construction.
+    ETupleField(base, _) => {
+      let _ = self.ty_of(base, TUnknown)
+      TUnknown
+    }
+    // `e is Pattern`: the base is typed, a pattern binding starts Unknown
+    // in the current frame for the uses that follow, and the test itself
+    // is boolean. TBool is safe even though the pattern is not modelled:
+    // an `is` test IS bool in MoonBit, and the operators it feeds
+    // (`&&`, `||`, `!`) check bool against bool.
+    EIs(base, binding) => {
+      let _ = self.ty_of(base, TUnknown)
+      if binding != "" {
+        let fi = self.frames.length() - 1
+        self.frames[fi].set(binding, TUnknown)
+        self.annos[fi].set(binding, false)
+      }
+      TBool
+    }
   }
 }
 
@@ -457,6 +512,54 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
       }
     SBreak | SContinue => ()
     SFunc(_, _, _, _, _) => ()
+    // `let (a, b) = pair`: tuple element types are not modelled (no tuple
+    // Ty), so every destructured name starts Unknown in the current frame
+    // and statements refine them — exactly how body bindings from walk's
+    // table are seeded. The initializer is typed ONCE: a second ty_of would
+    // re-report the same finding from this lens.
+    SLetDestruct(names, init) => {
+      let _ = self.ty_of(init, TUnknown)
+      let fi = self.frames.length() - 1
+      for n in names {
+        self.frames[fi].set(n, TUnknown)
+        self.annos[fi].set(n, false)
+      }
+    }
+    // A named local function gets its own frame: recursive calls inside the
+    // body resolve (and are arity-checked) against the local's own signature
+    // instead of reporting FUndefinedName. The name is ALSO bound in the
+    // enclosing frame by walk's collect_fn_bindings, so run_fn seeds it
+    // there and outer calls resolve too. Its returns do not join the
+    // enclosing return scan (scan_returns excludes it) and its own return
+    // type stays unknown to callers — same policy as EMethodCall above.
+    // The "ml" file marker matches run_fn's frames.
+    SLocalFunc(name, params, _, body, sp) => {
+      self.frames.push(Map([]))
+      self.annos.push(Map([]))
+      self.vst.push({ func: name, file: "ml", line: sp.start.line, })
+      let fi = self.frames.length() - 1
+      let ptys : Array[Ty] = []
+      for p in params {
+        ptys.push(ann_to_ty(p.tyann))
+      }
+      self.frames[fi].set(name, TFunc(name, ptys, TUnknown))
+      for p in params {
+        self.frames[fi].set(p.name, ann_to_ty(p.tyann))
+        self.annos[fi].set(p.name, !(p.tyann == ""))
+      }
+      for st in body {
+        self.walk_stmt(st)
+      }
+      let _ = self.vst.pop()
+      let _ = self.frames.pop()
+      let _ = self.annos.pop()
+    }
+    // A bare block is a plain statement list in the CURRENT frame — no new
+    // scope, same policy as an `if` body.
+    SBlock(body) =>
+      for st in body {
+        self.walk_stmt(st)
+      }
   }
 }
 
@@ -525,6 +628,9 @@ fn Infer::scan_returns(self : Infer, stmts : Array[@ast.Stmt]) -> Ty {
       }
       SWhile(_, body) => acc = ty_join(acc, self.scan_returns(body))
       SFor(_, _, _, body) => acc = ty_join(acc, self.scan_returns(body))
+      // A bare block is a plain statement list; its returns belong to the
+      // enclosing function's join, same as an `if` body's.
+      SBlock(body) => acc = ty_join(acc, self.scan_returns(body))
       _ => ()
     }
   }

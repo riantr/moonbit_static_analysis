@@ -153,6 +153,41 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
 }
 
 ///|
+/// The NOTPARSE tallies, as a pure function over the verdicts: every partial
+/// file's reason is counted, whatever its pre-boundary findings were, and up
+/// to three example paths are kept per reason. Extracted from the scan loop
+/// because the loop's 0.4.7 shape tallied a reason ONLY when the file had no
+/// pre-boundary findings — a file with findings above its first parse error
+/// is exactly as blind after that boundary, but its reason never reached the
+/// count. Public for the same reason `aggregate` is: the counting rules are
+/// part of what the output claims, and `sa_test.mbt` pins them.
+pub fn tally_partial_reasons(
+  verdicts : Array[Verdict],
+) -> (Map[String, Int], Map[String, Array[String]]) {
+  let reasons : Map[String, Int] = Map([])
+  let examples : Map[String, Array[String]] = Map([])
+  for v in verdicts {
+    if !v.parsed {
+      let r = if v.reason == "" { "unspecified" } else { v.reason }
+      let c = match reasons.get(r) {
+        Some(x) => x + 1
+        None => 1
+      }
+      reasons.set(r, c)
+      let ex = match examples.get(r) {
+        Some(a) => a
+        None => []
+      }
+      if ex.length() < 3 {
+        ex.push(v.path)
+        examples.set(r, ex)
+      }
+    }
+  }
+  (reasons, examples)
+}
+
+///|
 /// Public entry point. `target` is a registry coordinate or a path; the
 /// module's root package forwards the CLI arguments here, which is what makes
 /// `moonx riantr/moonbit_static_analysis@latest <target>` work without naming
@@ -233,11 +268,6 @@ pub async fn scan(
   let kind_defects : Map[String, Int] = Map([])
   let kind_notices : Map[String, Int] = Map([])
   let kinds : Array[String] = [".mbt", ".mbti", ".mbtp", ".mbt.md", ".mbtx"]
-  // Unparsed files are counted by reason rather than listed. One line per file
-  // would replace thousands of findings with thousands of lines and teach the
-  // reader to scroll past the section that matters.
-  let reasons : Map[String, Int] = Map([])
-  let examples : Map[String, Array[String]] = Map([])
   for f in files {
     let v = analyze(f, iface_tab)
     verdicts.push(v)
@@ -273,6 +303,9 @@ pub async fn scan(
     } else {
       // Partly understood: report what was read up to the first real failure
       // and say plainly how much came after it and is therefore not evidence.
+      // The reason tally lives in `tally_partial_reasons`, which counts EVERY
+      // partial file — one with pre-boundary findings is as blind after its
+      // boundary as one without.
       let n = v.findings.length()
       if n > 0 {
         println(
@@ -288,21 +321,6 @@ pub async fn scan(
         }
         if shown < n {
           println("...  \{n - shown} more before the boundary in this file")
-        }
-      } else {
-        let r = if v.reason == "" { "unspecified" } else { v.reason }
-        let c = match reasons.get(r) {
-          Some(x) => x + 1
-          None => 1
-        }
-        reasons.set(r, c)
-        let ex = match examples.get(r) {
-          Some(a) => a
-          None => []
-        }
-        if ex.length() < 3 {
-          ex.push(v.path)
-          examples.set(r, ex)
         }
       }
     }
@@ -339,6 +357,11 @@ pub async fn scan(
       )
     }
   }
+  // Unparsed files are counted by reason rather than listed. One line per file
+  // would replace thousands of findings with thousands of lines and teach the
+  // reader to scroll past the section that matters. `tally_partial_reasons`
+  // counts every partial file, whatever its pre-boundary findings were.
+  let (reasons, examples) = tally_partial_reasons(verdicts)
   let unreadable = files.length() - s.parsed_files
   if unreadable > 0 {
     println(

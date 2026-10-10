@@ -24,6 +24,11 @@ pub(all) enum BOp {
   OpGe
   OpAnd
   OpOr
+  OpBitAnd
+  OpBitOr
+  OpBitXor
+  OpShl
+  OpShr
 } derive(Eq)
 pub fn BOp::symbol(Self) -> String
 
@@ -32,7 +37,7 @@ pub(all) enum EKind {
   EBigInt
   EFloat(Double)
   EBool(Bool)
-  EStr(String)
+  EStr(String, Array[String])
   EName(String)
   EList(Array[Expr])
   EUnary(UOp, Expr)
@@ -42,6 +47,11 @@ pub(all) enum EKind {
   EIndex(Expr, Expr)
   EMethodCall(Expr, String, Array[Expr])
   EComp(Array[String], Array[Expr], Expr)
+  EStruct(String, Array[(String, Expr)])
+  ETuple(Array[Expr])
+  ERange(Expr, Expr)
+  ETupleField(Expr, Int)
+  EIs(Expr, String)
 } derive(Eq)
 
 pub(all) struct ElseIf {
@@ -90,6 +100,9 @@ pub(all) enum SKind {
   SBreak
   SContinue
   SFunc(String, Array[Param], String, Array[Stmt], @core.Span)
+  SLetDestruct(Array[String], Expr)
+  SLocalFunc(String, Array[Param], String, Array[Stmt], @core.Span)
+  SBlock(Array[Stmt])
 } derive(Eq)
 
 pub(all) struct Stmt {

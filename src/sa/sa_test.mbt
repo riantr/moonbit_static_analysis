@@ -378,3 +378,75 @@ test "artifact name: the stamp separates two scans of the same tree" {
   }
   assert_true(@sa.scan_artifact_name(a, "t") != @sa.scan_artifact_name(b, "t"))
 }
+
+///|
+/// A minimal partial verdict with a chosen path and reason, for the tally
+/// rules below. Findings stay empty because the tally reads only `parsed`,
+/// `reason` and `path`; a partial file WITH pre-boundary findings is covered
+/// by `v_partial_with_findings`.
+fn v_partial_at(path : String, reason : String) -> @sa.Verdict {
+  @sa.Verdict::{
+    path,
+    kind: ".mbt",
+    findings: [],
+    parsed: false,
+    reason,
+    total: 0,
+    notices: 0,
+    region_line: 1,
+    unreliable: 0,
+  }
+}
+
+///|
+/// The count for a reason, with `-1` for "absent": `Option[Int]` has no Show,
+/// so the tests compare Ints, and an absent reason must stay distinguishable
+/// from a count of zero.
+fn tally_count(reasons : Map[String, Int], r : String) -> Int {
+  match reasons.get(r) {
+    Some(x) => x
+    None => -1
+  }
+}
+
+///|
+/// The rule the 0.4.7 loop got wrong: it tallied a partial file's reason only
+/// when the file had no pre-boundary findings, so a file that yielded findings
+/// before its first parse error — the file with the most evidence of partial
+/// reading — never reached the NOTPARSE count. Here BOTH partial templates
+/// contribute, and the parsed file contributes nothing.
+test "tally: every partial file's reason is counted, parsed files add nothing" {
+  let (reasons, _) = @sa.tally_partial_reasons([
+    v_parsed(),
+    v_partial_with_findings(),
+    v_partial_empty(),
+  ])
+  assert_eq(tally_count(reasons, "first read failure at line 10"), 1)
+  assert_eq(tally_count(reasons, "first read failure at line 1"), 1)
+  assert_eq(tally_count(reasons, "unspecified"), -1)
+}
+
+///|
+test "tally: a partial file with no reason is counted as unspecified" {
+  let (reasons, _) = @sa.tally_partial_reasons([v_partial_at("d.mbt", "")])
+  assert_eq(tally_count(reasons, "unspecified"), 1)
+  assert_eq(tally_count(reasons, ""), -1)
+}
+
+///|
+test "tally: the example list stops at three files" {
+  let (_, examples) = @sa.tally_partial_reasons([
+    v_partial_at("a.mbt", "match expression"),
+    v_partial_at("b.mbt", "match expression"),
+    v_partial_at("c.mbt", "match expression"),
+    v_partial_at("d.mbt", "match expression"),
+  ])
+  let ex = match examples.get("match expression") {
+    Some(a) => a
+    None => []
+  }
+  assert_eq(ex.length(), 3)
+  assert_eq(ex[0], "a.mbt")
+  assert_eq(ex[1], "b.mbt")
+  assert_eq(ex[2], "c.mbt")
+}
