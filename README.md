@@ -39,6 +39,45 @@ type + 20 个 trait 的 prelude 段因此不可见），现在进表。
 
 自检（扫本仓库自身源码）保持 **0**。测试 231 → 233。
 
+## 0.4.10 —— 发布 0.4.9 才暴露出自检一直在遮蔽的两件事
+
+把 provenance 的修复发出去，意味着要再用它自己扫一遍已发布的包——就是当初找出
+`unknown` 那个 bug 的检查。这一次回来是 `actionable=2`，而 0.4.8 是干净的，
+两条都在 `provenance.mbt`：
+
+```
+no visible binding for 'is_coordinate'
+no visible binding for 'split_coord'
+```
+
+两条都不是代码缺陷。它们是这一版在读自己的源码时，发现了两件关于工具本身的事。
+
+**`if` 表达式会藏起未定义名。** 同样这两个名字在同一个文件里出现了两次，只报了
+一次：
+
+```moonbit
+let stem = if is_coordinate(p.target) {   // 226 行——if 表达式
+  ...
+if is_coordinate(target) {                // 411 行——if 语句
+```
+
+`let x = if c { … } else { … }` 会被解析、两个分支会被读，然后**整块丢掉**——
+它属于「不分析的子集」，而且有告知说明。所以写在这种分支里的不存在名字，
+永远不会被报。0.4.8 自检之所以干净，部分原因正是这两个调用躺在一个被丢掉的
+if 表达式里。把它们挪进普通函数后 `if` 变成语句，被完整解析，
+两个潜伏的**漏报**就变成了两条发现。
+
+**另一个文件里的包私有辅助函数是看不见的。** 跨文件解析走 `.mbti`，
+而包私有的 `fn` 不出现在任何 `.mbti` 里——所以一个文件调用同包另一个文件的私有
+辅助函数，读起来就像未绑定。那两条发现的真相就是这个：真实存在的绑定，
+而分析器没有任何途径看到。`is_coordinate` 和 `split_coord` 现在是 `pub`，
+因此进了接口文件，理由和 `prov_or_unknown`、`stamp_utc`、`scan_artifact_name`
+当初一样。每个函数上的注释都写明了原因，免得有人日后"整理"回私有、
+悄悄把这条发现放回来。
+
+这两类本次都没修：它们都是已声明的子集 / 可见性限制，而且都偏向**沉默**而不是
+噪音。扫一个多文件包却什么都没返回时，值得知道有这两回事。
+
 ## 0.4.9 —— `@latest` 扫描把自己的产物命名成 `unknown`
 
 用文档里那条命令、通过它自己扫已发布的包：
@@ -111,7 +150,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.9
+moon add riantr/moonbit_static_analysis@0.4.10
 ```
 
 ```moonbit
@@ -443,7 +482,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.9` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.10` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

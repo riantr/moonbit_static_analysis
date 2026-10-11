@@ -8,6 +8,8 @@ import {
 // Values
 pub fn aggregate(Array[Verdict]) -> Summary
 
+pub fn is_coordinate(String) -> Bool
+
 pub fn is_module_coord(String) -> Bool
 
 pub fn mermaid_states(Array[Verdict], Summary, ScanProvenance, Int, Int) -> String
@@ -26,9 +28,13 @@ pub async fn scan(String, Array[String], Array[String], Bool, String) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
 
+pub fn split_coord(String) -> (String, String)
+
 pub fn stamp_utc(Int64) -> String
 
 pub fn tally_partial_reasons(Array[Verdict]) -> (Map[String, Int], Map[String, Array[String]])
+
+pub fn target_version(String, String) -> String
 
 // Errors
 

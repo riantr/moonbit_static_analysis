@@ -475,7 +475,18 @@ async fn locate(target : String) -> String {
 ///|
 /// A coordinate looks like `author/module`. Anything path-shaped (leading `.`
 /// or `/`, a drive colon, a backslash) is treated as a path instead.
-fn is_coordinate(t : String) -> Bool {
+///
+/// **`pub` is load-bearing, not decoration.** `provenance.mbt` calls this and
+/// `split_coord` below, and the analyzer resolves a cross-file name ONLY
+/// through a `.mbti` — a package-private `fn` appears in none, because
+/// `moon info` does not list it. Leaving these private is therefore invisible
+/// to the tool on its own source: the 0.4.9 self-scan reported
+/// `no visible binding for 'is_coordinate'` and `'split_coord'` on
+/// `provenance.mbt`, on code `moon check` accepts. They are `pub` here for the
+/// same reason `prov_or_unknown`, `parse_moon_version`, `stamp_utc` and
+/// `scan_artifact_name` are: so a second file in this package can name them
+/// and have that name be checkable.
+pub fn is_coordinate(t : String) -> Bool {
   if t.has_prefix(".") ||
     t.has_prefix("/") ||
     t.contains(":") ||
@@ -491,6 +502,10 @@ fn is_coordinate(t : String) -> Bool {
 /// as "" when absent OR when it is `latest`, because `moon fetch` resolves a
 /// bare module to the newest one itself.
 ///
+/// `pub` for the reason given on `is_coordinate`: `provenance.mbt` names this
+/// from another file, and a package-private function is in no `.mbti`, so the
+/// analyzer cannot see the binding that is right there.
+///
 /// This split matters more than it looks. The fetch target and the `.repos`
 /// path are built from DIFFERENT strings: fetching `author/module` lands in
 /// `.repos/author/module/<version>/`. An earlier version of this file stripped
@@ -498,7 +513,7 @@ fn is_coordinate(t : String) -> Bool {
 /// `...@0.3.1` was looked up at `.repos/author/module@0.3.1`, which never
 /// exists — `@latest` worked only because stripping it was the same operation
 /// that produced the right path. Any pinned target silently found nothing.
-fn split_coord(t : String) -> (String, String) {
+pub fn split_coord(t : String) -> (String, String) {
   let mut mod = ""
   let mut ver = ""
   let mut seen_at = false

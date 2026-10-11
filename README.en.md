@@ -46,6 +46,49 @@ names declared outside the subset (`E_MAX` / `b` / `N`) + 3 other shapes (`is` /
 
 Self-scan (this repository's own source) stays at **0**. Tests 231 → 233.
 
+## 0.4.10 — publishing 0.4.9 exposed two things the self-scan had been hiding
+
+Releasing the provenance fix meant running the published package through itself
+again — the check that found the `unknown` bug. That run came back
+`actionable=2` where 0.4.8 had been clean, on two names in `provenance.mbt`:
+
+```
+no visible binding for 'is_coordinate'
+no visible binding for 'split_coord'
+```
+
+Neither is a defect in the code. Both are this release reading its own source
+and finding two things worth knowing about the tool.
+
+**An `if` *expression* hides undefined names.** The same two names appear twice
+in that one file, and only one was reported:
+
+```moonbit
+let stem = if is_coordinate(p.target) {   // line 226 — an if-EXPRESSION
+  ...
+if is_coordinate(target) {                // line 411 — an if-STATEMENT
+```
+
+`let x = if c { … } else { … }` is parsed, its branches are read, and then
+**discarded** — it is outside the analyzed subset, and the notice says so. So a
+name that does not exist inside such a branch is never reported. The 0.4.8
+self-scan was clean partly for that reason: the calls sat inside a dropped
+if-expression. Moving them into a plain function turned the if into a statement,
+which is parsed in full, and two latent false negatives became two findings.
+
+**A package-private helper in another file is invisible.** Cross-file
+resolution goes through `.mbti` files, and a package-private `fn` appears in
+none — so a file calling a sibling file's private helper reads as unbound. That
+is what the two findings actually were: real bindings the analyzer has no way to
+see. `is_coordinate` and `split_coord` are now `pub`, which puts them in the
+interface, for the same reason `prov_or_unknown`, `stamp_utc` and
+`scan_artifact_name` already were. The comment on each says why, so nobody
+tidies them back into private and silently reintroduces the finding.
+
+Neither class is fixed here: both are declared subset / visibility limits, and
+both fail toward *silence* rather than noise. Worth knowing when a scan of a
+multi-file package returns nothing.
+
 ## 0.4.9 — a `@latest` scan named its own artifact `unknown`
 
 Scanning the published package through itself with the documented invocation:
@@ -131,7 +174,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.9
+moon add riantr/moonbit_static_analysis@0.4.10
 ```
 
 ```moonbit
@@ -513,7 +556,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.9` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.10` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

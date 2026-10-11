@@ -236,6 +236,26 @@ findings that survived the previous step were this: `mermaid.mbt` `anchor`,
 `pipeline.mbt` `i`/`s`/`r`, `parser.mbt` `what` ×2, `interp.mbt` `name`,
 `cli/main.mbt` `live`. Actionable **8 → 0**.
 
+### Two shapes that fail toward silence, not noise
+
+Both measured on this analyzer's own source in 0.4.10, and both are the reason a
+clean scan of a multi-file package is not by itself proof of anything.
+
+**An `if` expression's branches are read and then discarded.** `let x = if c {
+… } else { … }` is outside the subset; the notice says so. A name that does not
+exist inside such a branch is therefore **never reported**. 0.4.8's self-scan
+was clean partly for exactly this reason: two calls sat in a dropped
+if-expression, and moving them into a plain function turned the `if` into a
+statement — which is parsed in full — exposing two latent false negatives at
+once.
+
+**A package-private helper in another file is invisible.** Cross-file
+resolution goes through `.mbti` files, and a package-private `fn` is in none of
+them, so one file calling a sibling file's private helper reads as
+`no visible binding`. That is a real binding the tool cannot see; making such a
+helper `pub` puts it in the interface and is the only fix available from the
+CLI.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by
