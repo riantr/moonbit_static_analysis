@@ -150,6 +150,7 @@ pub fn run(
     extern_iface,
     parsed.first_error,
     parsed.enum_ctors,
+    parsed.extern_fns,
     unread,
   )
   for r in wr.findings {

@@ -269,7 +269,12 @@ fn Walker::resolve(self : Walker, name : String, sp : @core.Span) -> Unit {
     !name.has_prefix("@") &&
     !self.builtins.contains(name) &&
     !self.extern_iface.has_type(name) &&
-    !self.extern_iface.has_value(name) {
+    !self.extern_iface.has_value(name) &&
+    // A qualified path whose TAIL is bound is a real name: `Layer::ReLU` is a
+    // unit enum variant, and the harvest binds `ReLU` but not the whole path.
+    // Without this, every unit variant read in value position was reported as
+    // undefined while the payload variants beside it were silent.
+    !self.tail_bound(name) {
     self.findings.push(@report.Report::{
       family: @core.FUndefinedName,
       lenses: [@core.LStructural],
@@ -278,6 +283,32 @@ fn Walker::resolve(self : Walker, name : String, sp : @core.Span) -> Unit {
       vst: @core.snapshot_vst(self.vst),
     })
   }
+}
+
+///|
+/// True when the last segment of a qualified `name` is bound somewhere.
+///
+/// Only consulted once the whole path has failed to resolve, so this can never
+/// turn a resolvable path into an unresolved one. See `@core.path_tail` for why
+/// a unit enum variant lands in this situation at all.
+fn Walker::tail_bound(self : Walker, name : String) -> Bool {
+  let tail = @core.path_tail(name)
+  if tail == "" || tail == name {
+    return false
+  }
+  if self.builtins.contains(tail) ||
+    self.extern_iface.has_type(tail) ||
+    self.extern_iface.has_value(tail) {
+    return true
+  }
+  let mut i = self.frames.length() - 1
+  while i >= 0 {
+    match self.frames[i].get(tail) {
+      Some(_) => return true
+      None => i -= 1
+    }
+  }
+  false
 }
 
 ///|
@@ -827,6 +858,7 @@ pub fn walk_module(
   extern_iface : @core.IfaceSymTab,
   trusted_line : Int,
   enum_ctors : Array[String],
+  extern_fns : Array[String],
   unread : Array[@core.Span],
 ) -> WalkResult {
   let w = new_walker(extern_iface, trusted_line > 0, file, unread)
@@ -930,6 +962,12 @@ pub fn walk_module(
     }
   }
   // pass 3: each function in its own frame
+  // An `extern "C"` / `extern "wasm"` function is skipped by the audit below.
+  // Its frame can only hold PARAMETERS (the body is in another language and was
+  // never read), and those parameter names belong to the foreign ABI — so the
+  // only thing the audit could say about them is "unused", which the compiler
+  // does not say. Skipping the audit is precise here precisely because there is
+  // nothing else in the frame to audit.
   let suspect = truncated_fn(fns, trusted_line)
   for i in 0..<fns.length() {
     let f = fns[i]
@@ -942,7 +980,9 @@ pub fn walk_module(
     for st in f.body {
       w.walk_stmt(st)
     }
-    if i != suspect && !w.audit_suppressed(f.span) {
+    if i != suspect &&
+      !w.audit_suppressed(f.span) &&
+      !extern_fns.contains(f.name) {
       w.audit_frame()
     }
     let _ = w.vst.pop()

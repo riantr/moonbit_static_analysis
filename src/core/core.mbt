@@ -34,6 +34,45 @@ pub fn zero_span() -> Span {
 }
 
 ///|
+/// The LAST segment of a qualified path: `Layer::ReLU` -> `ReLU`. Returns `""`
+/// when the name is not qualified.
+///
+/// Why this exists. `Layer::ReLU` names an enum's unit variant, and this
+/// analyzer harvests enum constructor names into the module frame — but only
+/// the BARE name (`ReLU`), because the harvest sees tokens, not paths. A
+/// lookup of the whole path therefore failed, while the same variant written
+/// as a call (`Layer::Conv2d(p)`, a payload variant) resolved, because the
+/// bare name inside it is what got bound. The result was that payload variants
+/// worked and unit variants did not, inside the same enum in the same file
+/// (measured: 4 findings on riantr/snn_mbt 0.155.0, `src/chain.mbt`).
+///
+/// Only the tail is offered as a fallback, and only when the whole path has
+/// already failed to resolve, so this can never turn a resolvable path into an
+/// unresolved one. It can only rescue a path whose tail names something real —
+/// which is precisely what a unit enum variant is.
+#proof_pure
+pub fn path_tail(name : String) -> String {
+  let mut out = ""
+  let mut i = 0
+  let chars = name.to_array()
+  let n = chars.length()
+  while i + 1 < n {
+    if chars[i] == ':' && chars[i + 1] == ':' {
+      out = ""
+      let mut j = i + 2
+      let buf = StringBuilder()
+      while j < n {
+        buf.write_char(chars[j])
+        j += 1
+      }
+      out = buf.to_string()
+    }
+    i += 1
+  }
+  out
+}
+
+///|
 /// Cross-file symbol table built from `.mbti` interface files. A name that
 /// appears here is one the analyzer cannot see in the file under analysis
 /// (it lives in another file, in another package, or in the stdlib) but which

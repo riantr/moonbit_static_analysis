@@ -129,6 +129,75 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.15 —— 剩下 30 条里的 12 条：三个成因，其中一个差点把整条规则静音
+
+0.4.14 把四个语料的 actionable 从 71 降到 31。**其中 1 条是真阳性**
+（`neuron_identity.mbt` 的 `dt` 参数确实没被读，编译器也会警告）——第一次在
+这套语料里找到真的。其余 30 条继续归因，三条成因占了 12 条。
+
+| 成因 | 条数 | 判据 |
+|---|---|---|
+| `extern "C"` 的参数被判「未使用」 | 6 | 探针：extern 不告警，同文件的普通 fn 告警 |
+| `Bool == Bool` 被判「不支持的操作数」 | 2 | 探针：0 error 0 warning |
+| 单元（无载荷）枚举变体读不到 | 4 | 探针：0 error；同 enum 的带载荷变体本来就正常 |
+
+### 单元变体：同一文件里，带载荷的能读、不能带载荷的读不到
+
+```moonbit
+enum Layer {
+  Conv2d(Conv2dParam)   // 能读
+  ReLU                 // 报 undefined name
+}
+```
+
+不是「enum 没被采集」。采集器确实把两个名字都收进了模块帧，但存的是**裸名**
+（`ReLU`），而引用写的是**整条路径**（`Layer::ReLU`）。`Layer::Conv2d(p)` 是
+**调用**，调用路径另有兜底；`Layer::ReLU` 是**裸引用**，没有。
+
+修法是给整条路径一次尾部兜底（`@core.path_tail`），**只在整条路径已经解析失败
+之后**才走，所以不可能把能解析的名字变成解析不了的——只可能救回尾部真有东西的
+路径，那正是单元变体。
+
+配套的反向对照：`Colour::Purple`（从未声明）仍然必须报错。否则每个语料里拼错的
+枚举路径都会被静音。
+
+### 「函数体是空的」不能当 extern 的代理
+
+直觉是：extern 函数没有函数体，所以「体空 ⇒ 不审计参数」就够了。探针否掉了它：
+
+| 写法 | `moon check` |
+|---|---|
+| `extern "C" fn expf(x : Float) -> Float = "expf"` | 静默 |
+| `fn p7(z : Float) -> Float { }` | **告警** |
+| `fn p6(y : Float) -> Float { 1.0 }` | **告警** |
+
+所以必须由 parser 显式记录 extern 函数名（`ParseResult.extern_fns`），
+跟 `enum_ctors` 同一个套路。
+
+### 结果
+
+| 语料 | 0.4.13 | 0.4.14 | 0.4.15 |
+|---|---|---|---|
+| `snn_mbt` | 33 | 19 | **9** |
+| `moonbit_doubleML` | 28 | 3 | **1** |
+| `moonbit_labeler` | 6 | 5 | 5 |
+| `moonbit_image` | 4 | 4 | 4 |
+| `pyroduct` | 0 | 0 | **0** |
+| 合计 | 71 | 31 | **19** |
+
+`snn_mbt` 少了 10 条、`doubleML` 少了 2 条，正好等于两条成因各自的计数；
+`labeler` 和 `moonbit_image` 没动，因为它们的成因是另外两条（`@core.X::new`
+这类跨包构造、`Byte::default` 这类内建缺失，以及 `suberror` 体被二次扫描）。
+
+测试 js 263 / wasm 335 / wasm-gc 263（新增 7）。五道突变全部被杀死，restore
+后 SHA256 逐字节校验通过；自检 51/51、actionable=0。
+
+### 突变脚本自己踩的第三个坑
+
+替换文本写成了 PowerShell 的 `$true`，而 MoonBit 里没有这个语法。两道突变因此
+**编译失败**，脚本把它们报成 `COMPILE-ERR`——和「套件抓到」长得一样，其实
+什么都没抓到。**一种不能编译的突变，和一种成功杀死的突变，在报告里必须分开。**
+
 ## 0.4.14 —— pyroduct 的 0 不是「对」：换四个语料，一次挖出三个真缺陷 + 一个静默错误
 
 0.4.13 把 pyroduct 的 actionable 清到 0，**但那是 pyroduct 恰好没踩到，不是分析器对**。
@@ -390,7 +459,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.14
+moon add riantr/moonbit_static_analysis@0.4.15
 ```
 
 ```moonbit
@@ -722,7 +791,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.14` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.15` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

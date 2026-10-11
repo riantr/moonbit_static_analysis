@@ -335,6 +335,27 @@ and no test could distinguish them, so they were reverted rather than shipped as
 undemonstrable fix. If you find code where that matters, that is the finding that
 would justify changing it.
 
+**A unit enum variant is not an undefined name (since 0.4.15).** `Layer::ReLU` and
+`LayerGrad::Empty` were reported `undefined name`, while the payload variant beside
+them in the same enum — `Layer::Conv2d(p)` — resolved. The enum harvest stores the
+BARE name (`ReLU`) because it reads tokens, and the bare reference `Layer::ReLU`
+carries the whole path. A qualified path now falls back to its last segment, but only
+after the whole path has failed, so `Colour::Purple` (never declared) is still
+reported. Probe: `enum Colour { Red Green } ... Colour::Green` compiles with 0 errors;
+the analyzer reported 4 such findings on riantr/snn_mbt.
+
+**`==` / `!=` between two Bools is legal (since 0.4.15).** The type lens rejected it
+as "unsupported operand types for '==': 'bool' and 'bool'". Probe: 0 errors, 0
+warnings. Ordering (`<`, `>`) between Bools is NOT extended and is still reported —
+the fix widened equality, not comparison.
+
+**A parameter of an `extern "C"` / `extern "wasm"` function is not unused (since
+0.4.15).** Its body lives in another language, so the analyzer never read it and
+reported "parameter 'x' may not be used" on 6 functions in riantr/snn_mbt. Note that
+"the body is empty" is NOT a usable proxy — a normal `fn p7(z : Float) -> Float { }`
+warns in `moon check` too, so the parser records extern names explicitly and the
+walker skips the frame audit for exactly those.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by

@@ -102,7 +102,17 @@ fn Infer::lookup(self : Infer, name : String) -> Ty? {
       } else if self.extern_iface.has_type(name) {
         Some(TUnknown)
       } else {
-        None
+        // A qualified path whose TAIL is a known name. `Layer::ReLU` is a unit
+        // enum variant: the harvest binds the bare `ReLU`, not the whole path,
+        // so the full-name lookup above misses it while the payload variant
+        // beside it (`Layer::Conv2d(p)`) resolves. Reached only after the whole
+        // path failed, so it cannot shadow a name that resolves on its own.
+        let tail = @core.path_tail(name)
+        if tail == "" || tail == name {
+          None
+        } else {
+          self.lookup(tail)
+        }
       }
   }
 }

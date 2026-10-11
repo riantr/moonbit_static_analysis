@@ -33,6 +33,18 @@ pub(all) struct ParseResult {
   /// symbol table gives a type from another package — so nothing downstream
   /// infers a type or arity it has not read.
   enum_ctors : Array[String]
+  /// Functions declared `extern "C"` / `extern "wasm"`.
+  ///
+  /// Their bodies are empty because the body is written in another language, so
+  /// an unused PARAMETER of one is not an unread binding — the name is part of
+  /// the foreign ABI. The walker must not run a frame audit on them.
+  ///
+  /// Probed against the toolchain: `pub extern "C" fn expf(x : Float) -> Float`
+  /// produces no unused warning, while a control `pub fn p6(y : Float) -> Float
+  /// { 1.0 }` in the same file does. An empty BODY is not a usable proxy — a
+  /// normal `fn p7(z : Float) -> Float { }` warns too — so the declaration has
+  /// to be recognised as extern rather than inferred from its shape.
+  extern_fns : Array[String]
 }
 
 ///|
@@ -49,6 +61,10 @@ priv struct Parser {
   /// Constructor names seen while skipping an `enum` body. See the field of
   /// the same name on `ParseResult`.
   enum_ctors : Array[String]
+  /// Names declared by an `extern "C"` / `extern "wasm"` function. The
+  /// implementation lives in another language, so the parameter names are part
+  /// of that language's ABI and not bindings this analyzer may judge as unread.
+  extern_fns : Array[String]
 }
 
 ///|
@@ -86,6 +102,7 @@ pub fn parse(src : String) -> ParseResult {
     skips: [],
     first_error,
     enum_ctors: [],
+    extern_fns: [],
   }
   let imports : Array[@ast.ImportSpec] = []
   let import_seen : Map[String, Bool] = Map([])
@@ -183,6 +200,7 @@ pub fn parse(src : String) -> ParseResult {
     skips: p.skips,
     first_error: p.first_error,
     enum_ctors: p.enum_ctors,
+    extern_fns: p.extern_fns,
   }
 }
 
@@ -944,6 +962,9 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
     let _ = self.bump()
   }
   let (name, params, retann) = self.parse_fn_signature()
+  if !self.extern_fns.contains(name) {
+    self.extern_fns.push(name)
+  }
   // `= "exit"` — the raw symbol in the target language. Nothing to model.
   if self.at(TAssign) {
     let _ = self.bump()

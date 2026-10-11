@@ -153,6 +153,84 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.15 — 12 of the remaining 30: three causes, one of which nearly muted a whole rule
+
+0.4.14 took the four corpora from 71 actionable findings down to 31. **One of
+those 31 was a true positive** — `neuron_identity.mbt`'s `dt` parameter really
+is never read, and the compiler warns about it too. That is the first genuine
+one in this whole corpus set. The other 30 were triaged and three causes account
+for 12 of them.
+
+| Cause | Count | Evidence |
+|---|---|---|
+| an `extern "C"` parameter reported unused | 6 | probe: extern is silent, a normal fn beside it warns |
+| `Bool == Bool` reported as unsupported operands | 2 | probe: 0 errors, 0 warnings |
+| a UNIT (payload-less) enum variant unread | 4 | probe: 0 errors; the payload variant beside it already worked |
+
+### Unit variants: payload resolves, unit does not, in the same file
+
+```moonbit
+enum Layer {
+  Conv2d(Conv2dParam)   // resolves
+  ReLU                 // reported undefined
+}
+```
+
+This is not "the enum was not harvested". The harvest does collect both names —
+but it stores the BARE name (`ReLU`), while the reference is the whole PATH
+(`Layer::ReLU`). `Layer::Conv2d(p)` is a CALL, and the call path has its own
+fallback; `Layer::ReLU` is a bare reference and does not.
+
+The fix gives a qualified path a tail fallback (`@core.path_tail`), taken ONLY
+after the whole path has already failed to resolve — so it can never turn a
+resolvable path into an unresolved one, only rescue a path whose tail names
+something real, which is exactly what a unit variant is.
+
+The counter-test that keeps it honest: `Colour::Purple`, never declared, must
+still be reported. Otherwise every mistyped enum path in every codebase goes
+silent.
+
+### "The body is empty" is NOT a usable proxy for extern
+
+The tempting shortcut is that an extern function has no body, so "empty body ⇒
+don't audit its parameters" would do. The probe killed it:
+
+| Source | `moon check` |
+|---|---|
+| `extern "C" fn expf(x : Float) -> Float = "expf"` | silent |
+| `fn p7(z : Float) -> Float { }` | **warns** |
+| `fn p6(y : Float) -> Float { 1.0 }` | **warns** |
+
+So the parser must record extern names explicitly (`ParseResult.extern_fns`),
+following the same precedent as `enum_ctors`.
+
+### Results
+
+| Corpus | 0.4.13 | 0.4.14 | 0.4.15 |
+|---|---|---|---|
+| `snn_mbt` | 33 | 19 | **9** |
+| `moonbit_doubleML` | 28 | 3 | **1** |
+| `moonbit_labeler` | 6 | 5 | 5 |
+| `moonbit_image` | 4 | 4 | 4 |
+| `pyroduct` | 0 | 0 | **0** |
+| Total | 71 | 31 | **19** |
+
+`snn_mbt` lost 10 and `doubleML` lost 2 — exactly the per-cause counts.
+`labeler` and `moonbit_image` did not move, because their causes are different
+ones (cross-package constructors like `@core.X::new`, a missing builtin like
+`Byte::default`, and `suberror` bodies being re-scanned).
+
+Tests: js 263 / wasm 335 / wasm-gc 263 (7 new). All five mutations killed,
+restore verified byte-identical by SHA256; self-scan 51/51, actionable=0.
+
+### The harness's third self-inflicted bug
+
+A mutation's replacement was written as PowerShell's `$true`, which is not
+MoonBit syntax. Two mutations therefore failed to COMPILE, and the script
+reported them as `COMPILE-ERR` — which looks just like "the suite caught it",
+while it had caught nothing. **A mutation that cannot compile and a mutation
+that succeeded in killing something must never be reported the same way.**
+
 ## 0.4.14 — pyroduct's zero was not "correct": four other corpora, three real defects plus one silent one
 
 0.4.13 drove pyroduct's actionable count to 0, but that was pyroduct happening not
@@ -453,7 +531,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.14
+moon add riantr/moonbit_static_analysis@0.4.15
 ```
 
 ```moonbit
@@ -835,7 +913,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.14` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.15` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

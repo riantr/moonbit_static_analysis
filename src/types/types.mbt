@@ -257,12 +257,28 @@ pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
       } else {
         None
       }
-    OpEq | OpNe | OpLt | OpLe | OpGt | OpGe =>
-      if (is_numeric(l) && is_numeric(r)) || (l is TStr && r is TStr) {
+    OpEq | OpNe | OpLt | OpLe | OpGt | OpGe => {
+      // `==` / `!=` are legal between two Bools in MoonBit. The ORDERING
+      // operators are a separate question and are deliberately not extended
+      // here — `true < false` has no meaning and must still be reported.
+      //
+      // Probed: `fn p(a : Bool, b : Bool) -> Bool { a == b }` compiles with 0
+      // errors and 0 warnings from `moon check`. The analyzer said
+      // "unsupported operand types for '==': 'bool' and 'bool'" at error:
+      // severity (measured: 2 findings on riantr/moonbit_doubleML 0.139.0,
+      // `expand_v098_test.mbt` and `expand_v122_test.mbt`).
+      let ordered = (is_numeric(l) && is_numeric(r)) || (l is TStr && r is TStr)
+      let eq_ok = if op == OpEq || op == OpNe {
+        ordered || (l is TBool && r is TBool)
+      } else {
+        ordered
+      }
+      if eq_ok {
         Some(TBool)
       } else {
         None
       }
+    }
     OpAnd | OpOr => if l is TBool && r is TBool { Some(TBool) } else { None }
     OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr =>
       // Bitwise ops are Int-on-Int only in this subset: no Float claim is
