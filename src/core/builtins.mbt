@@ -41,6 +41,11 @@
 // next section explains why an extra name is the cheap mistake here and a
 // missing one is not.
 //
+// The `Type::method` form lives in `builtin_methods.mbt`, generated from the
+// same toolchain tree rather than hand-maintained, for the same reason the
+// bare list was ever read out of an interface in the first place: a name
+// invented here is a false alarm, and a name missed here is noise.
+//
 // Direction of the error
 // ----------------------
 // Every use of this list SUPPRESSES a "no visible binding" finding. It can
@@ -62,8 +67,14 @@
 /// consumer that needs to tell them apart (`types`, which wants a `Ty`) keeps
 /// its own richer structure and uses this list only to know that a name is
 /// not an error.
+///
+/// The bare names above are followed by `builtin_method_names()`, so the
+/// returned list also carries the `Type::method` form. The `.mbti` frontend
+/// skips any type text containing `::` before consulting this list, so the
+/// extra entries cost it nothing but a slightly longer array; the three
+/// `.mbt` lenses only ever ask whether a name is a member.
 pub fn ambient_names() -> Array[String] {
-  [
+  let bare = [
     // --- read out of <toolchain>/lib/core/builtin/pkg.generated.mbti ---
     // types
     "Array", "ArrayView", "ArgsLoc", "Bool", "Byte", "Bytes", "BytesView", "Char",
@@ -84,12 +95,25 @@ pub fn ambient_names() -> Array[String] {
     "debug_assert_false",
     // --- carried over from the .mbti frontend's private list ---
      "Nil", "Error", "Set", "UInt8", "Int16", "Float",
-    // NOTE: methods OF those builtin types (`Array::make`, `Byte::default`,
-    // `Int::max`) are deliberately NOT listed one by one. The behavioral lens
-    // skips any call qualified on an ambient type name, because it has no
-    // method table for builtin types — listing names individually was measured
-    // whack-a-mole: adding `Byte::default` to fix one finding just exposed
-    // `Array::make` beside it on the same line.
+    // The METHODS of these types are NOT listed here one by one — they live in
+    // `builtin_methods.mbt`, generated from the toolchain's own interfaces, and
+    // merged in below. That file's header records why they were worth a
+    // generated table: 0.4.16 had a NOTE here claiming the behavioral lens
+    // "skips any call qualified on an ambient type name", which was FALSE —
+    // that rule was written and reverted in the same release, and the claim
+    // outlived it. riantr/moonbit_labeler 0.2.13 `rasterizer.mbt:74` was the
+    // finding that proved it: `Array::make(total, Byte::default())`, reported
+    // as `undefined function 'Array::make'` on code `moon check` accepts.
+    //
+    // An earlier diagnosis of that finding — the one this NOTE replaced — read
+    // the two callees as whack-a-mole: adding `Byte::default` to the list
+    // merely exposed `Array::make` beside it, so no fix could ever end. That
+    // reading was wrong twice over. Only ONE of the two was ever reported, and
+    // a call that reports returns ABottom, which SUPPRESSES the enclosing
+    // call — so a nested chain reports its innermost name and hides the rest.
+    // The "next one revealed" is the mask lifting, not an endless list; the
+    // family terminates when the callees are known.
+    //
     // --- from `moonbitlang/core/debug`, NOT from core/builtin ---
     //
     // The sections above are read out of `core/builtin`'s interface, which is
@@ -106,4 +130,8 @@ pub fn ambient_names() -> Array[String] {
     // only the second.
      "Repr",
   ]
+  for n in builtin_method_names() {
+    bare.push(n)
+  }
+  bare
 }

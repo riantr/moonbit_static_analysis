@@ -129,6 +129,110 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.17 —— 11 → 9：一条的根因是「上一版把探针写坏了」，另一条是「读到了却丢掉」
+
+0.4.16 剩 11 条。这轮回头查了 0.4.16 判定为**不可观测**、因而撤回的那条
+`Array::make`。结论是：**不可观测的原因是探针有缺陷，不是规则有问题。**
+
+### `Array::make`：探针从来没调用过那个函数
+
+behavior 镜头只分析**被到达**的函数体——顶层语句调用得到才算。
+`rasterizer.mbt` 在 **1378 行**调用了 `PixelBuffer::new`，而 0.4.16 的每一个
+探针都只抄了定义、没抄那个调用。于是规则「改了没变化」是必然的：它压根没跑。
+
+补上调用后复现了，然后发现**第二件事**，而且它推翻了当初的读法：
+
+| 探针 | 结果 |
+|---|---|
+| 顶层可达，真实那行 | 报 `Byte::default` |
+| 去掉顶层调用 | 完全静默 |
+| `Array::make` 单独调用 | **被报** |
+| `Byte::default` 单独调用 | **被报** |
+| 外层也不存在 + 内层 `Byte::default` | **只报内层** |
+
+最后一行是重点：**一个调用一旦报错就返回 `ABottom`，外层调用不再被访问**。
+所以嵌套链只报最内层那个名字。当初把「加了 `Byte::default` 就露出
+`Array::make`」读成「打地鼠、没有终点」是错的——那是一层**掩盖**被揭开，
+不是一张无穷长的清单；调用者都认识之后，家族就终止了。
+
+### 为什么是表，不是规则
+
+规则版本是「限定在内建类型上的调用一律是内建方法，不报」。反向对照判了它：
+
+| 写法 | 结果 |
+|---|---|
+| `Array::make(4, 0)` | 静默（名字在表里） |
+| `Array::mkae(4, 0)` | **被报**（名字不在表里） |
+
+规则版本会把两个都静音。所以 `src/core/builtin_methods.mbt` 是**生成的表**：
+656 个名字，642 个读自工具链自己的 `moonbitlang/core/**/pkg.generated.mbti`，
+剩下 14 个编译器内建（`Array::make`、`Map::new`、`StringBuilder::new` …）
+**没有任何接口声明**，逐个用 `moon check` settle——一个探针文件把它们全部
+裸写调用，旁边放一个不可能存在的控制名，工具链只标了控制名。
+
+生成脚本随仓库发布在 `tools/gen_builtin_methods.ps1`，它自己会跑 `moon fmt`。
+它必须在仓库里而不是临时目录里：`builtin_methods.mbt` 的头写着「不要手改」，
+一张**生成器没进仓库**的表会静默腐烂——下一个 MoonBit 加了方法，没人生成，
+分析器就又开始把真实的内建调用报成未定义。
+这个表是 `builtins.mbt` 那张 ambient 表的一部分，而那张表的头注释早就写明：
+**每次使用都只会漏报，绝不会凭空造出误报**——这就是为什么它可以是数据。
+
+### 顺带证伪了 0.4.16 的一条结论
+
+0.4.16 的测试写着「限定名调用不上报，是过度报告的镜像，一个已知缺口」。
+**假的。** 那个 fixture 是 `fn f() -> Int { Nope::also_missing() }`，而 `f`
+**从来没被调用过**——和 `Array::make` 那个探针是同一个缺陷。把 `let top = f()`
+加上去，同一个名字立刻被报出来。
+
+真实原因有两条，叠在一起看着像一条：behavior 镜头需要函数体被到达，而 type
+镜头**根本不把 `::` 名当类型引用**。测试已按实际行为重写。
+
+### `Select`：同包兄弟文件里的枚举变体
+
+`canvas_view_test.mbt:4917`：
+
+```moonbit
+fn every_mode() -> Array[Mode] {
+  [Select, Rect, Polygon, Keypoint, EditBinding]
+}
+```
+
+`Mode` 和五个变体都在**同一个包目录**的 `app_moui/app.mbt:23`。而
+`collect_declared_names` 只收**顶层关键字**后面的名字——枚举变体在花括号里，
+被 depth-0 规则跳过了。这是 0.4.15 用 path 尾部兜底解决的同文件问题的**跨文件
+孪生体**：带路径的 `Mode::Select` 走得通，裸写的 `[Select, ...]` 走不通。
+
+修法是进 `enum` 体收割变体名，但**载荷类型不算变体**，否则
+`Conv2d(Params)` 会让 `Params` 变成包可见，静默掉别的文件里一条真发现。
+所以规则是：行首（或紧跟 `{` / `,` / `|`）**且不在括号内**。
+
+（顺带一个实测：`enum E { A B }` 这种空格分隔的写法是**语法错误**，
+`moon check` 报 `expect ; or }`。测试最初按合法写了它，跑出来是红的——
+于是去问工具链，而不是去猜语法。）
+
+### 差分：933 个文件里只有 2 个文件的判定变了
+
+| 语料 | 0.4.16 | 0.4.17 |
+|---|---|---|
+| `riantr/snn_mbt` 0.155.0 | 6 | **6**（全真阳性，未动） |
+| `riantr/moonbit_doubleML` 0.139.0 | 0 | **0** |
+| `riantr/moonbit_labeler` 0.2.13 | 5 | **3** |
+| `riantr/moonbit_image` 0.3.7 | 0 | **0** |
+| `riantr/pyroduct` 0.1.29 | 0 | **0** |
+| 合计 | 11 | **9** |
+
+逐文件比对：只有 `rasterizer.mbt` 与 `canvas_view_test.mbt` 的判定变了，各减
+**恰好 1** 条 actionable，两者的 notice 数（1 / 175）**一条未动**。其余 931 个
+文件逐字节一致。两处改动都是外科手术级的。
+
+labeler 剩下的 3 条是 `@core.SurfaceMetrics::new` ×1 与 `@core.Size::new` ×2，
+属于 0.4.16 已经定过的「调用方式」——加 `--extern-iface-dir .repos` 就没有。
+
+测试 js 286 / wasm 358 / wasm-gc 286。七道防护做了突变验证，全部杀死。其中
+**两道专门用来测形状而不是测数值**：M3 往表里塞一个不存在的名字（`Array::mkae`），
+反向对照必须变红；M4 把 0.4.16 那个**规则**装回去替代表，8 个测试变红——
+「表优于规则」是实测出来的，不是风格选择。
+
 ## 0.4.16 —— 19 → 8，其中 6 条是真阳性：先承认「对」，再修剩下的错
 
 0.4.15 剩 19 条。这轮先做了一件上一轮没做的事：**逐条判定哪些是真的**。
@@ -566,7 +670,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.16
+moon add riantr/moonbit_static_analysis@0.4.17
 ```
 
 ```moonbit
@@ -898,7 +1002,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.16` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.17` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

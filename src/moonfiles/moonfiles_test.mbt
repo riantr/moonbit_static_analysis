@@ -694,3 +694,42 @@ test ".mbti: a const's declared type is still checked" {
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("NoSuchType"))
 }
+
+///|
+/// 0.4.17 — the ambient table grew by 656 qualified `Type::method` names, read
+/// out of the toolchain's own `moonbitlang/core/**/pkg.generated.mbti`.
+///
+/// This frontend consults that table, so the growth is something to pin here
+/// rather than assume. It skips any type text containing `::` BEFORE the lookup
+/// (`moonfiles.mbt:1358`), which is why a qualified name cannot answer a type
+/// question — and that skip is the whole reason the growth is inert here.
+test ".mbti: the qualified builtin-method table does not disturb the frontend" {
+  // A qualified method declaration and an ordinary builtin type, together:
+  // the two shapes the merge could plausibly confuse with each other.
+  let good = "package \"d\"\npub(all) struct Pos {\n  line : Int\n} derive(Eq)\npub fn Pos::shift(Self, Int) -> Pos\npub fn f(Map[String, Int]) -> Bytes\n"
+  assert_eq(
+    @moonfiles.iface(good, "d.mbti", @core.IfaceSymTab::empty()).length(),
+    0,
+  )
+  // And an unknown type is still an unknown type, so the skip above is a skip
+  // and not a blanket.
+  let bad = "package \"d\"\npub fn f(ZzNoSuchType) -> Int\n"
+  assert_true(
+    @moonfiles.iface(bad, "d.mbti", @core.IfaceSymTab::empty()).length() > 0,
+  )
+}
+
+///|
+/// The table itself, asserted here as well as from the pipeline side: it is
+/// `@core`'s data, and this is the frontend that reads it.
+test ".mbti: the ambient table carries methods and not mistakes" {
+  let a = @core.ambient_names()
+  assert_true(a.contains("Array"))
+  assert_true(a.contains("Array::make"))
+  assert_true(a.contains("Byte::default"))
+  // Compiler builtins, declared in no interface at all.
+  assert_true(a.contains("StringBuilder::new"))
+  assert_true(a.contains("Int::unsafe_to_char"))
+  // The negative half: absent, so the pipeline side can still report it.
+  assert_false(a.contains("Array::mkae"))
+}

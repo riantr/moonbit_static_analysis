@@ -577,40 +577,133 @@ fn Parser::after_path_marker(self : Parser, i : Int) -> Bool {
 /// and the remainder of the file contributes nothing. That is the trust level
 /// of any partially-read file, and it errs toward silence, not toward a false
 /// finding.
+///
+/// ENUM VARIANTS (0.4.17). A variant is a brace-declared value, so the depth-0
+/// rule above cannot see it: `enum Mode { Select Rect }` declares five names
+/// that no sibling file could resolve, and one of them was reported on
+/// riantr/moonbit_labeler 0.2.13 `app_moui/canvas_view_test.mbt:4917` —
+///
+///     fn every_mode() -> Array[Mode] {
+///       [Select, Rect, Polygon, Keypoint, EditBinding]
+///     }
+///
+/// `Mode` and all five variants live in `app_moui/app.mbt`, the same package
+/// directory, and `moon check` accepts the file. This is the cross-file twin of
+/// the in-file unit-variant gap 0.4.15 closed with a path-tail fallback, and it
+/// is what a bare reference exercises: `Mode::Select` resolves through that
+/// fallback, `[Select, ...]` does not.
+///
+/// The rule is deliberately narrow, because the whole enum body is not safe to
+/// harvest: a payload's TYPE is also a brace-declared name, and
+/// `Conv2d(Params)` must not make `Params` package-visible. A name is a variant
+/// only when it starts a line (or follows `{` or `|`) AND is not inside
+/// parentheses AND is followed by `(`, `,`, `}`, a newline or `;`. A payload
+/// type fails the parenthesis test even when it is laid out on its own line,
+/// which is the one case a line-start rule alone would get wrong.
 pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
-  let (toks, _, _) = @lexer.lex(src)
+  let (toks, spans, _) = @lexer.lex(src)
   let tab = @core.IfaceSymTab::empty()
   let mut depth = 0
   let mut i = 0
+  // `enum` has been seen at depth 0 and the body has not opened yet.
+  let mut enum_pending = false
+  // Inside the braces of that enum, and only those braces.
+  let mut enum_body = false
+  let mut paren = 0
   while i < toks.length() {
     match toks[i] {
-      TLBrace => depth += 1
+      TLBrace => {
+        if enum_pending && depth == 0 {
+          enum_body = true
+        }
+        enum_pending = false
+        depth += 1
+      }
       TRBrace =>
         // clamped at zero: a stray `}` must not make every later top-level
         // declaration look nested, which would silently drop the rest of the
         // file rather than mis-name one binding
         if depth > 0 {
           depth -= 1
+          if depth == 0 {
+            enum_body = false
+          }
         }
-      TName(kw) =>
-        if depth == 0 && (declares_value(kw) || declares_type(kw)) {
+      TLParen => if enum_body && depth == 1 { paren += 1 }
+      TRParen => if enum_body && depth == 1 && paren > 0 { paren -= 1 }
+      TName(n) =>
+        if depth == 0 && (declares_value(n) || declares_type(n)) {
+          if n == "enum" {
+            enum_pending = true
+          }
           match declared_name_at(toks, i + 1) {
-            Some(n) => {
-              if declares_value(kw) {
-                tab.values.set(n, true)
+            Some(d) => {
+              if declares_value(n) {
+                tab.values.set(d, true)
               }
-              if declares_type(kw) {
-                tab.types.set(n, true)
+              if declares_type(n) {
+                tab.types.set(d, true)
               }
             }
             None => ()
           }
+        } else if enum_body &&
+          depth == 1 &&
+          paren == 0 &&
+          starts_variant(toks, spans, i) &&
+          ends_variant(toks, i + 1) {
+          tab.values.set(n, true)
         }
+      TNewline => enum_pending = false
       _ => ()
     }
     i += 1
   }
   tab
+}
+
+///|
+/// Does the name at `i` sit where a variant is written?
+///
+/// Line-start is the MoonBit convention and is read from the spans rather than
+/// from a newline token, because the lexer suppresses newlines after openers
+/// and binary operators. `{`, `,` and `|` join it as variant positions because
+/// the comma-separated one-line body `enum E { A, B }` is legal and would
+/// otherwise yield only its first variant.
+fn starts_variant(
+  toks : Array[@lexer.Tok],
+  spans : Array[@core.Span],
+  i : Int,
+) -> Bool {
+  if i == 0 {
+    return true
+  }
+  match toks[i - 1] {
+    TBar | TLBrace | TComma => return true
+    _ => ()
+  }
+  if i - 1 >= spans.length() || i >= spans.length() {
+    return false
+  }
+  spans[i].start.line != spans[i - 1].end.line
+}
+
+///|
+/// What may follow a variant name.
+///
+/// The set is the grammar's, not a guess: a variant either takes a payload
+/// (`Conv2d(`), is separated from the next by `,`, ends the body with `}`, or
+/// simply ends the line. A bare name followed by something else is an
+/// expression inside the enum body, which MoonBit has none of — so refusing it
+/// is what keeps the harvest from walking off into unrelated text.
+fn ends_variant(toks : Array[@lexer.Tok], i : Int) -> Bool {
+  if i >= toks.length() {
+    return false
+  }
+  match toks[i] {
+    TLParen | TComma | TRBrace | TNewline | TSemi => true
+    _ => false
+  }
 }
 
 ///|

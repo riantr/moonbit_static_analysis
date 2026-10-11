@@ -153,6 +153,127 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.17 — 11 → 9: one root cause was "0.4.16 wrote the probe wrong", the other "it read the answer and threw it away"
+
+0.4.16 left 11. This release went back to the `Array::make` finding that 0.4.16
+declared **unobservable** and therefore reverted. The conclusion was that the
+unobservability came from a broken probe, not from the rule being wrong.
+
+### `Array::make`: the probe never called the function
+
+The behavioral lens analyzes a function body only when the body is **reached**
+from a top-level statement. `rasterizer.mbt` calls `PixelBuffer::new` at line
+**1378**; every 0.4.16 probe copied the definition and not that call. "Changing
+the rule made no difference" was therefore guaranteed — it never ran.
+
+With the call restored the finding reproduces, and a **second** fact turned up,
+which overturns how it was read the first time:
+
+| Probe | Result |
+|---|---|
+| top-level call present, the real line | reports `Byte::default` |
+| top-level call removed | completely silent |
+| `Array::make` called alone | **reported** |
+| `Byte::default` called alone | **reported** |
+| outer also missing + inner `Byte::default` | **only the inner is reported** |
+
+The last row is the point: **a call that reports returns `ABottom`, and the
+enclosing call is then never visited**. A nested chain therefore reports only
+its innermost unknown name. Reading "adding `Byte::default` exposed
+`Array::make` beside it" as whack-a-mole with no termination was wrong — that
+was a **mask lifting**, not an endless list, and the family ends once the
+callees are known.
+
+### Why a table and not a rule
+
+The rule version is "a call qualified on a builtin type is a builtin method,
+stay quiet". A control settles it:
+
+| Spelling | Result |
+|---|---|
+| `Array::make(4, 0)` | silent (the name is in the table) |
+| `Array::mkae(4, 0)` | **reported** (the name is not) |
+
+The rule silences both. So `src/core/builtin_methods.mbt` is a **generated
+table**: 656 names, 642 read out of the toolchain's own
+`moonbitlang/core/**/pkg.generated.mbti`, and 14 compiler builtins
+(`Array::make`, `Map::new`, `StringBuilder::new`, …) that **no interface
+declares**, each settled with `moon check` — one probe file calling all of them
+bare, next to an impossible control name, and the toolchain flagged only the
+control.
+
+The generator ships with the repository at `tools/gen_builtin_methods.ps1` and
+runs `moon fmt` itself. It has to be in the repository rather than a scratch
+directory: `builtin_methods.mbt` says "do not edit by hand", and a generated
+table whose generator is not committed rots silently — the next MoonBit adds
+methods, nobody regenerates, and the analyzer goes back to reporting real
+builtin calls as undefined. The table joins the ambient list in `builtins.mbt`, whose header has
+always said that every use of that list **can only cost a missed report and
+never invent a false alarm** — which is why it can be data.
+
+### A 0.4.16 conclusion, falsified
+
+The 0.4.16 test claimed "an unresolvable qualified call is silent — the mirror
+image of the over-reporting". **False.** Its fixture was
+`fn f() -> Int { Nope::also_missing() }` and `f` was **never called** — the same
+probe defect as `Array::make`. Add `let top = f()` and the very same name is
+reported.
+
+Two silences stack and look like one: the behavioral lens needs the body
+reached, and the type lens does not treat a `::` name as a type reference at
+all. The test now asserts what is actually true.
+
+### `Select`: an enum variant in a sibling file
+
+`canvas_view_test.mbt:4917`:
+
+```moonbit
+fn every_mode() -> Array[Mode] {
+  [Select, Rect, Polygon, Keypoint, EditBinding]
+}
+```
+
+`Mode` and all five variants live in `app_moui/app.mbt:23`, the same package
+directory. `collect_declared_names` collects only the names after a **top-level**
+keyword, and an enum variant is brace-declared, so the depth-0 rule skipped it.
+This is the cross-file twin of the in-file unit-variant gap 0.4.15 closed with a
+path-tail fallback: `Mode::Select` goes through it, bare `[Select, ...]` does
+not.
+
+The fix enters the `enum` body — but a **payload type is not a variant**, or
+`Conv2d(Params)` would make `Params` package-visible and silence a real finding
+elsewhere. So the rule is: starts a line (or follows `{` / `,` / `|`) **and is
+not inside parentheses**.
+
+(Mettled along the way: the space-separated one-liner `enum E { A B }` is a
+**parse error** — `moon check` says `expect ; or }`. The test was first written
+assuming it legal, went red, and the answer came from the toolchain rather than
+from a guess at the grammar.)
+
+### The differential: 2 of 933 files changed verdict
+
+| Corpus | 0.4.16 | 0.4.17 |
+|---|---|---|
+| `riantr/snn_mbt` 0.155.0 | 6 | **6** (all true positives, untouched) |
+| `riantr/moonbit_doubleML` 0.139.0 | 0 | **0** |
+| `riantr/moonbit_labeler` 0.2.13 | 5 | **3** |
+| `riantr/moonbit_image` 0.3.7 | 0 | **0** |
+| `riantr/pyroduct` 0.1.29 | 0 | **0** |
+| Total | 11 | **9** |
+
+File by file, only `rasterizer.mbt` and `canvas_view_test.mbt` changed verdict,
+each losing **exactly one** actionable finding, with their notice counts (1 /
+175) **unchanged**. The other 931 files are byte-identical.
+
+The 3 left in labeler are `@core.SurfaceMetrics::new` ×1 and `@core.Size::new`
+×2 — the `--extern-iface-dir .repos` invocation class 0.4.16 already settled.
+
+Tests js 286 / wasm 358 / wasm-gc 286. Seven mutations, all killed. Two of them
+test the SHAPE rather than the value: M3 puts a name that does not exist
+(`Array::mkae`) into the table and the negative control has to go red; M4
+installs 0.4.16's **rule** in place of the table and 8 tests go red — "a table
+beats a rule" is measured, not chosen for style.
+
 ## 0.4.16 — 19 → 8, six of them TRUE positives: acknowledge "correct" first, then fix the rest
 
 0.4.15 left 19 findings. This cycle did the thing the previous one skipped:
@@ -619,7 +740,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.16
+moon add riantr/moonbit_static_analysis@0.4.17
 ```
 
 ```moonbit
@@ -1001,7 +1122,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.16` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.17` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

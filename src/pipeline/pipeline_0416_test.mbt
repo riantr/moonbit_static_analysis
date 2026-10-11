@@ -93,62 +93,86 @@ test "0416: an UNBRACED suberror still parses and the file continues" {
 }
 
 ///|
-/// C — a call qualified on a BUILTIN TYPE. NOT FIXED in 0.4.16, and this test
-/// says so rather than pretending otherwise.
+/// C — a call qualified on a BUILTIN TYPE.
 ///
-/// `Array::make(total, Byte::default())` is one real line from
-/// riantr/moonbit_labeler 0.2.13, and the analyzer reports one of its two
-/// callees as an undefined function. A rule ("a call qualified on an ambient
-/// type is a builtin method") was written for it, and then REVERTED: two of its
-/// mutations survived and it changed nothing in a hand-built probe, complete or
-/// deliberately partial. Whatever emits those findings is not that code path.
+/// `Array::make(total, Byte::default())` is one real line from riantr/
+/// moonbit_labeler 0.2.13. At 0.4.16 one of its two callees was reported as an
+/// undefined function, and the test then said so — attributing it to an
+/// unfixed rule and to "whack-a-mole with no termination".
 ///
-/// The test therefore pins what is actually true — the plain-name control —
-/// and names the open question, rather than asserting a silence that arrived
-/// for an undemonstrable reason.
-test "0416: KNOWN GAP - builtin-type qualified calls are unresolved, not fixed" {
-  // The plain undefined name IS reported, so the analyzer is looking.
-  let plain = @pipeline.run(
-    "fn f() -> Int {\n  totally_undefined_fn()\n}\n",
-    "x.mbt",
-    @core.IfaceSymTab::empty(),
-  )
-  assert_true(count_family(plain, "UndefinedName") > 0)
-  // And a call qualified on a non-builtin head is already silent — the mirror
-  // of the over-reporting 0.4.14-0.4.16 removed. Qualified names swung from
-  // over-reported to under-reported, and neither end is right yet.
-  let qualified = @pipeline.run(
-    "fn f() -> Int {\n  nope::also_missing()\n}\n",
-    "x.mbt",
-    @core.IfaceSymTab::empty(),
-  )
-  assert_eq(count_family(qualified, "UndefinedName"), 0)
-}
-
-///|
-/// A KNOWN GAP, pinned so it cannot be forgotten: an unresolvable qualified
-/// call is not reported at all.
+/// BOTH CLAIMS WERE WRONG, and this test is here because 0.4.17 had to say so
+/// where the wrong reasoning was still standing.
 ///
-/// This test asserts the CURRENT behaviour, which is silence. It is written
-/// this way deliberately — the alternative would be to assert a finding that
-/// does not exist yet, which turns the suite red and blocks every release for
-/// a gap nobody has scoped. `Nope::also_missing()` is real code with a real
-/// undefined callee, and the analyzer says nothing.
+/// The whack-a-mole reading was wrong because a call that reports returns
+/// ABottom and SUPPRESSES the enclosing call, so a nested chain reports only
+/// its innermost name. Adding `Byte::default` did not reveal an endless list —
+/// it lifted a mask, and the family terminates once the callees are known.
 ///
-/// It is the mirror image of the false positives 0.4.14–0.4.16 spent three
-/// releases removing: qualified names were over-reported, and the fix for that
-/// left them under-reported. The honest direction for a later version is to
-/// report an unresolvable qualified call — but that needs the callee's receiver
-/// to be distinguished from a package alias first, which is not done here.
-test "0416: KNOWN GAP - an unresolvable qualified call is silent" {
+/// The "unfixed rule" reading was wrong because the probe that could not
+/// reproduce it never called the function whose body contained the line. This
+/// lens analyzes only bodies REACHED from a top-level statement; the real
+/// file calls `PixelBuffer::new` at line 1379.
+///
+/// The fix is data, not a rule: `@core.builtin_method_names()`. The control
+/// that settles the choice is the `Array::mkae` case in the 0.4.17 file.
+test "0416: a builtin-type qualified call resolves through the ambient table" {
   let r = @pipeline.run(
-    "fn f() -> Int {\n  Nope::also_missing()\n}\n",
+    "fn build(total : Int) -> Array[Byte] {\n  Array::make(total, Byte::default())\n}\nlet top = build(4)\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )
   assert_eq(count_family(r, "UndefinedName"), 0)
-  // The plain-name case beside it IS reported, so the silence above is specific
-  // to the qualified form and not the check simply not running.
+}
+
+///|
+/// The NEGATIVE CONTROL for the reachability claim above, and the control for
+/// the mask: both callees unknown, the inner one nested. Reporting the inner
+/// name and hiding the outer is what 0.4.16 shipped. With `Byte::default`
+/// known, the outer one has to appear — fixing an over-report can RAISE the
+/// count on a file, and this is that case rather than a regression.
+test "0416: a known inner callee no longer masks the outer unknown" {
+  let r = @pipeline.run(
+    "fn build() -> Int {\n  ZzMissing::nope(4, Byte::default())\n}\nlet top = build()\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// THE FALSIFIED CLAIM, corrected in place.
+///
+/// This test used to read "a KNOWN GAP — an unresolvable qualified call is
+/// silent", and asserted `Nope::also_missing()` produced nothing. It did
+/// produce nothing, but not for the stated reason. The fixture was
+/// `fn f() -> Int { Nope::also_missing() }` with `f` never called, so the
+/// behavioral lens never visited the body — the same probe defect as the test
+/// above. The claimed "mirror image" of 0.4.14–0.4.16 (qualified names
+/// over-reported, then under-reported) does not exist: with the body reached,
+/// the qualified name is reported like any other.
+///
+/// The reason the original fixture stayed silent is worth keeping, because it
+/// is two independent silences that look like one. The behavioral lens needs
+/// the body reached, and the TYPE lens does not report a `::` name as a type
+/// reference at all. Drop the call and only the second silence remains.
+test "0416: an unreached body is silent, and reaching it reports the name" {
+  let unreached = @pipeline.run(
+    "fn f() -> Int {\n  Nope::also_missing()\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(unreached, "UndefinedName"), 0)
+  // Same source, one line added: the body is now reached from a top-level
+  // statement, and the very same callee is reported.
+  let reached = @pipeline.run(
+    "fn f() -> Int {\n  Nope::also_missing()\n}\nlet top = f()\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_true(count_family(reached, "UndefinedName") > 0)
+  // The plain-name case is reported EITHER WAY, because the type lens sees a
+  // bare unknown name in a signature position whether or not the body runs.
+  // Without this the pair above could pass because nothing ran at all.
   let plain = @pipeline.run(
     "fn f() -> Int {\n  totally_undefined_fn()\n}\n",
     "x.mbt",

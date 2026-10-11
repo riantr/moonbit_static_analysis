@@ -1078,31 +1078,36 @@ fn Interp::call(
       if self.local_fns.contains(name) {
         return AAny
       }
-      // NOTE ON A REVERTED CHANGE (0.4.16). A rule was written and then removed
-      // here: "a call qualified on an AMBIENT TYPE — `Array::make`,
-      // `Byte::default`, `Int::max` — is a builtin method, so do not report it
-      // undefined." The reasoning was sound and the target real: riantr/
-      // moonbit_labeler 0.2.13 reports `undefined function 'Array::make'` on
-      // `rasterizer.mbt:74`, and adding the ONE measured name `Byte::default`
-      // to the builtin list merely exposed `Array::make` beside it on the same
-      // line — whack-a-mole with no termination, which is what the family rule
-      // was for.
+      // HISTORY (0.4.16 -> 0.4.17). A rule used to sit here: "a call
+      // qualified on an AMBIENT TYPE — `Array::make`, `Byte::default`,
+      // `Int::max` — is a builtin method, so do not report it undefined." It
+      // was written for a real finding (riantr/moonbit_labeler 0.2.13,
+      // `rasterizer.mbt:74`) and then REVERTED, on the grounds that it was
+      // unobservable: two of its mutations survived and it changed nothing in
+      // a hand-built probe.
       //
-      // It is reverted because it is UNOBSERVABLE. Two of its five mutations
-      // survived (disabling the rule, and making its predicate never match left
-      // the whole suite green), and it made no difference to a hand-built probe
-      // in either a complete or a deliberately PARTIAL file — the shape the
-      // corpus finding actually has. Whatever reports those two names is not
-      // this code path, and shipping a suppression here would silence a family
-      // of calls on the strength of a fix nobody can demonstrate.
+      // Both of those grounds were wrong, and the second one explains the
+      // first. This lens analyzes a body only when the body is REACHED from a
+      // top-level statement, and every probe copied the `fn PixelBuffer::new`
+      // DEFINITION without ever calling it — so nothing here ran, and a rule
+      // that would have fired could not show itself. The real file calls it at
+      // line 1379. With the call restored the finding reproduces, and the rule
+      // is observable.
       //
-      // The two labeler findings are therefore still open and un-rooted. The
-      // first thing to establish is WHICH code path emits them: `undefined
-      // function` is constructed in exactly one place in this file, and that
-      // place is not reached by the shape the corpus has.
+      // It is still not what shipped, because the TABLE is better: the rule
+      // also silences `Array::mkae`, and there is a control for exactly that.
+      // `@core.builtin_method_names()` carries the measured names, so a builtin
+      // type with a method that does not exist is still reported. See
+      // src/core/builtin_methods.mbt.
       //
-      // callee existence was the structural/type lenses' finding; here it
-      // is a runtime UndefVarError — the pipeline merges all three
+      // One consequence worth knowing, because it will look like a new bug and
+      // is the opposite. A call that reports returns ABottom, and the enclosing
+      // call is then never reached — so a nested chain reported only its
+      // INNERMOST name. `ZzMissing::nope(4, Byte::default())` reported
+      // `Byte::default` and hid `ZzMissing::nope`. Teaching the lens
+      // `Byte::default` therefore REVEALED the outer one, which is a real
+      // missing name and is now correctly reported. Fixing an over-report can
+      // raise the count on a file; it is uncovering, not inventing.
       self.report(@core.FUndefinedName, "undefined function '\{name}'", sp)
       ABottom
     }

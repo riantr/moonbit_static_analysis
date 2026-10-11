@@ -369,14 +369,42 @@ both went to the "skip to end of line" path, so the braced body was parsed as an
 expression block and every payload type in it was reported undefined (`String`, four
 times, on riantr/moonbit_image).
 
-**KNOWN GAP: an unresolvable QUALIFIED call is not reported at all (as of 0.4.16).**
-`Nope::also_missing()` is silent while `totally_undefined_fn()` is reported. This is
-the mirror of what 0.4.14–0.4.16 fixed: qualified names were once over-reported
-(`Layer::ReLU`, `fn hz`), and silencing that left them under-reported. Separately,
-`Array::make(total, Byte::default())` on riantr/moonbit_labeler IS reported, and a
-suppression for it was written and then reverted — both its mutations survived and it
-changed nothing measurable, so shipping it was not justified. Fixing either needs the
-callee's receiver to be told apart from a package alias first, which is not done.
+**A method of a builtin type is not an undefined function (since 0.4.17).**
+`Array::make(total, Byte::default())` on riantr/moonbit_labeler was reported as
+`undefined function 'Array::make'` on a line `moon check` accepts. The ambient
+list carried the builtin TYPES and the top-level builtins, and nothing in
+between. `src/core/builtin_methods.mbt` is a generated table of the 656 measured
+names — 642 read out of the toolchain's own `moonbitlang/core/**/pkg.generated.mbti`,
+plus 14 compiler builtins (`Array::make`, `Map::new`, `StringBuilder::new`, …)
+that no interface declares, each settled with `moon check`. It is a table and not
+the rule "a call qualified on a builtin type is a builtin method" because that
+rule also silences `Array::mkae`, and `Array::mkae` is still reported.
+
+**An enum variant in a SIBLING file is not an undefined name (since 0.4.17).**
+The 0.4.15 fix resolved a unit variant written as a path, `Layer::ReLU`. A BARE
+reference from another file in the same package was still reported:
+`canvas_view_test.mbt:4917` writes `[Select, Rect, Polygon, Keypoint,
+EditBinding]` for an `enum Mode` declared in `app_mbt` next door. The name
+harvest collects top-level declarations only, and a variant is brace-declared.
+Variants are now harvested from the enum body — but a payload's TYPE is not a
+variant, so `Conv2d(Params)` does not make `Params` package-visible.
+
+**A nested unknown callee hides the ones around it (known, as of 0.4.17).** A
+call that reports returns `ABottom` and the enclosing call is not visited, so a
+chain of unknown callees in one expression yields ONE finding — the innermost.
+Reading that as "each fix reveals the next one forever" is a mistake: the family
+ends when the callees are known. But it does mean a single line can carry more
+than one real defect, and the count you see is a floor.
+
+**KNOWN GAP, CORRECTED: an unresolvable qualified call IS reported (as of
+0.4.17).** Earlier revisions of this file called it a known gap and wrote that
+qualified names were under-reported as the mirror of what 0.4.14–0.4.16 fixed.
+That was wrong, and the reason is worth knowing because it produces false
+conclusions about reachability: the fixture never CALLED the function, so the
+behavioral lens never visited the body. Reach it and `Nope::also_missing()` is
+reported like any other name. The behavioral lens analyzes a body only when a
+top-level statement reaches it — a large private helper nobody calls will
+produce far fewer behavior findings than its size suggests.
 
 If you are scanning a package whose dependencies you care about, pass
 `--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at
