@@ -79,7 +79,18 @@ pub fn const_eval(e : @ast.Expr) -> Const? {
             OpSub => Some(CInt(i - j))
             OpMul => Some(CInt(i * j))
             OpMod => Some(CInt(i % j))
-            // `/` widens to Float at runtime — outside the int folder
+            // Int/Int is INTEGER division in MoonBit — `7 / 2` is 3, verified
+            // by running it, not 3.5. So the comment that used to sit here
+            // ("`/` widens to Float at runtime") was simply wrong.
+            //
+            // The value is still left unfolded on purpose. Folding it is
+            // correct and was implemented in 0.4.14, then measured: enabling it
+            // changed NOTHING in the emitted findings over 933 files across
+            // riantr/snn_mbt, moonbit_doubleML, moonbit_labeler and
+            // moonbit_image — byte-identical report streams. No test could
+            // kill the change either, so shipping it would have meant claiming
+            // a fix with no way to demonstrate it. Deferred until the
+            // constant-evaluation layer has observable teeth.
             OpDiv => None
             OpLt => Some(CBool(i < j))
             OpLe => Some(CBool(i <= j))

@@ -153,6 +153,83 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.14 — pyroduct's zero was not "correct": four other corpora, three real defects plus one silent one
+
+0.4.13 drove pyroduct's actionable count to 0, but that was pyroduct happening not
+to exercise the analyzer, not the analyzer being right. Pointing the same binary at
+four other published modules (`snn_mbt` / `moonbit_doubleML` / `moonbit_labeler` /
+`moonbit_image`, 933 files) produced **71 actionable findings** immediately.
+
+| Cause | Count | Evidence |
+|---|---|---|
+| `F`-suffixed float literals `0.0F` unmodelled → `undefined name 'F'` | 28 | valid per `moon run`; `7F` is the syntax error |
+| `/` typed as float division → `cannot assign 'float' into '[int]'` | 14 | `7 / 2` is `3`, **not** 3.5 |
+| exponent notation `1.0e-12` unlexed → `undefined name 'e'` | 14 | valid per `moon run` |
+| `suberror` bodies re-scanned → `undefined variable 'String'` | 4 | the same line already reports ParseError |
+
+All 68 adjudicated findings are false positives. **Zero true positives.**
+
+### A defect that produces no finding at all
+
+While fixing the above, a probe turned up something worse than any of them:
+
+```
+1.5 -> 1 | 0.25 -> 0 | 3.14159 -> 3
+```
+
+**Every float literal was losing its fractional part.** In `lexer.mbt`, `int_part`
+was captured before the fraction was consumed, so the later
+`slice(start, int_part)` cut the token back to its integer part.
+
+It stayed invisible because the existing tests asserted only that the token *kind*
+was `float` — which a truncated value satisfies perfectly. **A defect that emits no
+finding leaves the analyzer silently wrong about every float it ever reads.** The
+new tests therefore read the VALUE and the TOKEN COUNT.
+
+### One fix that was measured, and then withdrawn
+
+The constant folding and result type of `/` in `walk.mbt` / `interp.mbt` are also
+wrong as MoonBit describes them (`OpDiv => None`, `AType("float")`). After fixing
+all three:
+
+- three of the five mutations **survived** (reverting them left the suite green);
+- a differential scan over 933 files produced **byte-identical report streams**.
+
+The constant-evaluation layer simply does not reach any emitted finding for a
+division today. Under this project's rule — unobservable branches do not ship —
+**those three changes were reverted**, with the reasoning recorded in the comments
+at both sites. Claiming a fix that cannot be demonstrated is worse than leaving a
+known, currently-harmless formulation in place.
+
+### Results
+
+| Corpus | Files | Parsed | Actionable |
+|---|---|---|---|
+| `riantr/snn_mbt` 0.155.0 | 673 | 234 → **603** | 33 → **19** |
+| `riantr/moonbit_doubleML` 0.139.0 | 205 | 145 → **165** | 28 → **3** |
+| `riantr/moonbit_labeler` 0.2.13 | 37 | 16 → 18 | 6 → **5** |
+| `riantr/moonbit_image` 0.3.7 | 18 | 1 | 4 |
+| `riantr/pyroduct` 0.1.29 (no regression) | 119 | 103 → **104** | **0** |
+| Total actionable | | | 71 → **31** |
+
+Tests: js 256 / wasm 328 / wasm-gc 256 (16 new). All five mutations killed, and
+after each restore the file is verified byte-identical to before the run.
+
+### Two self-inflicted bugs the harness caught
+
+The verification script itself bit twice during this cycle:
+
+1. A bare `Get-Content -Raw` decodes UTF-8 as GBK on a Chinese-locale Windows,
+   rewriting `—` as `鈥?` **and eating the newline after it**, merging two comment
+   lines. Reading by bytes and proving the restore with SHA256 fixed it.
+2. In the differential script `"$v_"` parses as a variable *named* `v_` (empty), so
+   both variants were written to the same file and the second overwrote the first.
+   "Variant A vs variant B" had become a file compared against itself, reporting
+   "identical". Now `${v_}`, and the comparison asserts both files exist first —
+   two failed reads had once been scored as "same".
+
+Criterion: **before comparing two results, prove both results exist.**
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and
@@ -376,7 +453,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.13
+moon add riantr/moonbit_static_analysis@0.4.14
 ```
 
 ```moonbit
@@ -758,7 +835,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.13` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.14` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

@@ -305,6 +305,36 @@ interpolation was reported as unused (measured: `src/slot.mbt` 127) while the sa
 read in a plain expression was already silent. If you see `no visible binding` for
 a name used only inside `\{...}`, that one is real and worth reporting.
 
+**Numeric literals are read as numbers, not as token kinds (since 0.4.14).**
+This matters most because the alternative is invisible: before 0.4.14 a float
+literal folded to its *truncated integer part* (`1.5` → 1, `0.25` → 0, `3.14159` → 3),
+which emits no finding at all — the analyzer was simply wrong about every float it
+read, silently. Three literal forms were also unmodelled and produced false
+positives:
+
+- `0.0F` (float32 suffix) lexed as `0.0` plus the name `F`, giving
+  `undefined name 'F'` — 28 such findings on riantr/snn_mbt, the largest single
+  bucket found on any corpus so far. `7F` is a genuine parse error, so the suffix
+  is only consumed on a literal that already has a fractional part.
+- `1.0e-12` lexed as `1.0` plus the name `e`, giving `undefined name 'e'` (and
+  `undefined name 'e300'` for `1.0e-300`, which is the tell that this is a
+  tokenization split rather than a real reference). An `e` with no digits after it
+  is still a name: `1.0echo` is the float `1.0` followed by `echo`.
+- `/` was typed as float division. In MoonBit `7 / 2` is `3`; the analyzer said
+  `float`, which produced `cannot assign 'float' into '[int]'` on correct code
+  (14 findings on riantr/moonbit_doubleML).
+
+If you write an assertion about a numeric literal, read its **value** or its
+**token count**. Asserting only that the kind is `float` passes just as happily on
+a truncated one — that is how the value bug survived every previous release.
+
+Known and deliberately unchanged: the constant-evaluation layer still types `Int/Int`
+as a float and does not fold it (`walk.mbt`, `interp.mbt`). Both were implemented and
+measured in 0.4.14; reverting either changed nothing across 933 files on four corpora
+and no test could distinguish them, so they were reverted rather than shipped as an
+undemonstrable fix. If you find code where that matters, that is the finding that
+would justify changing it.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by

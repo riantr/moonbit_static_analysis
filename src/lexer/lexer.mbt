@@ -465,10 +465,9 @@ fn Lexer::lex_number(self : Lexer) -> Tok {
     self.pos += 1
     self.col += 1
   }
-  let int_part = self.pos
-  // A fractional part makes this a float, and a float literal has no suffix
-  // and no base. Checked only when digits were actually consumed, so `0.foo`
-  // is not read as a float.
+  // A fractional part makes this a float, and a float literal has no base.
+  // Checked only when digits were actually consumed, so `0.foo` is not read as
+  // a float.
   let mut is_float = false
   if any && base == 10 && self.pos < n && self.chars[self.pos] == '.' {
     let mut probe = self.pos + 1
@@ -488,8 +487,42 @@ fn Lexer::lex_number(self : Lexer) -> Tok {
       }
     }
   }
-  let text = self.slice(start, int_part)
-  let len = int_part - start
+  // The exponent, which belongs to the literal for VALUES. It is only claimed
+  // when digits actually follow the (optional) sign, because `1.0echo` is the
+  // float `1.0` followed by the name `echo` — swallowing the `e` there would
+  // invent a number the source does not contain. `1.0e-12` and `2e8` are
+  // numbers; `x.e` never reaches here because the `.` was field access.
+  if self.pos < n &&
+    (self.chars[self.pos] == 'e' || self.chars[self.pos] == 'E') {
+    let mut probe = self.pos + 1
+    if probe < n && (self.chars[probe] == '+' || self.chars[probe] == '-') {
+      probe += 1
+    }
+    let digits_at = probe
+    while probe < n && is_digit(self.chars[probe]) {
+      probe += 1
+    }
+    if probe > digits_at {
+      is_float = true
+      // Advance the column by exactly what was consumed, so a diagnostic after
+      // the literal still points at the right character.
+      self.col += probe - self.pos
+      self.pos = probe
+    }
+  }
+  // `0.0F` is a float32 literal. Only meaningful once the literal IS a float:
+  // `7F` is a parse error in MoonBit (verified), so the suffix must not be
+  // accepted on a bare integer, or `7F` would silently read as the number 7.
+  if is_float && self.pos < n && self.chars[self.pos] == 'F' {
+    self.pos += 1
+    self.col += 1
+  }
+  // The slice bound is `self.pos`, NOT a bound captured before the fraction was
+  // consumed. Slicing to the integer part alone made every float literal fold
+  // to its truncated whole number (`1.5` -> 1, `0.25` -> 0), which is invisible
+  // unless a test reads the VALUE rather than the token kind.
+  let text = self.slice(start, self.pos)
+  let len = self.pos - start
   if is_float {
     let f = parse_double(text)
     self.emit(TFloat(f), l, c0, len)
@@ -1187,25 +1220,97 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
 }
 
 ///|
+/// 10^k by repeated multiplication.
+///
+/// A bounded loop rather than a library `pow`: the exponents that occur in
+/// practice are small, and this way a hostile or accidental literal such as
+/// `1.0e999999` cannot run the scan long. Past this cap the result is already 0
+/// or infinity as a Double anyway.
+fn pow10(k : Int) -> Double {
+  let cap = 400
+  let mut r = 1.0
+  let mut i = 0
+  let lim = if k > cap { cap } else { k }
+  while i < lim {
+    r = r * 10.0
+    i += 1
+  }
+  r
+}
+
+///|
+/// Parse a float literal, exponent included.
+///
+/// The mantissa scan STOPS at `e`/`E` and skips only the digit separator `_`.
+/// Skipping every non-digit instead is the subtle version of this bug: it
+/// quietly swallows the `e` and the digits after it into the mantissa, so
+/// `2e8` came out as 28 and `1.0e-12` as 1.012.
 fn parse_double(s : String) -> Double {
-  let mut whole = 0
-  let mut frac = 0
-  let mut div = 1
+  let chars = s.to_array()
+  let n = chars.length()
+  let mut whole = 0.0
+  let mut frac = 0.0
+  let mut div = 1.0
   let mut seen_dot = false
-  for c in s {
+  let mut i = 0
+  while i < n {
+    let c = chars[i]
     if c == '.' {
       seen_dot = true
+      i += 1
       continue
     }
-    if is_digit(c) {
-      let d = c.to_int() - '0'.to_int()
-      if seen_dot {
-        frac = frac * 10 + d
-        div *= 10
-      } else {
-        whole = whole * 10 + d
-      }
+    if c == 'e' || c == 'E' {
+      break
     }
+    if is_digit(c) {
+      let d = (c.to_int() - '0'.to_int()).to_double()
+      if seen_dot {
+        frac = frac * 10.0 + d
+        div = div * 10.0
+      } else {
+        whole = whole * 10.0 + d
+      }
+      i += 1
+      continue
+    }
+    // The digit separator in `1_000.5`, and anything else the lexer passed on.
+    i += 1
   }
-  whole.to_double() + frac.to_double() / div.to_double()
+  let base = whole + frac / div
+  if i >= n {
+    return base
+  }
+  let c = chars[i]
+  if c != 'e' && c != 'E' {
+    return base
+  }
+  i += 1
+  let mut neg = false
+  if i < n && (chars[i] == '+' || chars[i] == '-') {
+    neg = chars[i] == '-'
+    i += 1
+  }
+  let mut exp = 0
+  let mut any = false
+  while i < n && is_digit(chars[i]) {
+    if exp < 1000000 {
+      exp = exp * 10 + (chars[i].to_int() - '0'.to_int())
+    }
+    any = true
+    i += 1
+  }
+  if !any {
+    return base
+  }
+  if neg {
+    exp = -exp
+  }
+  if exp > 0 {
+    base * pow10(exp)
+  } else if exp < 0 {
+    base / pow10(-exp)
+  } else {
+    base
+  }
 }

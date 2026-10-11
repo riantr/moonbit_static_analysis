@@ -244,9 +244,12 @@ pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
       }
     OpSub | OpMul | OpDiv | OpMod =>
       if is_numeric(l) && is_numeric(r) {
-        if op == OpDiv {
-          Some(TFloat)
-        } else if l is TFloat || r is TFloat {
+        // `/` gets no special case, because MoonBit gives it none either:
+        // Int/Int is integer division (`7 / 2` is 3, verified by running it),
+        // so the result is whatever the operands already are. The arm that
+        // used to answer TFloat here produced 14 false AssignTypeMismatch
+        // findings on riantr/moonbit_doubleML 0.139.0.
+        if l is TFloat || r is TFloat {
           Some(TFloat)
         } else {
           Some(TInt)

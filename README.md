@@ -129,6 +129,76 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.14 —— pyroduct 的 0 不是「对」：换四个语料，一次挖出三个真缺陷 + 一个静默错误
+
+0.4.13 把 pyroduct 的 actionable 清到 0，**但那是 pyroduct 恰好没踩到，不是分析器对**。
+这次把同一分析器指向另外四个已发布模块（`snn_mbt` / `moonbit_doubleML` /
+`moonbit_labeler` / `moonbit_image`，共 933 个文件），立刻出现 **71 条 actionable**。
+
+| 成因 | 条数 | 判据 |
+|---|---|---|
+| `F` 后缀浮点字面量 `0.0F` 未建模 → `undefined name 'F'` | 28 | `moon run` 确认合法；`7F` 才是语法错 |
+| `/` 被当成浮点除法 → `cannot assign 'float' into '[int]'` | 14 | `7 / 2 = 3`，**不是** 3.5 |
+| 指数记法 `1.0e-12` 未词法化 → `undefined name 'e'` | 14 | `moon run` 确认合法 |
+| `suberror` 体被二次扫描 → `undefined variable 'String'` | 4 | 同一行已报 ParseError |
+
+**68 条逐条复核，0 条是真阳性。**
+
+### 还有一个不产生任何发现的缺陷
+
+改的过程中，探针发现一个比上面四条都更糟的东西：
+
+```
+1.5 -> 1 | 0.25 -> 0 | 3.14159 -> 3
+```
+
+**每个浮点字面量都丢掉了小数部分。** `lexer.mbt` 里 `int_part` 在消费小数**之前**
+就取好了值，之后 `slice(start, int_part)` 于是只切到整数部分。
+
+它一直没被发现，是因为既有测试只断言 token 的**种类**是 `float`——被截断的值同样
+满足。**一条不产生任何发现的缺陷，会让分析器对读到的每一个浮点都静默地错。**
+新测试因此改为读**值**和**token 数**。
+
+### 实测过的修法，以及一条实测后**撤回**的修法
+
+`walk.mbt` / `interp.mbt` 里 `/` 的常量折叠与结果类型同样与 MoonBit 事实不符
+（`OpDiv => None`、`AType("float")`）。三处都改对之后：
+
+- 五道突变里，这三道**全部存活**（改回去套件照样全绿）；
+- 在 933 个文件上做差分扫描，**两次的报告流逐字节相同**。
+
+也就是说常量求值层今天根本到不了任何一条输出的发现。按本项目「不可观测的分支
+一律不提交」的口径，**这三处改动已撤回**，理由写在了 `walk.mbt` 和 `interp.mbt`
+的注释里。声称一个无法证明的修复，比留着一处已知但暂时无害的写法更糟。
+
+### 结果
+
+| 语料 | 文件 | 可解析 | actionable |
+|---|---|---|---|
+| `riantr/snn_mbt` 0.155.0 | 673 | 234 → **603** | 33 → **19** |
+| `riantr/moonbit_doubleML` 0.139.0 | 205 | 145 → **165** | 28 → **3** |
+| `riantr/moonbit_labeler` 0.2.13 | 37 | 16 → 18 | 6 → **5** |
+| `riantr/moonbit_image` 0.3.7 | 18 | 1 | 4 |
+| `riantr/pyroduct` 0.1.29（不回退） | 119 | 103 → **104** | **0** |
+| 合计 actionable | | | 71 → **31** |
+
+测试 js 256 / wasm 328 / wasm-gc 256（新增 16）。五道突变全部被杀死，restore
+后逐字节校验与运行前一致。
+
+### 顺带修掉的两个自伤
+
+验证脚本本身在这次迭代里咬了两次：
+
+1. `Get-Content -Raw` 在中文 Windows 上按 GBK 解码 UTF-8，把注释里的 `—` 写成
+   `鈥?`，**并且吞掉了后面的换行**，把两行注释并成一行。现已改为按字节读、并用
+   SHA256 证明 restore 与运行前逐字节一致。
+2. 差分脚本里 `"$v_"` 被 PowerShell 解析成**名为 `v_` 的变量**（空），两次扫描
+   写进同一个文件、后者覆盖前者，于是「变体 A 和变体 B」变成了自己和自己比，
+   报出「完全一致」。现在用 `${v_}`，并在比较前断言文件存在——两次读取都失败
+   曾经被当成「相同」。
+
+判据：**比较两个结果之前，先证明两个结果都存在。**
+
 ## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
 
 0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是
@@ -320,7 +390,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.13
+moon add riantr/moonbit_static_analysis@0.4.14
 ```
 
 ```moonbit
@@ -652,7 +722,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.13` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.14` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

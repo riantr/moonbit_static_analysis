@@ -804,6 +804,16 @@ fn Interp::binop(
         // abort the whole scan rather than produce a finding. An analyzer that
         // dies on one line is worse than one that says "unknown".
         OpMod => if j == 0 { ABottom } else { AInt(i % j) }
+        // `AType("float")` is WRONG as a description of MoonBit: Int/Int
+        // division yields an Int (`7 / 2` is 3, verified by running it).
+        //
+        // It is left as it is for the same reason as `walk.mbt`'s unfolded
+        // OpDiv. Returning AInt(i / j) here was implemented in 0.4.14 and
+        // measured across 933 files on four corpora: the report streams came
+        // out byte-identical, and no test could tell the two apart. The
+        // constant-evaluation layer simply does not reach an emitted finding
+        // for a division today. Deferred until it can be observed — an
+        // unmeasurable "fix" is indistinguishable from a guess.
         OpDiv => AType("float")
         OpLt => ABool(i < j)
         OpLe => ABool(i <= j)
@@ -938,6 +948,14 @@ fn Interp::binop(
 }
 
 ///|
+/// The result type of a binary operator.
+///
+/// The `/` arm returns "float" unconditionally, which is wrong for Int/Int
+/// (`7 / 2` is 3). Measured in 0.4.14: removing that arm changed nothing
+/// across 933 files on four corpora, byte for byte, so it stays until the
+/// constant-evaluation layer can be observed — the same reason as the `OpDiv`
+/// arms above. Do not "fix" this without also finding a way to SEE the
+/// difference.
 fn bin_widen(op : @ast.BOp, l : AbsVal, r : AbsVal) -> String {
   let lname = val_name(l)
   let rname = val_name(r)
