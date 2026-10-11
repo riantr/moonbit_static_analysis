@@ -3,10 +3,13 @@ package "riantr/moonbit_static_analysis/src/parser"
 
 import {
   "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/core",
   "riantr/moonbit_static_analysis/src/report",
 }
 
 // Values
+pub fn collect_declared_names(String) -> @core.IfaceSymTab
+
 pub fn parse(String) -> ParseResult
 
 // Errors

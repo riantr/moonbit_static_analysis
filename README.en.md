@@ -87,11 +87,71 @@ counter look unused. A test pins that.
 
 After all four: **actionable 43 → 31**, of which 26 are one known limitation —
 a call to a package-private helper in a sibling file, invisible to `.mbti`
-resolution. That is now the single dominant cause of what remains, and the
-obvious next target.
+resolution. That was the single dominant cause of what remained; **0.4.12 closes
+it** (next section).
 
 Tests: 215 js / 285 wasm / 215 wasm-gc. Self-scan stays 46/46 with
 actionable=0. All five new guards are mutation-verified.
+
+## 0.4.12 — package-private cross-file resolution: the largest class left is gone
+
+26 of the 31 actionable findings 0.4.11 left behind were one thing: a call to a
+**package-private top-level name in another file of the same package**. That is
+not a limit, it is a gap in the analyzer. A MoonBit **directory is a package**:
+a top-level name declared in any `.mbt` of a directory is visible from its
+siblings. This analyzer resolved cross-file names only through `.mbti`, and a
+generated interface carries `pub` items alone.
+
+Measure first, then build:
+
+- The 11 names behind those 26 findings (`sieve`, `ridge_fit`, `ridge_predict`,
+  `ols_core`, `normal_cdf`, `fmt`, `claim_code`, `claim_of`, `phase_code`,
+  `contains_state`, `has_state`) are **all** package-private top-level `fn`s in a
+  sibling file of the same directory — 26/26, no exceptions.
+- The toolchain confirms the language allows it: in a two-file package where one
+  file calls the other's private `fn`, `moon check` and `moon test` both pass,
+  **including across `_test.mbt`** (`has_state` is exactly that case). So all 26
+  were false positives about this analyzer.
+
+The shape is one table per **directory**: harvest the top-level declarations of
+every `.mbt` in it, union them with the cross-file table, and hand that table
+only to files in that directory. `@parser.collect_declared_names` is a token-only
+scan (`fn` / `struct` / `enum` / `trait` / `type` / `const` / `let` / `extern` /
+`suberror`), the same technique as `harvest_ctors`, not a parse — the caller
+needs names, and lexing is the cheap half of a parse.
+
+Three edges, each pinned deliberately:
+
+1. **Depth 0 only.** A binding inside a function, a `test`, an `extend` or an
+   `impl` block sits at least one brace deep and is never collected. Otherwise a
+   local `let` could make itself visible package-wide.
+2. **The name must be the token IMMEDIATELY after the keyword.** A destructuring
+   `let (a, b) = ...` has `(` there, so nothing is collected.
+3. **`fn Foo::new` is collected whole, not as `Foo`** — `Foo` may not exist.
+
+The analyzed file is in its own table: it is part of its package. The side
+effect is that a same-file top-level `const` is no longer misreported either (the
+walk does not register `const` declarations — a long-standing hole). That was
+measured, not picked up in passing.
+
+`IfaceSymTab::merge` mutates its receiver, so this uses a new
+`IfaceSymTab::union`: merging into the shared table would hand one package's
+private names to another, and every name in a symbol table is a **suppression**,
+so a cross-package leak only ever silences a genuinely undefined name.
+
+**pyroduct actionable 31 → 5**, and the total finding count went 658 → 632,
+exactly −26: nothing new appeared anywhere, and nothing else was swept up. The 5
+left are two `OperatorMismatch` on `paths.mbt`, `_classes` in `algebra.mbt`,
+`self` in `slot.mbt`, and `_f` in `audit/mbti.mbt`.
+
+Self-scan 46/46, actionable=0. The output gains one line,
+`PRIVTAB packages=N names=M`: a table that never looked and a table that found
+nothing print the same, so it has to be said.
+
+Tests: 220 js / 292 wasm / 220 wasm-gc. Seven guards mutation-verified, and one
+of them was found *by* a mutation: rewriting the types half of `union` to write
+into `self` left the whole suite green, because the test only checked the values
+half. It went red once the type side was covered too.
 
 ## 0.4.10 — publishing 0.4.9 exposed two things the self-scan had been hiding
 
@@ -221,7 +281,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.11
+moon add riantr/moonbit_static_analysis@0.4.12
 ```
 
 ```moonbit
@@ -603,7 +663,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.11` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.12` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

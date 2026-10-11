@@ -75,10 +75,59 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 
 四个修复合计：**actionable 43 → 31**，其中 26 条属于同一个已知限制——调用同包
 另一个文件里的**包私有**辅助函数，`.mbti` 解析看不见它。这已经是剩余问题里
-占比最大的一类，也是下一个明确的目标。
+占比最大的一类，**0.4.12 关掉了它**（见下节）。
 
 测试：js 215 / wasm 285 / wasm-gc 215。自检保持 46/46、actionable=0。
 五道新防护全部做过突变验证。
+
+## 0.4.12 —— 包私有跨文件解析：剩余最大的一类被关掉
+
+0.4.11 剩下 31 条 actionable 里的 26 条属于同一件事：调用**同包另一个文件**里的
+包私有顶层名字。这不是"限制"，是分析器的缺口——MoonBit 的一个**目录就是一个包**，
+同目录任何 `.mbt` 声明的顶层名字在兄弟文件里都可见，而分析器只经 `.mbti` 解析跨文件
+名字，生成的接口里只有 `pub`。
+
+先把结论量出来，再动手：
+
+- 26 条涉及的 11 个名字（`sieve`、`ridge_fit`、`ridge_predict`、`ols_core`、
+  `normal_cdf`、`fmt`、`claim_code`、`claim_of`、`phase_code`、`contains_state`、
+  `has_state`）**全部**是同目录兄弟文件里的包私有顶层 `fn`——26/26，没有例外；
+- 工具链确认语言确实允许：两文件包里一个文件调用另一个文件的私有 `fn`，
+  `moon check` 与 `moon test` 都通过，**跨 `_test.mbt` 也一样**（`has_state`
+  正是这一种）。所以这 26 条全是对分析器的误报。
+
+做法是每个**目录**一张表：把该目录下所有 `.mbt` 的顶层声明收进来，与跨文件表求并，
+只给这一目录的文件用。`@parser.collect_declared_names` 是**只读 token** 的扫描
+（和 `harvest_ctors` 同一手法：`fn` / `struct` / `enum` / `trait` / `type` /
+`const` / `let` / `extern` / `suberror`），不是解析——调用方只要名字，而词法是解析的
+便宜那一半。
+
+三条边界，都是刻意钉住的：
+
+1. **只取深度 0。** 函数体、`test`、`extend`、`impl` 里的绑定都在至少一层花括号
+   之下，永远不会被收进来。否则一个局部 `let` 就能让自己全包可见。
+2. **名字必须是关键字后紧邻的那个 token。** `let (a, b) = ...` 后面跟的是 `(`，
+   什么都收不到。
+3. **`fn Foo::new` 按整体收成 `Foo::new`，不是 `Foo`**——`Foo` 未必存在。
+
+被分析的**文件自己也在自己那张表里**：它本来就是自己包的一部分。副作用是同文件
+顶层 `const` 也不再被误报（走查本身不注册 `const` 声明，这一直是个坑）——这是测出来
+的，不是顺手带出来的。
+
+`IfaceSymTab::merge` 是**原地改**接收者的，所以这里用的是新的
+`IfaceSymTab::union`：合并进共享表会把一个包的私有名字发给另一个包，而符号表里每个
+名字都是一次**抑制**，跨包泄漏只会让另一个包里真正未定义的名字不再上报。
+
+**pyroduct actionable 31 → 5**，总发现数 658 → 632，正好 −26：既没有新发现冒出来，
+也没有误伤被移走的条目。剩下 5 条：`paths.mbt` 两条 `OperatorMismatch`、
+`algebra.mbt` 的 `_classes`、`slot.mbt` 的 `self`、`audit/mbti.mbt` 的 `_f`。
+
+自检 46/46、actionable=0。输出多一行 `PRIVTAB packages=N names=M`——没查过的表和
+查过是空的，看起来是一样的，所以它得被说出来。
+
+测试 js 220 / wasm 292 / wasm-gc 220。七道防护做了突变验证，其中**一道是突变找出
+来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
+测试只查了值那一半。补上类型侧之后才变红。
 
 ## 0.4.10 —— 发布 0.4.9 才暴露出自检一直在遮蔽的两件事
 
@@ -191,7 +240,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.11
+moon add riantr/moonbit_static_analysis@0.4.12
 ```
 
 ```moonbit
@@ -523,7 +572,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.11` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.12` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

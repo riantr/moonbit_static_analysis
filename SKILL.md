@@ -249,19 +249,30 @@ if-expression, and moving them into a plain function turned the `if` into a
 statement — which is parsed in full — exposing two latent false negatives at
 once.
 
-**A package-private helper in another file is invisible.** Cross-file
-resolution goes through `.mbti` files, and a package-private `fn` is in none of
-them, so one file calling a sibling file's private helper reads as
-`no visible binding`. That is a real binding the tool cannot see; making such a
-helper `pub` puts it in the interface and is the only fix available from the
-CLI.
+**Package-private helpers in a sibling file: FIXED in 0.4.12.** This used to be
+the single largest source of findings on real code — measured on `riantr/pyroduct`
+0.1.29, 26 of the 31 actionable findings after every other false positive was
+fixed were one shape, each a private `fn` in a sibling file of the same package.
+Cross-file resolution went through `.mbti` alone, and a package-private `fn` is
+in none of them, so a call to one read as `no visible binding`. The only fix
+available from the CLI was making such a helper `pub`.
 
-**This is now the single largest source of findings on real code.** Measured on
-`riantr/pyroduct` 0.1.29 after every other false positive was fixed: 26 of the
-31 remaining actionable findings were this one shape — `sieve`, `ridge_fit`,
-`fmt`, `claim_of` and the rest, each a private `fn` in a sibling file of the
-same package. On a multi-file package, expect it, and read it as a known limit
-rather than as 26 separate defects.
+Since 0.4.12 the analyzer reads the target's own `.mbt` files instead: one symbol
+table per **directory** (a MoonBit directory *is* a package), carrying the
+top-level declarations its files make — the private ones included — and only
+files in that directory see it. The scan prints what it harvested as
+`PRIVTAB packages=N names=M`, so a table that found nothing and a harvest that
+never ran do not look alike.
+
+Two consequences worth knowing:
+
+- The table is per-directory, so a private name in one package never suppresses a
+  finding in another. If you see an undefined-name finding for a name you can see
+  declared in a *different directory*, that is correct — cross-package access
+  needs an import.
+- A name harvested this way resolves to "a value of unknown type", the same shape
+  a name from another package gets. It silences an undefined-name finding and
+  infers no type or arity it has not read.
 
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer

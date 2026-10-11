@@ -57,6 +57,7 @@ pub fn IfaceSymTab::has_value(Self, String) -> Bool
 pub fn IfaceSymTab::merge(Self, Self) -> Self
 pub fn IfaceSymTab::n_types(Self) -> Int
 pub fn IfaceSymTab::n_values(Self) -> Int
+pub fn IfaceSymTab::union(Self, Self) -> Self
 
 pub(all) enum Lens {
   LStructural

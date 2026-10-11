@@ -251,6 +251,24 @@ pub async fn scan(
       "IFACE\t\{skipped_dot} dot-directories under the target were NOT read for interface names (they hold a dependency's code); pass --extern-iface-dir <that path> to index them",
     )
   }
+  // Per-package tables, built once. `union` returns a fresh table rather than
+  // merging in place: merging into `iface_tab` itself would hand every
+  // package's private names to every other package.
+  let priv_tabs = collect_private_symtabs(files)
+  let file_tabs : Map[String, @core.IfaceSymTab] = Map([])
+  let mut priv_names = 0
+  for d, t in priv_tabs {
+    priv_names += t.n_types() + t.n_values()
+    file_tabs.set(d, @core.IfaceSymTab::union(iface_tab, t))
+  }
+  // Stated rather than silent, for the reason the dot-directory count above is:
+  // a table missing names it never looked for is indistinguishable from a
+  // target that has none.
+  if priv_tabs.length() > 0 {
+    println(
+      "PRIVTAB\tpackages=\{priv_tabs.length()}\tnames=\{priv_names}\t(package-private top-level names, sibling files only)",
+    )
+  }
   // Verdicts collected in the loop, then handed to `aggregate` at the end so
   // the SUMMARY-line math has a single source of truth and a unit-testable
   // shape. Computing it inline is what produced the `+withheld` double-count
@@ -269,7 +287,14 @@ pub async fn scan(
   let kind_notices : Map[String, Int] = Map([])
   let kinds : Array[String] = [".mbt", ".mbti", ".mbtp", ".mbt.md", ".mbtx"]
   for f in files {
-    let v = analyze(f, iface_tab)
+    // a directory with no `.mbt` of its own — a lone `.mbti`, a script — falls
+    // back to the shared table, which is exactly what every file used before
+    // packages were separated
+    let tab = match file_tabs.get(dir_of(f)) {
+      Some(t) => t
+      None => iface_tab
+    }
+    let v = analyze(f, tab)
     verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
     let d = v.findings.length() - v.notices
@@ -476,16 +501,18 @@ async fn locate(target : String) -> String {
 /// A coordinate looks like `author/module`. Anything path-shaped (leading `.`
 /// or `/`, a drive colon, a backslash) is treated as a path instead.
 ///
-/// **`pub` is load-bearing, not decoration.** `provenance.mbt` calls this and
-/// `split_coord` below, and the analyzer resolves a cross-file name ONLY
-/// through a `.mbti` — a package-private `fn` appears in none, because
-/// `moon info` does not list it. Leaving these private is therefore invisible
-/// to the tool on its own source: the 0.4.9 self-scan reported
-/// `no visible binding for 'is_coordinate'` and `'split_coord'` on
-/// `provenance.mbt`, on code `moon check` accepts. They are `pub` here for the
-/// same reason `prov_or_unknown`, `parse_moon_version`, `stamp_utc` and
-/// `scan_artifact_name` are: so a second file in this package can name them
-/// and have that name be checkable.
+/// **`pub` was a workaround for a gap that 0.4.12 closed, and is kept as a
+/// deliberate choice, not as an oversight.** It was added in 0.4.10 because the
+/// analyzer resolved a cross-file name ONLY through a `.mbti`, where a
+/// package-private `fn` appears in none (`moon info` does not list it), so the
+/// 0.4.9 self-scan reported `no visible binding for 'is_coordinate'` and
+/// `'split_coord'` on `provenance.mbt` — on code `moon check` accepts. Since
+/// 0.4.12 the analyzer reads sibling `.mbt` files too, so the workaround is no
+/// longer *needed*; it is left in place because these are genuinely part of this
+/// package's surface (the provenance entry points call them) and un-`pub`ing
+/// them now would change the published API for no measured gain. If you are
+/// about to "tidy" this back to a private `fn`, that is the change to argue
+/// about — not a cleanup.
 pub fn is_coordinate(t : String) -> Bool {
   if t.has_prefix(".") ||
     t.has_prefix("/") ||
@@ -819,6 +846,47 @@ fn base_of(path : String) -> String {
   out
 }
 
+///|
+/// The parent directory of a path, accepting EITHER separator. A target named
+/// on the command line arrives with whatever the shell produced, and the file
+/// list mixes both: this file builds child paths as `dir + "/" + entry` while a
+/// user-typed Windows path keeps its backslashes. A package is a directory, so
+/// this is the key the per-package symbol tables are filed under — and getting
+/// it wrong is silent, because a wrong key just yields no table.
+///
+/// `pub` only so `sa_test.mbt` can pin the separator handling: a private `fn`
+/// is invisible to another file in the same package, and the `.mbti` this
+/// analyzer itself analyses would report it exactly the way it reported
+/// `is_coordinate` in 0.4.10. Do not make this private again.
+///
+/// `"."` for a bare file name, and `"/"` when the separator is the very first
+/// character, so a root-level path does not become empty.
+pub fn dir_of(path : String) -> String {
+  let chars = path.to_array()
+  let mut cut = -1
+  let mut i = chars.length() - 1
+  while i >= 0 {
+    if chars[i] == '/' || chars[i] == '\\' {
+      cut = i
+      break
+    }
+    i -= 1
+  }
+  if cut < 0 {
+    "."
+  } else if cut == 0 {
+    "/"
+  } else {
+    let mut out = ""
+    let mut j = 0
+    while j < cut {
+      out = out + chars[j].to_string()
+      j += 1
+    }
+    out
+  }
+}
+
 // ============================================================================
 // Cross-file type symbol resolution (.mbti as a type source for .mbt analysis)
 // ============================================================================
@@ -1083,4 +1151,48 @@ async fn collect_iface_symtabs(
     }
   }
   (tab, skipped_dot)
+}
+
+///|
+/// One symbol table per package DIRECTORY, holding the top-level names the
+/// `.mbt` files in it declare — including the private ones a `.mbti` omits.
+///
+/// `collect_iface_symtabs` above cannot do this job: a generated interface
+/// carries `pub` items alone, so every package-private top-level name was
+/// invisible and each call to one was reported as `no visible binding`. On
+/// riantr/pyroduct 0.1.29 that was 26 of 31 actionable findings, every one a
+/// private top-level `fn` in the same directory as its caller.
+///
+/// Files come from the already-collected `files` list rather than a second
+/// directory walk, and the table is filed by `dir_of` so a package sees only
+/// its OWN files. Sibling-only visibility is the language rule — a package is
+/// a directory — and a global table instead would let one package's private
+/// names silence a real finding in another.
+///
+/// The analyzed file is IN its own table: it is part of its package, so a
+/// top-level `const` it declares is a real binding even when the structural
+/// walk does not register that declaration form itself.
+async fn collect_private_symtabs(
+  files : Array[String],
+) -> Map[String, @core.IfaceSymTab] {
+  let out : Map[String, @core.IfaceSymTab] = Map([])
+  for f in files {
+    if !f.has_suffix(".mbt") {
+      continue
+    }
+    let data = @fs.read_file(f) catch { _ => continue }
+    let text = data.text() catch { _ => continue }
+    if text == "" {
+      continue
+    }
+    let sub = @parser.collect_declared_names(text)
+    let d = dir_of(f)
+    match out.get(d) {
+      Some(t) => {
+        let _ = t.merge(sub)
+      }
+      None => out.set(d, sub)
+    }
+  }
+  out
 }

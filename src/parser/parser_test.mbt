@@ -1263,3 +1263,61 @@ test "a ternary in call-argument position is still outside the subset" {
   assert_true(r.reports.length() > 0)
   assert_true(r.first_error > 0)
 }
+
+///|
+test "collect_declared_names: every top-level form pyroduct actually uses" {
+  let src = "pub(all) struct Box {\n  v : Int\n}\n\nenum Col {\n  R\n  G\n}\n\ntrait Marker {\n  mark(Self) -> Unit\n}\n\ntype Alias = Int\n\nconst KMAX : Int = 9\n\nlet TOP = 3\n\npriv fn helper() -> Int {\n  42\n}\n\npub fn go() -> Int {\n  helper() + KMAX + TOP\n}\n"
+  let tab = @parser.collect_declared_names(src)
+  assert_true(tab.has_type("Box"))
+  assert_true(tab.has_type("Col"))
+  assert_true(tab.has_type("Marker"))
+  assert_true(tab.has_type("Alias"))
+  assert_true(tab.has_value("KMAX"))
+  assert_true(tab.has_value("TOP"))
+  assert_true(tab.has_value("helper"))
+  assert_true(tab.has_value("go"))
+}
+
+///|
+/// The negative control for every positive above. A harvest that collected
+/// anything nested would make a LOCAL name package-wide and silence real
+/// undefined-name findings across the codebase, so the depth rule is pinned
+/// here rather than assumed.
+test "collect_declared_names: a nested binding is NOT a package name" {
+  let src = "fn outer() -> Int {\n  let inner = 1\n  let fn shadow = 2\n  inner\n}\n\nextend Box {\n  fn widened(self) -> Int {\n    self.v\n  }\n}\n\nimpl Marker for Box {\n  fn size(self) -> Int {\n    1\n  }\n}\n"
+  let tab = @parser.collect_declared_names(src)
+  assert_true(tab.has_value("outer"))
+  assert_false(tab.has_value("inner"))
+  assert_false(tab.has_value("shadow"))
+  assert_false(tab.has_value("widened"))
+  assert_false(tab.has_value("size"))
+}
+
+///|
+/// `let (a, b) = ...` puts a `(` right after the keyword, so the immediacy
+/// guard is what keeps a destructuring from donating its names package-wide.
+test "collect_declared_names: a destructuring let declares nothing harvestable" {
+  let src = "let (aa, bb) = pair\n\nfn plain() -> Int {\n  1\n}\n"
+  let tab = @parser.collect_declared_names(src)
+  assert_false(tab.has_value("aa"))
+  assert_false(tab.has_value("bb"))
+  assert_true(tab.has_value("plain"))
+}
+
+///|
+test "collect_declared_names: fn Foo::new is collected whole, not as Foo" {
+  let src = "fn Box::new(v : Int) -> Box {\n  Box::{ v, }\n}\n\nfn plain() -> Int {\n  1\n}\n"
+  let tab = @parser.collect_declared_names(src)
+  assert_true(tab.has_value("Box::new"))
+  assert_false(tab.has_value("Box"))
+}
+
+///|
+/// The clamp exists because the failure it prevents is silent: depth would go
+/// negative and every LATER top-level declaration would look nested, dropping
+/// the rest of the file's names with no finding anywhere.
+test "collect_declared_names: a stray closing brace does not drop the rest" {
+  let src = "}\n\nfn after() -> Int {\n  1\n}\n"
+  let tab = @parser.collect_declared_names(src)
+  assert_true(tab.has_value("after"))
+}

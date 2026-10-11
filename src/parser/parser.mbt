@@ -482,6 +482,127 @@ fn Parser::after_path_marker(self : Parser, i : Int) -> Bool {
 }
 
 ///|
+/// Collect the names a `.mbt` source declares at the TOP LEVEL, as an
+/// `IfaceSymTab`: `fn` / `let` / `const` / `extern` declare values,
+/// `struct` / `enum` / `trait` declare types, and `type` / `suberror` are
+/// usable as either.
+///
+/// A MoonBit package is a DIRECTORY — every `.mbt` in it is one compilation
+/// unit — so a top-level name declared in one file is visible in its siblings.
+/// This analyzer resolved cross-file names only through `.mbti`, and a
+/// generated interface carries `pub` items alone, so every package-private
+/// top-level name came out invisible. Measured on riantr/pyroduct 0.1.29:
+/// 26 of that scan's 31 actionable findings were exactly this, all of them
+/// package-private top-level `fn`s in the SAME directory as their call site
+/// (`sieve`, `ridge_fit`, `ridge_predict`, `ols_core`, `normal_cdf`, `fmt`,
+/// `claim_code`, `claim_of`, `phase_code`, `contains_state`, `has_state`). A
+/// toolchain probe settled that the language accepts them — `moon check` and
+/// `moon test` both pass on a two-file package where one file calls the
+/// other's private `fn`, including across `_test.mbt` — so every one was a
+/// false positive about this analyzer.
+///
+/// Deliberately a token scan, not a parse, for the reason `harvest_ctors` is:
+/// the caller needs the NAMES and nothing more, and lexing is the cheap half
+/// of a parse. This runs once per file under the target.
+///
+/// The depth-0 rule is what keeps this a harvest rather than a suppressor: a
+/// binding inside a function, a `test`, an `extend` or an `impl` block sits at
+/// least one brace deep and is never collected, so a local `let` cannot make
+/// itself visible package-wide. The name must be the token IMMEDIATELY after
+/// the keyword, which is what excludes a destructuring `let (a, b) = ...` —
+/// `(` follows the keyword, not a name, so nothing is collected.
+///
+/// Best-effort by construction: an unbalanced brace drifts the depth counter
+/// and the remainder of the file contributes nothing. That is the trust level
+/// of any partially-read file, and it errs toward silence, not toward a false
+/// finding.
+pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
+  let (toks, _, _) = @lexer.lex(src)
+  let tab = @core.IfaceSymTab::empty()
+  let mut depth = 0
+  let mut i = 0
+  while i < toks.length() {
+    match toks[i] {
+      TLBrace => depth += 1
+      TRBrace =>
+        // clamped at zero: a stray `}` must not make every later top-level
+        // declaration look nested, which would silently drop the rest of the
+        // file rather than mis-name one binding
+        if depth > 0 {
+          depth -= 1
+        }
+      TName(kw) =>
+        if depth == 0 && (declares_value(kw) || declares_type(kw)) {
+          match declared_name_at(toks, i + 1) {
+            Some(n) => {
+              if declares_value(kw) {
+                tab.values.set(n, true)
+              }
+              if declares_type(kw) {
+                tab.types.set(n, true)
+              }
+            }
+            None => ()
+          }
+        }
+      _ => ()
+    }
+    i += 1
+  }
+  tab
+}
+
+///|
+/// The declaration name starting at token `i`, following `::` so a top-level
+/// `fn Foo::new(...)` is collected as `Foo::new` rather than as a `Foo` that
+/// may not exist at all. `::` arrives as two `TColon` tokens.
+///
+/// Returns `None` unless a name starts exactly at `i`. That immediacy is the
+/// guard described on `collect_declared_names`: a keyword whose next token is
+/// a `(` or a string declares nothing this harvest can name.
+fn declared_name_at(toks : Array[@lexer.Tok], i : Int) -> String? {
+  if i >= toks.length() {
+    return None
+  }
+  match toks[i] {
+    TName(n) => {
+      if i + 3 < toks.length() {
+        match (toks[i + 1], toks[i + 2], toks[i + 3]) {
+          (TColon, TColon, TName(m)) => return Some(n + "::" + m)
+          _ => ()
+        }
+      }
+      Some(n)
+    }
+    _ => None
+  }
+}
+
+///|
+/// A top-level keyword whose next name is a VALUE binding. `type` and
+/// `suberror` are here as well as in `declares_type` because both are usable
+/// in value position — `Alias(1)` for `type Alias = Int`, and a suberror's
+/// constructor.
+fn declares_value(kw : String) -> Bool {
+  kw == "fn" ||
+  kw == "let" ||
+  kw == "const" ||
+  kw == "extern" ||
+  kw == "type" ||
+  kw == "suberror"
+}
+
+///|
+/// A top-level keyword whose next name is a TYPE binding.
+fn declares_type(kw : String) -> Bool {
+  kw == "struct" ||
+  kw == "enum" ||
+  kw == "trait" ||
+  kw == "type" ||
+  kw == "suberror"
+}
+
+///|
 /// A line-terminated declaration the frontend does not model (type / const /
 /// suberror). One finding, no cascade.
 fn Parser::skip_decl_line(

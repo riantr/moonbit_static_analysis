@@ -110,6 +110,45 @@ pub fn IfaceSymTab::merge(
 }
 
 ///|
+/// A NEW table holding the union of `self` and `other`, leaving BOTH
+/// untouched.
+///
+/// `merge` mutates its receiver, which is the right shape for building one
+/// table and the wrong one for combining two that are each still needed: the
+/// caller that merges package B's names into the shared cross-file table gets
+/// a table where package A can see package B's private names, and a genuinely
+/// undefined name in A goes unreported because B declares it. Every name in a
+/// symbol table is a suppression, so leaking one across a package boundary
+/// silences a finding rather than producing one.
+///
+/// Measured context: on riantr/pyroproduct 0.1.29 the 26 false positives this
+/// fixed were all package-private top-level `fn`s, and they are only correct
+/// to suppress WITHIN their own package.
+pub fn IfaceSymTab::union(
+  self : IfaceSymTab,
+  other : IfaceSymTab,
+) -> IfaceSymTab {
+  let out = IfaceSymTab::empty()
+  for k, _ in self.types {
+    out.types.set(k, true)
+  }
+  for k, _ in self.values {
+    out.values.set(k, true)
+  }
+  for k, _ in other.types {
+    if !out.types.contains(k) {
+      out.types.set(k, true)
+    }
+  }
+  for k, _ in other.values {
+    if !out.values.contains(k) {
+      out.values.set(k, true)
+    }
+  }
+  out
+}
+
+///|
 /// The bare spelling of a name, with any leading `@pkg.` qualifier removed:
 /// `@core.IfaceSymTab::empty` becomes `IfaceSymTab::empty`. A name that is
 /// not qualified is returned unchanged.

@@ -450,3 +450,49 @@ test "tally: the example list stops at three files" {
   assert_eq(ex[1], "b.mbt")
   assert_eq(ex[2], "c.mbt")
 }
+
+///|
+/// The cross-package leak guard. `IfaceSymTab::merge` mutates its receiver, so
+/// merging a package's private names into the SHARED table would hand every
+/// package's names to every other package, and a genuinely undefined name in
+/// one package would go unreported because a different package declares it.
+test "union: a package's private names never reach another package" {
+  let shared = @core.IfaceSymTab::empty()
+  shared.values.set("Shared", true)
+  shared.types.set("SharedT", true)
+  // one package declares a VALUE, the other only a TYPE, so a leak in either
+  // half of the table is observable. Checking only values let a types-only
+  // leak survive: mutation M5 changed the types loop to write into `self` and
+  // the whole suite stayed green, which is a hole in this test, not in the fix.
+  let pkg_a = @parser.collect_declared_names(
+    "fn private_a() -> Int {\n  1\n}\n",
+  )
+  let pkg_b = @parser.collect_declared_names("struct OnlyB {\n  v : Int\n}\n")
+  let a_tab = @core.IfaceSymTab::union(shared, pkg_a)
+  let b_tab = @core.IfaceSymTab::union(shared, pkg_b)
+  assert_true(a_tab.has_value("Shared"))
+  assert_true(a_tab.has_type("SharedT"))
+  assert_true(a_tab.has_value("private_a"))
+  assert_false(a_tab.has_value("OnlyB"))
+  assert_false(a_tab.has_type("OnlyB"))
+  assert_true(b_tab.has_value("Shared"))
+  assert_true(b_tab.has_type("SharedT"))
+  assert_true(b_tab.has_type("OnlyB"))
+  assert_false(b_tab.has_value("private_a"))
+  assert_false(b_tab.has_type("private_a"))
+  // the shared table must come out of the union unchanged
+  assert_false(shared.has_value("private_a"))
+  assert_false(shared.has_type("OnlyB"))
+}
+
+///|
+/// A package is a DIRECTORY, and this is the key it is filed under. A wrong key
+/// is silent — it just yields no table — and a Windows target keeps its
+/// backslashes while this file builds child paths with `/`.
+test "dir_of: both separators, plus the root and bare-name edges" {
+  assert_eq(@sa.dir_of("a/b/c.mbt"), "a/b")
+  assert_eq(@sa.dir_of("a\\b\\c.mbt"), "a\\b")
+  assert_eq(@sa.dir_of("/x/c.mbt"), "/x")
+  assert_eq(@sa.dir_of("c.mbt"), ".")
+  assert_eq(@sa.dir_of("/c.mbt"), "/")
+}
