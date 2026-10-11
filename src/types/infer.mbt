@@ -98,7 +98,17 @@ fn Infer::lookup(self : Infer, name : String) -> Ty? {
       // reported "too many arguments to 'f': expected 1, got 2". 12 of those
       // on a clean 882-file stdlib that `moon check` accepts with 0 errors.
       if self.extern_iface.has_value(name) {
-        Some(TUnknownFn(name))
+        // A cross-file CONSTANT is a value we know is not callable. Typing it as
+        // `TUnknownFn` made ordinary arithmetic on it an operator mismatch —
+        // `3.0F * hz` on a `const hz` from another package, reported as
+        // "unsupported operand types for '*': 'float' and 'fn hz (signature not
+        // read)'". `TUnknown` still claims no type; it just does not claim
+        // callability, and it absorbs instead of firing.
+        if self.extern_iface.is_const(name) {
+          Some(TUnknown)
+        } else {
+          Some(TUnknownFn(name))
+        }
       } else if self.extern_iface.has_type(name) {
         Some(TUnknown)
       } else {

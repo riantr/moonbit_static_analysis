@@ -153,6 +153,94 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.16 — 19 → 8, six of them TRUE positives: acknowledge "correct" first, then fix the rest
+
+0.4.15 left 19 findings. This cycle did the thing the previous one skipped:
+**adjudicating which ones are real.**
+
+Six are **true positives** — the analyzer was right and the code has a problem:
+
+| Site | Finding | Evidence |
+|---|---|---|
+| `neuron_identity.mbt` | parameter `dt` is never read | read the source; `dt` appears nowhere in the body |
+| `dsac.mbt` ×2 + 3 × `examples/*/main.mbt` | `for a in 0..<n` binder `a`/`s` never read | same; probed that `moon check` warns on an unread for-binder too |
+
+Three more are **not defects at all**: labeler's `@core.SurfaceMetrics::new` and
+friends. The analyzer printed the reason itself — `FETCH ... pass
+--extern-iface-dir .repos to index their interface names`. Rescanning with that
+flag takes labeler from 5 findings to 2. **Those three were never a bug; they
+were a usage mistake.**
+
+The 9 that were genuinely fixed share one shape: **the information had already
+been read, and was then discarded or never used.**
+
+| Cause | Count | Site |
+|---|---|---|
+| a cross-package `const` typed as a FUNCTION | 4 | `IfaceSymTab.values`'s `Bool` was written `true` and read by nobody |
+| a braced `suberror` body parsed as expressions | 4 | always routed to the "skip to end of line" path |
+| `Byte::default` missing from the builtin list | 1 | — |
+
+### Cross-package const: `3.0F * hz` reported as `'float' and 'fn hz'`
+
+```moonbit
+// snn_mbt/istdp.mbt
+r: 3.0F * hz,   // hz is a `const hz : Float` from @snn_kw
+```
+
+The `.mbti` reader **already told** `const` from `fn` — it matches a different
+prefix for each — and then threw the difference away, because both branches
+produced a bare name. The `Bool` in `Map[String, Bool]` was written `true` and
+never read. It is now `is_const`, and `merge` / `union` carry it.
+
+The counter-test is mandatory: a cross-package **function** must still type as
+`TUnknownFn`. Demoting it to `TUnknown` too would let the call handler check an
+invented parameter count.
+
+### Braced suberror
+
+`suberror` has two shapes: `suberror Timeout of String` (one line) and
+`pub suberror DecodeError { ... }` (braced). Both were routed to the line
+skipper, so the braced shape stopped at the newline and the remaining `{ ... }`
+was parsed as an expression block — every payload type inside it became an
+undefined name, `String` four times over in `moonbit_image/types.mbt`.
+
+The split now follows what actually follows the keyword, with the lookahead
+bounded at 8 tokens (a `suberror X of T` header is never longer), so a later
+declaration's brace cannot be mistaken for this one's. The counter-test: an
+unbraced suberror must still parse, and the function declared AFTER it must
+still exist.
+
+### A finding in the opposite direction: this analyzer UNDER-reports
+
+`Nope::also_missing()` — a qualified call whose callee cannot be resolved — is
+reported **not at all**. That is not new; it is the mirror image of the
+over-reporting 0.4.14–0.4.16 spent three releases removing:
+
+> Qualified names were once OVER-reported (`Layer::ReLU`, `fn hz`); fixing that
+> left them UNDER-reported.
+
+I wrote this up as a test asserting the CURRENT behaviour, labelled KNOWN GAP.
+Asserting a finding that does not exist yet would turn every release red for a
+problem nobody has scoped. Moving in the right direction means first telling a
+method receiver apart from a package alias, which this cycle does not do.
+
+### Results
+
+| Corpus | 0.4.13 | 0.4.14 | 0.4.15 | 0.4.16 |
+|---|---|---|---|---|
+| `snn_mbt` | 33 | 19 | 9 | **6** (all true) |
+| `moonbit_doubleML` | 28 | 3 | 1 | **0** |
+| `moonbit_labeler` | 6 | 5 | 5 | **5** (2 with `--extern-iface-dir`) |
+| `moonbit_image` | 4 | 4 | 4 | **0** |
+| `pyroduct` | 0 | 0 | 0 | **0** |
+| Total | 71 | 31 | 19 | **11** |
+
+Of the 11 left, six are true positives, three are usage, and two are in labeler
+(one a `Byte::default`-like builtin, one hidden behind stdout truncation).
+
+Tests: js 270 / wasm 342 / wasm-gc 270 (8 new). All four mutations killed,
+restore verified byte-identical by SHA256; self-scan 52/52, actionable=0.
+
 ## 0.4.15 — 12 of the remaining 30: three causes, one of which nearly muted a whole rule
 
 0.4.14 took the four corpora from 71 actionable findings down to 31. **One of
@@ -531,7 +619,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.15
+moon add riantr/moonbit_static_analysis@0.4.16
 ```
 
 ```moonbit
@@ -913,7 +1001,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.15` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.16` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

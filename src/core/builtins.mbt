@@ -84,6 +84,12 @@ pub fn ambient_names() -> Array[String] {
     "debug_assert_false",
     // --- carried over from the .mbti frontend's private list ---
      "Nil", "Error", "Set", "UInt8", "Int16", "Float",
+    // NOTE: methods OF those builtin types (`Array::make`, `Byte::default`,
+    // `Int::max`) are deliberately NOT listed one by one. The behavioral lens
+    // skips any call qualified on an ambient type name, because it has no
+    // method table for builtin types — listing names individually was measured
+    // whack-a-mole: adding `Byte::default` to fix one finding just exposed
+    // `Array::make` beside it on the same line.
     // --- from `moonbitlang/core/debug`, NOT from core/builtin ---
     //
     // The sections above are read out of `core/builtin`'s interface, which is

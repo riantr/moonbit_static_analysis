@@ -187,8 +187,23 @@ pub fn parse(src : String) -> ParseResult {
       kw == "extend" ||
       kw == "test" {
       p.skip_decl_braced(kw, sp)
-    } else if kw == "type" || kw == "const" || kw == "suberror" {
+    } else if kw == "type" || kw == "const" {
       p.skip_decl_line(kw, sp)
+    } else if kw == "suberror" {
+      // A suberror has TWO shapes: `suberror Timeout of String` is one line,
+      // while `pub suberror DecodeError { UnsupportedFormat(String) ... }` is
+      // braced. Sending the braced shape to the LINE skipper stopped the skip
+      // at the newline and left `{ ... }` to be parsed as an expression block,
+      // so every payload type inside it was reported as an undefined name —
+      // `String` four times over in riantr/moonbit_image 0.3.7's `types.mbt`.
+      //
+      // Same split `struct` / `enum` already get, decided by what actually
+      // follows the keyword rather than by the keyword's name.
+      if p.next_is_lbrace() {
+        p.skip_decl_braced(kw, sp)
+      } else {
+        p.skip_decl_line(kw, sp)
+      }
     } else {
       body.push(p.parse_stmt())
     }
@@ -405,6 +420,34 @@ fn Parser::skip_modifiers(self : Parser) -> Unit {
 ///|
 /// A brace-bodied declaration the frontend does not model (struct / enum /
 /// trait / impl). Consume the whole declaration and report it **once**.
+
+///|
+/// True when the declaration whose header starts at the current token opens a
+/// `{ ... }` body.
+///
+/// It scans a bounded number of tokens AHEAD rather than only looking at the
+/// keyword, because the parser is positioned at the keyword itself: a braced
+/// declaration reads `suberror DecodeError {`, three tokens in. The bound is
+/// what keeps the question answerable — an unbraced header (`suberror Timeout
+/// of String`) must NOT be answered by a brace belonging to some later
+/// declaration, and a header is never longer than a handful of tokens.
+fn Parser::next_is_lbrace(self : Parser) -> Bool {
+  let mut i = self.p
+  let mut scanned = 0
+  while i < self.toks.length() && scanned < 8 {
+    match self.toks[i] {
+      TLBrace => return true
+      TEOF => return false
+      _ => ()
+    }
+    i += 1
+    scanned += 1
+  }
+  false
+}
+
+///|
+/// Skipping a braced declaration body whole.
 ///
 /// Parsing it statement-by-statement is what produced the false-positive
 /// cascades: every field line became its own UndefinedName plus a ParseError

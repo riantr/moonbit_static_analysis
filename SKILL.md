@@ -356,6 +356,33 @@ reported "parameter 'x' may not be used" on 6 functions in riantr/snn_mbt. Note 
 warns in `moon check` too, so the parser records extern names explicitly and the
 walker skips the frame audit for exactly those.
 
+**A cross-file `const` is not a function (since 0.4.16).** The `.mbti` reader already
+told `pub const X : T` from `pub fn f(...) -> T` and discarded the difference. So
+`3.0F * hz`, with `hz` a `const hz : Float` from another package, was reported as
+"unsupported operand types for '*': 'float' and 'fn hz (signature not read)". The
+`Bool` in `IfaceSymTab.values` is now `is_const`; a constant types as `TUnknown` and a
+function still types as `TUnknownFn`, which is what keeps the arity check off.
+
+**A braced `suberror` body is skipped whole (since 0.4.16).** `suberror` has two
+shapes — `suberror Timeout of String` and `pub suberror DecodeError { ... }` — and
+both went to the "skip to end of line" path, so the braced body was parsed as an
+expression block and every payload type in it was reported undefined (`String`, four
+times, on riantr/moonbit_image).
+
+**KNOWN GAP: an unresolvable QUALIFIED call is not reported at all (as of 0.4.16).**
+`Nope::also_missing()` is silent while `totally_undefined_fn()` is reported. This is
+the mirror of what 0.4.14–0.4.16 fixed: qualified names were once over-reported
+(`Layer::ReLU`, `fn hz`), and silencing that left them under-reported. Separately,
+`Array::make(total, Byte::default())` on riantr/moonbit_labeler IS reported, and a
+suppression for it was written and then reverted — both its mutations survived and it
+changed nothing measurable, so shipping it was not justified. Fixing either needs the
+callee's receiver to be told apart from a package alias first, which is not done.
+
+If you are scanning a package whose dependencies you care about, pass
+`--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at
+all and says so in its own output: measured on riantr/moonbit_labeler, it goes from 5
+findings to 2.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by

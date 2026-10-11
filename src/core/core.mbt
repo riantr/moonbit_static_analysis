@@ -96,11 +96,24 @@ pub struct IfaceSymTab {
   /// A hit returns `TUnknown` (we know it is a type, we do not model its shape).
   types : Map[String, Bool]
   /// Declared value names: `pub fn new(...) -> ...`, `pub const X : ... = ...`.
+  ///
   /// A hit returns `TUnknownFn` (we know it is a value; we do not model its
   /// signature, so no arity or argument check may run against it). A `.mbti`
   /// gives us the declaration name and never the parameter list, so any
   /// arity invented here would be a guess the checks would then report as
   /// fact.
+  ///
+  /// THE BOOL IS `is_const` (since 0.4.16). It used to be written `true` and
+  /// read by nobody. It carries a distinction the type lens needs: a `const`
+  /// is not a function, so typing it as `TUnknownFn` made ordinary arithmetic
+  /// on it an operator mismatch. `3.0F * hz`, with `hz` a cross-package
+  /// `const`, was reported `unsupported operand types for '*': 'float' and
+  /// 'fn hz (signature not read)'` — measured on riantr/snn_mbt 0.155.0
+  /// (`istdp.mbt`, `tripod_current_test.mbt`) and riantr/moonbit_doubleML
+  /// 0.139.0 (`N_RIDGE_CASES`), four findings in total.
+  ///
+  /// A const gets `TUnknown` instead: we do not know its type, but we DO know
+  /// it is not callable, and `TUnknown` absorbs without claiming anything.
   values : Map[String, Bool]
 }
 
@@ -140,12 +153,26 @@ pub fn IfaceSymTab::merge(
       self.types.set(k, true)
     }
   }
-  for k, _ in other.values {
+  for k, v in other.values {
     if !self.values.contains(k) {
-      self.values.set(k, true)
+      self.values.set(k, v)
     }
   }
   self
+}
+
+///|
+/// True when `name` is a declared value that is a CONSTANT (`pub const X : T`)
+/// rather than a function.
+///
+/// The type lens asks this to decide between `TUnknown` and `TUnknownFn` for a
+/// cross-file value. It answers `false` for a name that is not a value at all,
+/// so callers must gate on `has_value` first.
+pub fn IfaceSymTab::is_const(self : IfaceSymTab, name : String) -> Bool {
+  match self.values.get(name) {
+    Some(v) => v
+    None => false
+  }
 }
 
 ///|
@@ -171,17 +198,17 @@ pub fn IfaceSymTab::union(
   for k, _ in self.types {
     out.types.set(k, true)
   }
-  for k, _ in self.values {
-    out.values.set(k, true)
+  for k, v in self.values {
+    out.values.set(k, v)
   }
   for k, _ in other.types {
     if !out.types.contains(k) {
       out.types.set(k, true)
     }
   }
-  for k, _ in other.values {
+  for k, v in other.values {
     if !out.values.contains(k) {
-      out.values.set(k, true)
+      out.values.set(k, v)
     }
   }
   out

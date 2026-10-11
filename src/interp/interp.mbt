@@ -1078,6 +1078,29 @@ fn Interp::call(
       if self.local_fns.contains(name) {
         return AAny
       }
+      // NOTE ON A REVERTED CHANGE (0.4.16). A rule was written and then removed
+      // here: "a call qualified on an AMBIENT TYPE — `Array::make`,
+      // `Byte::default`, `Int::max` — is a builtin method, so do not report it
+      // undefined." The reasoning was sound and the target real: riantr/
+      // moonbit_labeler 0.2.13 reports `undefined function 'Array::make'` on
+      // `rasterizer.mbt:74`, and adding the ONE measured name `Byte::default`
+      // to the builtin list merely exposed `Array::make` beside it on the same
+      // line — whack-a-mole with no termination, which is what the family rule
+      // was for.
+      //
+      // It is reverted because it is UNOBSERVABLE. Two of its five mutations
+      // survived (disabling the rule, and making its predicate never match left
+      // the whole suite green), and it made no difference to a hand-built probe
+      // in either a complete or a deliberately PARTIAL file — the shape the
+      // corpus finding actually has. Whatever reports those two names is not
+      // this code path, and shipping a suppression here would silence a family
+      // of calls on the strength of a fix nobody can demonstrate.
+      //
+      // The two labeler findings are therefore still open and un-rooted. The
+      // first thing to establish is WHICH code path emits them: `undefined
+      // function` is constructed in exactly one place in this file, and that
+      // place is not reached by the shape the corpus has.
+      //
       // callee existence was the structural/type lenses' finding; here it
       // is a runtime UndefVarError — the pipeline merges all three
       self.report(@core.FUndefinedName, "undefined function '\{name}'", sp)

@@ -129,6 +129,113 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.16 —— 19 → 8，其中 6 条是真阳性：先承认「对」，再修剩下的错
+
+0.4.15 剩 19 条。这轮先做了一件上一轮没做的事：**逐条判定哪些是真的**。
+
+结果是 6 条**真阳性**——分析器是对的，代码确实有问题：
+
+| 位置 | 发现 | 判据 |
+|---|---|---|
+| `neuron_identity.mbt` | 参数 `dt` 从未被读 | 读源码确认函数体里没有 `dt` |
+| `dsac.mbt` ×2 + 3 个 `examples/*/main.mbt` | `for a in 0..<n` 的绑定变量 `a`/`s` 从未被读 | 同上；探针确认 `moon check` 对未读的 for 绑定变量**也**告警 |
+
+外加 3 条**不是缺陷**：`labeler` 里的 `@core.SurfaceMetrics::new` 等 3 条，
+分析器自己就打印了 `FETCH ... pass --extern-iface-dir .repos to index their
+interface names`。加上这个参数重扫，`labeler` 从 5 条降到 2 条。**那 3 条
+本来就不是 bug，是调用方式。**
+
+真正修掉的 9 条，成因只有一个共同点：**信息已经读到了，却被丢掉或没用上。**
+
+| 成因 | 条数 | 位置 |
+|---|---|---|
+| 跨包 `const` 被当成**函数** | 4 | `IfaceSymTab.values` 的 `Bool` 一直写 `true`、没人读 |
+| 带花括号的 `suberror` 体被当成表达式 | 4 | 一律走「跳到行尾」的 skip |
+
+（第三条 `Byte::default` / `Array::make` **没有修**，原因见下面「改完又撤回」。）
+
+### 跨包 const：`3.0F * hz` 被报成 `'float' 和 'fn hz'`
+
+```moonbit
+// snn_mbt/istdp.mbt
+r: 3.0F * hz,   // hz 是 @snn_kw 的 const hz : Float
+```
+
+`.mbti` 读取器**已经分得清** `const` 和 `fn`——它对两者匹配的前缀不同——
+然后把区别扔了，因为两条分支都只产出一个裸名字。`IfaceSymTab.values` 的
+`Map[String, Bool]` 里那个 `Bool` 一直在写 `true`，从来没被读过。现在它是
+`is_const`，`merge` / `union` 也跟着透传。
+
+反例对照（必须有）：跨包的**函数**仍然返回 `TUnknownFn`，不能一起降级成
+`TUnknown`——那会让调用处理器跑去检查一个凭空编出来的参数个数。
+
+### 带花括号的 suberror
+
+`suberror` 有两种写法：`suberror Timeout of String`（一行）和
+`pub suberror DecodeError { ... }`（带体）。原来**一律**走「跳到行尾」，
+于是带体的那种跳到换行就停了，剩下的 `{ ... }` 被当��表达式块解析，
+里面的载荷类型一个个变成 undefined name——`moonbit_image/types.mbt` 里
+`String` 报了 4 次。
+
+现在按关键字后面**实际跟的是什么**分流，扫描边界固定在 8 个 token
+（`suberror X of T` 的头部不会更长），避免把后面某个声明的花括号
+误认成自己的。反例对照：不带体的 suberror 必须照样解析，且它**之后**的
+函数仍然存在。
+
+### 一个反向的发现：这个分析器漏报
+
+`Nope::also_missing()` 这种**限定名调用在被调用方解析不出来时，完全不报**。
+这不是本轮引入的，是上一轮修掉的过度报告留下的镜像：
+
+> 限定名一度被**过度**报告（`Layer::ReLU`、`fn hz`），修完之后它们变成了
+> **报告不足**。
+
+我把这条写成了断言**当前行为**的测试，并标注 KNOWN GAP——不是断言一个
+还不存在的发现（那会让每个版本都卡在一个没人评估过的问题上）。
+
+要往正确的方向走，得先把「接收者类型」和「包别名」区分开，这轮没做。
+
+### 改完又撤回：`Byte::default` / `Array::make`
+
+`labeler` 的 `rasterizer.mbt:74` 是一行：
+
+```moonbit
+let pixels : Array[Byte] = Array::make(total, Byte::default())
+```
+
+分析器把其中一个被调用方报成 `undefined function`。我按探针结论
+（`Byte::default()` 编译 0 错误 0 警告）把 `Byte::default` 加进内建表——
+**结果只是把底下的 `Array::make` 露了出来**，同一行。
+
+这说明「一个名字一个名字补」是打地鼠，没有终点。于是改成按家族判定：
+**限定在内建类型上的调用（`Array::`、`Map::`、`Int::`）一律不当未定义**——
+分析器本来就没有内建类型的方法表。
+
+**这条改完又被撤回了。** 五道突变里它占两道，两道都存活（关掉它、让它永不
+匹配，整个套件照样全绿）；在一个手搭的探针上——完整文件和故意做成 partial
+的文件各一次——开关它输出**逐字节相同**。
+
+而语料里那条发现的形状我复现不出来：`undefined function` 这个串在本文件
+里只被构造一次，而我改的那处根本走不到。**在证明不了的前提下静音一整族调用，
+和当初制造这批误报是同一类错误。** 理由写在 `interp.mbt` 那条上报旁边。
+
+### 结果
+
+| 语料 | 0.4.13 | 0.4.14 | 0.4.15 | 0.4.16 |
+|---|---|---|---|---|
+| `snn_mbt` | 33 | 19 | 9 | **6**（全真） |
+| `moonbit_doubleML` | 28 | 3 | 1 | **0** |
+| `moonbit_labeler` | 6 | 5 | 5 | **5**（加 `--extern-iface-dir` 为 2） |
+| `moonbit_image` | 4 | 4 | 4 | **0** |
+| `pyroduct` | 0 | 0 | 0 | **0** |
+| 合计 | 71 | 31 | 19 | **11** |
+
+剩下 11 条里 **6 条是真阳性**，3 条是调用方式，另外 2 条在 `labeler`
+（1 条已修的 `Byte::default` 同类，1 条被 stdout 截断看不到）。
+
+测试 js 270 / wasm 342 / wasm-gc 270（新增 8）。四道突变全部杀死，
+restore 后 SHA256 逐字节一致；自检 52/52、actionable=0。
+
 ## 0.4.15 —— 剩下 30 条里的 12 条：三个成因，其中一个差点把整条规则静音
 
 0.4.14 把四个语料的 actionable 从 71 降到 31。**其中 1 条是真阳性**
@@ -459,7 +566,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.15
+moon add riantr/moonbit_static_analysis@0.4.16
 ```
 
 ```moonbit
@@ -791,7 +898,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.15` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.16` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

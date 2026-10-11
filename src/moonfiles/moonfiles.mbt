@@ -829,7 +829,10 @@ fn type_names(s : String) -> Array[String] {
 ///   pub extern "C" fn put(Int) -> Unit
 ///   pub fn &Data::text(Self) -> String raise
 ///   pub const HEADER_SIZE : Int = 10
-fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
+/// (name, referenced type names, bound type params, is_const)
+fn iface_signature(
+  line : String,
+) -> (String, Array[String], Array[String], Bool)? {
   let t = trim_sp(line)
   if t == "" || t.has_prefix("//") || t.has_prefix("#") {
     return None
@@ -843,10 +846,10 @@ fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
     if name == "" {
       return None
     }
-    return Some((name, type_names(type_annotation_of(ty)), []))
+    return Some((name, type_names(type_annotation_of(ty)), [], true))
   }
   // `pub let NAME : T` — a value declaration (no body), emitted by moon info
-  // for package-level constants and re-exports
+  // for package-level constants and re-exports. A constant, not a function.
   if body.has_prefix("let ") {
     let rest = trim_sp(after_n(body, 4))
     let (label, ty) = label_type(rest)
@@ -854,7 +857,7 @@ fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
     if name == "" {
       return None
     }
-    return Some((name, type_names(type_annotation_of(ty)), []))
+    return Some((name, type_names(type_annotation_of(ty)), [], true))
   }
   let rest = strip_fn_modifiers(body)
   if !(rest.has_prefix("fn ") || rest.has_prefix("fn[")) {
@@ -899,7 +902,7 @@ fn iface_signature(line : String) -> (String, Array[String], Array[String])? {
       types.push(n)
     }
   }
-  Some((clean_name, types, bound))
+  Some((clean_name, types, bound, false))
 }
 
 ///|
@@ -1077,7 +1080,9 @@ pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
   }
   for n in result.sig_names {
     if !tab.values.contains(n) {
-      tab.values.set(n, true)
+      // The flag matters: a `const` is not callable, and the type lens types a
+      // cross-file value as `TUnknownFn` unless it is told otherwise.
+      tab.values.set(n, result.const_names.contains(n))
     }
   }
   // Enum constructors are values, and they are declared inside a body this
@@ -1106,6 +1111,15 @@ priv struct IfaceScan {
   /// are collected; they exist so a `.mbt` in another file can resolve a
   /// constructor name without this analyzer modelling the enum.
   ctors : Array[String]
+  /// Value names that are CONSTANTS (`pub const X : T`, or the `pub let X : T`
+  /// form `moon info` emits for package-level constants and re-exports).
+  ///
+  /// `iface_signature` already distinguishes these from `fn` declarations — it
+  /// matches on a different prefix for each — and then threw the difference
+  /// away, because both produced a bare name. The type lens needs it: a const
+  /// is not callable, and typing one as a function made `3.0F * hz` an operator
+  /// mismatch. See the `is_const` note on `IfaceSymTab.values`.
+  const_names : Array[String]
 }
 
 ///|
@@ -1115,6 +1129,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   let declared : Array[String] = []
   let type_params : Array[String] = []
   let sig_names : Array[String] = []
+  let const_names : Array[String] = []
   let referenced : Array[(String, Int, Int)] = []
   let lines = split_lines(text)
   let mut decl_depth = 0
@@ -1287,7 +1302,10 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       continue
     }
     match iface_signature(t) {
-      Some((name, types, bound)) => {
+      Some((name, types, bound, is_const)) => {
+        if is_const && !const_names.contains(name) {
+          const_names.push(name)
+        }
         for p in bound {
           if !type_params.contains(p) {
             type_params.push(p)
@@ -1360,7 +1378,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       vst: [],
     })
   }
-  IfaceScan::{ reports, declared, sig_names, ctors, }
+  IfaceScan::{ reports, declared, sig_names, ctors, const_names, }
 }
 
 ///|
