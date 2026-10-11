@@ -777,8 +777,21 @@ fn is_moonbit_keyword(s : String) -> Bool {
     | "and"
     | "or"
     | "new"
-    | "init"
-    | "self" => true
+    | "init" => true
+    // NOT `self`. `self` is a CONVENTIONAL PARAMETER NAME in MoonBit, not a
+    // keyword: `pub fn Slot::qualified(self : Slot) -> String` binds it like
+    // any other name. Listing it here meant `\{self.designation()}` recorded
+    // no read, so a parameter read ONLY inside an interpolation was reported
+    // as never used — measured on riantr/pyroduct 0.1.29 at `src/slot.mbt`
+    // 127:24 (`parameter 'self' may not be used`, on a file `moon check`
+    // accepts). The same read outside an interpolation was already silent,
+    // so this was the interpolation path alone disagreeing with itself.
+    //
+    // It entered this list in 0.4.8 alongside interpolation tracking, as a
+    // guess that `self` was syntax; nothing had been measured. Removing it
+    // cannot invent an undefined-name finding here, because a `self` with no
+    // binding is reported as such by the frame lookup — which is the correct
+    // outcome, and is what already happens outside an interpolation.
     _ => false
   }
 }

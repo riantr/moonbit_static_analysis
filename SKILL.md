@@ -274,6 +274,37 @@ Two consequences worth knowing:
   a name from another package gets. It silences an undefined-name finding and
   infers no type or arity it has not read.
 
+**`list indices must be int` now fires only on a real list (since 0.4.13).** A
+`Map[K, V]` is indexed by its KEY, so `m["k"]` on a `Map[String, Int]` is correct
+code; before 0.4.13 it was reported as a type error at `error:` severity, which
+put findings on files `moon check` accepts with zero errors (measured: 2 on
+riantr/pyroduct 0.1.29, `src/paths.mbt`). The check is gated on the base being a
+known list, and `Array[T]` is read as one — the parser keeps the `[...]` and the
+type lens models it. A subscript on a base whose type was NOT read stays silent,
+which is the quiet direction: `m["k"]` on a `Map` and on a value of unknown type
+look identical from here, and neither is evidence of a defect.
+
+So on `Array`/`[T]` bases the check is live and matches the compiler; on a `Map`,
+or on anything unannotated, expect silence. That asymmetry is intentional.
+
+**A `_`-prefixed binding is exempt from both usage findings (since 0.4.13).** The
+bare `_` always was; a leading underscore now is too, matching the toolchain.
+Probe: `_f` / `_classes` / `_ok3` and a non-underscore `plain` control in one
+file, `moon check` warns on `plain` and on nothing else. Before 0.4.13 the
+analyzer exempted only the exact name `_` and reported underscore-prefixed names,
+on the stated reasoning that "a name is not a discard pile" — an argument, never
+measured, and the compiler contradicted it (measured: 2 of the 5 findings
+remaining after 0.4.12, `src/algebra.mbt` and `audit/mbti.mbt`). `FParamChanged`
+is unaffected: an underscore-prefixed parameter that is *assigned* is still
+reported, which is a different question from whether it was read.
+
+**`self` inside an interpolation is a read (since 0.4.13).** `self` is a
+conventional parameter name, not a keyword. The lexer used to list it as one, so
+`"\{self.designation()}"` recorded no read and a parameter read only inside an
+interpolation was reported as unused (measured: `src/slot.mbt` 127) while the same
+read in a plain expression was already silent. If you see `no visible binding` for
+a name used only inside `\{...}`, that one is real and worth reporting.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by

@@ -138,6 +138,23 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     EBool(_) => TBool
     EStr(_, _) => TStr
     EList(elems) => {
+      // An empty literal says nothing about its element type, so it must not
+      // claim one: `[]` alone is `TList(TUnknown)`.
+      //
+      // It does NOT adopt the hint here, and that was a deliberate measurement.
+      // An earlier version of this arm did `return match hint { TList(_) =>
+      // hint; _ => TList(TUnknown) }` to avoid a mismatch against an
+      // `Array[String]` annotation — and the branch turned out to be
+      // UNOBSERVABLE: muting it changed nothing in the finding stream on either
+      // this repository's own source or riantr/pyroduct 0.1.29 (byte-identical
+      // output, 496 and 528 findings), and no test could kill it.
+      //
+      // The reason is `ty_assignable`: it recurses into `TList`, so
+      // `TList(TUnknown)` IS assignable to `TList(TStr)` and the mismatch never
+      // fires anyway. The two fixes covered the same ground, one of them with a
+      // killing mutation and one without. Only the one that can be killed stays:
+      // a guard that no test can fail and no corpus can distinguish is not
+      // insurance, it is untested code that looks like a decision.
       let mut elem : Ty = TUnknown
       for x in elems {
         elem = ty_join(elem, self.ty_of(x, TUnknown))
@@ -277,7 +294,20 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     EIndex(base, idx) => {
       let bt = self.ty_of(base, TUnknown)
       let it = self.ty_of(idx, TUnknown)
-      if !(it is TInt) && !(it is TUnknown) {
+      // Only a LIST is indexed by int. `Map` is indexed by its key type, and
+      // the type model has no `Map` — `Map[String, Int]` reads as TUnknown, so
+      // this used to assert "list indices must be int" about a subscript whose
+      // base we had not identified as a list at all.
+      //
+      // Measured on riantr/pyroduct 0.1.29: 2 false positives on `src/paths.mbt`
+      // (`color[u] = 1` and `color[u] = 2`, where `color : Map[String, Int]` and
+      // `u : String`), reported at `error:` severity on a file `moon check`
+      // accepts with zero errors.
+      //
+      // The claim needs the base: an unknown base is not evidence of a list,
+      // and reporting there would be inventing a type error out of a type this
+      // analyzer never read.
+      if bt is TList(_) && !(it is TInt) && !(it is TUnknown) {
         self.report(
           @core.FOpMismatch,
           "list indices must be int, got '\{ty_name(it)}'",
@@ -400,7 +430,11 @@ fn Infer::assign_check(
     EIndex(base, idx) => {
       let bt = self.ty_of(base, TUnknown)
       let it = self.ty_of(idx, TUnknown)
-      if !(it is TInt) && !(it is TUnknown) {
+      // the same base-type gate as the READ arm above, and for the same
+      // measured reason: `color[u] = 1` on a `Map[String, Int]` is not a list
+      // subscript. Both arms must agree — a check that fires on read and not
+      // on write is a claim about syntax, not about types.
+      if bt is TList(_) && !(it is TInt) && !(it is TUnknown) {
         self.report(
           @core.FOpMismatch,
           "list indices must be int, got '\{ty_name(it)}'",

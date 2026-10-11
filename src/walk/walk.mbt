@@ -319,6 +319,38 @@ fn Walker::audit_suppressed(self : Walker, sp : @core.Span) -> Bool {
 }
 
 ///|
+/// True for a binding name the language itself treats as a DISCARD: the bare
+/// `_`, and any name STARTING with one.
+///
+/// This was `_`-exact until 0.4.13, on the stated reasoning that "a name is
+/// not a discard pile" — but that was an argument, not a measurement, and the
+/// toolchain disagrees. Probe (0.4.13), all in one file so one run settles it:
+///
+///     fn is_known(_f : Int) -> Bool { false }
+///     let (count, _classes) = refine()
+///     let (c2, _ok3) = refine()
+///     let (c3, plain) = refine()      <- the control: NOT underscore-prefixed
+///
+/// `moon check` warns on `plain` and on nothing else — so the `_` prefix is
+/// the language's own discard convention, for parameters and destructured
+/// locals alike, and reporting `_f` / `_classes` / `_ok3` was this analyzer
+/// contradicting a rule it had never checked. The control matters: without it
+/// the probe would also have passed on a compiler that warns about nothing.
+///
+/// Measured on riantr/pyroduct 0.1.29: 2 of the 5 actionable findings left
+/// after 0.4.12 were exactly this — `_classes` in `src/algebra.mbt` (`let
+/// (count, _classes) = refine()`, the second half intentionally unused) and
+/// `_f` in `audit/mbti.mbt` (`fn is_known_iface(_f : Report)`, a parameter
+/// kept for signature shape and deliberately unread).
+///
+/// `FParamChanged` is deliberately NOT gated on this: an underscore-prefixed
+/// name that is assigned is still being mutated, which is a different question
+/// from whether it was ever read.
+fn is_discard_name(n : String) -> Bool {
+  n.has_prefix("_")
+}
+
+///|
 /// Audit a function frame on exit (usage accounting for locals).
 ///
 /// Every finding here is function-scoped, so the caller skips this entirely
@@ -329,10 +361,11 @@ fn Walker::audit_frame(self : Walker) -> Unit {
   for n in self.orders[fi] {
     match self.frames[fi].get(n) {
       Some(e) =>
-        // The bare `_` is exempt from both usage findings: it exists to be
-        // discarded (`for k, _ in`, `let _ = f(x)`), and warning on the
-        // idiomatic spelling is the analyzer contradicting the language's
-        // own convention. A `_`-PREFIXED name is still reported.
+        // A discard name is exempt from both USAGE findings: it exists to be
+        // discarded (`for k, _ in`, `let _ = f(x)`, `_classes` in a tuple
+        // destructuring), and warning on the language's own spelling is the
+        // analyzer contradicting the compiler. See `is_discard_name` for the
+        // probe that settled the prefix question.
         if e.param {
           if e.assigns > 0 {
             self.findings.push(@report.Report::{
@@ -343,7 +376,7 @@ fn Walker::audit_frame(self : Walker) -> Unit {
               vst: @core.snapshot_vst(self.vst),
             })
           }
-          if e.varuses == 0 && n != "_" {
+          if e.varuses == 0 && !is_discard_name(n) {
             self.findings.push(@report.Report::{
               family: @core.FUnusedParam,
               lenses: [@core.LStructural],
@@ -352,7 +385,7 @@ fn Walker::audit_frame(self : Walker) -> Unit {
               vst: @core.snapshot_vst(self.vst),
             })
           }
-        } else if e.varuses == 0 && n != "_" {
+        } else if e.varuses == 0 && !is_discard_name(n) {
           self.findings.push(@report.Report::{
             family: @core.FUnusedLocal,
             lenses: [@core.LStructural],

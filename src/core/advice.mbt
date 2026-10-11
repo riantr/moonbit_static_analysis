@@ -33,12 +33,12 @@ pub fn Family::advice(self : Family) -> Advice {
     FUnusedLocal =>
       Advice::{
         why: "A local binding was assigned and never read anywhere in the function. The scan is not flow-sensitive, so a read inside an unreachable or dead branch still counts as a use.",
-        how: "Remove the binding, or read it. The bare `_` is exempt: a binding named `_` exists only to be discarded (`let _ = f(x)`, a `for k, _ in pairs` binder), so reporting it would contradict the language's own discard idiom. An underscore-PREFIXED name like `_unused` is still reported — a name is not a discard pile; if a binding exists only to be discarded, the honest fix is to delete the statement, not to rename it.",
+        how: "Remove the binding, or read it. A name that starts with `_` is exempt, matching the compiler: a discard binding (`let _ = f(x)`, a `for k, _ in pairs` binder, or the unused second half of `let (count, _classes) = refine()`) is how MoonBit says 'I mean to drop this', so reporting it would contradict the toolchain. Verified by probe, not assumed — `moon check` stays silent on `_f` / `_classes` while warning on a `plain` control in the same file. This wording reversed the rule in 0.4.13; before that, an underscore-PREFIXED name was reported on the reasoning that 'a name is not a discard pile', which the toolchain does not agree with.",
       }
     FUnusedParam =>
       Advice::{
         why: "A parameter was never read in the function body. Writing THROUGH a parameter counts as a read, so `self.field = v` and `v[0] = x` do not trigger this; only a parameter that is genuinely never touched does.",
-        how: "Remove the parameter and its argument at every call site, or keep it for signature compatibility and accept the warning. A parameter named exactly `_` is exempt — the same discard idiom as locals; an underscore-PREFIXED name is not exempt.",
+        how: "Remove the parameter and its argument at every call site, or keep it for signature compatibility and accept the warning. A parameter named exactly `_` is exempt — the same discard idiom as locals; an underscore-PREFIXED name is not exempt. This wording reversed the rule in 0.4.13: a probe settled that `moon check` does NOT warn on an unused `_f`, only on a non-underscore control in the same file, so the prefix is exempt here too.",
       }
     FParamChanged =>
       Advice::{

@@ -107,6 +107,24 @@ pub fn ty_name(t : Ty) -> String {
 /// in real MoonBit ever matched. Measured on 0.4.5 that turned the
 /// "not callable" check into a no-op on every real source file — see the
 /// note at the `ECall` arm in `infer.mbt`.
+///
+/// `Array[T]` joins the list spelling as of 0.4.13, and that was not cosmetic.
+/// The subscript check ("list indices must be int") only fires when the base
+/// is known to be a list, because a `Map[K, V]` is indexed by its KEY and
+/// asserting an int index there is a false positive — 2 of them on
+/// riantr/pyroduct 0.1.29 (`color[u] = 1` on `Map[String, Int]`). But MoonBit
+/// writes lists as `Array[T]`, NOT as `[T]`, so with `Array[` unrecognised every
+/// real list typed as Unknown, the gate never fired, and the check went silent
+/// on the errors it used to catch: `xs["k"]` on `Array[String]` and on
+/// `Array[Int]`, both confirmed by `moon check` as "Expr Type Mismatch".
+///
+/// The lesson is the one this whole file keeps teaching: narrowing a check's
+/// preconditions is only safe if the types it now depends on are actually
+/// readable. Gating on `TList` was correct; gating on a `TList` that nothing
+/// ever produces would have been a mute.
+///
+/// `Map[K, V]` stays Unknown on purpose — the model has no map type, and an
+/// unknown base is the honest answer that keeps the subscript check quiet.
 pub fn ann_to_ty(ann : String) -> Ty {
   match ann {
     "" => TUnknown
@@ -117,12 +135,33 @@ pub fn ann_to_ty(ann : String) -> Ty {
     "String" | "string" | "str" => TStr
     "None" => TNone
     "Unit" => TNone
-    _ =>
-      if ann.length() > 2 && ann[0] == '[' && ann[ann.length() - 1] == ']' {
-        TList(ann_to_ty(str_slice(ann, 1, ann.length() - 1)))
-      } else {
-        TUnknown
-      }
+    _ => ann_to_list_ty(ann)
+  }
+}
+
+///|
+/// The two container spellings: `Array[T]` (the real MoonBit one) and `[T]`
+/// (kept for hand-written samples and `.mbti` text). Anything else — including
+/// `Map[K, V]` — is not a list and returns `TUnknown`.
+///
+/// The prefix test is on the first five characters rather than a `split`, so
+/// `Array` must be followed by `[` to count: a hypothetical type named `Arrayx`
+/// must not be read as a list.
+fn ann_to_list_ty(ann : String) -> Ty {
+  let n = ann.length()
+  if n > 6 &&
+    ann[0] == 'A' &&
+    ann[1] == 'r' &&
+    ann[2] == 'r' &&
+    ann[3] == 'a' &&
+    ann[4] == 'y' &&
+    ann[5] == '[' &&
+    ann[n - 1] == ']' {
+    TList(ann_to_ty(str_slice(ann, 6, n - 1)))
+  } else if n > 2 && ann[0] == '[' && ann[n - 1] == ']' {
+    TList(ann_to_ty(str_slice(ann, 1, n - 1)))
+  } else {
+    TUnknown
   }
 }
 
@@ -145,11 +184,21 @@ pub fn is_numeric(t : Ty) -> Bool {
 
 ///|
 /// Can a value of `v` be assigned to a binding annotated `target`?
+///
+/// `TList` recurses on the element type, and that is not a convenience: the
+/// rule two arms below already says an Unknown is assignable to anything, so a
+/// list holding an unknown element must be assignable to a list of anything —
+/// otherwise the Unknown escape hatch is silently defeated one level down. The
+/// non-recursive version fired 3 false positives on this repo's own source as
+/// soon as `Array[T]` became readable (0.4.13): `[root]` from a `for` binder
+/// and `[first]` from a tuple-destructuring call are both `TList(TUnknown)`,
+/// and neither is evidence of a type error.
 pub fn ty_assignable(v : Ty, target : Ty) -> Bool {
   match (v, target) {
     (_, TUnknown) | (TUnknown, _) => true
     (a, b) if a == b => true
     (TInt, TFloat) => true // int widens
+    (TList(a), TList(b)) => ty_assignable(a, b)
     (_, TUnion(ms)) => {
       let mut ok = false
       for m in ms {

@@ -153,6 +153,101 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
+
+0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and
+`moon check` accepts every one of those files with zero errors.
+
+| Cause | Count | Where |
+|---|---|---|
+| `color[u]`: a **`Map` treated as a list**, reported as an index type error | 2 | `src/paths.mbt` 135/152 |
+| `self` read **only** inside an interpolation, reported as an unused parameter | 1 | `src/slot.mbt` 127 |
+| `_`-prefixed unused binding/parameter — **the analyzer's rule was the opposite of the compiler's** | 2 | `src/algebra.mbt` 118, `audit/mbti.mbt` 69 |
+
+### The first one nearly got traded for a worse bug
+
+Indexing a `Map[String, Int]` with a `String` is **correct** — a map is indexed by
+its key. The type lens never asked whether the subscript's base is a list at all;
+it reported `list indices must be int` for any non-int index, putting an
+`error:`-severity finding on a clean file.
+
+The obvious fix is a precondition: only when the base is a `TList`. **That
+immediately swallowed two real errors**, measured with a probe: `xs["k"]` on
+`Array[String]` and on `Array[Int]`, both "Expr Type Mismatch" in `moon check`,
+both caught by 0.4.12, both gone the moment the precondition went in.
+
+The cause is that `ann_to_ty` does not recognise `Array[T]` (it knows only `[T]`,
+which is not even valid MoonBit), and `type_annotation` **discards the `[...]`
+entirely** via `skip_indexed` — so `Array[String]` reached the lens as bare
+`"Array"`. The `TList` precondition could therefore **never fire**, and the check
+had become a mute.
+
+The real fix is to complete the type model, not to silence the check, and it took
+three pieces: `ann_to_ty` learns `Array[T]`; the parser keeps the head's `[...]`
+(its own comment there had argued "the type lens does not model containers, so
+dropping it costs nothing" — that sentence was the bug's own explanation); and
+`ty_assignable` recurses into `TList`, so `TList(TUnknown)` is assignable to
+`TList(TStr]` rather than the "Unknown fits anything" rule being quietly defeated
+one level down.
+
+Measured on a probe of five subscripts, of which `moon check` calls 3 real errors:
+
+| | real errors caught | false positives |
+|---|---|---|
+| 0.4.12 | 3 / 3 | **1** (the `Map`) |
+| 0.4.13 | **3 / 3** | **0** |
+
+⇒ **Lesson: before adding a precondition to a check, ask whether the types it now
+depends on are even readable.** The precondition was correct, and the thing it
+depends on was being thrown away upstream — so adding it muted the check, and it
+muted it *plausibly*, because the check genuinely "only reports when the base is
+a list".
+
+⇒ **Paired: a comment defending a lossy decision becomes the bug's own
+specification.** "This is not a compromise" is only true while its premise holds,
+and it stops holding the moment someone tightens the premise it justifies.
+
+### The `_` prefix: the analyzer's rule was the compiler's opposite
+
+A leading `_` is MoonBit's discard convention. Probe — one file holding `_f` /
+`_classes` / `_ok3` plus a non-underscore `plain` control: `moon check` warns on
+`plain` and on **nothing else**. The analyzer exempted only the bare `_` and
+asserted in a comment that "a name is not a discard pile" — an **argument, not a
+measurement**, and one the compiler contradicted immediately.
+
+⇒ **Lesson: probe an exemption rule before writing it down.** Both the rule and
+its rationale were added in 0.4.8 and never checked against the toolchain.
+
+### `self` is a conventional parameter name, not a keyword
+
+The lexer listed `self` among the words that are not bindings inside an
+interpolation, so `\{self.designation()}` recorded **no read** and a parameter
+read only inside an interpolation was reported as never used. It was added in
+0.4.8 alongside interpolation tracking, as a guess that `self` was syntax.
+
+⇒ **Lesson: one read must have one answer on every path.** The bug was precisely
+that "inside an interpolation counts as a read, inside a plain expression does
+not". Pin **both** directions in the test, or pinning one looks like coverage.
+
+### Two things the mutation run turned up
+
+1. **The mutation harness's own filter matched zero tests.** Two guards reported
+   GREEN because the `--filter` glob selected no test at all — an "all green" that
+   proved nothing. The script now asserts `ran > 0` and reports `ran = 0` as
+   INVALID.
+2. **One fix that no test could kill.** I briefly had an empty list literal
+   "adopt" its annotation type; muting it left the finding stream **byte-identical**
+   on both corpora (496 and 528 findings), and no test failed. What actually
+   carries it is the `TList` arm of `ty_assignable`. **A branch no test can fail
+   and no corpus can distinguish is untested code that looks like a decision** —
+   removed, with the reason recorded at both sites.
+
+pyroduct **actionable 5 → 0**, total findings 632 → 627, exactly −5: nothing new
+appeared anywhere. Self-scan 48/48, actionable=0. Tests 240 js / 312 wasm /
+240 wasm-gc (24 new, 6 of them in a new `types_test.mbt` — a file that did not
+exist before, and whose absence is why the regression above survived a whole
+release). Eight guards, all mutation-verified.
+
 ## 0.4.10 — publishing 0.4.9 exposed two things the self-scan had been hiding
 
 Releasing the provenance fix meant running the published package through itself
@@ -281,7 +376,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.12
+moon add riantr/moonbit_static_analysis@0.4.13
 ```
 
 ```moonbit
@@ -663,7 +758,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.12` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.13` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

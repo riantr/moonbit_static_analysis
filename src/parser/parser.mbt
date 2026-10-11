@@ -679,25 +679,33 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 /// and was a blocker before: the head name and the `.Tail` are emitted as
 /// separate tokens, and the parser had no path to consume the `.` and the
 /// tail name after the head. Fixed by accepting one or more `.Name` tails
-/// and folding them into the returned name. Only the joined name is kept,
-/// and that is not a compromise: the type lens does not model containers or
-/// qualified paths, so `@pkg.T` and `@pkg` reach it identically, both
-/// Unknown. What matters here is that the parser stops failing at the `.`,
-/// which is the difference between a real file being readable and being
-/// discarded.
+/// and folding them into the returned name.
 ///
-/// Only the head is kept, and that is not a compromise: the type lens does not
-/// model containers. `ann_to_ty` recognises `int` / `float` / `bool` / `str` /
-/// `None` and list literals, and falls back to Unknown otherwise -- so
-/// `Array[Double]` and `Array` reach it identically, both Unknown. What matters
-/// here is that the parser stops failing at the `[`, which is the difference
-/// between a real file being readable and being discarded.
+/// **The head's `[...]` arguments are now KEPT rather than discarded** (0.4.13),
+/// which reverses the note that stood here before: "the type lens does not
+/// model containers, so `Array[Double]` and `Array` reach it identically".
+/// The type lens DOES model `Array[T]` now, and it has to: the subscript check
+/// fires only when the base is known to be a list, so `xs["k"]` on an
+/// `Array[String]` PARAMETER — where the annotation was arriving as bare
+/// `"Array"` — stopped being reported at all. Two real errors, both confirmed
+/// by `moon check` as "Expr Type Mismatch", silently lost because the
+/// precondition was narrowed while the thing it depends on was still thrown
+/// away upstream. Keeping the arguments restores them AND keeps the
+/// false-positive side fixed (`Map[String, Int]` is still Unknown, so a map
+/// subscript stays silent).
+///
+/// The arguments are re-rendered from TOKENS, not copied from source: the
+/// parser holds no source text. Names, brackets, commas, dots, colons and
+/// `?` are rendered; anything else inside an argument list is dropped. That is
+/// lossless for the type spellings this lens reads, and `ann_to_ty` returns
+/// Unknown for anything it does not recognise — so a dropped token can only
+/// cost precision, never invent a type. A `.Tail` argument list
+/// (`@pkg.T[X]`) is still discarded, since the head is already qualified.
 fn Parser::type_annotation(self : Parser) -> String {
   let (name, _) = self.expect_name("type name")
-  self.skip_indexed()
+  let mut n = name + self.indexed_suffix()
   // Consume a `.Tail` chain. `@pkg.T.U.V` becomes "@pkg.T.U.V" in the name
   // returned to the caller; the lexer does not include the `.` in TName.
-  let mut n = name
   while self.at(TDot) {
     let _ = self.bump()
     let (tail, _) = self.expect_name("type tail")
@@ -712,6 +720,55 @@ fn Parser::type_annotation(self : Parser) -> String {
     n = n + "?"
   }
   n
+}
+
+///|
+/// The `[...]` argument list at the cursor, rendered into a string, or `""`
+/// when the cursor is not on a `[`. Returns with the cursor past the group.
+///
+/// Nesting is tracked, so `Array[Array[Int]]` renders whole. An unterminated
+/// group (EOF reached first) still returns whatever was read — the same
+/// best-effort contract as the rest of the parser, and the enclosing file is
+/// already partial in that case.
+fn Parser::indexed_suffix(self : Parser) -> String {
+  if !self.at(TLBracket) {
+    return ""
+  }
+  // Starts EMPTY, not "[": the loop below writes the opening bracket itself
+  // when it sees the `[`. Seeding it here duplicated the bracket —
+  // `Array[String]` rendered as `Array[[String]]`, whose element slice came
+  // out as the unterminated `"[String"` and so typed as `TUnknown`. That single
+  // character turned every annotated `Array[T]` into an unknown-element list
+  // and produced 58 fresh false positives on this repo and pyroproduct, which
+  // is how it was found: a narrowing change that made the type lens speak up
+  // about a string it was never supposed to see.
+  let mut out = ""
+  let mut depth = 0
+  while !self.at(TEOF) {
+    let t = self.peek()
+    if self.at(TLBracket) {
+      depth += 1
+      out = out + "["
+    } else if self.at(TRBracket) {
+      depth -= 1
+      out = out + "]"
+    } else {
+      match t {
+        TName(n) => out = out + n
+        TComma => out = out + ","
+        TDot => out = out + "."
+        TColon => out = out + ":"
+        TArrow => out = out + "->"
+        TQuestion => out = out + "?"
+        _ => ()
+      }
+    }
+    let _ = self.bump()
+    if depth == 0 {
+      break
+    }
+  }
+  out
 }
 
 ///|

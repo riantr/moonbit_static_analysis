@@ -129,6 +129,86 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
+
+0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是
+`moon check` 零错误通过的干净文件。
+
+| 成因 | 条数 | 位置 |
+|---|---|---|
+| `color[u]`：**把 `Map` 当成 list 报下标类型错** | 2 | `src/paths.mbt` 135/152 |
+| `self` **只**在插值里被读 → 报参数未用 | 1 | `src/slot.mbt` 127 |
+| `_` 前缀的未用绑定/参数（**分析器与编译器规则相反**） | 2 | `src/algebra.mbt` 118、`audit/mbti.mbt` 69 |
+
+### 第一条差点被我用一个更糟的 bug 换掉
+
+`Map[String, Int]` 用 `String` 下标是**对的**——`Map` 按 key 索引。而类型镜从来没问
+过「这个下标的基到底是不是 list」，只要下标不是 int 就报
+`list indices must be int`，**在干净文件上给出 `error:` 级发现**。
+
+最直接的修法是加个前提：基是 `TList` 才报。**这一改立刻吞掉了两条真实错误**——
+我拿探针量出来的：`xs["k"]` 在 `Array[String]` 和 `Array[Int]` 上，`moon check`
+报 "Expr Type Mismatch"，0.4.12 能抓到，加了前提之后两条都没了。
+
+原因是 `ann_to_ty` **不认识 `Array[T]`**（只认 `[T]`，而 `[T]` 在 MoonBit 里根本不是
+合法写法），parser 还用 `skip_indexed` 把 `[...]` **整个丢掉**——`Array[String]`
+到达类型镜时只剩 `"Array"`。所以那个 `TList` 前提**永远不成立**，检查等于静音。
+
+真正的修法是**补上类型模型**，而不是关掉检查：三处——
+`ann_to_ty` 认 `Array[T]`；parser 的 `type_annotation` 保留头部的 `[...]`
+（它自己上面的注释还写着「类型镜不建模容器，所以丢掉不损失」——那句话正是这个
+bug 的说明书）；`ty_assignable` 递归进 `TList`，让 `TList(TUnknown)` 能赋给
+`TList(TStr]`（否则「Unknown 可赋给任何东西」这条规则被下一层悄悄推翻）。
+
+最终对照（探针里 5 个下标，`moon check` 报 3 个真错误）：
+
+| | 真错误 | 误报 |
+|---|---|---|
+| 0.4.12 | 3 / 3 | **1**（`Map`） |
+| 0.4.13 | **3 / 3** | **0** |
+
+⇒ **教训一：给检查加前提之前，先问「它依赖的类型读得到吗」。** 前提写对了，
+但如果依赖的那个类型是**上游丢掉的**，加前提就等于静音——而且它静默得很有道理：
+检查确实"只在基是 list 时才报"。
+
+⇒ **配套：parser 丢信息这件事，类型镜那边的注释替它辩护了。** 一句写对的注释
+（「不建模容器所以丢掉不损失」）会在**前提收紧**的那一刻变成谎言。注释里
+"这不是妥协"这种话，要跟着它依赖的前提一起复查。
+
+### `_` 前缀：分析器和编译器规则相反
+
+`_` 前缀在 MoonBit 里是**丢弃约定**。探针（同一个文件里同时放 `_f` / `_classes` /
+`_ok3` 和一个非下划线对照 `plain`）：`moon check` **只对 `plain` 报警**。
+分析器此前只豁免裸 `_`，并在注释里断言「名字不是丢弃堆」——那是**论证，不是实测**。
+
+⇒ **教训二：豁免规则先探针，再写进注释。** 这条规则和它那句理由都是 0.4.8 加的，
+从没被工具链验证过；一改注释里的断言，编译器一句话就把它否掉了。
+
+### `self` 是约定参数名，不是关键字
+
+词法器把 `self` 列进了「插值里不是绑定」的关键字表，于是 `\{self.designation()}`
+**不记录这次读**，只在插值里被读的参数就被报成未使用。它是 0.4.8 加插值追踪时
+**顺手猜进去的**，没量过。
+
+⇒ **教训三：同一个读法在不同代码路径上答案必须一致。** 这里的 bug 就是
+「插值里算读、普通表达式里不算」，两条路径互相矛盾。写测试时要**两个方向都钉**，
+否则只钉一个方向会以为已经覆盖了。
+
+### 被突变验证挖出来的两件事
+
+1. **突变脚本自己的过滤器匹配了 0 个测试。** 两个 guard 报成 GREEN，其实
+   `--filter` 的 glob 根本没选中任何用例——一次「全绿」什么也没证明。脚本现在
+   断言 `ran > 0`，`ran = 0` 直接判 INVALID。
+2. **一个修复没有任何测试能杀死它。** 我一度让空列表字面量「采纳注解类型」，
+   把它静音后两个语料的发现流**逐字节相同**（496 / 528 条），也没有测试能杀它。
+   真正起作用的是 `ty_assignability` 那一条。**测不出差别的分支不是保险，是没被测过
+   却长得像决策的代码**——已删，并在两处注释里写明为什么删。
+
+pyroduct **actionable 5 → 0**，总发现数 632 → 627，正好 −5：没有新发现冒出来。
+自检 48/48、actionable=0。测试 js 240 / wasm 312 / wasm-gc 240（新增 24 个，
+其中 6 个是新的 `types_test.mbt`——这个文件此前不存在，也正是它缺失让上面那个
+回归活过了整整一个版本）。八道防护，全部突变验证通过。
+
 ## 0.4.10 —— 发布 0.4.9 才暴露出自检一直在遮蔽的两件事
 
 把 provenance 的修复发出去，意味着要再用它自己扫一遍已发布的包——就是当初找出
@@ -240,7 +320,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.12
+moon add riantr/moonbit_static_analysis@0.4.13
 ```
 
 ```moonbit
@@ -572,7 +652,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.12` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.13` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
