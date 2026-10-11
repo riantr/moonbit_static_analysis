@@ -39,6 +39,47 @@ type + 20 个 trait 的 prelude 段因此不可见），现在进表。
 
 自检（扫本仓库自身源码）保持 **0**。测试 231 → 233。
 
+## 0.4.11 —— 第一次扫外部代码：四个修复，全部来自实测
+
+把扫描器指向一个它从没见过的包：
+
+```
+moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
+```
+
+119 个文件，解析 87，**actionable 43**。逐条分类而不是只数一遍，发现其中 30 条是
+分析器自己的缺陷。四个修复，每一条都能追到具体的发现：
+
+| 修复 | 是什么 | 条数 |
+|---|---|---|
+| `Repr` 进内建表 | `core/debug` 里 `Repr` 枚举的构造器，隐式可见——而**不在** `core/builtin` 接口里（表里其它名字全是从那儿抄的） | 16 |
+| 插值里的 import 别名 | `@` 不是标识符字符，所以 `\{@sm.all_states()}` 记录别名时**丢了 `@`**，walk 里 `!has_prefix("@")` 那道闸根本看不见。**这是 0.4.8 自己引入的回归** | 6 |
+| `extend` 是声明 | 当成语句读时，`extend` 变成了一个名字 | 8 |
+| C 风格三段式 `for` | MoonBit 的另一种 `for`；把它的头部当绑定变量读，就会要求 `in` | 覆盖率 |
+
+`Repr` 是用工具链定的，不是推断的：同一个插值里同时写 `Repr(1)` 和
+`ZzNoSuchName123(2)`，`moon check` 只报了第二个。
+
+**覆盖率 73.1% → 86.5%**（87 → 103 / 119）。真正推动覆盖率的是 `for` 修复，而且
+是在修复**自身**的第二个 bug 之后：用来区分两种 `for` 的前瞻，最早那版扫描
+深度 0 的 `;` 时**没有在函数体的 `{` 处停下**，于是文件后面只要出现一个 `;`，
+绑定形式的 `for` 就会被误判成 C 风格，然后死在 `expected ';'` 上。它把本该
+恢复 12 个文件的结果变成 4 个，**把错误搬走了而不是消掉**——15 条
+`expected 'in'` 变成 14 条 `expected ';'`。现在钉住这一点的测试，就是照着
+这个失败写的。
+
+`for` 被降解成 `SBlock[SAssign, SWhile]`，而不是新增 AST 节点——因为每个 lens 都对
+`SKind` 做穷尽匹配。它唯一的不精确之处（update 子句在循环后跑一次，而不是每轮
+一次）是刻意的，且偏向安静那一侧：update 被保留，因为 `i = i + 1` 正是 `i` 被
+**读**的地方，丢掉它会让每个循环计数器看起来都没被用过。这一点有测试钉住。
+
+四个修复合计：**actionable 43 → 31**，其中 26 条属于同一个已知限制——调用同包
+另一个文件里的**包私有**辅助函数，`.mbti` 解析看不见它。这已经是剩余问题里
+占比最大的一类，也是下一个明确的目标。
+
+测试：js 215 / wasm 285 / wasm-gc 215。自检保持 46/46、actionable=0。
+五道新防护全部做过突变验证。
+
 ## 0.4.10 —— 发布 0.4.9 才暴露出自检一直在遮蔽的两件事
 
 把 provenance 的修复发出去，意味着要再用它自己扫一遍已发布的包——就是当初找出
@@ -150,7 +191,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.10
+moon add riantr/moonbit_static_analysis@0.4.11
 ```
 
 ```moonbit
@@ -482,7 +523,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.10` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.11` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

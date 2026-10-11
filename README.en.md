@@ -46,6 +46,53 @@ names declared outside the subset (`E_MAX` / `b` / `N`) + 3 other shapes (`is` /
 
 Self-scan (this repository's own source) stays at **0**. Tests 231 → 233.
 
+## 0.4.11 — the first external scan: 4 fixes, all measured on real code
+
+The analyzer was pointed at a package it had never seen:
+
+```
+moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
+```
+
+119 files, 87 parsed, **actionable 43**. Triaging the 43 instead of counting
+them found 30 that were analyzer defects. Four fixes, each one traceable to a
+specific finding:
+
+| fix | what it was | findings |
+|---|---|---|
+| `Repr` added to the ambient list | a constructor of the `Repr` enum in `core/debug`, in implicit scope — and in no `core/builtin` interface, which is where every other ambient name came from | 16 |
+| import alias inside `\{...}` | `@` is not an identifier character, so `\{@sm.all_states()}` recorded the alias WITHOUT the `@` and the walk's `!has_prefix("@")` guard could not see it. **A regression 0.4.8 introduced** | 6 |
+| `extend` is a declaration | read as a statement, `extend` became a name | 8 |
+| C-style three-clause `for` | MoonBit's other `for` form; reading its head as a binder demanded `in` | coverage |
+
+`Repr` was settled with the toolchain, not by inference: one probe file calling
+`Repr(1)` and `ZzNoSuchName123(2)` in the same interpolation, where `moon check`
+flagged only the second.
+
+**Coverage: 73.1% → 86.5%** (87 → 103 of 119 files). The `for` fix is what
+moved it, and only after a second bug in the fix itself: the first lookahead
+that tells the two `for` forms apart scanned for a `;` at depth 0 without
+stopping at the body's `{`, so any binder-form `for` followed later in the file
+by a `;` was misclassified and died on `expected ';'`. It converted a 12-file
+recovery into 4 and **moved the error instead of removing it** — 15 ×
+`expected 'in'` became 14 × `expected ';'`. The test that now pins it is
+written around exactly that failure.
+
+The `for` desugars to `SBlock[SAssign, SWhile]` rather than a new AST node,
+because every lens matches `SKind` exhaustively. Its one inexactness — the
+update clause runs once after the loop rather than once per iteration — is
+deliberate and in the quiet direction: the update is kept, because
+`i = i + 1` is where `i` is *read*, and dropping it would make every loop
+counter look unused. A test pins that.
+
+After all four: **actionable 43 → 31**, of which 26 are one known limitation —
+a call to a package-private helper in a sibling file, invisible to `.mbti`
+resolution. That is now the single dominant cause of what remains, and the
+obvious next target.
+
+Tests: 215 js / 285 wasm / 215 wasm-gc. Self-scan stays 46/46 with
+actionable=0. All five new guards are mutation-verified.
+
 ## 0.4.10 — publishing 0.4.9 exposed two things the self-scan had been hiding
 
 Releasing the provenance fix meant running the published package through itself
@@ -174,7 +221,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.10
+moon add riantr/moonbit_static_analysis@0.4.11
 ```
 
 ```moonbit
@@ -556,7 +603,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.10` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.11` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

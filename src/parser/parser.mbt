@@ -897,6 +897,17 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     return { span: sp, kind: @ast.SWhile(cond, body), }
   }
   if self.at_name("for") {
+    // MoonBit has TWO for forms. `for x in xs` reads a binder; the C-style
+    // three-clause form does not, and reading its head as a binder made the
+    // parser demand `in` right after it — `expected 'in'`, the error that
+    // stopped 15 of riantr/pyroduct's 32 unreadable files (600+ occurrences of
+    // `for i = 0; i < n; i = i + 1` in that one corpus).
+    //
+    // Which form it is is decided by LOOKING, not by parsing, so the binder
+    // path below keeps every test it has.
+    if self.is_c_style_for() {
+      return self.parse_c_for()
+    }
     let _ = self.bump()
     // One binder, or a comma-separated list of them: `for x in xs` is the
     // common form, `for k, v in entries { ... }` is pair destructuring
@@ -1000,6 +1011,100 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     }
   }
   { span: sp, kind: @ast.SExpr(e), }
+}
+
+///|
+/// Is the `for` at the current position the C-style three-clause form?
+///
+/// Decided by scanning tokens, NOT by parsing: the two forms differ in what
+/// follows `for`, and the binder path is the one with a decade of tests behind
+/// it, so it must not be disturbed by a lookahead that guesses.
+///
+/// Whichever of `;` and `{` arrives FIRST at depth 0 decides the form, and the
+/// scan STOPS there. That stop is the whole test: an earlier version kept
+/// scanning past the body's closing brace, so a plain `for entry in xs { ... }`
+/// followed anywhere later in the file by a `;` was misread as C-style and died
+/// on `expected ';'` further down. Measured on riantr/pyroduct 0.1.29, that
+/// turned a clean recovery into 4 files instead of 15 and moved the error rather
+/// than removing it.
+///
+/// Called with `self.p` ON `for`.
+fn Parser::is_c_style_for(self : Parser) -> Bool {
+  let mut i = self.p + 1
+  let mut depth = 0
+  while i < self.toks.length() {
+    match self.toks[i] {
+      TSemi => if depth == 0 { return true } else { i += 1 }
+      TLParen | TLBracket => {
+        depth += 1
+        i += 1
+      }
+      TRParen | TRBracket => {
+        depth -= 1
+        i += 1
+      }
+      // The body's opening brace, still at depth 0: the head had no `;`, so
+      // this is the binder form. Do not look past it.
+      TLBrace =>
+        if depth == 0 {
+          return false
+        } else {
+          depth += 1
+          i += 1
+        }
+      TRBrace => {
+        depth -= 1
+        i += 1
+      }
+      TEOF => return false
+      _ => i += 1
+    }
+  }
+  false
+}
+
+///|
+/// The C-style three-clause loop: `for i = 0; i < n; i = i + 1 { ... }`.
+///
+/// Desugared to `[init, while (cond) { body; update }]` — an `SBlock` around an
+/// `SWhile`, both of which already exist and are already walked. A dedicated
+/// node would be more honest about the shape, but every lens matches `SKind`
+/// exhaustively, so adding one is a change in four packages to buy a
+/// distinction no lens currently draws.
+///
+/// One deliberate inexactness: the update runs ONCE after the loop rather than
+/// once per iteration, because this is a static read analysis and the loop is
+/// walked once anyway. It is kept rather than dropped on purpose — `i = i + 1`
+/// is where `i` is READ, and a dropped update clause makes every loop counter
+/// look like an unused local. Wrong in the loud direction is not an option
+/// here; this is wrong in the quiet one, and only for a loop's exit value.
+fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
+  let sp = self.span()
+  let _ = self.bump() // for
+  let stmts : Array[@ast.Stmt] = []
+  // init may be empty: `for ; i < n; i = i + 1`
+  if !self.at(TSemi) {
+    stmts.push(self.parse_stmt())
+  }
+  self.expect(TSemi, "';'")
+  // An absent condition is a constant-true loop, not a missing one.
+  let mut cond : @ast.Expr = { span: sp, kind: @ast.EBool(true), }
+  if !self.at(TSemi) {
+    cond = self.parse_expr()
+  }
+  self.expect(TSemi, "';'")
+  let update = if self.at(TLBrace) { None } else { Some(self.parse_stmt()) }
+  let (body, _) = self.parse_block()
+  let loop_body : Array[@ast.Stmt] = []
+  for st in body {
+    loop_body.push(st)
+  }
+  match update {
+    Some(u) => loop_body.push(u)
+    None => ()
+  }
+  stmts.push({ span: sp, kind: @ast.SWhile(cond, loop_body), })
+  { span: sp, kind: @ast.SBlock(stmts), }
 }
 
 ///|

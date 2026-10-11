@@ -256,6 +256,13 @@ them, so one file calling a sibling file's private helper reads as
 helper `pub` puts it in the interface and is the only fix available from the
 CLI.
 
+**This is now the single largest source of findings on real code.** Measured on
+`riantr/pyroduct` 0.1.29 after every other false positive was fixed: 26 of the
+31 remaining actionable findings were this one shape — `sieve`, `ridge_fit`,
+`fmt`, `claim_of` and the rest, each a private `fn` in a sibling file of the
+same package. On a multi-file package, expect it, and read it as a known limit
+rather than as 26 separate defects.
+
 The same discipline applies to `actionable` itself: a finding is only as good
 as the oracle it was checked against. Every actionable finding the analyzer
 reported on `moonbitlang/core` was a defect **in the analyzer**, found by

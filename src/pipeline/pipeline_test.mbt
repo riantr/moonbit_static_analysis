@@ -1275,6 +1275,63 @@ test "a file with an extend still reports an undefined name in a later function"
 }
 
 ///|
+/// MoonBit has two `for` forms. The C-style three-clause one has no binder, so
+/// reading its head as one made the parser demand `in` — `expected 'in'`, which
+/// stopped 15 of riantr/pyroduct's 32 unreadable files (600+ occurrences of
+/// `for i = 0; i < n; i = i + 1` in that corpus alone).
+///
+/// The body must still be walked, so the finding below the loop is what proves
+/// the whole header was read rather than skipped.
+test "a C-style three-clause for loop parses and its body is still analysed" {
+  let r = @pipeline.run(
+    "fn f(n : Int) -> Int {\n  let total = 0\n  for i = 0; i < n; i = i + 1 {\n    no_such_function(i)\n  }\n  total\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// The loop COUNTER is not an unused local. `i` is bound by the init clause and
+/// read by both the condition and the update, and the update clause is kept in
+/// the AST for exactly that reason — a dropped `i = i + 1` would make every
+/// counter in the corpus look unused.
+///
+/// This is the risk the desugar introduced, stated as a test: the desugar turns
+/// the loop into `SBlock[SAssign, SWhile]`, and a mistake there shows up as a
+/// flood of UnusedLocal on every loop in a project, not as a parse error.
+test "a C-style for counter is read, not reported as an unused local" {
+  let r = @pipeline.run(
+    "fn f(n : Int) -> Int {\n  let total = 0\n  for i = 0; i < n; i = i + 1 {\n    total = total + i\n  }\n  total\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UnusedLocal"), 0)
+}
+
+///|
+/// The negative control for the LOOKAHEAD that tells the two `for` forms apart,
+/// and it exists because the first version of that lookahead was wrong in a way
+/// no test would have caught.
+///
+/// It scanned for a `;` at depth 0 WITHOUT stopping at the body's `{`, so this
+/// plain binder-form loop — followed later in the same file by a `;` — was
+/// misclassified as C-style and died on `expected ';'` further down. Measured
+/// on pyroduct, that turned a 12-file recovery into 4 and moved the error
+/// instead of removing it.
+test "a binder-form for is not mistaken for the C-style form by a later `;`" {
+  let r = @pipeline.run(
+    "fn f(xs : Array[Int]) -> Int {\n  for x in xs {\n    ignore(x)\n  }\n  let n = 1;\n  n\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
 test "an undefined name outside any interpolation is still reported once" {
   let r = @pipeline.run(
     "fn f() -> Int {\n  println(\"v=\\{no_such_name}\")\n  no_such_name_outside\n  1\n}\n",
