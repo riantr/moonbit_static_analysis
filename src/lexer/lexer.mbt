@@ -640,6 +640,8 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
   let mut cur_is_member = false
   // True immediately after a `.`, before the member name starts.
   let mut after_dot = false
+  // True immediately after an `@`, before the alias name starts.
+  let mut after_at = false
   while self.pos < self.chars.length() {
     let c = self.chars[self.pos]
     buf.write_char(c)
@@ -650,17 +652,29 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
     } else if c == '}' {
       depth -= 1
       if depth == 0 {
-        self.flush_interp_name(cur, cur_is_member)
+        self.flush_interp_name(cur, cur_is_member, after_at)
         return
       }
     } else if c == '"' {
-      self.flush_interp_name(cur, cur_is_member)
+      self.flush_interp_name(cur, cur_is_member, after_at)
       cur = ""
       self.copy_nested_string(buf)
     } else if c == '\'' {
-      self.flush_interp_name(cur, cur_is_member)
+      self.flush_interp_name(cur, cur_is_member, after_at)
       cur = ""
       self.copy_nested_char(buf)
+    } else if c == '@' {
+      // An `@`-prefixed name is an IMPORT ALIAS, not a binding in this file —
+      // `@core`, `@sm`, `@multi`. The walker already refuses to resolve those
+      // (`!name.has_prefix("@")`), but that guard cannot help here: `@` is not
+      // an identifier character, so without this branch the scan records the
+      // alias WITHOUT its `@` and the guard sees an ordinary bare name.
+      // Measured on riantr/pyroduct 0.1.29: 6 `no visible binding for 'sm'` /
+      // `'multi'` findings on `\{@sm.all_states()}`, manufactured by the
+      // interpolation support itself.
+      self.flush_interp_name(cur, cur_is_member, after_at)
+      cur = ""
+      after_at = true
     } else if is_ident_char(c) && !(is_digit(c) && cur == "") {
       // A number is a literal, never a binding: an identifier may CONTINUE
       // with a digit (`xs0`) but cannot START with one. This was written the
@@ -678,29 +692,31 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       // `a.b.c`: `a` is the binding and every later head is a member, so
       // flush the identifier that just ended with ITS OWN member flag —
       // `a` records, `b` does not — then mark the next one as a member.
-      self.flush_interp_name(cur, cur_is_member)
+      self.flush_interp_name(cur, cur_is_member, after_at)
       cur = ""
       cur_is_member = false
       after_dot = true
     } else {
-      self.flush_interp_name(cur, cur_is_member)
+      self.flush_interp_name(cur, cur_is_member, after_at)
       cur = ""
     }
   }
-  self.flush_interp_name(cur, cur_is_member)
+  self.flush_interp_name(cur, cur_is_member, after_at)
 }
 
 ///|
-/// Record one interpolation-level identifier, unless it is a member of a path
-/// or a keyword.
+/// Record one interpolation-level identifier, unless it is a member of a path,
+/// an import alias, or a keyword.
+///
 
 ///|
 fn Lexer::flush_interp_name(
   self : Lexer,
   name : String,
   is_member : Bool,
+  is_alias : Bool,
 ) -> Unit {
-  if name == "" || is_member {
+  if name == "" || is_member || is_alias {
     return
   }
   if is_moonbit_keyword(name) {

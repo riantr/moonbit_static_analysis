@@ -84,5 +84,20 @@ pub fn ambient_names() -> Array[String] {
     "debug_assert_false",
     // --- carried over from the .mbti frontend's private list ---
      "Nil", "Error", "Set", "UInt8", "Int16", "Float",
+    // --- from `moonbitlang/core/debug`, NOT from core/builtin ---
+    //
+    // The sections above are read out of `core/builtin`'s interface, which is
+    // where they were all measured from until this one. `Repr` is not there: it
+    // is a CONSTRUCTOR of the `Repr` enum in `core/debug`
+    // (`pub fn[T : Debug] Repr::Repr(T) -> Self`), and MoonBit puts `core` in
+    // implicit scope, so a `.mbt` file can call `Repr(x)` with no import and no
+    // declaration anywhere.
+    //
+    // Measured on riantr/pyroduct 0.1.29: 16 `no visible binding for 'Repr'`
+    // findings, every one a call that `moon check` accepts. Settled with the
+    // toolchain rather than by inference — one probe file calling `Repr(1)` and
+    // `ZzNoSuchName123(2)` in the same interpolation, and `moon check` flagged
+    // only the second.
+     "Repr",
   ]
 }

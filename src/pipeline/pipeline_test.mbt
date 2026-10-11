@@ -1179,6 +1179,102 @@ test "a number inside an interpolation is a literal, not a name" {
 /// the same way it always did. If collecting names had turned the literal
 /// arm into a blanket suppression, this would pass while the tests above
 /// passed for the wrong reason.
+
+// --- found by scanning riantr/pyroduct 0.1.29 --------------------------------
+//
+// Three fixes, each one measured against that corpus rather than invented:
+// `Repr` a missing builtin (16 findings), an import alias inside an
+// interpolation (6), and the `extend` declaration form (8 + coverage).
+
+///|
+/// `Repr` is a constructor of the `Repr` enum in `moonbitlang/core/debug`, and
+/// MoonBit puts `core` in implicit scope — so `Repr(x)` needs no import and no
+/// declaration. It is not in `core/builtin`'s interface, which is where every
+/// other name in the ambient list came from, which is exactly why it was
+/// missing.
+///
+/// Measured: 16 `no visible binding for 'Repr'` on riantr/pyroduct 0.1.29, every
+/// one a call `moon check` accepts. Settled with the toolchain — a probe file
+/// calling `Repr(1)` and `ZzNoSuchName123(2)` in one interpolation, where
+/// `moon check` flagged only the second.
+test "an interpolated `Repr(...)` is a builtin, not an unbound name" {
+  let r = @pipeline.run(
+    "fn f() -> String {\n  \"\\{Repr(1)}\"\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// An `@`-prefixed name is an import ALIAS, not a binding in this file, so a
+/// name behind one is never a lookup failure.
+///
+/// This is the same rule the walk already applies outside interpolation
+/// (`!name.has_prefix("@")`), and the guard cannot reach in here: `@` is not an
+/// identifier character, so the interpolation scan recorded the alias WITHOUT
+/// its `@` and the guard saw an ordinary bare name. That was 6 findings on
+/// pyroduct — `\{@sm.all_states()}` reported `no visible binding for 'sm'` —
+/// introduced by the interpolation support itself.
+test "an import alias inside an interpolation is not an unbound name" {
+  let r = @pipeline.run(
+    "fn f() -> Unit {\n  println(\"\\{@nope.all_states()}\")\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+}
+
+///|
+/// The negative control for BOTH tests above, and the reason they are not one
+/// test each for their own sake: a genuinely unknown bare name in an
+/// interpolation is still reported. A fix that turned the interpolation arm
+/// into a blanket suppression would make the two above pass.
+test "an unknown bare name in an interpolation is still reported" {
+  let r = @pipeline.run(
+    "fn f() -> Unit {\n  println(\"\\{definitely_not_a_name}\")\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
+/// `pub extend T with Trait::{members}` is a declaration form, not an
+/// expression: read as a statement, `extend` became a name and the member list
+/// cascaded — 8 `undefined variable 'extend'` findings on files that DID parse.
+///
+/// The test is about what happens AFTER it. The declaration is skipped as a
+/// declared subset limit, so the function below it is still read in full and
+/// its own verdict stands — which is the difference between skipping a
+/// declaration and losing the file.
+test "an `extend` declaration does not swallow the declarations after it" {
+  let r = @pipeline.run(
+    "pub extend Outcome with Eq::{not_equal, equal}\n\nfn f() -> Int {\n  let dead = 1\n  2\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 0)
+  assert_eq(count_family(r, "UnusedLocal"), 1)
+}
+
+///|
+/// The negative control: the finding below the `extend` is still there, so the
+/// test above is not passing because the whole file went unread.
+test "a file with an extend still reports an undefined name in a later function" {
+  let r = @pipeline.run(
+    "pub extend Outcome with Eq::{not_equal, equal}\n\nfn f() -> Unit {\n  no_such_function(1)\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(r.first_error_line, 0)
+  assert_eq(count_family(r, "UndefinedName"), 1)
+}
+
+///|
 test "an undefined name outside any interpolation is still reported once" {
   let r = @pipeline.run(
     "fn f() -> Int {\n  println(\"v=\\{no_such_name}\")\n  no_such_name_outside\n  1\n}\n",

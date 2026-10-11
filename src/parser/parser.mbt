@@ -167,6 +167,7 @@ pub fn parse(src : String) -> ParseResult {
       kw == "trait" ||
       kw == "impl" ||
       kw == "derive" ||
+      kw == "extend" ||
       kw == "test" {
       p.skip_decl_braced(kw, sp)
     } else if kw == "type" || kw == "const" || kw == "suberror" {
