@@ -1018,6 +1018,14 @@ fn Parser::fn_type_annotation(self : Parser) -> String {
     let ret = self.type_annotation()
     out = out + " -> " + ret
   }
+  // A function type may carry its OWN raise effect, and this is the same clause
+  // as the signature form -- `() -> Int raise`, `() -> Int raise E`. Settled
+  // valid in a parameter position and in a return position, both with zero
+  // errors from `moon check`. Reading the clause in one position but not the
+  // other leaves a program that parses as `fn f() -> Int raise` and then dies
+  // on the very next function that takes a callback: 29 files of
+  // wzzc-dev/moui 0.1.12 and 33 of moonbit-community are exactly that shape.
+  self.parse_raise_effect()
   if self.at(TQuestion) {
     let _ = self.bump()
     out = out + "?"
@@ -1311,7 +1319,70 @@ fn Parser::parse_fn_signature(
     let _ = self.bump()
     retann = self.return_annotation()
   }
+  self.parse_raise_effect()
   (full, params, retann)
+}
+
+///|
+/// The `raise` effect clause that may follow a function's return annotation:
+/// `-> T raise`, `-> T raise E`, and the short form `-> T!`. All three are
+/// settled valid MoonBit against `moon check` on 0.1.20261012.
+///
+/// Without this the parser stopped at the `raise` and reported "expected '{'"
+/// at the body, which is the parser reporting a token it does not know rather
+/// than a real syntax error. Measured cost: `wzzc-dev/moui` 0.1.12 has 149 files
+/// with `-> T raise E` and EVERY ONE of them failed to parse at all -- not
+/// partially, completely -- so this single clause was 24.5% of that corpus's
+/// 608 files.
+///
+/// `raise` is not in the lexer's keyword list, so it arrives as a `TName` and is
+/// matched with `at_name` here. The short form `!` is `TBang`, which the lexer
+/// also uses for the boolean NOT operator; position is what tells them apart,
+/// since this runs only just after a return annotation.
+///
+/// Nothing consumes the effect yet, and that is deliberate: the AST has no
+/// field for it and no lens reads one. Adding a field to `SFunc` would ripple
+/// through walk / types / infer / interp and the `.mbti` for a check that does
+/// not exist. Consuming it is what makes the file readable; recording it is a
+/// separate decision to take when something needs it.
+fn Parser::parse_raise_effect(self : Parser) -> Unit {
+  if self.at(TBang) {
+    let _ = self.bump()
+    return
+  }
+  if !self.at_name("raise") {
+    return
+  }
+  let _ = self.bump()
+  // `-> T raise` names NO error type. A bare `raise` must stop here, and what
+  // follows it depends on which position the clause appeared in: the body's `{`
+  // after a signature, or the `)` / `,` / `?` that closes a function type.
+  // Settled: core/error/error_test.mbt uses the bare signature form
+  // (`fn f(b : Bool) -> String raise {`) and `moon check` accepts
+  // `fn f(g : () -> Int raise) -> Int` with zero errors.
+  //
+  // The guard asks "can this token begin a type at all" rather than listing
+  // the tokens that terminate, because the safe direction is asymmetric.
+  // Reading one token too many here is a SILENT misparse: the body gets
+  // swallowed into the type annotation and nothing reports. Stopping one token
+  // early is a loud `expected '{'`. So the guard admits exactly the heads
+  // `type_annotation` accepts -- `TName`, `TLParen`, `TAmp` -- and nothing else.
+  let type_head = match self.peek() {
+    TName(_) | TLParen | TAmp => true
+    _ => false
+  }
+  if !type_head {
+    return
+  }
+  // No `skip_indexed()` here, and that is a measured decision rather than an
+  // oversight. There was one, it was removed, and the mutation gate showed the
+  // whole suite still green (371/371) with it gone: `type_annotation` already
+  // calls `indexed_suffix()` on the name it reads, so `raise E[Int]` is consumed
+  // whole without it. An `E[T]` that this line was credited with handling is in
+  // fact handled one line down. Keeping an unobservable call would have made the
+  // reader look responsible for a case it is not, and the next person to delete
+  // it would have had no evidence that anything checked it.
+  let _ = self.type_annotation()
 }
 
 ///|
@@ -1892,6 +1963,23 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
 fn Parser::parse_guard(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // guard
+  // `guard!` is the raising sibling of `guard`: same condition, same `else`,
+  // but it propagates an error instead of returning. Both arrive as the name
+  // `guard` followed by a separate `!` token, because `!` is not part of a
+  // name in the lexer.
+  //
+  // Without this the `!` was parsed as the boolean NOT operator applied to the
+  // CONDITION, which is a false positive with a confident message:
+  // `moonbitlang/async` 0.22.4 `src/internal/fd_util/pipe.mbt:31` reads
+  // `guard! fds is [r, w]` and was reported as
+  // "operand of '!' must be bool, got '[int]'".
+  //
+  // The two forms are still modelled identically below, which is the same
+  // deliberate flattening the guard already documents: neither raises nor
+  // returns in this frame model.
+  if self.at(TBang) {
+    let _ = self.bump()
+  }
   let cond = self.parse_expr()
   let mut els : Array[@ast.Stmt]? = None
   if self.at_name("else") {

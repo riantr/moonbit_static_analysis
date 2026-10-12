@@ -153,6 +153,247 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.23 — the `raise` effect annotation, and a false positive it uncovered
+
+**First, a correction to a number I gave earlier.** When this release started I
+said "149 of moui's 608 files (24.5%) carry `-> T raise E`, and every one of
+them failed to parse at all". **That grep counted vendored `.mooncakes`, which
+the scanner does not scan.** Excluding vendored trees, moui has **2** such
+files. The same ruler across all six corpora (`.mooncakes` excluded):
+
+| Corpus | Files | Signature `-> T raise` | Type position `() -> T raise` |
+|---|---|---|---|
+| `moonbitlang/async` 0.22.4 | 409 | **72** | **10** |
+| `moonbit-community/proton` 0.3.4 | 136 | **70** | **33** |
+| `riantr/moonbit_image` 0.3.7 | 17 | **14** | 0 |
+| `proton_contract` 0.3.4 | 3 | 2 | 0 |
+| `riantr/moonbit_labeler` 0.2.13 | 35 | 2 | 1 |
+| `wzzc-dev/moui` 0.1.12 | 607 | 2 | 0 |
+
+The fix is real — `moonbit_image/bmp.mbt:26`'s `-> Image raise Failure` now
+parses cleanly, where `decode_bmp` previously died on `expected '{'` — but **I
+reported the scale an order of magnitude too large**. Readable files went
+**787 → 825** in total, not by anything like 149.
+
+### One clause, two positions
+
+`parse_fn_signature` expected `{` straight after `-> T` and did not know
+`raise`. Settled first: all four forms (`-> T raise`, `-> T raise E`, `-> T!`,
+`-> Unit raise E`) give **zero errors** from `moon check`. The bare form comes
+from `moonbitlang/core/error/error_test.mbt`, so it is a corpus shape rather
+than one invented here.
+
+**The type position was missed until the signature position was done.** A
+function type may carry its own effect annotation — `fn f(g : () -> Int raise)`
+also settles to zero errors — but the parser reported `expected ')'` and lost
+the rest of the file. Fixing only the signature would have left a half-fix that
+knows `raise` in one position and not the other, and proton's 33 files plus
+async's 10 are exactly that shape. Both call sites now share
+`Parser::parse_raise_effect`.
+
+The "a bare `raise` must stop here" guard asks **"can the next token begin a
+type at all"** (`TName` / `TLParen` / `TAmp`), not "which tokens terminate",
+because the two directions are not symmetric: **reading one token too many is a
+silent misparse** (the body gets swallowed into the type annotation and nothing
+reports), while **stopping one token early is a loud `expected '{'`**.
+
+### A false positive the fix uncovered: `guard!`
+
+`parse_guard` bumped the name `guard` and went straight to the condition, so the
+`!` in `guard! cond` fell through to the expression reader and became a boolean
+NOT applied to the condition. The result is a confidently-worded false positive
+about code that compiles:
+
+```moonbit
+// moonbitlang/async 0.22.4 src/internal/fd_util/pipe.mbt:31
+guard! fds is [r, w]
+// reported: operand of '!' must be bool, got '[int]'
+```
+
+The defect was always there; "the file did not parse at all" was hiding it.
+**The raise fix only stopped covering for it.**
+
+So `TBang` has three owners in one file: the `raise` short form, `guard!`, and
+real boolean negation. Three control tests pin one each. Dispatch any of them by
+scanning for the token instead of deciding by position and one of the three goes
+red.
+
+### The cost: actionable rose, and every new one is `UndefinedName`
+
+More readable files means more findings, and some of them are wrong. Stated
+plainly:
+
+| Corpus | 0.4.22 parsed / actionable | 0.4.23 parsed / actionable | At finding level |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 481 / actionable **1** | **parsed 483 / actionable 1** | 0 new |
+| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 17 | **parsed 216 / actionable 22** | +5 `UndefinedName` |
+| `moonbit-community/proton` 0.3.4 | parsed 72 / actionable 43 | **parsed 95 / actionable 103** | +60 `UndefinedName` |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **parsed 2 / actionable 3** | +3 `UndefinedName` |
+| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **parsed 4 / actionable 3** | +2 `UndefinedName` |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 24 / actionable 0 | **parsed 25 / actionable 0** | 0 new |
+
+Counted by family, **every new actionable finding is `UndefinedName`**.
+`UnusedParam` is unchanged and `OperatorMismatch` went **down** (2 → 0) once
+`guard!` was fixed. Sampling confirms the false positives:
+
+```moonbit
+// proton facade_error.mbt:6
+OperationFailed(action~, status=..., detail=...)
+// reported: no visible binding for 'OperationFailed'
+```
+
+`OperationFailed` is a constructor of `WindowSessionError`, used that way in
+four places across the corpus. Its declaration (an `enum` / `suberror` /
+`derive`) is **outside the analyzed subset**, so its body is never analysed and
+the name never enters the symbol table. **The cause is the pre-existing subset
+boundary, not this release's parse change** — this release simply made those
+files readable for the first time, so the hole became visible. It is now the
+largest single source of actionable noise, and worth more than `raise` itself
+in the next release.
+
+### Mutation gate: 9 mutations, **9 killed, 0 survived** (`_verify/mutate_0423.ps1`)
+
+Cleaner than 0.4.22's 6 killed / 2 survived. Three worth recording:
+
+- **M7 / M8 are the same guard in opposite directions.** Admit everything and a
+  bare `raise` swallows the body's `{` or the closing `)` — a **silent
+  misparse** — turning 4 tests red. Admit nothing and every named effect stops
+  being consumed, turning 6 red. Testing one direction alone lets "too strict"
+  pass for "correct".
+- **What M5 killed was not `skip_indexed()`, it was the `raise` keyword itself.**
+  The first version of M5 removed `skip_indexed()` and came back **371/371
+  green — an equivalent mutation**: `type_annotation` already calls
+  `indexed_suffix()` on the name it reads, so `raise E[Int]` is consumed whole
+  without that line. The dead call was **deleted**, with the reason recorded at
+  the call site: keeping it would make the reader look responsible for a case it
+  is not, and the next person to delete it would have no evidence anything
+  checked it.
+- **M2's first result was COMPILE-ERR, which was a bug in the gate rather than a
+  result.** My Find string began with a newline, so after the replacement the
+  code merged into the preceding comment line and the mutation **never ran**.
+  There is one reliable criterion: a compile error is the **absence of a
+  `Total tests:` line**, never a grep.
+
+### Two gaps measured but not fixed here
+
+- **The return type renders as `None` when the body ends in a tail
+  expression.** `fn f() -> Int { 1 }` gives `f() -> None`, while
+  `fn f() -> Int { return 1 }` gives `f() -> int`. This has **nothing to do
+  with `raise`**: all four raise forms behave identically with and without an
+  explicit `return`. Real MoonBit leans on tail expressions heavily, so its
+  corpus impact is probably larger than `raise`'s. The 0.4.23 tests therefore
+  **deliberately use an explicit `return`** — otherwise the assertion would go
+  red for a reason that has nothing to do with the effect annotation.
+- **A parenthesised function type in return position is read as a tuple.**
+  `fn f() -> (() -> Int) {` reports `expected '{'`, **with no `raise` involved**
+  (`return_annotation`'s tuple branch stops at the first `)` rather than the
+  matching one). A real `-> (Int, String)` is fine. Corpus cost is small: 6
+  files in moui, 0 elsewhere. Next release.
+
+Tests: 374 js / 446 wasm / 374 wasm-gc (14 new).
+
+## 0.4.22 — named arguments matched by **name**, and `Int32` read as `Int`
+
+Readable files unchanged (**481**), but moui actionable **8 → 1**. All seven
+that disappeared were the same shape
+`argument 4 ... has incompatible type 'str'; expected 'bool'`, starting at
+`core/gesture.mbt:754`:
+
+```moonbit
+// declared order, core/pkg.generated.mbt:92
+ActionCommand::new(intent~, label?, shortcut?, enabled?, group?, description?)
+// call order, core/gesture.mbt:754
+ActionCommand::new(intent=..., label=..., group=..., description=..., shortcut=...)
+```
+
+MoonBit allows named arguments in any order (`moon check` confirms), so **an
+argument's index is not its parameter's index**. The old code compared `args[3]`
+with `params[3]`, which put `description` (String) where `enabled` (Bool) was
+expected. Each named argument now finds its parameter **by label**, falling back
+to position only when there is no label or no label matches.
+
+The `~` shorthand (`f(x~)`) is also a label, recovered from the token stream
+(`Parser::name_at`), so it can be reordered too.
+
+| | Shape | Result |
+|---|---|---|
+| A | Reordered named arguments (`moui core/gesture.mbt:754`) | actionable 8 → **1** |
+| B | `ann_to_ty` missing an `"Int32"` arm | **removed 87 silent points the formatter had created in its own source** |
+
+**The reverse control is the important part of this release.** A's assertion is
+zero findings, and "turn the check off entirely" also yields zero — so there has
+to be a test asserting **one** finding before it means anything. The nine tests
+are written in pairs: wrong type by name, wrong type by position, a label that
+matches nothing falling back to position, the `~` shorthand reordered right and
+wrong, positional arity, omitted `?` parameters, and `Int32` synonymous versus
+not.
+
+**The mutation gate found three things that were invisible at the time**
+(`_verify/mutate_0422.ps1`, 8 mutations, 6 killed, 2 survived):
+
+- **One extra `let r = build()` line in the fixture makes three mutations
+  survive.** When an argument's type is wrong the behaviour lens reports the
+  same call as `MethodError`, which merges with the type lens's
+  `ArgTypeMismatch` (`merge_findings` groups by `(merge family, line)`), so
+  `count_family("ArgTypeMismatch")` is permanently 0. **Changing
+  `param_index` to never match left all 432 tests green.** A zero-count
+  assertion can only fail if the finding it counts actually arrives under that
+  family.
+- **Two on one line collapse into one.** Same reason: `merge_key` is
+  `(merge_group, line)`, so two wrong arguments written on one line come back
+  as one, and a case expecting 2 must be split across lines.
+- **`parse_call_args` has four push points.** The one for "an argument that does
+  not start with a name" is not the one for "starts with a name"; missing a
+  single push does not error, it leaves `labels` shorter than `args`, and every
+  argument after the gap reads **some later argument's label**. The fixture
+  added for this is `g(1, b=true)` — which also settles a semantic: a `?`
+  optional parameter **cannot be passed positionally at all** (`moon check`
+  reports "requires 0 positional arguments"), nor can a required `~` label; only
+  a bare `a : Int` can. Which is exactly why named arguments are everywhere in
+  real MoonBit and why positional matching produced so many false positives.
+
+**Two surviving mutations, recorded honestly rather than papered over with a
+test**:
+
+- **M7, the `all_positional` gate (no arity check on labelled calls).** No test
+  can see it, because **no valid MoonBit program** passes more named arguments
+  than the function declares — settled: a duplicate label is 4084 and a label
+  naming no parameter is 4085, both compile errors `moon check` already
+  reports. Its cost was measured rather than assumed: across 12,428 files in
+  the six corpora it changes exactly **one** finding, an arity report in `moui
+  backend/web/web_host.mbt` past that file's reliable-region boundary, so it
+  lands in the `unreliable` bucket and is never shown as a result. That one
+  could not be confirmed as a true positive, and an argument-COUNT check is
+  exactly where a misread cross-file signature manufactures a false positive.
+  Writing a test that pins a behaviour no valid program exhibits would make the
+  gate green and the suite weaker.
+- **M8, method-call labels.** `EMethodCall` carries labels now, but infer
+  discards them (`EMethodCall(base, _, args, _)`), because method arguments are
+  **not type-checked at all** in this model — there is no receiver signature to
+  check them against. That is a real gap, not a designed leniency: killing it
+  needs a method-receiver signature, which is a larger change than this release.
+
+**`Int64` / `UInt` are deliberately NOT folded into `TInt`.** `moon check`
+confirms that passing `UInt` to an `Int` parameter is an `Expr Type Mismatch`
+and so is the reverse, and `Int64` is against both. Folding them in is not a
+harmless widening, it is **precisely silencing the mismatches `moon check` does
+report** — the failure mode of 0.4.5 inverted (a check whose precondition can
+never hold). They read as Unknown until they have their own `Ty` variants and
+assignability rules. For whoever picks this up: across proton + async + moui
+there are **122 `: Int64` and 23 `: UInt`**.
+
+Tests: 360 js / 432 wasm / 360 wasm-gc (17 new). Self-scan 59/59,
+`actionable=0`, `unreliable=0`, `withheld=0`.
+
+| Corpus | 0.4.21 | 0.4.22 | At finding level |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 481 / actionable 8 | **parsed 481 / actionable 1** | 7 false positives gone, **0 new** |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 24 / actionable 0 | **byte-identical** | — |
+| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 17 | **byte-identical** | — |
+| `moonbit-community/proton` 0.3.4 | parsed 72 / actionable 43 | **byte-identical** | — |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **byte-identical** | — |
+| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **byte-identical** | — |
+
 ## 0.4.21 — 436 → 481: `guard`, lambdas as named-argument values, `is` across a newline, and an `is` that bound only its first name
 
 Files understood 436 → **481 (71.7% → 79.1%)**, withheld 1078 → **242**, unreliable
@@ -1189,7 +1430,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.22
+moon add riantr/moonbit_static_analysis@0.4.23
 ```
 
 ```moonbit
@@ -1571,7 +1812,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.22` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.23` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

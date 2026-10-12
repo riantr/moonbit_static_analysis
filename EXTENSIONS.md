@@ -224,6 +224,51 @@ members = [
   `Expr`，否则 flatten 会把「只被写入」的局部变量误报成未使用。
   修完之后 core 上 `only named functions can be called` 从 34 降到 **0**，
   882 个 `.mbt` 解析 158 → **173**。
+- **`raise` 效应标注（2026-10-13，0.4.23）**：`-> T raise`、`-> T raise E`、`-> T!`
+  三种形式，以及**类型位**的 `() -> T raise`，现在由单个 `Parser::parse_raise_effect`
+  读取。settle 过：四种形式 `moon check` **0 错误**；裸形出自
+  `moonbitlang/core/error/error_test.mbt`，不是自造的形状。**效应类型故意不记录进
+  AST**——没有任何 lens 读它，给 `SFunc` 加字段会波及 walk/types/infer/interp 和
+  `.mbti`，而那里还没有对应的检查。消费它才是让文件可读的那一步。
+  裸形的停止判据是「下一个 token 能不能开一个类型」（`TName`/`TLParen`/`TAmp`），
+  **不是**「哪些 token 终结」：两个方向不对称，多读一个 token 是**静默误解析**
+  （函数体被吞进类型标注），少读一个 token 是响亮的 `expected '{'`。
+- **`guard!`（2026-10-13，0.4.23）**：`guard!` 是 `guard` 加一个 `!`，而词法器不把两者
+  合成一个名字。原先 `parse_guard` 读完 `guard` 就去读条件，`!` 掉进表达式读取器变成
+  对条件取反，报出 `operand of '!' must be bool, got '[int]'`——一个关于**能编译的代码**的
+  假阳性（`moonbitlang/async` 0.22.4 `src/internal/fd_util/pipe.mbt:31`）。
+  两种形式仍然建模成同一个 `SIf`，这是 `guard` 本来就声明的展平。
+  ⇒ **`TBang` 这一个 token 有三个主人**：`raise` 短式、`guard!`、真正的布尔非。
+  三者只能**按位置**判定，任何一个改成扫 token 都必须有一条对照测试变红。
+
+### 量规模时必须排除 `.mooncakes`（2026-10-13 的一次自我更正）
+
+开工时按「文件里出现 `-> T raise`」grep 六个语料，报出 moui 608 个文件里 149 个
+（24.5%）带该标注。**那个数把 vendored 的 `.mooncakes` 一起数了，而扫描器不扫 vendored
+目录。** 排除之后 moui 只有 **2** 个。同一把尺子（`.mooncakes` excluded）：
+
+| 语料 | 文件 | 签名位 | 类型位 |
+|---|---|---|---|
+| `moonbitlang/async` 0.22.4 | 409 | 72 | 10 |
+| `moonbit-community/proton` 0.3.4 | 136 | 70 | 33 |
+| `riantr/moonbit_image` 0.3.7 | 17 | 14 | 0 |
+| `wzzc-dev/moui` 0.1.12 | 607 | 2 | 0 |
+
+修复是真的（`moonbit_image/bmp.mbt:26` 干净解析），但**规模报大了一个数量级**。
+可读文件总数 787 → 825。⇒ **任何按「文件里有没有 X」计的规模数，都必须先说清楚
+vendored 目录算不算**，否则报出来的数字和扫描器实际处理的文件集对不上。
+
+### 可读性变多会让 actionable 变多（2026-10-13 的实测代价）
+
+修好解析之后，六个语料可读文件 787 → 825，同时 **proton actionable 43 → 103**、
+async 17 → 22、moonbit_image 0 → 3。**按 family 数过，新增的 actionable 一条
+`UndefinedName` 都不例外**，`OperatorMismatch` 反而因为 `guard!` 修好而**减少**（2 → 0）。
+抽查确认新 `UndefinedName` 是假阳性：`proton facade_error.mbt:6` 的
+`OperationFailed` 是 `WindowSessionError` 的构造子，全语料四处真的这么用，但它的
+声明（`enum`/`suberror`/`derive`）**在分析子集之外**，body 没被分析，名字永远进不了
+符号表。**根因是既有的子集边界**，本轮只是让这些文件第一次能被读。
+⇒ 「读不进去」和「读进去之后报得准」是**两件事**，一次解析修复通常只买前者。
+⇒ 这也说明 `enum`/`suberror`/`derive` 的构造子入符号表，比再修几条语法更值钱。
 
 ### 真实代码上的实测缺口（2026-10-06）
 

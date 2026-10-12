@@ -129,6 +129,113 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.23 —— `raise` 效应标注，以及一个被它照出来的假阳性
+
+**先更正我自己的一个数。** 这一版开工时我说「moui 608 个文件里 149 个（24.5%）带
+`-> T raise E`，全部完全不可解析」。**那个 grep 把 vendored 的 `.mooncakes` 一起数了**，
+而扫描器根本不扫 vendored 目录。排除之后 moui 只有 **2 个**文件。同一把尺子量六个语料
+（排除 `.mooncakes`）：
+
+| 语料 | 文件 | 签名位 `-> T raise` | 类型位 `() -> T raise` |
+|---|---|---|---|
+| `moonbitlang/async` 0.22.4 | 409 | **72** | **10** |
+| `moonbit-community/proton` 0.3.4 | 136 | **70** | **33** |
+| `riantr/moonbit_image` 0.3.7 | 17 | **14** | 0 |
+| `proton_contract` 0.3.4 | 3 | 2 | 0 |
+| `riantr/moonbit_labeler` 0.2.13 | 35 | 2 | 1 |
+| `wzzc-dev/moui` 0.1.12 | 607 | 2 | 0 |
+
+修复是真的（`moonbit_image/bmp.mbt:26` 的 `-> Image raise Failure` 现在干净解析，
+`decoded_bmp` 之前死在 `expected '{'`），但**规模我之前报大了一个数量级**。可读文件总数
+**787 → 825**，不是 149 个文件的量级。
+
+### 一条子句，两个位置
+
+`parse_fn_signature` 读完 `-> T` 之后直接期待 `{`，不认 `raise`。settle 过了，四种形式
+（`-> T raise` / `-> T raise E` / `-> T!` / `-> Unit raise E`）`moon check` **0 错误**。
+裸形出自 `moonbitlang/core/error/error_test.mbt`，所以它不是这里发明的形状。
+
+**写完签名位才发现漏了类型位。** 函数类型自己也可以带效应标注——`fn f(g : () -> Int raise)`
+在 settle 里同样是 0 错误，但解析器报 `expected ')'` 并且丢掉文件后半段。只修签名位会留下
+一个「签名位置认、类型位置不认」的半截修复：proton 33 个文件、async 10 个正好是这个形状，
+每一个都会死。两个调用点现在共用 `Parser::parse_raise_effect`。
+
+裸形「必须停在这里」的判据写成了**「下一个 token 能不能开一个类型」**（`TName` / `TLParen`
+/ `TAmp`），不是「哪些 token 终结」。因为两个方向不对称：**多读一个 token 是静默误解析**
+（函数体被吞进类型标注，什么都不报）；**少读一个 token 是响亮的 `expected '{'`**。
+
+### 顺带照出来的假阳性：`guard!`
+
+`parse_guard` 读完 `guard` 就去读条件，于是 `guard! cond` 的 `!` 掉进表达式读取器，变成对条件
+取反。报出来是 `operand of '!' must be bool, got '[int]'`——**一个关于能编译的代码的、语气
+笃定的假阳性**：
+
+```moonbit
+// moonbitlang/async 0.22.4 src/internal/fd_util/pipe.mbt:31
+guard! fds is [r, w]
+```
+
+这个缺陷一直在，只是被「文件压根没解析」挡着。**raise 修复只是不再替它遮丑。**
+
+于是 `TBang` 这一个 token 在同一个文件里有三个主人：`raise` 短式、`guard!`、以及真正的布尔
+非。三道对照测试各钉一个——`!` 短式、裸 `guard`、`!` 仍然是非运算符。任何一处改成扫 token
+而不是按位置判定，这三条里必有一条会红。
+
+### 代价：actionable 涨了，而且涨的全是 `UndefinedName`
+
+可读文件变多，**每多一个可读文件就多一批 finding**，其中一部分是假的。这必须说清楚：
+
+| 语料 | 0.4.22 parsed / actionable | 0.4.23 parsed / actionable | 发现级 |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 481 / actionable **1** | **parsed 483 / actionable 1** | 0 条新增 |
+| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 17 | **parsed 216 / actionable 22** | +5 `UndefinedName` |
+| `moonbit-community/proton` 0.3.4 | parsed 72 / actionable 43 | **parsed 95 / actionable 103** | +60 `UndefinedName` |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **parsed 2 / actionable 3** | +3 `UndefinedName` |
+| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **parsed 4 / actionable 3** | +2 `UndefinedName` |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 24 / actionable 0 | **parsed 25 / actionable 0** | 0 条新增 |
+
+按 family 数过：**新增的 actionable 一条 `UndefinedName` 都不例外**，`UnusedParam` 不变，
+`OperatorMismatch` 因为 `guard!` 修好反而**减少**（2 → 0）。抽查确认是假阳性：
+
+```moonbit
+// proton facade_error.mbt:6
+OperationFailed(action~, status=..., detail=...)
+// 报: no visible binding for 'OperationFailed'
+```
+
+`OperationFailed` 是 `WindowSessionError` 的构造子，全语料有四处真的这么用。它的声明
+（`enum` / `suberror` / `derive`）**在分析子集之外**，body 没被分析，名字就永远进不了符号表。
+**根因是既有的子集边界，不是这一版的解析改动**——这一版只是让这些文件第一次能被读，于是
+第一次能看见这个洞。它现在是 actionable 噪声的第一大来源，比 raise 本身更值得下一版处理。
+
+### 突变门禁：9 道，**9 杀 0 存活**（`_verify/mutate_0423.ps1`）
+
+比 0.4.22 的 6 杀 2 存活干净。几道值得记：
+
+- **M7 / M8 是同一个守卫的两个方向。** 守卫放行一切 → 裸 `raise` 吞掉函数体的 `{` 或闭合的
+  `)`，**静默误解析**，4 条测试变红；守卫什么都不放行 → 每个具名效应都不再被消费，6 条变红。
+  只测一个方向，会把「过严」误当成「正确」。
+- **M5 杀掉的不是 `skip_indexed()`，而是 `raise` 关键字自己。** 第一版我把
+  `skip_indexed()` 去掉当 M5，结果 **371/371 全绿——它是个等价突变**：`type_annotation` 自己
+  就调 `indexed_suffix()`，`raise E[Int]` 不靠那行也能整块吃掉。这行死代码**删掉了**，理由写在
+  调用点：留着会让下一个人以为它在管一个它其实没管的用例，而删掉它的人没有任何证据说明有东西
+  在查。
+- **M2 第一次报的是 COMPILE-ERR，那是门禁自己的 bug 不是结果。** 我的 Find 串以换行开头，
+  替换后代码被并进了上一行注释里，突变**根本没运行**。判据只有一个：**`Total tests:` 行不存在**
+  才算 COMPILE-ERR，绝不 grep。
+
+### 两个新记下来的缺口（这一版量到，没修）
+
+- **返回类型在尾表达式函数体上渲染成 `None`。** `fn f() -> Int { 1 }` → `f() -> None`，
+  而 `fn f() -> Int { return 1 }` → `f() -> int`。**跟 `raise` 无关**：四种 raise 形式配上/不配上
+  显式 `return` 全部一致。真实 MoonBit 大量用尾表达式，所以这个的语料影响大概率远大于 raise 本身。
+  0.4.23 的测试因此**刻意用显式 `return`**——不然这条断言会因为一个和效应标注毫无关系的理由变红。
+- **返回位置的带括号函数类型被当成元组。** `fn f() -> (() -> Int) {` 报 `expected '{'`，
+  **没有 `raise` 也一样**（`return_annotation` 的元组分支停在第一个 `)` 而非配对的那个）。
+  真实的 `-> (Int, String)` 正常。语料影响小：moui 6 个文件，其余语料 0。下一版处理。
+
+测试 js 374 / wasm 446 / wasm-gc 374（新增 14 道）。
+
 ## 0.4.22 —— 具名实参按**名字**匹配，以及 `Int32` 读作 `Int`
 
 可读文件数不变（**481**），但 moui 的 actionable **8 → 1**。消失的 7 条全是同一个形状
@@ -1145,7 +1252,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.22
+moon add riantr/moonbit_static_analysis@0.4.23
 ```
 
 ```moonbit
@@ -1477,7 +1584,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.22` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.23` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

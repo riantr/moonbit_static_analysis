@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.4.22"
+version = "0.4.23"
 
 readme = "README.md"
 
