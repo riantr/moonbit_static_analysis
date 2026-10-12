@@ -789,10 +789,12 @@ fn Interp::eval(
     // vboolean(AAny) is true so a `while` still runs once. The branch env
     // copies are taken AFTER the condition eval, so the binding survives
     // into both branches.
-    EIs(base, binding) => {
+    EIs(base, bindings) => {
       let _ = self.eval(base, env)
-      if binding != "" {
-        env.set(binding, AAny)
+      for b in bindings {
+        if b != "" {
+          env.set(b, AAny)
+        }
       }
       AAny
     }

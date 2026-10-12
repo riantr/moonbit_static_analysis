@@ -129,6 +129,119 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.21 —— 436 → 481：`guard`、具名实参的 lambda、跨行的 `is`，和一个只绑第一个名字的 `is`
+
+可读文件 436 → **481（71.7% → 79.1%）**，withheld 1078 → **242**，unreliable 3025
+→ **1711**，`unexpected token` 163 → **113**，moui 的 actionable 10 → **8**。
+`embedded_runtime_backend.mbt` 上那 7 条（3× `image_state`、4× `host_bridge`）
+全部消失。
+
+四个独立形状，都是先量后断言：
+
+| | 形状 | 语料处 |
+|---|---|---|
+| A | `guard COND else { ... }` 被当成标识符 | 550 处 / 126 文件 |
+| B | 具名实参的值是 lambda，参数列表在那里断掉 | 解析 436 → **481** |
+| C | `is` 不跨行续接，**文件照样解析成功** | `embedded_runtime_backend.mbt:227` |
+| D | `is` 只绑第一个名字，而且只在 depth 1 | 7 条 + 全语料 13 处 |
+
+### C 是这个项目里最难查的一种坏：解析成功，树是错的
+
+```moonbit
+guard (self.frame, self.image, self.host_bridge)
+  is (Some(frame_state), Some(image_state), Some(host_bridge)) &&
+  !self.disposed else {
+```
+
+换行结束表达式，`is` 被读成普通标识符，然后**文件解析成功**，只是那个点之后
+每个名字都是错的——15 条发现，而且因为什么都没失败，**一条都没被标成
+unreliable**。所以这道门禁不断言 `n_parse == 0`（它两种情况都绿），断言的是
+**续接之后的那些名字能解析**。
+
+续接只跳 `TNewline`，**不能**用 `skip_seps`——它也吃 `;`，而分号在 C 风格
+`for` 里是**结构性的**。写成 `skip_seps` 时是既有测试把它抓红的，这条以
+`0421: a C-style for body is still analyzed (control)` 钉住。
+
+### D：先 settle 再动手，结果和我的判断不一样
+
+我以为 `Some(Os(error))` 里的 `error` 本来就绑着，只是没人用。**先跑
+`moon check`**：
+
+```
+fn f(x : Int) -> Int {
+  guard try_os(x) is Some(Os(error)) else { return 0 }
+  error + 1
+}
+```
+
+`moon check` 接受，**`error` 确实是绑定**。原来的读取器只读 depth 1，于是 `Os`
+成了绑定名、`error` 掉了下去，它的每一次使用都报 `undefined variable`。depth 3
+的 `Some(DragLeft(Some(event_position)))` 同理。
+
+规则收敛成一个判定，**两个分支共用同一个读取器**（0.4.18 和 0.4.20 各栽在
+"第二个名字读取器会和第一个漂移"上一次，这次写成带下标的谓词，让它没法漂）：
+
+- 不是 `_`，不是关键字
+- 后面不是 `(`——那是嵌套构造器，不是绑定
+- 左右邻居都不是 `.`——`@core.Role::Checkbox` 是限定路径，语料里 18 处
+- 第一个 `:` 收尾——后面是类型标注，`Int` 不是绑定；`::` 正好走到这条
+
+### 差分**抓出了我自己引入的回归**
+
+`proton internal/bridge_admission_test/main.mbt:93`：
+
+```moonbit
+runtime.prepare_bridge_request(request, window) is (Gone | PageUnavailable)
+```
+
+那个 `(` 是**分组括号**，不是构造器载荷，于是 `Gone` 和 `PageUnavailable`
+被当成局部绑定，报出两个**并不存在**的未使用局部。其中**一个是我这次新引入的**
+——旧读取器只取第一个名字，所以从来只绑过 `Gone`。元组分支因此改成
+`depth >= 2`（真正的元组绑定在 `Some(` 里，深一层）。这条不是推理出来的，是
+六语料逐条发现级差分跑出来的，加了 M8 钉住。
+
+### 差分
+
+| 语料 | 0.4.20 | 0.4.21 | 发现级 |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 436 / actionable 10 | **parsed 481 / actionable 8** | 多 45 个文件变可读 |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 23 / actionable 3 | **parsed 24 / actionable 0** | 3 条 `undefined function '@core.X::new'` 消失 |
+| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 29 | **parsed 206 / actionable 17** | 12 条 `undefined name 'guard'` 消失，**0 条新增** |
+| `moonbit-community/proton` 0.3.4 | parsed 71 / actionable 44 | **parsed 72 / actionable 43** | 2 条 `guard` 消失，1 条新增见下 |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **逐字节一致** | — |
+| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **逐字节一致** | — |
+
+proton 唯一那条新增是 `internal/bridge_admission_test/main.mbt` 里的
+`undefined name 'nobreak'`——**一个刚变可读的新文件**，`nobreak` 是本前端
+还没实现的循环修饰符。不是这次改动造出来的假阳性，是新文件暴露出的真实缺口。
+
+### 突变 8 道全杀，两个方向都有
+
+M1 `guard` 不解析、M2 **丢掉 `guard` 的 else 块**（控制测试才抓得住：条件里的
+名字照样解析，不丢 else 的话两边一模一样）、M3 具名实参 lambda 头关掉、M4 跨行
+续接去掉、M5 只绑第一个名字、M6 限定路径规则去掉、M7 嵌套构造器规则去掉、
+M8 or-pattern 深度规则去掉。8/8，每一处还原都按 SHA256 验证过逐字节一致。
+
+### 没修的，如实记账
+
+moui 剩 8 条 actionable，全部落在两个已知项上：`navigation_routing.mbt` 1 条
+和 `gesture.mbt` 6 条是**具名实参按位置比对**（`TFunc` 不带形参名，要改整条签名
+流水线）；`view_tree.mbt` 1 条是 `expr as Type`，AST 里没有 `ECast`。
+
+另外两条**量出来但没动**的已知限制，因为它们不在这一轮的形状家族里：
+
+- **调用函数类型的参数会报 `undefined function`**：`let f = inc` 然后 `f(1)`
+  就报，文件里**根本没有 lambda**。这是 0.4.19 加函数类型注解带出来的既有假阳性。
+  我的门禁夹具一开始踩到了它，才写进测试文件头的告诫里。
+- **`is Some(x : Int)` 的类型标注**：全语料 0 处（18 处 `is X(...)` 里带冒号的
+  全是 `@core.Role::Checked` 这种限定路径）。规则里留了 `:` 收尾，但**没有语料
+  验证过**，不据此宣称已覆盖。
+
+### 测试
+
+415 道（js 343 / wasm 415 / wasm-gc 343）。自检 59/59，`actionable=0`、
+`unreliable=0`、`withheld=0`。
+
 ## 0.4.20 —— 一个方法被当成了顶层函数
 
 `impl T for U with fn m(...) { ... }`。可读文件 432 → **436**，withheld 176 → 172，
@@ -917,7 +1030,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.20
+moon add riantr/moonbit_static_analysis@0.4.21
 ```
 
 ```moonbit
@@ -1249,7 +1362,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.20` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.21` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

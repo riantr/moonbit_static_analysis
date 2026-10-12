@@ -51,7 +51,7 @@ pub(all) enum EKind {
   ETuple(Array[Expr])
   ERange(Expr, Expr)
   ETupleField(Expr, Int)
-  EIs(Expr, String)
+  EIs(Expr, Array[String])
 } derive(Eq)
 
 pub(all) struct ElseIf {

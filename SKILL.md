@@ -521,6 +521,63 @@ showed up in the actionable count, because a fabricated binding is a false
 NEGATIVE and a missing one is masked by a re-read. When you change how a
 declaration form is skipped, check whether a gate covers the harvest too.
 
+**`guard COND else { ... }` is a statement, not an identifier (since 0.4.21).**
+`guard` is NOT in the lexer's keyword list, so it was read as an ordinary
+IDENTIFIER and reported as an undefined name — 550 sites across 126 files. It is
+modelled as an `SIf` with an empty `then`, which is the honest mapping for a frame
+model that is not flow-scoped: the condition is walked FIRST, so an `is` pattern in
+it binds in the current frame exactly where a guard binding belongs. The `else`
+block is analyzed like any other block.
+
+**A pattern in `is` binds EVERY name, at EVERY depth (since 0.4.21).** The rules
+collapse into one predicate, `Parser::pattern_binding_at(j)`, called from both the
+tuple branch and the single branch — a second reader is how 0.4.18 and 0.4.20 each
+lost a cycle, so it takes an index and cannot drift:
+
+- not `_`, not a keyword
+- the next token is not `(` — a nested CONSTRUCTOR, not a binding
+- neither neighbour is `.` — `@core.Role::Checkbox` is a qualified path (18 sites)
+- the first `:` ends it — the rest is a type annotation; `::` lands on the same rule
+
+**The two branches do NOT collect at the same depth, and that is not an oversight.**
+The tuple branch's outer `(` is a GROUPING paren, so its bindings live at `depth >=
+2`. Without that, `is (Gone | PageUnavailable)` — an or-pattern in
+`proton internal/bridge_admission_test/main.mbt:93` — bound both constructors and
+reported two nonexistent unused locals. One of them was NEW: the old reader stopped
+after the first name, so it had only ever bound `Gone`. **A finding-level
+differential over the corpora is what found this; reasoning about it did not.**
+
+**Corollary for gates: `n_parse == 0` is not evidence.** A shape that leaves the
+token stream in step produces a file that PARSES with no error and a tree whose
+every later name is wrong (0.4.21's newline continuation: 15 findings, none reported
+as unreliable because nothing failed). Assert on names AFTER the construct. The
+matching control is that the construct does not swallow the rest of the body —
+`zzz_after` must still be reported — because a swallowed statement cannot produce
+a finding and would leave every count green.
+
+**A short lambda's BODY is skipped, never analyzed.** `at_lambda_head` /
+`skip_lambda_head` consume the parameters and the `=>`, then the caller skips the
+body. So a fixture for a named-argument lambda can assert `n_parse == 0` and that
+the REST of the argument list still parses, but **cannot** assert anything about
+names inside the lambda body — they were never walked.
+
+**KNOWN GAP (as of 0.4.21): calling a FUNCTION-TYPED PARAMETER reports
+`undefined function`.** `let f = inc` then `f(1)` does it, with no lambda anywhere
+in the file. It arrives with 0.4.19's function-type annotations and is unrelated to
+them being an `is`-pattern issue. Gate fixtures that would trip it must have the
+callee read a different parameter.
+
+**KNOWN GAP (as of 0.4.21): a TYPED pattern, `is Some(x : Int)`, is unverified.**
+Zero sites corpus-wide — all 18 `is X(...)` matches containing a colon are qualified
+paths like `@core.Role::Checked`. The `:` rule is in place, but nothing in the corpus
+exercises it, so do not claim it covered without settling one first.
+
+**The `moon check` settle recipe.** A package is a directory with a `moon.pkg`
+file, and the sources live under `src/`; without `moon.pkg`, `moon check` reports
+"no work to do" and looks like a pass. Put the probe OUTSIDE any enclosing project
+— moon walks up and resolves the outer `moon.mod`, and an inner `moon.mod` is
+ignored.
+
 If you are scanning a package whose dependencies you care about, pass
 `--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at
 all and says so in its own output: measured on riantr/moonbit_labeler, it goes from 5

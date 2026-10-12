@@ -152,7 +152,7 @@ pub(all) enum EKind {
   /// by byte, so pattern text would have to be re-lexed to be sliced
   /// safely. A pattern without a binding ("") is a pure test; or-patterns
   /// never reach here because match bodies are skipped whole.
-  EIs(Expr, String)
+  EIs(Expr, Array[String])
 } derive(Eq)
 
 ///|

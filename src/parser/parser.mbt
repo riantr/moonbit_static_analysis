@@ -1619,6 +1619,9 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   if self.at_name("if") {
     return self.parse_if()
   }
+  if self.at_name("guard") {
+    return self.parse_guard()
+  }
   if self.at_name("while") {
     let _ = self.bump()
     let cond = self.parse_expr()
@@ -1866,6 +1869,40 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
 }
 
 ///|
+/// `guard COND else { ... }` — MoonBit's early-exit form, and the handler of
+/// 550 statements across 126 files of wzzc-dev/moui 0.1.12, the largest
+/// remaining unimplemented statement shape.
+///
+/// It was not merely unimplemented: `guard` is not in the lexer's keyword list,
+/// so it was read as an ordinary IDENTIFIER and reported as an undefined name —
+/// measured on `runtime/devtools_runtime.mbt:372`
+/// (`guard nodes.get(id) is Some(node) else { return [] }`).
+///
+/// It is represented as an `SIf` with an empty `then`, which is the honest
+/// mapping for a frame model that is not flow-scoped: the condition is walked
+/// first, so an `is` pattern in it binds in the CURRENT frame exactly where the
+/// rest of the block will look for it — which is what a guard binding does. The
+/// `else` block is analyzed like any other.
+///
+/// The one thing this deliberately does NOT model: in MoonBit the else block
+/// runs only when the guard FAILS, and the pattern name is not in scope there.
+/// This frontend's frame is flat (the same limitation `EIs` documents), so the
+/// name resolves in the else block too. That can only ever make an analysis
+/// quieter about a name that really is bound later, never invent a finding.
+fn Parser::parse_guard(self : Parser) -> @ast.Stmt {
+  let sp = self.span()
+  let _ = self.bump() // guard
+  let cond = self.parse_expr()
+  let mut els : Array[@ast.Stmt]? = None
+  if self.at_name("else") {
+    let _ = self.bump()
+    let (eb, _) = self.parse_block()
+    els = Some(eb)
+  }
+  { span: sp, kind: @ast.SIf(cond, [], [], els), }
+}
+
+///|
 fn Parser::parse_expr(self : Parser) -> @ast.Expr {
   self.parse_or()
 }
@@ -1913,30 +1950,53 @@ fn Parser::parse_eq(self : Parser) -> @ast.Expr {
 /// every measured use feeds a boolean operator or a negation
 /// (`p.peek() is TName(tag) && tag.has_prefix("@")`, `!(m is TInt)`), and
 /// no corpus line puts a comparison on an `is` result. The pattern is
-/// reduced to the binding name it introduces ("" when it has none); the
+/// reduced to the BINDINGS it introduces (none when it has none); the
 /// TEXT is consumed and discarded, so no lens ever parses strings (MoonBit
 /// string indexing is by byte, and pattern text would have to be re-lexed
 /// to be sliced safely).
 fn Parser::parse_is(self : Parser) -> @ast.Expr {
   let mut l = self.parse_bitor()
+  // `is` CONTINUES an expression across a newline. A guard writes its whole
+  // condition over several lines:
+  //
+  //   guard (self.frame, self.image, self.host_bridge)
+  //     is (Some(frame_state), Some(image_state), Some(host_bridge)) &&
+  //     !self.disposed else { ... }
+  //
+  // and without this the line break ended the expression, `is` was read as an
+  // ordinary identifier, and the file parsed WITHOUT an error into a tree where
+  // every name after that point was wrong — 15 findings on
+  // `backend/common/embedded/embedded_runtime_backend.mbt`, none of them
+  // reported as unreliable because nothing failed.
+  //
+  // Same rule the lexer already applies for a newline before a closing bracket.
+  //
+  // Only TNewline is skipped, NOT `skip_seps` — that also eats `;`, and a
+  // semicolon is STRUCTURAL in a C-style `for` (`for i = 0; i < n; i = i + 1`).
+  // Using `skip_seps` here broke "a C-style three-clause for loop parses".
+  while self.at(TNewline) {
+    let _ = self.bump()
+  }
   while self.at_name("is") {
     let _ = self.bump()
     let binding = self.parse_is_pattern()
     l = { span: l.span, kind: @ast.EIs(l, binding), }
+    while self.at(TNewline) {
+      let _ = self.bump()
+    }
   }
   l
 }
 
 ///|
-/// The pattern of an `is` test, reduced to its BINDING name: the head is
-/// one constructor name (`TName`, `Some`, `ABool`), an optional payload
-/// follows in one paren group, and the first non-`_` name inside that
-/// group is the binding — `TName(tag)` -> "tag", `TEOF` -> "",
-/// `Some(_)` -> "". A name immediately followed by `(` inside the payload
-/// is a nested constructor, not a binding (`Some(Some(x))` binds nothing
-/// here and reports honestly at the `x` use). Unmodelled shapes stay in
-/// step as far as the balanced paren and report at the first token they
-/// cannot place.
+/// The pattern of an `is` test, reduced to the BINDINGS it introduces: the
+/// head is one constructor name (`TName`, `Some`, `ABool`), an optional
+/// payload follows in one paren group, and every non-`_` name in that group
+/// is a binding — `TName(tag)` -> ["tag"], `TEOF` -> [], `Some(_)` -> []. A
+/// name immediately followed by `(` inside the payload is a nested
+/// constructor, not a binding (`Some(Some(x))` binds nothing here and
+/// reports honestly at the `x` use). Unmodelled shapes stay in step as far
+/// as the balanced paren and report at the first token they cannot place.
 ///
 /// A binding must also be a NAME THAT INTRODUCES A VARIABLE, and a keyword is
 /// not one: `if info.required is Some(true)` bound the literal `true` and
@@ -1947,16 +2007,124 @@ fn Parser::parse_is(self : Parser) -> @ast.Expr {
 /// already documents why `self` is deliberately NOT in it, and a private copy
 /// in this file is exactly how the two would drift apart. `self` therefore
 /// still binds, which is what `if x is Some(self)` means.
-fn Parser::parse_is_pattern(self : Parser) -> String {
+///
+/// A pattern can introduce SEVERAL bindings at once (`is (Some(a), Some(b))`),
+/// so this returns all of them and `EIs` carries a list. It returned one name
+/// until 0.4.21; the tuple branch below already consumed the whole group then,
+/// so the other names were silently dropped and each reported as an undefined
+/// name — 7 findings on
+/// `backend/common/embedded/embedded_runtime_backend.mbt`.
+
+///|
+/// Is the pattern token at index `j` a NAME THAT INTRODUCES A VARIABLE?
+///
+/// ONE reader, called from BOTH branches of `parse_is_pattern`, written
+/// index-based so each branch can scan at its own pace. 0.4.18 and 0.4.20 each
+/// shipped a SECOND name reader that drifted from the first; a predicate with a
+/// single index parameter cannot drift that way.
+///
+///   - not `_`, and not a keyword (`is_moonbit_keyword`, not a second list)
+///   - the token after it is not `(` — a nested CONSTRUCTOR, not a binding
+///   - neither neighbour is `.` — `@core.Role::Checkbox` is a qualified PATH,
+///     and `is Some(@core.Role::Checkbox)` binds `@core` as a local today
+///
+/// The callers additionally stop at the first `:`, because the rest of the
+/// payload is then a TYPE ANNOTATION and `Int` is not a binding. A qualified
+/// path's `::` reaches that same rule, which is why every segment of
+/// `@core.Role::Checkbox` stops being collected. The TUPLE branch also requires
+/// `depth >= 2`, because its outer `(` is a grouping paren rather than a
+/// constructor payload — see the note there.
+///
+/// Dropping the old `depth == 1` restriction is what unlocks the nested shapes,
+/// and both are settled against `moon check`: `guard ... is Some(Os(error))`
+/// then `error + 1` at `moui .../macos/event_loop_wbtest.mbt:6`, and
+/// `is Some(DragLeft(Some(event_position)))` then `event_position + 1` at
+/// `.../event_wbtest.mbt:25`. Both bind their inner name; both reported
+/// `undefined variable` while only depth 1 was read.
+fn Parser::pattern_binding_at(self : Parser, j : Int) -> Bool {
+  if j >= self.toks.length() {
+    return false
+  }
+  let n = match self.toks[j] {
+    TName(s) => s
+    _ => return false
+  }
+  if n == "_" || @lexer.is_moonbit_keyword(n) {
+    return false
+  }
+  let after = j + 1
+  if after < self.toks.length() &&
+    (self.toks[after] == TLParen || self.toks[after] == TDot) {
+    return false
+  }
+  if j > 0 && self.toks[j - 1] == TDot {
+    return false
+  }
+  true
+}
+
+///|
+/// The same predicate at the CURSOR, for the branch that parses rather than
+/// scans.
+fn Parser::at_pattern_binding(self : Parser) -> Bool {
+  self.pattern_binding_at(self.p)
+}
+
+///|
+fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
+  // A TUPLE pattern: `is (Some(a), Some(b), None)`. The head is `(`, not a
+  // name, so the name-only guard below returned "" without consuming anything
+  // and the rest of the pattern was left to be read as an expression. This is
+  // the shape on `backend/common/embedded/embedded_runtime_backend.mbt:228`.
+  //
+  // EVERY binding in the group is collected, not just the first. The group is
+  // consumed either way — a pattern left in the token stream desynchronises
+  // every statement after it — but dropping the names leaves the frame unable
+  // to resolve them at their uses.
+  if self.at(TLParen) {
+    let found : Array[String] = []
+    let mut depth = 0
+    let mut j = self.p
+    let mut in_type = false
+    while j < self.toks.length() {
+      match self.toks[j] {
+        TLParen => depth += 1
+        TRParen => {
+          depth -= 1
+          if depth == 0 {
+            j += 1
+            break
+          }
+        }
+        TEOF => break
+        TColon => in_type = true
+        // `depth >= 2`, NOT `>= 1`: the outer `(` here is a GROUPING paren, not a
+        // constructor payload, so a bare name directly inside it is a
+        // CONSTRUCTOR of an or-pattern — `proton internal/bridge_admission_test/
+        // main.mbt:93`, `... is (Gone | PageUnavailable)`, where binding `Gone`
+        // and `PageUnavailable` reports two unused locals that do not exist.
+        // A tuple pattern's bindings are one level in, inside `Some(`.
+        TName(n) =>
+          if !in_type && depth >= 2 && self.pattern_binding_at(j) {
+            found.push(n)
+          }
+        _ => ()
+      }
+      j += 1
+    }
+    self.p = j
+    return found
+  }
   if self.peek_name() != "" {
     let _ = self.bump()
   } else {
-    return ""
+    return []
   }
-  let mut binding = ""
+  let binding : Array[String] = []
   if self.at(TLParen) {
     let _ = self.bump()
     let mut depth = 1
+    let mut in_type = false
     while depth > 0 && !self.at(TEOF) {
       if self.at(TLParen) {
         depth += 1
@@ -1971,14 +2139,11 @@ fn Parser::parse_is_pattern(self : Parser) -> String {
           let _ = self.bump()
           break
         }
-      } else if depth == 1 &&
-        binding == "" &&
-        self.peek_name() != "" &&
-        self.peek_name() != "_" &&
-        !@lexer.is_moonbit_keyword(self.peek_name()) &&
-        !self.at_next(TLParen) {
+      } else if self.at(TColon) {
+        in_type = true
+      } else if !in_type && self.at_pattern_binding() {
         let (n, _) = self.expect_name("pattern binding")
-        binding = n
+        binding.push(n)
         continue
       }
       let _ = self.bump()
@@ -2325,7 +2490,26 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
       let _ = self.bump()
       if self.at(TAssign) {
         let _ = self.bump()
-        args.push(self.parse_expr())
+        if self.at_lambda_head() {
+          // A lambda as a NAMED argument's VALUE. The arrow check below only
+          // runs on the positional path, so `event=(node, ctx) => f(...)` and
+          // `children=_node => [child]` reached `parse_expr`, which read the
+          // parameters as an expression and then tripped on `=>`.
+          let lsp = self.span()
+          self.skip_lambda_head()
+          if self.at(TLBrace) {
+            self.skip_braces()
+          } else {
+            self.skip_to_arg_boundary()
+          }
+          self.note_skip(
+            "short lambda is outside the analyzed subset; it was read but not analysed",
+            lsp,
+          )
+          args.push({ span: lsp, kind: @ast.EBigInt, })
+        } else {
+          args.push(self.parse_expr())
+        }
       } else {
         self.p = saved_p
         args.push(self.parse_expr())
@@ -2349,6 +2533,101 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
     }
   }
   args
+}
+
+///|
+/// Is the cursor at the HEAD of a short lambda, in any of the three spellings a
+/// named argument's value takes?
+///
+///   `(node, ctx) => f(...)`   — a parenthesised parameter list
+///   `_node => [child]`         — one bare name
+///   `(node : Flow) => ...`    — a typed parameter, via the parenthesised form
+///
+/// The `=>` is `TAssign` followed by `TGt`; there is no `=>` token. The
+/// parenthesised form must SCAN to its matching `)` and check the two tokens
+/// after it — looking only at `(`, a name, `=>` would miss it, which is the
+/// same trap `return_annotation` fell into in 0.4.19.
+fn Parser::at_lambda_head(self : Parser) -> Bool {
+  if self.at(TLParen) {
+    let mut depth = 0
+    let mut j = self.p
+    while j < self.toks.length() {
+      match self.toks[j] {
+        TLParen => depth += 1
+        TRParen => {
+          depth -= 1
+          if depth == 0 {
+            return j + 2 < self.toks.length() &&
+              self.toks[j + 1] == TAssign &&
+              self.toks[j + 2] == TGt
+          }
+        }
+        TEOF => return false
+        _ => ()
+      }
+      j += 1
+    }
+    return false
+  }
+  if self.peek_name() == "" {
+    return false
+  }
+  // One bare parameter, optionally modified and optionally typed: `x?`, `x~`,
+  // `x : T`, `x? : T`. The `:` arm scans to the `=` at depth 0.
+  let mut j = self.p + 1
+  while j < self.toks.length() &&
+        (self.toks[j] == TQuestion || self.toks[j] == TTilde) {
+    j += 1
+  }
+  if j < self.toks.length() && self.toks[j] == TColon {
+    while j < self.toks.length() && self.toks[j] != TAssign {
+      j += 1
+    }
+  }
+  j + 1 < self.toks.length() &&
+  self.toks[j] == TAssign &&
+  self.toks[j + 1] == TGt
+}
+
+///|
+/// Consume the head of a short lambda — its parameters and the `=>` — leaving
+/// the cursor on the BODY, which the caller skips.
+///
+/// The parameters are consumed, never PARSED, for the reason the positional
+/// path already gives: a parsed parameter would bind in the ENCLOSING scope and
+/// report a phantom unused, because the lambda itself is never walked.
+fn Parser::skip_lambda_head(self : Parser) -> Unit {
+  if self.at(TLParen) {
+    let mut depth = 0
+    while !self.at(TEOF) {
+      if self.at(TLParen) {
+        depth += 1
+      } else if self.at(TRParen) {
+        depth -= 1
+        let _ = self.bump()
+        if depth == 0 {
+          break
+        }
+        continue
+      }
+      let _ = self.bump()
+    }
+  } else {
+    let _ = self.bump() // the parameter name
+    if self.at(TQuestion) || self.at(TTilde) {
+      let _ = self.bump()
+    }
+    if self.at(TColon) {
+      let _ = self.bump()
+      ignore(self.type_annotation())
+    }
+  }
+  if self.at(TAssign) {
+    let _ = self.bump()
+  }
+  if self.at(TGt) {
+    let _ = self.bump()
+  }
 }
 
 ///|

@@ -548,10 +548,12 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
     // lhs before rhs, and SIf walks its condition before its branches).
     // A use BEFORE the test is the accepted known limitation: the frame is
     // flat, not flow-scoped.
-    EIs(base, binding) => {
+    EIs(base, bindings) => {
       self.walk_expr(base)
-      if binding != "" {
-        self.bind({ name: binding, tyann: "", param: false, decl_span: e.span, })
+      for b in bindings {
+        if b != "" {
+          self.bind({ name: b, tyann: "", param: false, decl_span: e.span, })
+        }
       }
     }
     // A string's INTERPOLATED names are real reads, and they are resolved here

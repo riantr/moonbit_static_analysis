@@ -401,12 +401,14 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // is boolean. TBool is safe even though the pattern is not modelled:
     // an `is` test IS bool in MoonBit, and the operators it feeds
     // (`&&`, `||`, `!`) check bool against bool.
-    EIs(base, binding) => {
+    EIs(base, bindings) => {
       let _ = self.ty_of(base, TUnknown)
-      if binding != "" {
-        let fi = self.frames.length() - 1
-        self.frames[fi].set(binding, TUnknown)
-        self.annos[fi].set(binding, false)
+      let fi = self.frames.length() - 1
+      for b in bindings {
+        if b != "" {
+          self.frames[fi].set(b, TUnknown)
+          self.annos[fi].set(b, false)
+        }
       }
       TBool
     }

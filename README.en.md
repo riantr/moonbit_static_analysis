@@ -153,6 +153,129 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.21 — 436 → 481: `guard`, lambdas as named-argument values, `is` across a newline, and an `is` that bound only its first name
+
+Files understood 436 → **481 (71.7% → 79.1%)**, withheld 1078 → **242**, unreliable
+3025 → **1711**, `unexpected token` 163 → **113**, moui actionable 10 → **8**. All
+seven findings on `embedded_runtime_backend.mbt` (3× `image_state`, 4× `host_bridge`)
+are gone.
+
+Four independent shapes, every one measured before it was written:
+
+| | Shape | Where |
+|---|---|---|
+| A | `guard COND else { ... }` read as an identifier | 550 sites / 126 files |
+| B | a named argument whose value is a lambda ended the argument list | parsed 436 → **481** |
+| C | `is` did not continue across a newline — and the file STILL PARSED | `embedded_runtime_backend.mbt:227` |
+| D | an `is` pattern bound only its FIRST name, and only at depth 1 | 7 findings, 13 sites corpus-wide |
+
+### C is the hardest kind of bad here: it parses, and the tree is wrong
+
+```moonbit
+guard (self.frame, self.image, self.host_bridge)
+  is (Some(frame_state), Some(image_state), Some(host_bridge)) &&
+  !self.disposed else {
+```
+
+The line break ended the expression, `is` was read as an ordinary identifier, and
+the file parsed WITHOUT an error — into a tree where every name after that point is
+wrong. Fifteen findings, and because nothing had failed, NONE of them was reported
+as unreliable. So that gate does not assert `n_parse == 0` (it is green either way);
+it asserts that the names AFTER the continuation resolve.
+
+The continuation skips only `TNewline`, never `skip_seps` — that also eats `;`, and
+a semicolon is STRUCTURAL in a C-style `for`. Writing `skip_seps` here turned an
+existing test red, and it is pinned by
+`0421: a C-style for body is still analyzed (control)`.
+
+### D: settle first, and the answer was not the obvious one
+
+I assumed `error` in `Some(Os(error))` was already bound and simply unused. **Ran
+`moon check` first**:
+
+```
+fn f(x : Int) -> Int {
+  guard try_os(x) is Some(Os(error)) else { return 0 }
+  error + 1
+}
+```
+
+`moon check` accepts it — `error` IS a binding. The old reader only looked at depth
+1, so `Os` became the binding, `error` fell through, and every use of it reported
+`undefined variable`. Depth 3's `Some(DragLeft(Some(event_position)))` is the same.
+
+The rules collapse into ONE predicate, called from BOTH branches (0.4.18 and 0.4.20
+each lost a cycle to "a second name reader drifts from the first"; this one takes an
+index, so it cannot):
+
+- not `_`, not a keyword
+- the next token is not `(` — that is a nested CONSTRUCTOR, not a binding
+- neither neighbour is `.` — `@core.Role::Checkbox` is a qualified path, 18 in corpus
+- the first `:` ends it — the rest is a type annotation and `Int` is not a binding;
+  a qualified path's `::` lands on the same rule
+
+### The differential caught a regression I had INTRODUCED
+
+`proton internal/bridge_admission_test/main.mbt:93`:
+
+```moonbit
+runtime.prepare_bridge_request(request, window) is (Gone | PageUnavailable)
+```
+
+That `(` is a GROUPING paren, not a constructor payload, so `Gone` and
+`PageUnavailable` were bound as locals and two nonexistent unused locals were
+reported. **One of the two was new** — the old reader stopped after the first name,
+so it had only ever bound `Gone`. The tuple branch therefore collects at `depth >= 2`
+(a real tuple's bindings live one level in, inside `Some(`)). This was not reasoned
+out; it came out of a finding-level differential across six corpora, and M8 pins it.
+
+### Differential
+
+| Corpus | 0.4.20 | 0.4.21 | Finding-level |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 436 / actionable 10 | **parsed 481 / actionable 8** | 45 more files readable |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 23 / actionable 3 | **parsed 24 / actionable 0** | 3 × `undefined function '@core.X::new'` gone |
+| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 29 | **parsed 206 / actionable 17** | 12 × `undefined name 'guard'` gone, **0 new** |
+| `moonbit-community/proton` 0.3.4 | parsed 71 / actionable 44 | **parsed 72 / actionable 43** | 2 `guard` gone, 1 new (see below) |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **byte-identical** | — |
+| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **byte-identical** | — |
+
+proton's single new finding is `undefined name 'nobreak'` in
+`internal/bridge_admission_test/main.mbt` — a **newly readable** file, where
+`nobreak` is a loop modifier this frontend does not implement yet. It is not a false
+positive this change created; it is a real gap a newly readable file exposed.
+
+### Mutations: 8 of 8 killed, both directions covered
+
+M1 `guard` unparsed, M2 **the guard's `else` block dropped** (only the control test
+catches this: the condition's names still resolve without it), M3 named-argument
+lambda head off, M4 the newline continuation off, M5 only the first name bound, M6
+the qualified-path rule removed, M7 the nested-constructor rule removed, M8 the
+or-pattern depth rule removed. 8/8, every restore byte-identical by SHA256.
+
+### Not fixed, written down honestly
+
+moui's remaining 8 actionable all fall in two known items: `navigation_routing.mbt`
+×1 and `gesture.mbt` ×6 are **named-argument positional matching** (`TFunc` carries
+no parameter names, so it needs the whole signature pipeline), and `view_tree.mbt` ×1
+is `expr as Type`, for which the AST has no `ECast`.
+
+Two more limitations were MEASURED but left alone, because they are not in this
+cycle's shape family:
+
+- **Calling a function-typed parameter reports `undefined function`.** `let f = inc`
+  then `f(1)` does it with no lambda anywhere in the file — a pre-existing false
+  positive from 0.4.19's function-type annotations. My first gate fixtures hit it,
+  which is why the warning is at the top of the test file.
+- **`is Some(x : Int)`, a typed pattern.** Zero sites corpus-wide (all 18 `is X(...)`
+  matches containing a colon are qualified paths like `@core.Role::Checked`). The `:`
+  rule is in place but is **not corpus-verified**, and is not claimed as covered.
+
+### Tests
+
+415 (js 343 / wasm 415 / wasm-gc 343). Self-scan 59/59, `actionable=0`,
+`unreliable=0`, `withheld=0`.
+
 ## 0.4.20 — a method was being harvested as a top-level function
 
 `impl T for U with fn m(...) { ... }`. Files understood 432 → **436**, withheld
@@ -1022,7 +1145,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.20
+moon add riantr/moonbit_static_analysis@0.4.21
 ```
 
 ```moonbit
@@ -1404,7 +1527,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.20` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.21` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
