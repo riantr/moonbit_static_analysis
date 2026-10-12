@@ -27,7 +27,18 @@ jobs:
       # The version check at the end is not decoration: without it a silently
       # failed install would surface three steps later as a confusing
       # "moon: command not found" inside `moon check`.
+      #
+      # MOONBIT_INSTALL_VERSION is load-bearing, not a nicety. The installer
+      # defaults to `latest`, and the formatter is NOT stable across moon
+      # releases: with 0.1.20261012 the `moon fmt --check` step below rewrites
+      # `src/core/moon.pkg` (`options("proof-enabled": true,)` ->
+      # `proof_enabled = true`) and 9 more files that no change of ours touched.
+      # Measured on the v0.4.20 TAG, not just on a working tree: an unpinned
+      # gate turns red on any commit, including a revert, the moment upstream
+      # ships a formatter change. Pin it; move the pin deliberately.
       - name: Install moon
+        env:
+          MOONBIT_INSTALL_VERSION: "0.1.20260920"
         run: |
           set -euo pipefail
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
