@@ -358,7 +358,7 @@ fn ret_name(t : @types.Ty) -> String {
     @types.TBool => "bool"
     @types.TStr => "str"
     @types.TList(_) => "List"
-    @types.TFunc(n, _, _) => "fn \{n}"
+    @types.TFunc(n, _, _, _) => "fn \{n}"
     @types.TUnknownFn(n) => "fn \{n}"
     @types.TUnion(_) => "Any"
   }
@@ -699,7 +699,7 @@ fn Interp::eval(
       let r = self.eval(b, env)
       self.binop(op, l, r, e.span)
     }
-    ECall(name, args) => {
+    ECall(name, args, _) => {
       let vals : Array[AbsVal] = []
       for a in args {
         vals.push(self.eval(a, env))
@@ -715,7 +715,7 @@ fn Interp::eval(
     // A qualifier receiver (`@core.f(x)`) is not evaluated, for the same reason
     // the walk does not resolve it: `@core` is a package, and evaluating it
     // would report an undefined variable that does not exist.
-    EMethodCall(base, _, args) => {
+    EMethodCall(base, _, args, _) => {
       if !base.is_qualifier() {
         let _ = self.eval(base, env)
       }

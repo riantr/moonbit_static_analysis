@@ -2403,14 +2403,14 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
     if self.at(TLParen) {
       let csp = self.span()
       let _ = self.bump()
-      let args = self.parse_call_args()
+      let (args, labels) = self.parse_call_args()
       self.expect(TRParen, "')'")
       match e.kind {
-        @ast.EName(n) => e = { span: csp, kind: @ast.ECall(n, args), }
+        @ast.EName(n) => e = { span: csp, kind: @ast.ECall(n, args, labels), }
         // A method call. `receiver.name` was an EField up to this point; the
         // `(` is what makes it a call, and only now are the arguments known.
         @ast.EField(base, m) =>
-          e = { span: csp, kind: @ast.EMethodCall(base, m, args), }
+          e = { span: csp, kind: @ast.EMethodCall(base, m, args, labels), }
         _ => self.err("only named functions and methods can be called", csp)
       }
       continue
@@ -2435,11 +2435,22 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
 }
 
 ///|
-/// The argument list of a call, up to but NOT including the closing `)`.
+/// The argument list of a call, up to but NOT including the closing `)`, and
+/// the LABELS parallel to it: the parameter name for `f(name=…)` and for the
+/// `x~` shorthand, `""` for a positional argument.
+///
+/// The two arrays must stay the same length at every push, which is why they
+/// are pushed together below rather than at the end; a shorter `labels` array
+/// would silently mis-index every argument after the first positional one.
 /// Shared by `f(args)` and `receiver.f(args)` so the two forms cannot drift.
-fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
+fn Parser::parse_call_args(self : Parser) -> (Array[@ast.Expr], Array[String]) {
   let args : Array[@ast.Expr] = []
+  let labels : Array[String] = []
   while !self.at(TRParen) && !self.at(TEOF) {
+    // Where this argument's text starts, so the `x~` shorthand below can read
+    // the argument's own name back out of the stream once `parse_expr` has
+    // moved the cursor past it.
+    let arg_start = self.p
     // A short lambda `param => body`, detected BEFORE the named-argument
     // path below — whose `=` check would otherwise swallow the arrow, since
     // `=>` is not a lexer token and arrives as TAssign + TGt, and
@@ -2466,6 +2477,7 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
         lsp,
       )
       args.push({ span: lsp, kind: @ast.EBigInt, })
+      labels.push("")
       if self.at(TComma) {
         let _ = self.bump()
       } else {
@@ -2487,6 +2499,7 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
     // it and parse the value.
     if self.peek_name() != "" {
       let saved_p = self.p
+      let arg_label = self.peek_name()
       let _ = self.bump()
       if self.at(TAssign) {
         let _ = self.bump()
@@ -2507,24 +2520,32 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
             lsp,
           )
           args.push({ span: lsp, kind: @ast.EBigInt, })
+          labels.push(arg_label)
         } else {
           args.push(self.parse_expr())
+          labels.push(arg_label)
         }
       } else {
         self.p = saved_p
         args.push(self.parse_expr())
+        labels.push("")
       }
     } else {
       args.push(self.parse_expr())
+      labels.push("")
     }
     // `f(x~)` — the shorthand for `f(x=x)`, settled by `moon check` (0.4.18):
-    // it passes the local `x` under its own label. The label is dropped for
-    // the same reason `name = value` above drops it — the call lens reads the
-    // value, not the label — so an arity check counts this exactly as it
-    // counts `x` positionally. Only reached after a real argument, so the
-    // short-lambda branch above (which `continue`s) is unaffected.
+    // it passes the local `x` under its own label. The label is recorded for
+    // the same reason `name = value` above records it, because the `~` form
+    // names a parameter too — the argument's index is not the parameter's
+    // index whenever any argument is named. Only reached after a real
+    // argument, so the short-lambda branch above (which `continue`s) is
+    // unaffected, and `labels` is non-empty by then.
     if self.at(TTilde) {
       let _ = self.bump()
+      if labels[labels.length() - 1] == "" {
+        labels[labels.length() - 1] = self.name_at(arg_start)
+      }
     }
     if self.at(TComma) {
       let _ = self.bump()
@@ -2532,7 +2553,7 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
       break
     }
   }
-  args
+  (args, labels)
 }
 
 ///|
@@ -2765,6 +2786,21 @@ fn Parser::skip_rest_of_block(self : Parser) -> Unit {
 /// recognise `::`, which the lexer emits as two `TColon` tokens rather than one.
 fn Parser::at_next(self : Parser, t : @lexer.Tok) -> Bool {
   self.p + 1 < self.toks.length() && self.toks[self.p + 1] == t
+}
+
+///|
+/// The `TName` text at index `j`, or `""` if that token is not a name. Used to
+/// recover an argument's own name after it has already been parsed, which the
+/// `x~` shorthand needs: the `~` is only visible once the cursor is past the
+/// value, so the name has to be read back out of the token stream.
+fn Parser::name_at(self : Parser, j : Int32) -> String {
+  if j < 0 || j >= self.toks.length() {
+    return ""
+  }
+  match self.toks[j] {
+    TName(n) => n
+    _ => ""
+  }
 }
 
 ///|

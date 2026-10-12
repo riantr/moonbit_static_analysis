@@ -40,9 +40,9 @@ fn new_infer(
       builtins.set(n, TUnknown)
     }
   }
-  builtins.set("print", TFunc("print", [TUnknown], TNone))
-  builtins.set("len", TFunc("len", [TUnknown], TInt))
-  builtins.set("abs", TFunc("abs", [TInt], TInt))
+  builtins.set("print", TFunc("print", [], [TUnknown], TNone))
+  builtins.set("len", TFunc("len", [], [TUnknown], TInt))
+  builtins.set("abs", TFunc("abs", [], [TInt], TInt))
   Infer::{
     fn_bindings,
     frames: [Map([])],
@@ -235,25 +235,66 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         }
       }
     }
-    ECall(name, args) =>
+    ECall(name, args, labels) =>
       match self.lookup(name) {
-        Some(TFunc(fn_name, params, ret)) => {
+        Some(TFunc(fn_name, pnames, params, ret)) => {
           // argument type check (reportCallIssue / reportArgumentType)
+          //
+          // An argument's INDEX is not its parameter's index as soon as any
+          // argument is named: MoonBit accepts `f(label=…, shortcut=…,
+          // intent=…)` for `fn f(intent~, label?, shortcut?)`, settled against
+          // `moon check`. So each argument is matched by LABEL when it has
+          // one, and only falls back to position when it does not or when the
+          // label names no parameter (a signature whose names were never
+          // read, e.g. a builtin). Comparing `args[3]` to `params[3]` is what
+          // produced `argument 4 … has incompatible type 'str'; expected
+          // 'bool'` six times on `moui core/gesture.mbt:754` onward, where
+          // `description` is passed fourth and `enabled` is declared fourth.
           for i, arg in args {
             let at = self.ty_of(arg, TUnknown)
-            let want = match params.get(i) {
+            let label = match labels.get(i) {
+              Some(l) => l
+              None => ""
+            }
+            let pos = match param_index(pnames, label) {
+              Some(k) => k
+              None => i
+            }
+            let want = match params.get(pos) {
               Some(p) => p
               None => TUnknown
             }
             if !ty_assignable(at, want) {
               self.report(
                 @core.FArgType,
-                "argument \{i + 1} to '\{fn_name}' has incompatible type '\{ty_name(at)}'; expected '\{ty_name(want)}'",
+                "argument \{pos + 1} to '\{fn_name}' has incompatible type '\{ty_name(at)}'; expected '\{ty_name(want)}'",
                 arg.span,
               )
             }
           }
-          if args.length() > params.length() {
+          // The arity check is POSITIONAL, and it stays that way only for positional
+          // calls. Named arguments are label-addressed, so an argument's index is not
+          // its parameter's index (the reason the whole change exists) and the COUNT is
+          // not a bound on the parameter count either. Measured before this comment was
+          // written, not assumed:
+          //
+          //   - `moon check` REJECTS every shape where a named call exceeds the
+          //     parameter count: a duplicate label is error 4084, a label matching no
+          //     parameter is 4085. So on code that compiles this check can never fire,
+          //     and dropping the gate would not surface any real defect.
+          //   - Across the six corpora (12,428 files) the gate changes exactly ONE
+          //     finding: `moui backend/web/web_host.mbt`, an arity report at a call past
+          //     the file's reliable-region boundary, so it lands in the `unreliable`
+          //     bucket and is never shown as a result. That one could not be confirmed
+          //     as a true positive, and an argument-COUNT check is precisely where a
+          //     misread cross-file signature produces a false positive.
+          //
+          // The gate is therefore kept as a deliberate leniency on label-addressed
+          // calls, not as a fix. The positional path below is unchanged and still
+          // tested.
+          let all_positional = labels.is_empty() ||
+            labels.every(fn(l) { l == "" })
+          if all_positional && args.length() > params.length() {
             self.report(
               @core.FArgType,
               "too many arguments to '\{fn_name}': expected \{params.length()}, got \{args.length()}",
@@ -301,7 +342,7 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     //
     // The result is TUnknown rather than the receiver's type. `x.f()` is not
     // necessarily an `x`.
-    EMethodCall(base, _, args) => {
+    EMethodCall(base, _, args, _) => {
       if !base.is_qualifier() {
         ignore(self.ty_of(base, TUnknown))
       }
@@ -595,10 +636,12 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
       self.vst.push({ func: name, file: "ml", line: sp.start.line, })
       let fi = self.frames.length() - 1
       let ptys : Array[Ty] = []
+      let pnames : Array[String] = []
       for p in params {
         ptys.push(ann_to_ty(p.tyann))
+        pnames.push(p.name)
       }
-      self.frames[fi].set(name, TFunc(name, ptys, TUnknown))
+      self.frames[fi].set(name, TFunc(name, pnames, ptys, TUnknown))
       for p in params {
         self.frames[fi].set(p.name, ann_to_ty(p.tyann))
         self.annos[fi].set(p.name, !(p.tyann == ""))
@@ -646,6 +689,7 @@ fn Infer::run_fn(self : Infer, f : @walk.FnInfo) -> Ty {
   let ret = self.scan_returns(f.body)
   self.sigs.push({
     name: f.name,
+    param_names: fn_param_names(f),
     param_tys: fn_param_tys(f),
     ret,
     declared_ret: ann_to_ty(f.retann),
@@ -664,6 +708,41 @@ fn fn_param_tys(f : @walk.FnInfo) -> Array[Ty] {
     out.push(ann_to_ty(p.tyann))
   }
   out
+}
+
+///|
+/// The parameter names, parallel to `fn_param_tys`. Read from the SAME loop
+/// over `f.params` for the same reason the two are parallel at all: two
+/// readers over one list is how the 0.4.18/0.4.20 "name readers drift" lesson
+/// repeats, and a name list that drifts from its type list would mis-index
+/// every argument.
+fn fn_param_names(f : @walk.FnInfo) -> Array[String] {
+  let out : Array[String] = []
+  for p in f.params {
+    out.push(p.name)
+  }
+  out
+}
+
+///|
+/// Which parameter does this argument LABEL name? `None` for a positional
+/// argument (`label == ""`), and `None` when the name matches nothing — which
+/// covers a builtin, whose `TFunc` carries no parameter names at all. The
+/// caller falls back to position in both cases, so this can only ever make the
+/// check weaker than before, never stronger on bad evidence.
+///
+/// A FREE function, not a method: it reads nothing from the inference state,
+/// and leaving `self` in the signature would be an unused parameter.
+fn param_index(pnames : Array[String], label : String) -> Int32? {
+  if label == "" {
+    return None
+  }
+  for i, n in pnames {
+    if n == label {
+      return Some(i)
+    }
+  }
+  None
 }
 
 ///|
@@ -754,6 +833,7 @@ pub fn infer_full(
       SFunc(name, params, retann, body, sp) => {
         let ft = TFunc(
           name,
+          fn_param_names({ name, params, retann, body, span: sp, }),
           fn_param_tys({ name, params, retann, body, span: sp, }),
           ann_to_ty(retann),
         )

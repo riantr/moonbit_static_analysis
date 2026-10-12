@@ -30,6 +30,7 @@ pub fn ty_union(Array[Ty]) -> Ty
 // Types and methods
 pub(all) struct Sig {
   name : String
+  param_names : Array[String]
   param_tys : Array[Ty]
   ret : Ty
   declared_ret : Ty
@@ -44,7 +45,7 @@ pub(all) enum Ty {
   TBool
   TStr
   TList(Ty)
-  TFunc(String, Array[Ty], Ty)
+  TFunc(String, Array[String], Array[Ty], Ty)
   TUnknownFn(String)
   TUnion(Array[Ty])
 } derive(Eq)

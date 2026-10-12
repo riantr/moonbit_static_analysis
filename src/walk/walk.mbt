@@ -459,7 +459,7 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(a)
       self.walk_expr(b)
     }
-    ECall(name, args) => {
+    ECall(name, args, _) => {
       // A `::` path is not a binding in this file. `parse_postfix` flattens
       // `@debug.Repr::opaque_(v)` into ECall("@debug.Repr::opaque_", ...), and
       // that string resolves against nothing: `opaque_` is a member of `Repr`,
@@ -486,7 +486,7 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
     // One exception, and it is not cosmetic: `@alias.f(...)` is a qualified
     // call, not a call on a variable. `@core` is a package, so resolving it
     // would report `no visible binding for '@core'` on perfectly good code.
-    EMethodCall(base, _, args) => {
+    EMethodCall(base, _, args, _) => {
       if !base.is_qualifier() {
         self.walk_expr(base)
       }

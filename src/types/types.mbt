@@ -15,7 +15,17 @@ pub(all) enum Ty {
   TBool
   TStr
   TList(Ty)
-  TFunc(String, Array[Ty], Ty)
+  /// A function type: NAME, PARAMETER NAMES, PARAMETER TYPES, RETURN TYPE.
+  ///
+  /// The names are parallel to the types. They are there because MoonBit lets
+  /// a call reorder named arguments freely (settled against `moon check`), so
+  /// an argument's INDEX is not its parameter's index as soon as any argument
+  /// is named — and the argument-type check compares one against the other.
+  /// An empty name `""` means "not read" (a builtin, or a signature assembled
+  /// without the declaration in hand), and a call whose label does not match
+  /// any name falls back to position, which is the old behaviour and is
+  /// strictly weaker than before.
+  TFunc(String, Array[String], Array[Ty], Ty)
   /// A name we know is a VALUE but whose signature we cannot read — a hit in
   /// the cross-file `.mbti` table, where only the declaration name is known.
   /// Distinct from `TUnknown` because a call to this one is certainly a call,
@@ -83,7 +93,7 @@ pub fn ty_name(t : Ty) -> String {
     TBool => "bool"
     TStr => "str"
     TList(e) => "[\{ty_name(e)}]"
-    TFunc(n, _, _) => "fn \{n}"
+    TFunc(n, _, _, _) => "fn \{n}"
     TUnknownFn(n) => "fn \{n} (signature not read)"
     TUnion(ms) => {
       let ns : Array[String] = []
@@ -128,13 +138,26 @@ pub fn ty_name(t : Ty) -> String {
 pub fn ann_to_ty(ann : String) -> Ty {
   match ann {
     "" => TUnknown
-    "Int" | "int" => TInt
+    "Int" | "Int32" | "int" => TInt
     "Float" | "float" => TFloat
     "Double" | "double" => TFloat
     "Bool" | "bool" => TBool
     "String" | "string" | "str" => TStr
     "None" => TNone
     "Unit" => TNone
+    // `Int64` and `UInt` are DELIBERATELY absent, and this is the same lesson
+    // the `Array[T]` note above records, pointed the other way. They are not
+    // synonyms for `Int`; settled against `moon check` on 0.1.20261012:
+    // passing a UInt to an `Int` parameter is an `Expr Type Mismatch`, and so
+    // is the reverse, and so is `Int64` against either. Mapping them onto TInt
+    // would therefore not be a harmless widening -- it would SILENCE the
+    // check on exactly the mismatches `moon check` reports, which is the
+    // 0.4.5 failure (a check whose precondition nothing ever satisfies) with
+    // the sign flipped. They need their own `Ty` variants and their own
+    // assignability rules; until then Unknown is the honest answer.
+    //
+    // Corpus weight, so the next person sizing that work has it: 122 `: Int64`
+    // and 23 `: UInt` annotations across proton + async + moui.
     _ => ann_to_list_ty(ann)
   }
 }
@@ -309,6 +332,9 @@ pub(all) struct TypedSym {
 /// "methods are tables" with types the type lens already proved.
 pub(all) struct Sig {
   name : String
+  /// Parameter names, parallel to `param_tys`. See `TFunc` for why the
+  /// argument-type check needs them.
+  param_names : Array[String]
   param_tys : Array[Ty]
   ret : Ty
   declared_ret : Ty

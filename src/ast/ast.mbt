@@ -92,7 +92,20 @@ pub(all) enum EKind {
   EList(Array[Expr])
   EUnary(UOp, Expr)
   EBin(BOp, Expr, Expr)
-  ECall(String, Array[Expr])
+  /// A call `f(args)`. The third field is the ARGUMENT LABELS, one per
+  /// argument, parallel to `args`: the parameter name for `f(name=…)` and for
+  /// the `x~` shorthand, and `""` for a positional argument.
+  ///
+  /// This exists because MoonBit lets a call reorder named arguments freely,
+  /// settled against `moon check`: given `fn f(intent~, label?, shortcut?,
+  /// enabled?)`, the call `f(label=…, shortcut=…, intent=…)` is accepted. So
+  /// the argument's INDEX is not the parameter's index whenever any argument
+  /// is named. Without the labels the type lens compared `args[3]` against
+  /// `params[3]` and reported `argument 4 … has incompatible type 'str';
+  /// expected 'bool'` six times on `wzzc-dev/moui core/gesture.mbt:754`
+  /// onward, where `description` is passed fourth and `enabled` is declared
+  /// fourth.
+  ECall(String, Array[Expr], Array[String])
   EField(Expr, String)
   EIndex(Expr, Expr)
   /// A METHOD call: `receiver.name(args)`.
@@ -110,7 +123,9 @@ pub(all) enum EKind {
   /// Until this existed, `parse_postfix` accepted only `EName` as a callee and
   /// reported `only named functions can be called` on `m.set(k, v)`, which is
   /// how a method call stopped the parse in most real files.
-  EMethodCall(Expr, String, Array[Expr])
+  ///
+  /// The labels are `ECall`'s, carried for the same reason.
+  EMethodCall(Expr, String, Array[Expr], Array[String])
   /// A list/set comprehension: `[ for pat in <sources> => body ]` and its
   /// block-bodied sibling `[ for pat in <sources> { body } ]`.
   ///

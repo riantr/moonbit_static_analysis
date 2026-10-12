@@ -600,13 +600,13 @@ fn find_method_calls(m : @ast.Module) -> Array[(String, String)] {
     match e.kind {
       @ast.EName(n) => n
       @ast.EField(b, _) => root(b)
-      @ast.EMethodCall(b, _, _) => root(b)
+      @ast.EMethodCall(b, _, _, _) => root(b)
       _ => "?"
     }
   }
   fn ex(e : @ast.Expr) -> Unit {
     match e.kind {
-      @ast.EMethodCall(b, name, args) => {
+      @ast.EMethodCall(b, name, args, _) => {
         out.push((name, root(b)))
         ex(b)
         for a in args {
@@ -622,7 +622,7 @@ fn find_method_calls(m : @ast.Module) -> Array[(String, String)] {
         ex(a)
         ex(b)
       }
-      @ast.ECall(_, args) =>
+      @ast.ECall(_, args, _) =>
         for a in args {
           ex(a)
         }
@@ -1082,7 +1082,7 @@ test "a named function inside a block is its own statement kind" {
       match body[1].kind {
         @ast.SExpr(e) =>
           match e.kind {
-            @ast.ECall(callee, args) => {
+            @ast.ECall(callee, args, _) => {
               assert_eq(callee, "go")
               assert_eq(args.length(), 1)
             }
@@ -1189,7 +1189,7 @@ test "an anonymous function literal is skipped and its call still parses" {
       match body[0].kind {
         @ast.SExpr(e) =>
           match e.kind {
-            @ast.EMethodCall(recv, name, args) => {
+            @ast.EMethodCall(recv, name, args, _) => {
               match recv.kind {
                 @ast.EName(x) => assert_eq(x, "arr")
                 _ => assert_true(false)

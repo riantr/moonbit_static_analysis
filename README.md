@@ -129,6 +129,82 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.22 —— 具名实参按**名字**匹配，以及 `Int32` 读作 `Int`
+
+可读文件数不变（**481**），但 moui 的 actionable **8 → 1**。消失的 7 条全是同一个形状
+`argument 4 ... has incompatible type 'str'; expected 'bool'`，从
+`core/gesture.mbt:754` 开始：
+
+```moonbit
+// core/pkg.generated.mbti:92 的声明顺序
+ActionCommand::new(intent~, label?, shortcut?, enabled?, group?, description?)
+// core/gesture.mbt:754 的调用顺序
+ActionCommand::new(intent=..., label=..., group=..., description=..., shortcut=...)
+```
+
+MoonBit 允许具名实参任意重排（`moon check` 确认），所以**实参的下标不等于形参的下标**。
+旧代码比较 `args[3]` 和 `params[3]`，于是 `description`（String）落到 `enabled`（Bool）
+上。现在每个具名实参按**标签**找形参，只有没有标签、或标签谁也不匹配时才退回按位置。
+
+`~` 简写（`f(x~)`）同样是一个标签，从 token 流里把名字读回来（`Parser::name_at`），
+所以它也能重排。
+
+| | 形状 | 结果 |
+|---|---|---|
+| A | 具名实参重排（`moui core/gesture.mbt:754`） | actionable 8 → **1** |
+| B | `ann_to_ty` 少一个 `"Int32"` 分支 | **修掉格式化器给自己源码造的 87 个静音点** |
+
+**反向对照是这一版最要紧的东西。** A 的断言是 0 条，而"把检查整个关掉"同样会得到 0 条
+——所以必须有一条断言 **1 条** 的测试才让它有意义。九条测试成对写：具名错类型、位置错
+类型、标签谁也不匹配退回位置、`~` 简写重排对与错、位置元数、`?` 可选参数省略、
+`Int32` 同义与不同义。
+
+**突变门禁抓到了三条当时看不见的东西**（`_verify/mutate_0422.ps1`，8 道 6 杀 2 存活）：
+
+- **夹具里多一行 `let r = build()` 会让三条突变全部存活。** 实参类型不符时行为透镜会把
+  同一个调用报成 `MethodError`，和类型透镜的 `ArgTypeMismatch` 合并（`merge_findings`
+  按 `(merge family, 行号)` 分组），于是 `count_family("ArgTypeMismatch")` 恒为 0。
+  **把 `param_index` 改成永不匹配，432 个测试照样全绿。** 零计数断言只有在它数的那个
+  finding 真的以那个 family 到达时才可能失败。
+- **两行同线会塌成一条。** 同上，`merge_key` 是 `(merge_group, line)`；两个错实参写在
+  一行只回来一条，所以期望 2 的用例必须拆行。
+- **`parse_call_args` 有四个 push 点。** 「不以名字开头的实参」那一个不是「以名字开头」
+  那一个；少 push 一次不会报错，只会让 `labels` 比 `args` 短，缺口之后的每个实参读到的
+  是**后面某个实参的标签**。补的夹具是 `g(1, b=true)`——顺带settle出一条语义：
+  `?` 可选形参**根本不能按位置传**（`moon check` 报 "requires 0 positional arguments"），
+  `~` 必填标签的也不能，只有裸的 `a : Int` 才行。这也正是具名实参在真实 MoonBit 里
+  到处都是、而按位置匹配误报那么多的原因。
+
+**两道存活的突变，如实记账而不是补测试把它做绿**：
+
+- **M7 `all_positional` 门（具名调用不查元数）。** 没有任何测试能看见它，因为**没有任何
+  合法 MoonBit** 会用具名实参传超过形参个数——settle 过了：标签重复是 4084，标签匹配不
+  到形参是 4085，都是 `moon check` 已经报出来的编译错误。它的代价是量过的：六个语料
+  12,428 个文件里，它只影响 **1 条** finding（`moui backend/web/web_host.mbt`，且在该文件
+  的可靠区边界之后，落进 `unreliable` 桶、从不作为结果显示），而那条无法确认是真阳性。
+  写一条钉住「无合法程序会表现出的行为」的测试会让门禁变绿、让套件变弱。
+- **M8 方法调用标签。** `EMethodCall` 现在带标签，但 infer 直接丢弃
+  （`EMethodCall(base, _, args, _)`），因为本模型里方法实参**根本没有类型检查**——没有
+  接收者签名可查。这是真缺口，不是设计上的宽容：要杀掉它得先有方法接收者签名，比这一版大。
+
+**`Int64` / `UInt` 故意不并到 `TInt`。** `moon check` 确认 `UInt` 传给 `Int` 形参是
+`Expr Type Mismatch`，反过来也是，`Int64` 对两者都是。并进去不是无害的加宽，而是**精准
+静音 `moon check` 恰好会报的那些不匹配**——正是 0.4.5 的失败模式（前置条件永不满足的
+检查）符号反转。它们读作 Unknown，等各自的 `Ty` 变体和可赋值规则。给后续的人一个规模：
+proton + async + moui 一共 **122 处 `: Int64`、23 处 `: UInt`**。
+
+测试 js 360 / wasm 432 / wasm-gc 360（新增 17 道）。自检 59/59、`actionable=0`、
+`unreliable=0`、`withheld=0`。
+
+| 语料 | 0.4.21 | 0.4.22 | 发现级 |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 481 / actionable 8 | **parsed 481 / actionable 1** | 7 条假阳性消失，**0 条新增** |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 24 / actionable 0 | **逐字节一致** | — |
+| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 17 | **逐字节一致** | — |
+| `moonbit-community/proton` 0.3.4 | parsed 72 / actionable 43 | **逐字节一致** | — |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **逐字节一致** | — |
+| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **逐字节一致** | — |
+
 ## 0.4.21 —— 436 → 481：`guard`、具名实参的 lambda、跨行的 `is`，和一个只绑第一个名字的 `is`
 
 可读文件 436 → **481（71.7% → 79.1%）**，withheld 1078 → **242**，unreliable 3025
