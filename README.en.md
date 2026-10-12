@@ -153,6 +153,125 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.24 — `raise` as an expression: the clause's third position
+
+**A measurement redirected this release.** When 0.4.23 finished with actionable
+up, I classified every `UndefinedName` and concluded they were `enum`/`suberror`
+/`derive` constructors falling outside the analyzed subset — which is what I
+had written the previous release. The classification showed the biggest bucket
+was not constructors at all: of roughly 70 `UndefinedName` findings, **65 were
+the literal name `raise`**. Constructors were a real but small tail, about 7.
+
+`raise E` as a STATEMENT had never been implemented. 0.4.23 handled the same
+clause in the two positions it appears on a FUNCTION (the signature annotation
+and a function type's return annotation); the statement that actually performs
+the raising is the third position. It was read as an ordinary identifier, so
+every raise statement reported `undefined name 'raise'` — a confidently false
+positive about code that compiles.
+
+From proton 0.3.4 `facade_app_metadata.mbt:82`:
+
+```moonbit
+guard config.package_config() is Some(package_config) else {
+  raise MissingPackageMetadata
+}
+```
+
+Scale (vendored `.mooncakes` excluded): **585 sites across 54 files of proton,
+427 / 90 of async, 180 / 16 of moonbit_image, 15 / 9 of moonbit_labeler,
+6 / 1 of proton_contract.**
+
+Settled first: all five payload-carrying forms give zero errors from `moon check`.
+A **bare `raise` with no payload is itself valid MoonBit**, in three positions
+(alone in a body, at the end of a body, closing a nested block with no
+semicolon) — also zero errors.
+
+### A new `SRaise` node, deliberately not `SReturn`
+
+Three lenses would read a raise wrongly as a return:
+
+- `Infer::scan_returns` has `SReturn(Some(e)) => acc = ty_join(acc, self.ty_of(e, TUnknown))`,
+  which would join the error CONSTRUCTOR's type into the function's return type;
+- `Interp`'s `SReturn` evaluates the operand and pushes it into `ret_vals`,
+  inventing a return value `raise` never produces;
+- only the divergence is shared, and that is exactly what `SRaise` keeps.
+
+The payload IS still walked and type-checked (`nosuchfunction` inside
+`raise E(nosuchfunction())` still reports), but it is NOT evaluated — everything
+after a terminator is dead, so evaluating a discarded expression could only
+perturb the abstract value stack. One test per lens pins that.
+
+### The result: strictly fewer, never more
+
+| Corpus | 0.4.23 | 0.4.24 | At finding level |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 483 / actionable 1 | **parsed 483 / actionable 1** | identical |
+| `moonbitlang/async` 0.22.4 | parsed 216 / actionable 22 | **parsed 216 / actionable 19** | −8, **0 new** |
+| `moonbit-community/proton` 0.3.4 | parsed 95 / actionable 103 | **parsed 95 / actionable 100** | −6, **0 new** |
+| `riantr/moonbit_image` 0.3.7 | parsed 2 / actionable 3 | **parsed 2 / actionable 0** | −3, **0 new** |
+| `proton_contract` 0.3.4 | parsed 4 / actionable 3 | **parsed 4 / actionable 3** | identical |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 25 / actionable 0 | **parsed 25 / actionable 0** | identical |
+
+All 65 `undefined name 'raise'` findings are **gone**, and **nothing new
+appeared in any family** — `Unreachable` included, 0 → 0. That is unusual for a
+project where every extra bit of syntax brings extra findings, so it is worth
+saying why: before touching anything I **measured whether this would get
+noisier**.
+
+### Measuring the noise first
+
+The moment `SRaise` was wired in I went looking for `Unreachable`, because the
+behaviour lens explores an `if`'s branches **one after another in the same
+`Interp`** and flow state leaks between them: a terminating branch makes
+everything after the `if` look dead. If that were real, this release would have
+traded 56 false positives for a new batch of them.
+
+Measured: across 12,428 files `Unreachable` went 0 → 0. **But the defect is
+real and reproduces independently, with no `raise` involved at all:**
+
+```moonbit
+fn f(g : Int?) -> Int {
+  guard g is Some(v) else { return 0 }
+  return v            // reported unreachable — a false positive
+}
+```
+
+The else terminates, the then branch (empty, because that is how `guard` is
+modelled) does not, and the else's flow won the race. ⇒ **Recorded honestly,
+not fixed here:** it fires on 0 of the six corpora's files, and changing it
+means changing the behaviour lens's branch-merge semantics, which is a separate
+change from `raise`. ⇒ Also recorded: `enum_ctors` harvesting is wired **only**
+to `enum`, not `suberror`/`derive`; and constructor names that live in another
+package's `.mbti` (proton's `OperationFailed`) never reach `IfaceSymTab` at
+all. That is where the remaining 7 come from.
+
+### Mutation gate: 7 mutations, **4 killed / 3 survived on the first version, 7 / 0 at the end**
+
+The three survivors share one cause, and it is worth writing down: **when the
+payload is not parsed it does not disappear, it becomes the next statement.**
+`raise E(nosuchfunction())` is then read as `SRaise(None)` followed by the
+expression statement `E(nosuchfunction())`, and the same two undefined names
+still land on the same line and still merge into one — **every count-based
+assertion passes either way**.
+
+- **M2**: first tried separating them by the behaviour lens not evaluating the
+  payload; that failed too, because an orphaned payload follows a terminating
+  `SRaise(None)`, so the behaviour lens does not execute it either — it gets
+  reported as unreachable instead. What finally separated them was the **anchor
+  line**: with the payload attached the dead statement is `return 1` on line 6;
+  orphaned, the dead statement is the payload itself, still on line 5. Same
+  count, same family, same lens — a different line, and the line *is* the claim.
+- **M4**: a second reason. Every payload before that was a call to an **unknown**
+  name (`E`), and a call to an unknown function has no signature to check its
+  arguments against, so `ty_of` returns early and the payload was never really
+  looked at. Replaced with an expression the type lens checks on its own:
+  `raise 1 + "a"` (settled valid; `int + str` is an `OperatorMismatch`) — a
+  binary operator cannot be skipped for want of a signature.
+- **M7**: the file had **no bare `raise` fixture at all**. The function named
+  `bare` writes `raise E`, which has a payload. Adding the genuinely
+  payload-less form turned it red.
+
+Tests: 386 js / 458 wasm / 386 wasm-gc (12 new).
 ## 0.4.23 — the `raise` effect annotation, and a false positive it uncovered
 
 **First, a correction to a number I gave earlier.** When this release started I
@@ -1430,7 +1549,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.23
+moon add riantr/moonbit_static_analysis@0.4.24
 ```
 
 ```moonbit
@@ -1812,7 +1931,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.23` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.24` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

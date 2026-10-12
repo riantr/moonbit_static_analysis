@@ -607,6 +607,17 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
         }
         None => ()
       }
+    // The payload IS type-checked. What it must NOT do is join into the
+    // function's return type, which is what the `SReturn(Some(e))` arm below
+    // does -- a raise produces no value, so `raise E` would otherwise
+    // contribute `E`'s type to what the function returns.
+    SRaise(e) =>
+      match e {
+        Some(x) => {
+          let _ = self.ty_of(x, TUnknown)
+        }
+        None => ()
+      }
     SBreak | SContinue => ()
     SFunc(_, _, _, _, _) => ()
     // `let (a, b) = pair`: tuple element types are not modelled (no tuple

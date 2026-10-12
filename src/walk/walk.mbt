@@ -658,6 +658,14 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
         Some(x) => self.walk_expr(x)
         None => ()
       }
+    // The payload IS walked. `raise E(undeclared_fn)` must still report the
+    // undefined function -- dropping it here would make the raise path the one
+    // place in the language where a real defect goes silent.
+    SRaise(e) =>
+      match e {
+        Some(x) => self.walk_expr(x)
+        None => ()
+      }
     SBreak | SContinue => ()
     SFunc(_, _, _, _, _) => ()
     SLetDestruct(_, init) => self.walk_expr(init)

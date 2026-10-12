@@ -241,6 +241,50 @@ members = [
   ⇒ **`TBang` 这一个 token 有三个主人**：`raise` 短式、`guard!`、真正的布尔非。
   三者只能**按位置**判定，任何一个改成扫 token 都必须有一条对照测试变红。
 
+### `raise` 作为语句：一条子句的第三个位置（2026-10-13，0.4.24）
+
+`raise E` / `raise E(payload)` / **不带 payload 的裸 `raise`**，现在由 `Parser::parse_raise_stmt`
+读成新的 `SRaise(Expr?)` 节点。settle 过：带 payload 的五种形式、以及裸形式的三个位置
+（独占函数体 / 函数体末尾 / 闭合嵌套块且无分号），`moon check` 全 **0 错误**。
+
+**为什么之前没发现**：0.4.23 做完之后我把每一个 `UndefinedName` 分类，结论写成「`enum`/
+`suberror`/`derive` 的构造子在分析子集之外」。**分类推翻了这个结论**：大约 70 条里
+**65 条是字面量 `raise`**，构造子只有 7 条上下。`raise` 作为语句从来没实现过，而这一版
+之前所有关于「噪声来自未建模声明」的判断都是照着 0.4.23 那批**新可读**文件里的假象做的。
+
+规模（排除 vendored `.mooncakes`）：proton 585 处 / 54 文件、async 427 / 90、
+moonbit_image 180 / 16、moonbit_labeler 15 / 9、proton_contract 6 / 1。出处
+proton `facade_app_metadata.mbt:82`。⇒ 结果 **65 条假阳性全部归零，任何 family 0 条新增。**
+
+**`SRaise` 而不是 `SReturn`**：三个透镜都会读错——`scan_returns` 的
+`SReturn(Some(e)) => acc = ty_join(acc, ty_of(e))` 会把**错误构造子的类型** join 进返回类型；
+`Interp` 的 `SReturn` 会把 payload 求值后 push 进 `ret_vals`，**凭空造一个 `raise` 不产生的
+返回值**。payload **照常 walk 和类型检查**，但**不求值**（终止符之后都是死代码）。
+
+**⇒ 量规模之外还要量「会不会变吵」**：行为透镜的 `if` 各分支在同一个 `Interp` 里顺序执行，
+flow 会串分支。实测 12,428 个文件 `Unreachable` 0 → 0，但缺陷真实且**不需要 `raise` 就能复现**：
+
+```moonbit
+fn f(g : Int?) -> Int {
+  guard g is Some(v) else { return 0 }
+  return v            // 假阳性：else 终止，then（空）不终止，else 的 flow 赢了
+}
+```
+
+**这一版不修**（六个语料 0 次触发，且改的是分支合并语义）。**如实记账，不是缺测试。**
+另记：`enum_ctors` 只接了 `enum`，没接 `suberror`/`derive`；跨文件 `.mbti` 里的构造子名字
+根本进不了 `IfaceSymTab`——那是剩下那 7 条的来源。
+
+### 计数型断言分辨不出的东西（0.4.24 突变门禁记）
+
+**payload 不被解析时它不会消失，它变成下一条语句。** `raise E(nosuchfunction())` 被读成
+`SRaise(None)` + 表达式语句 `E(nosuchfunction())`，同样两个未定义名字、同样同一行、同样合并
+成一条——**所有计数断言两种实现都通过**。第一版 7 道突变死了 3 道，全是这个原因：
+
+- 分辨它靠的是**锚点行号**，不是条数：payload 挂上去时死掉的是 `return 1` 那一行，
+  被孤立时死掉的是 payload 自己那一行。
+- 另一个原因：对**未知名字**的调用没有签名可查实参，`ty_of` 提前返回，payload 根本没被看。
+  要让类型透镜真的检查，payload 得是它自己能查的表达式（`1 + "a"`），而不是一个调用。
 ### 量规模时必须排除 `.mooncakes`（2026-10-13 的一次自我更正）
 
 开工时按「文件里出现 `-> T raise`」grep 六个语料，报出 moui 608 个文件里 149 个

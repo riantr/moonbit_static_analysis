@@ -129,6 +129,103 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.24 —— `raise` 作为表达式：一条子句的第三个位置
+
+**这一版是被一个测量改道的。** 0.4.23 结束时 actionable 涨了，我把每一个 `UndefinedName`
+拉出来分类，结论是「`enum`/`suberror`/`derive` 的构造子在分析子集之外」——这是我上一版
+自己写的判断。分类之后发现**最大的桶根本不是构造子**：大约 70 条 `UndefinedName` 里，
+**65 条是字面量 `raise`** 这个名字（proton 一个语料就占 56 条）。构造子只有 7 条上下。
+
+`raise E` 作为**语句**从来没被实现过。0.4.23 做的是同一条子句在**函数**上的两个位置
+（签名标注、函数类型返回标注），而真正执行 raise 的那条语句是第三个位置。它被当成普通
+标识符读了，于是每一条 raise 语句都报 `undefined name 'raise'`——一个关于**能编译的
+代码**的、语气笃定的假阳性。
+
+出处是 proton 0.3.4 `facade_app_metadata.mbt:82`：
+
+```moonbit
+guard config.package_config() is Some(package_config) else {
+  raise MissingPackageMetadata
+}
+```
+
+规模（排除 vendored `.mooncakes`）：**proton 585 处 / 54 文件、async 427 处 / 90 文件、
+moonbit_image 180 处 / 16 文件、moonbit_labeler 15 处 / 9 文件、proton_contract 6 处 / 1 文件。**
+
+settle 过了，五种带 payload 的形式 `moon check` 全 0 错误；另外**不带 payload 的裸 `raise`
+本身也是合法 MoonBit**，三个位置（独占函数体、函数体末尾、闭合嵌套块且无分号）同样 0 错误。
+
+### 新节点 `SRaise`，而不是 `SReturn`
+
+这是刻意的。三个透镜都会把 raise 读错成 return：
+
+- `Infer::scan_returns` 的 `SReturn(Some(e)) => acc = ty_join(acc, self.ty_of(e, TUnknown))`
+  会把**错误构造子的类型** join 进函数返回类型；
+- `Interp` 的 `SReturn` 会把 payload `eval` 出来 `push` 进 `ret_vals`，**凭空造一个
+  `raise` 根本不产生的返回值**；
+- 只有「会终止」这一件事是两者共有的，而那正是 `SRaise` 保留的全部。
+
+payload **照常被 walk 和类型检查**（`raise E(nosuchfunction())` 里的 `nosuchfunction` 照样
+报），但**不被求值**——终止符之后的一切都是死代码，求值一个结果会被丢弃的表达式只会扰动
+抽象值栈。两个透镜各有一个测试钉住这一点。
+
+### 结果：只减不增
+
+| 语料 | 0.4.23 | 0.4.24 | 发现级 |
+|---|---|---|---|
+| `wzzc-dev/moui` 0.1.12 | parsed 483 / actionable 1 | **parsed 483 / actionable 1** | 逐条一致 |
+| `moonbitlang/async` 0.22.4 | parsed 216 / actionable 22 | **parsed 216 / actionable 19** | −8 条，**0 条新增** |
+| `moonbit-community/proton` 0.3.4 | parsed 95 / actionable 103 | **parsed 95 / actionable 100** | −6 条，**0 条新增** |
+| `riantr/moonbit_image` 0.3.7 | parsed 2 / actionable 3 | **parsed 2 / actionable 0** | −3 条，**0 条新增** |
+| `proton_contract` 0.3.4 | parsed 4 / actionable 3 | **parsed 4 / actionable 3** | 逐条一致 |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 25 / actionable 0 | **parsed 25 / actionable 0** | 逐条一致 |
+
+65 条 `undefined name 'raise'` **全部归零**，而且**没有任何 family 的新增**——
+`Unreachable` 也是 0 → 0。这在「多读一个语法就多一批 finding」的项目里不常见，值得说清楚
+为什么：我在改之前**先查了它会不会引入假的 `unreachable code`**。
+
+### 先量「会不会变吵」，再动手
+
+把 `SRaise` 接上之后我立刻去量 `Unreachable`，因为行为透镜的 `if` 各分支是**在同一个
+`Interp` 里顺序执行**的，分支之间的 flow 状态会串：一个终止的分支会把后面所有语句判成死代码。
+如果这是真的，这一版就是拿 56 条假阳性换一批新的假阳性。
+
+实测：12,428 个文件里 `Unreachable` 从 0 变 0。**但缺陷是真的，而且能独立复现**，
+不需要 `raise`：
+
+```moonbit
+fn f(g : Int?) -> Int {
+  guard g is Some(v) else { return 0 }
+  return v            // 被报成 unreachable —— 这是假阳性
+}
+```
+
+else 分支终止，then 分支（`guard` 建模成空 then）不终止，**else 的 flow 赢了**。
+⇒ **如实记账，这一版不修**：它在这六个语料上 0 次触发，改的是行为透镜的分支合并语义，
+和 raise 是两件事。⇒ 另记一条：`enum_ctors` 的构造子采集**只接了 `enum`**，没接
+`suberror`/`derive`；而且 proton 的 `OperationFailed` 这类**跨文件** `.mbti` 里的构造子名字
+根本进不了 `IfaceSymTab`——那是剩余那 7 条的来源。
+
+### 突变门禁：7 道，**第一版 4 杀 3 存活，最后 7 杀 0 存活**
+
+三道存活各自有一个共同的原因，值得写下来：**payload 不被解析时它不会消失，它变成下一条语句。**
+`raise E(nosuchfunction())` 于是被读成 `SRaise(None)` 后面跟一条表达式语句
+`E(nosuchfunction())`，同样两个未定义名字、同样在同一行、同样合并成一条——**所有计数型断言
+两种实现都通过**。
+
+- **M2**：先试「行为透镜不求值 payload」来分辨，没成——被孤立的 payload 紧跟在一个终止的
+  `SRaise(None)` 后面，行为透镜同样不会执行它，它被报成 unreachable 了。最后用**锚点行号**
+  分开：payload 挂上去时死掉的是第 6 行的 `return 1`，被孤立时死掉的是第 5 行的 payload 本身。
+  **同样的条数、同样的 family、同样的透镜，不同的行号**——而行号正好就是「payload 属于这条
+  raise」这句话本身。
+- **M4**：第二个原因。此前的 payload 全是对**未知名字**的调用，而对未知函数的调用没有签名
+  可查实参，`ty_of` 提前返回，payload 其实根本没被看。换成类型透镜自己会查的表达式：
+  `raise 1 + "a"`（settled 合法，`int + str` 是 `OperatorMismatch`）——二元运算符不像名字查找
+  那样会因为缺签名而跳过。
+- **M7**：文件里**根本没有裸 `raise` 的夹具**。叫 `bare` 的那个函数写的是 `raise E`，
+  有 payload。补上真正无 payload 的形式（三个位置）就红了。
+
+测试 js 386 / wasm 458 / wasm-gc 386（新增 12 道）。
 ## 0.4.23 —— `raise` 效应标注，以及一个被它照出来的假阳性
 
 **先更正我自己的一个数。** 这一版开工时我说「moui 608 个文件里 149 个（24.5%）带
@@ -1252,7 +1349,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.23
+moon add riantr/moonbit_static_analysis@0.4.24
 ```
 
 ```moonbit
@@ -1584,7 +1681,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.23` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.24` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

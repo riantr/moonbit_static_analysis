@@ -200,6 +200,19 @@ pub(all) enum SKind {
   SWhile(Expr, Array[Stmt])
   SFor(String, @core.Span, Expr, Array[Stmt])
   SReturn(Expr?)
+  /// `raise E` / `raise E(payload)` / bare `raise` — a statement that
+  /// propagates an error and never produces a value.
+  ///
+  /// Deliberately NOT `SReturn`: three lenses would read it wrongly. `infer`
+  /// joins a returned expression's type into the inferred return type
+  /// (`SReturn(Some(e)) => acc = ty_join(acc, self.ty_of(e, TUnknown))`), so
+  /// the error CONSTRUCTOR's type would be joined into what the function
+  /// returns. `interp` pushes the operand into `ret_vals`, inventing a value
+  /// that `raise` never produces. What a raise shares with a bare `return` is
+  /// only the divergence, which is exactly what `SRaise` keeps and nothing
+  /// else. The operand is still walked and type-checked, so a real defect
+  /// inside `raise E(bad_call)` still reports.
+  SRaise(Expr?)
   SBreak
   SContinue
   /// top-level only: fn name(params) -> T { body }

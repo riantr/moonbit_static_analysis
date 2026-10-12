@@ -1679,6 +1679,9 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     }
     return { span: sp, kind: @ast.SReturn(Some(self.parse_expr())), }
   }
+  if self.at_name("raise") {
+    return self.parse_raise_stmt()
+  }
   if self.at_name("break") {
     let _ = self.bump()
     return { span: sp, kind: @ast.SBreak, }
@@ -1937,6 +1940,37 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
     }
   }
   { span: sp, kind: @ast.SIf(cond, then, elseifs, els), }
+}
+
+///|
+/// `raise E` / `raise E(payload)` / a bare `raise` — a STATEMENT, and the third
+/// position the `raise` clause appears in after the signature annotation
+/// (0.4.23) and a function type's return annotation (also 0.4.23).
+///
+/// Measured cost of not having it: `raise` was read as an ordinary identifier,
+/// so every one of these reported `undefined name 'raise'` — a confidently false
+/// finding about code that compiles. The scan classified every `UndefinedName`
+/// in the six corpora and 65 of them were the literal name `raise` (56 in
+/// `moonbit-community/proton` alone). The construct itself: 585 sites across 54
+/// files of proton, 427 / 90 of async, 180 / 16 of moonbit_image.
+///
+/// The payload is read as a full expression and kept, so a real defect INSIDE a
+/// raise still reports (`raise E(undeclared_fn)` must not go quiet). Settled
+/// against `moon check` on 0.1.20261012, all zero errors: the bare form, the
+/// payload form, the form inside a `guard ... else` block, the form as a tail
+/// expression, and the form under a `-> T!` signature.
+///
+/// `SRaise` rather than `SReturn`: see the node's own doc comment for the three
+/// lenses that would misread it as a return of the error value.
+fn Parser::parse_raise_stmt(self : Parser) -> @ast.Stmt {
+  let sp = self.span()
+  let _ = self.bump() // raise
+  // Same termination set as `return`: a raise with nothing after it is
+  // `raise` on its own line, or `raise` closing a block with no semicolon.
+  if self.at(TNewline) || self.at(TSemi) || self.at(TRBrace) || self.at(TEOF) {
+    return { span: sp, kind: @ast.SRaise(None), }
+  }
+  { span: sp, kind: @ast.SRaise(Some(self.parse_expr())), }
 }
 
 ///|

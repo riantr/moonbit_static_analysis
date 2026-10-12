@@ -564,6 +564,20 @@ fn Interp::exec_stmt(
       self.ret_vals.push(v)
       self.flow = FReturn
     }
+    // A raise terminates the frame exactly as a return does, so the flow is
+    // `FReturn` -- there is deliberately no separate `FRaise`, because from
+    // inside this frame the two are indistinguishable and a third state would
+    // mean every "is this frame dead yet" test had to learn about it.
+    //
+    // The pushed value is ABOTTOM, not the payload: `raise E` produces no value
+    // at all. And the payload is NOT evaluated. Everything after a terminator is
+    // dead, so evaluating an expression whose result is discarded could only
+    // perturb the abstract value stack for no observable gain; the payload is
+    // still walked and type-checked by the other two lenses.
+    SRaise(_) => {
+      self.ret_vals.push(ABottom)
+      self.flow = FReturn
+    }
     SBreak => self.flow = FBreak
     SContinue => self.flow = FContinue
     SFunc(_, _, _, _, _) => ()
