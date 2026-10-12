@@ -490,6 +490,37 @@ exported symbol can therefore be absent with every test green — it bit 0.4.18
 with `TTilde`. A self-scan reporting `undefined name '<a name you just added>'`
 is this, not a code bug.
 
+**An `impl ... with fn` method is not a top-level function (since 0.4.20).**
+Two independent bugs, in two independent readers, and the same root cause twice.
+
+- In `skip_decl_braced`, the `fn` sentinel exists for `pub impl Eq for T` — no
+  body, methods in a separate block. But `impl T for U with fn m(...) { ... }`
+  puts a `fn` INSIDE the declaration, and the sentinel fired, leaving the body
+  behind. `with` is the discriminator: it cannot appear in the bodiless form.
+- In `collect_declared_names`, the `with fn` header is written at depth 0 — the
+  brace comes after the parameter list — so the harvest recorded the METHOD as a
+  package-level value. Any call to that name anywhere in the package then
+  resolved to "defined".
+
+Note the mechanism that made the first test hollow: **`Parser::skip` records a
+note and consumes nothing.** Before the fix the top-level loop re-read the
+`with fn` as an ordinary top-level function, so `self` was bound all along and a
+test asserting "no undefined `self`" was green either way. The property that
+actually changed was the harvest.
+
+**A `trait`'s own name is still a package-level type.** Skipping the whole
+holder loses `trait Marker`'s `Marker`, which is declared here — `impl Eq for T`
+and `extend` declare nothing, since `Eq` is the trait being implemented.
+
+**THE PATTERN, seen twice now (0.4.18 and 0.4.20): there are TWO name readers.**
+The PARSER skips declarations; `collect_declared_names` is a separate token
+scanner that fills the sibling/private table. Teaching a new declaration form to
+one does nothing for the other. Both times, the symptom was a name that was
+either missing from the package or present when it should not be — and neither
+showed up in the actionable count, because a fabricated binding is a false
+NEGATIVE and a missing one is masked by a re-read. When you change how a
+declaration form is skipped, check whether a gate covers the harvest too.
+
 If you are scanning a package whose dependencies you care about, pass
 `--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at
 all and says so in its own output: measured on riantr/moonbit_labeler, it goes from 5

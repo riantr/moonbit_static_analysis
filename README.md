@@ -129,6 +129,71 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.20 —— 一个方法被当成了顶层函数
+
+`impl T for U with fn m(...) { ... }`。可读文件 432 → **436**，withheld 176 → 172，
+unreliable 3193 → **3025**，moui 的 actionable **14 → 10**：四条
+`undefined name 'self'` 消失。
+
+### 我第一版的测试是**空的**，突变抓出来了
+
+第一版只断言「`self` 没被报未定义」。把修复回退掉，整个套件**照样全绿**。
+原因不在直觉里，在 `Parser::skip`：它只记一条 note，**一个 token 都不消费**。
+所以修复前 cursor 停在 `fn` 上，顶层循环把 `with fn identity(self) { ... }`
+当成一个**普通顶层函数**重新读了一遍——`self` 一直都绑定着，语料那条告警
+从来就不是「缺绑定」。
+
+真正变掉的是**收割**（harvest）：`collect_declared_names` 看到的是 depth 0 的
+`fn`，于是把方法名 `identity` 记成了包级 value，包里任何地方调用 `identity`
+都会解析成「已定义」。
+
+### 改了**两个**地方，因为有两个独立的读取器
+
+1. `skip_decl_braced`：`fn` 哨兵是给 `pub impl Eq for T`（无体，形参在另一个
+   块里）准备的，`with` 只出现在有体的那种写法里，所以拿 `with` 当区分。
+2. `collect_declared_names`：**完全独立的第二个名字读取器**，根本不经过
+   `skip_decl_braced`。不给它自己加护栏，幽灵方法名原样回来。
+
+（这已经是 0.4.18 的同一个教训第二次出现了：泛型函数名进不了 sibling 表，
+也是因为这个。）
+
+语料上量过：1224 个 `impl ... with` 头（221 个文件），其中 **1047 个写
+`with fn`**，另外 177 个**省略 `fn`**（`pub impl ToJson for Affine with
+to_json(self : Affine)`）。那 177 个从来没碰到哨兵、一直是对的；1047 个全错。
+1047 个头里**没有一个**带多于一个 `fn`，所以停在第一个 body 之后不会留下悬空。
+
+### `trait` 自己的名字必须留着
+
+第一版把整个 holder 挡掉了，于是 `trait Marker { ... }` 的 `Marker` 也收割不到，
+把 pyroduct 那个既有测试弄红了。`trait` 声明的类型是包级的，要留；
+`impl Eq for T` 和 `extend` 声明**任何东西**都不声明——`Eq` 是被实现的 trait，
+声明在别处——所以只让 `trait` 贡献名字。这条单独用 M4 钉住。
+
+### 收割那道修复在 moui 上**看不到收益**，这是预期
+
+语料数字和只改 parser 时一模一样（436 / 10）。因为它修的是**造出来的绑定**
+——一个假的阴性，不是少报一条可见的发现。它防的是「包里调用一个方法名，
+被解析成已定义」。moui 里没有这种调用，所以量不出来。它的门是
+`0420: an impl method is not harvested as a top-level function`，
+只测收割器本身。
+
+### 差分
+
+| 语料 | 0.4.19 | 0.4.20 |
+|---|---|---|
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **六项指标逐字节一致** |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 23 / actionable 3 | **parsed 23 / actionable 3** |
+| `moonbitlang/async` 0.22.4 | parsed 196 / actionable 30 | **parsed 206 / actionable 29** |
+| `wzzc-dev/moui` 0.1.12 | parsed 432 / actionable 14 | **parsed 436 / actionable 10** |
+
+自检 56/56，`actionable=0`、`unreliable=0`、`withheld=0`。
+
+### 突变 4 道全杀，而且是两个方向
+
+M1 拿掉 `with` 例外（修复消失）、M2 把哨兵整个关掉（**控制测试**才抓得住：
+无体 impl 会一路吞掉后面整个文件）、M3 拿掉收割护栏、M4 不收 `trait` 名字。
+M2 是这个门禁存在的理由——只测「修复没了」是不够的。
+
 ## 0.4.19 —— 389 → 432：一个字面量被当成绑定名，和一个把文件读废的类型注解
 
 接着用 `wzzc-dev/moui` 0.1.12。读得懂的文件 389 → **432**（71.1%），withheld
@@ -852,7 +917,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.19
+moon add riantr/moonbit_static_analysis@0.4.20
 ```
 
 ```moonbit
@@ -1184,7 +1249,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.19` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.20` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

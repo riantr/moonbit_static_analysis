@@ -483,12 +483,29 @@ fn Parser::skip_decl_braced(
   sp : @core.Span,
 ) -> Unit {
   let mut found = false
+  // `impl T for U with fn m(...) { ... }` puts a `fn` INSIDE the declaration, and
+  // that `fn` is followed by the body brace. The `fn` sentinel below exists for
+  // the OTHER shape — `pub impl Eq for T` with its methods in a separate block —
+  // so the two have to be told apart or the first one leaves its body behind.
+  //
+  // `with` is the marker: it cannot appear in the bodiless shape. The measured
+  // shapes agree: 1224 `impl ... with` headers in wzzc-dev/moui 0.1.12, of which
+  // 1047 write `with fn` and the other 177 omit `fn` entirely
+  // (`pub impl ToJson for Affine with to_json(self : Affine)`). The 177 never met
+  // the sentinel and were never wrong; the 1047 all were.
+  //
+  // None of the 1047 headers carries more than one `fn`, so stopping after the
+  // first body leaves nothing dangling.
+  let mut saw_with = false
   while !self.at(TEOF) {
     if self.at(TLBrace) {
       found = true
       break
     }
-    if self.at_name("fn") {
+    if self.at_name("with") {
+      saw_with = true
+    }
+    if self.at_name("fn") && !saw_with {
       break
     }
     let _ = self.bump()
@@ -632,6 +649,9 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
   // Inside the braces of that enum, and only those braces.
   let mut enum_body = false
   let mut paren = 0
+  // An `impl` / `trait` / `extend` has been seen at depth 0 and its body has not
+  // closed yet. Everything declared in that span is a METHOD.
+  let mut in_holder = false
   while i < toks.length() {
     match toks[i] {
       TLBrace => {
@@ -649,12 +669,29 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
           depth -= 1
           if depth == 0 {
             enum_body = false
+            in_holder = false
           }
         }
       TLParen => if enum_body && depth == 1 { paren += 1 }
       TRParen => if enum_body && depth == 1 && paren > 0 { paren -= 1 }
       TName(n) =>
-        if depth == 0 && n == "using" {
+        if depth == 0 && method_holder(n) {
+          // The holder's OWN name is still a package-level binding when the
+          // holder declares it: `trait Marker { ... }` declares the type
+          // `Marker`, and dropping it broke "collect_declared_names: every
+          // top-level form pyroduct actually uses".
+          //
+          // `impl` and `extend` declare NOTHING — `impl Eq for T` names the
+          // trait being implemented, which is declared somewhere else — so
+          // only `trait` contributes a name.
+          if n == "trait" {
+            match declared_name_after_kw(toks, i) {
+              Some(d) => tab.types.set(d, true)
+              None => ()
+            }
+          }
+          in_holder = true
+        } else if depth == 0 && n == "using" {
           // A re-export block. Collected here because this is where the
           // package's top-level names are enumerated, and a re-export is a
           // declaration: the names it lists ARE bound in this package.
@@ -665,7 +702,9 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
           // `view_double_option_key` and `view_layout_declaration` were each
           // reported as undefined variable by their own package.
           i = collect_using(toks, i, tab) - 1
-        } else if depth == 0 && (declares_value(n) || declares_type(n)) {
+        } else if depth == 0 &&
+          !in_holder &&
+          (declares_value(n) || declares_type(n)) {
           if n == "enum" {
             enum_pending = true
           }
@@ -1443,6 +1482,20 @@ fn Parser::parse_block(self : Parser) -> (Array[@ast.Stmt], @core.Span) {
 ///
 /// The `[` is only skipped when it sits IMMEDIATELY after the keyword. Every
 /// other shape reaches `declared_name_at` at exactly the index it did before.
+
+///| Declaration keywords whose braced body holds METHODS rather than
+
+///| package-level bindings. `struct` and `enum` are not here: a struct field
+
+///| already sits inside braces, and an enum's variants ARE package-level values
+
+///|
+/// harvested by their own path.
+fn method_holder(kw : String) -> Bool {
+  kw == "impl" || kw == "trait" || kw == "extend"
+}
+
+///|
 fn declared_name_after_kw(toks : Array[@lexer.Tok], kw_i : Int) -> String? {
   let mut i = kw_i + 1
   if i < toks.length() && toks[i] is TLBracket {

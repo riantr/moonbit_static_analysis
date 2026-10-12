@@ -153,6 +153,79 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.20 — a method was being harvested as a top-level function
+
+`impl T for U with fn m(...) { ... }`. Files understood 432 → **436**, withheld
+176 → 172, unreliable 3193 → **3025**, and moui actionable **14 → 10**: the four
+`undefined name 'self'` findings are gone.
+
+### My first test was HOLLOW, and the mutation is what caught it
+
+The first version asserted only that `self` was not reported undefined. Reverting
+the fix left the whole suite green. The reason is not the intuitive one, and it
+is in `Parser::skip`: it records a note and CONSUMES NOTHING. So before the fix
+the cursor stopped ON `fn` and the top-level loop re-read
+`with fn identity(self) { ... }` as an ordinary top-level FUNCTION — `self` was
+bound all along, and the corpus finding was never about a missing binding.
+
+What actually changed is the HARVEST. `collect_declared_names` saw a depth-0 `fn`
+and recorded the method name `identity` as a package-level value, so every call
+to `identity` anywhere in the package resolved to "defined".
+
+### TWO places, because there are TWO readers
+
+1. `skip_decl_braced`: the `fn` sentinel exists for `pub impl Eq for T` (no body;
+   methods live in a separate block), and `with` only ever appears in the
+   body-carrying form — so `with` is the discriminator.
+2. `collect_declared_names`: a completely separate name reader that never goes
+   through `skip_decl_braced`. Without its own guard the phantom name returns.
+
+That is the second time the same 0.4.18 lesson has repeated — a generic
+function's name missing from the sibling table was the same root cause.
+
+Measured on the corpus: 1224 `impl ... with` headers across 221 files, of which
+**1047 write `with fn`** and the other 177 OMIT `fn` entirely
+(`pub impl ToJson for Affine with to_json(self : Affine)`). The 177 never met the
+sentinel and were never wrong; the 1047 all were. None of the 1047 headers
+carries more than one `fn`, so stopping after the first body leaves nothing
+dangling.
+
+### `trait`'s OWN name has to stay
+
+The first version blocked the whole holder, so `trait Marker { ... }` stopped
+harvesting `Marker` and turned a pre-existing pyroduct test red. A `trait`
+declares a package-level TYPE and must be kept; `impl Eq for T` and `extend`
+declare nothing — `Eq` is the trait being implemented, declared elsewhere — so
+only `trait` contributes a name. Mutation M4 pins that on its own.
+
+### The harvest fix shows NO benefit on moui, and that is expected
+
+The corpus numbers are identical to parser-only (436 / 10). It repairs a
+FABRICATED binding — a false NEGATIVE — not a visible finding. It prevents "a
+method name called from the package resolving to defined". moui has no such
+call, so it cannot be measured there. Its gate is
+"0420: an impl method is not harvested as a top-level function", which tests
+the harvester directly.
+
+### Differential
+
+| Corpus | 0.4.19 | 0.4.20 |
+|---|---|---|
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **byte-identical on all six metrics** |
+| `riantr/moonbit_labeler` 0.2.13 | parsed 23 / actionable 3 | **parsed 23 / actionable 3** |
+| `moonbitlang/async` 0.22.4 | parsed 196 / actionable 30 | **parsed 206 / actionable 29** |
+| `wzzc-dev/moui` 0.1.12 | parsed 432 / actionable 14 | **parsed 436 / actionable 10** |
+
+Self-scan 56/56, `actionable=0`, `unreliable=0`, `withheld=0`.
+
+### Four mutations, all killed, in BOTH directions
+
+M1 removes the `with` exception (the fix is gone); M2 disables the sentinel
+entirely — only the CONTROL test can catch that, because a bodiless impl would
+run on and swallow the rest of the file; M3 removes the harvest guard; M4 drops
+the `trait` name. M2 is the reason this gate exists: testing only "the fix is
+gone" is not enough.
+
 ## 0.4.19 — 389 → 432: a literal bound as a variable, and a function type that ended the file
 
 Same corpus, wzzc-dev/moui 0.1.12. Files understood 389 → **432** (71.1%),
@@ -949,7 +1022,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.19
+moon add riantr/moonbit_static_analysis@0.4.20
 ```
 
 ```moonbit
@@ -1331,7 +1404,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.19` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.20` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
