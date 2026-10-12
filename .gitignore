@@ -19,6 +19,15 @@ cvc5wrap.ps1
 # EXTENSIONS.md, and these files are megabytes of per-file listing.
 _qa/
 
+# Measurement dumps written by the `_verify` gates: full per-file scan output and
+# the gate-on/gate-off captures used to price a behaviour change. Evidence, not
+# source — the numbers they produced are quoted in README.md, and each file is
+# megabytes. `_verify` also holds the GATES themselves (.ps1), which ARE
+# committed, so the ignore is deliberately narrow and only covers `_`-prefixed
+# captures.
+_verify/_*.txt
+_verify/_*.json
+
 # The mooncakes credential. `git add -A` staged it once before .moonignore
 # existed; the token inside is live. The copy CI needs is a GitHub Actions
 # secret, not a file in the tree. .moonignore covers the publish side of this.
