@@ -10,7 +10,15 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      # v5 -> v6 -> v7. Both majors are safe for THIS file and the reasons are
+      # worth recording, because "just bump it" is how a release gate breaks:
+      #   v6 persists credentials to a separate file instead of .git/config.
+      #     Harmless here: no step in this workflow runs git, and nothing pushes
+      #     from CI -- the tag is pushed locally and this job only reads.
+      #   v7 refuses to check out fork PRs for `pull_request_target` and
+      #     `workflow_run`. This workflow triggers on push, tags and plain
+      #     `pull_request`, none of which are affected.
+      - uses: actions/checkout@v7
       # Installed from the official script rather than a setup action, because
       # the action this file used to reference does not exist:
       #   moonbitlang/setup-moonbit  -> 404, repository not found

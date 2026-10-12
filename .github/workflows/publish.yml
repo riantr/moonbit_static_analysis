@@ -76,7 +76,13 @@ jobs:
       SECRET: ${{ secrets.MOONCAKES_RIANTR_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        # v5 -> v6 -> v7, same reasoning as gate.yml and for the same reasons.
+        # v6 moves persisted credentials out of .git/config into their own file;
+        # this job reads the Mooncakes token from `secrets`, never from git
+        # config, and publishes over HTTP. v7 blocks fork checkouts for
+        # `pull_request_target` / `workflow_run`, and this workflow triggers on
+        # a tag push only.
+        uses: actions/checkout@v7
 
       - name: Install moon
         # The official install script, not a setup action: moonbitlang/setup-moonbit
