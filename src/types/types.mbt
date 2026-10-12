@@ -312,7 +312,7 @@ pub(all) struct Sig {
   param_tys : Array[Ty]
   ret : Ty
   declared_ret : Ty
-  line : Int
+  line : Int32
 } derive(Eq)
 
 ///|
@@ -323,7 +323,7 @@ pub(all) struct TypeResult {
 }
 
 ///|
-fn str_slice(s : String, from : Int, to : Int) -> String {
+fn str_slice(s : String, from : Int32, to : Int32) -> String {
   let buf = StringBuilder()
   for c in s {
     buf.write_char(c)

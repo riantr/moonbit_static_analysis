@@ -80,7 +80,7 @@ fn view_str(v : StringView) -> String {
 
 ///|
 /// the part of s after the first n chars, reified ("" when short)
-fn after_n(s : String, n : Int) -> String {
+fn after_n(s : String, n : Int32) -> String {
   if s.length() <= n {
     ""
   } else {
@@ -93,7 +93,7 @@ fn after_n(s : String, n : Int) -> String {
 }
 
 ///|
-fn count_char(s : String, c : Char) -> Int {
+fn count_char(s : String, c : Char) -> Int32 {
   let mut n = 0
   for x in s {
     if x == c {
@@ -197,9 +197,9 @@ pub fn fence_mode(info : String) -> FenceMode? {
 /// (block_source_with_line_padding, start_line) pairs. `mbt nocheck`, bare
 /// `mbt` and bare `moonbit` blocks are skipped — measured, see `FenceMode`.
 /// Other fences are prose and skipped too.
-pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
+pub fn moonbit_fences(md : String) -> Array[(String, Int32)] {
   let src = normalize(md)
-  let blocks : Array[(String, Int)] = []
+  let blocks : Array[(String, Int32)] = []
   let lines = split_lines(src)
   let mut i = 0
   let n = lines.length()
@@ -243,7 +243,7 @@ pub fn moonbit_fences(md : String) -> Array[(String, Int)] {
 /// drift away from the fence rules — the "2 compiled fences" string in
 /// `src/cli` stayed wrong for a release precisely because it was hard-coded
 /// while the classification underneath it changed.
-pub fn fence_census(md : String) -> (Int, Int) {
+pub fn fence_census(md : String) -> (Int32, Int32) {
   let src = normalize(md)
   let lines = split_lines(src)
   let mut live = 0
@@ -321,7 +321,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
   let mut n_parse = 0
   let mut n_subset = 0
   let mut first_error = 0
-  let reasons : Map[String, Int] = Map([])
+  let reasons : Map[String, Int32] = Map([])
   let mut reason = ""
   let mut reason_n = 0
   for pair in moonbit_fences(md) {
@@ -409,7 +409,7 @@ fn is_digit(c : Char) -> Bool {
 
 ///|
 /// the first n chars of s ("" when n <= 0)
-fn take_n(s : String, n : Int) -> String {
+fn take_n(s : String, n : Int32) -> String {
   if n <= 0 {
     ""
   } else {
@@ -458,7 +458,7 @@ fn rsplit_at(s : String, sep : String) -> (String, String)? {
 
 ///|
 /// the identifier starting at index `from` ("" when there is none)
-fn ident_from(chars : Array[Char], from : Int) -> String {
+fn ident_from(chars : Array[Char], from : Int32) -> String {
   let buf = StringBuilder()
   let mut i = from
   while i < chars.length() && is_ident_char(chars[i]) {
@@ -1148,7 +1148,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   let type_params : Array[String] = []
   let sig_names : Array[String] = []
   let const_names : Array[String] = []
-  let referenced : Array[(String, Int, Int)] = []
+  let referenced : Array[(String, Int32, Int32)] = []
   let lines = split_lines(text)
   let mut decl_depth = 0
   let mut import_depth = 0

@@ -44,11 +44,25 @@ function Invoke-Mutation {
   $bytes = [System.IO.File]::ReadAllBytes($path)
   $sha0  = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
   $text0 = [System.Text.Encoding]::UTF8.GetString($bytes)
-  if ($text0.IndexOf($Find, [System.StringComparison]::Ordinal) -lt 0) {
+
+  # Match and write back in ONE line-ending style, whichever the file already
+  # uses. `moon fmt` rewrote the whole tree from LF to CRLF at 0.1.20261012,
+  # and a literal multi-line pattern in this file — which is LF, because it is
+  # not MoonBit source and the formatter never touches it — then matched
+  # NOTHING and every mutation reported NO-OP. The gate did fail loudly on
+  # that, which is why NO-OP counts as a failure here; but a gate that silently
+  # stops matching is one edit away from being decorative, so the comparison is
+  # normalised instead. `Replace` is ordinal and the patterns are unique.
+  $eol = if ($text0.Contains("`r`n")) { "`r`n" } else { "`n" }
+  $norm   = $text0.Replace("`r`n", "`n")
+  $findN  = $Find.Replace("`r`n", "`n")
+  $replN  = $Replace.Replace("`r`n", "`n")
+  if ($norm.IndexOf($findN, [System.StringComparison]::Ordinal) -lt 0) {
     $script:results += [pscustomobject]@{ Mutation=$Name; Outcome='NO-OP'; Killed=0; Detail='pattern absent' }
     $script:failed += $Name; return
   }
-  [System.IO.File]::WriteAllText($path, $text0.Replace($Find, $Replace), (New-Object System.Text.UTF8Encoding($false)))
+  $mutated = $norm.Replace($findN, $replN)
+  [System.IO.File]::WriteAllText($path, $mutated.Replace("`n", $eol), (New-Object System.Text.UTF8Encoding($false)))
 
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   $out = & moon test 2>&1 | Out-String

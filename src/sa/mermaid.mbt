@@ -44,8 +44,8 @@ pub fn mermaid_states(
   verdicts : Array[Verdict],
   summary : Summary,
   prov : ScanProvenance,
-  per_file : Int,
-  max_files : Int,
+  per_file : Int32,
+  max_files : Int32,
 ) -> String {
   let target = prov.target
   let out = StringBuilder()
@@ -106,8 +106,8 @@ pub fn mermaid_states(
 /// Indices of the files to draw. `0` keeps every file in the order the scan
 /// produced them, which is the order the scanner walked. A positive
 /// `max_files` keeps the first `max_files` of the ACTIONABLE ranking below.
-fn pick_files(verdicts : Array[Verdict], max_files : Int) -> Array[Int] {
-  let idx : Array[Int] = []
+fn pick_files(verdicts : Array[Verdict], max_files : Int32) -> Array[Int32] {
+  let idx : Array[Int32] = []
   for i, _ in verdicts {
     idx.push(i)
   }
@@ -119,7 +119,7 @@ fn pick_files(verdicts : Array[Verdict], max_files : Int) -> Array[Int] {
   // that is 402 notices and zero defects, and ranking by raw count put it
   // first in a diagram whose whole job is to lead with what to fix.
   // Ties break on raw findings, then on scan order, so the output is stable.
-  idx.sort_by(fn(a : Int, b : Int) {
+  idx.sort_by(fn(a : Int32, b : Int32) {
     let va = verdicts[a]
     let vb = verdicts[b]
     let da = va.findings.length() - va.notices
@@ -173,7 +173,7 @@ fn emit_file(
   out : StringBuilder,
   fid : String,
   v : Verdict,
-  per_file : Int,
+  per_file : Int32,
 ) -> Unit {
   let defects = v.findings.length()
   out.write_string("    state \"\{fid} — \{sanitize(v.path)}\" as \{fid} {\n")
@@ -361,7 +361,7 @@ fn guard_note(line : String) -> String {
 
 ///|
 /// `limit` capped at `n`, with `0` meaning no cap.
-fn cap(limit : Int, n : Int) -> Int {
+fn cap(limit : Int32, n : Int32) -> Int32 {
   if limit <= 0 {
     n
   } else if limit < n {
@@ -413,7 +413,7 @@ fn by_rank(lenses : Array[@core.Lens]) -> Array[@core.Lens] {
 }
 
 ///|
-fn file_id(i : Int) -> String {
+fn file_id(i : Int32) -> String {
   "f" + i.to_string()
 }
 

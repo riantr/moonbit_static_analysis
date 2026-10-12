@@ -78,20 +78,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # The official install script, not a setup action: moonbitlang/setup-moonbit
-      # does not exist (404), which is what made the sibling gate.yml fail every
-      # run at "Set up job" -- actions a workflow references are resolved during
-      # job setup, before any step is named in the log.
-      #
-      # The path is install/unix.sh. install.sh answers 403 even from a GitHub
-      # runner, which the first fixed run proved by failing with curl exit 22.
-      #
-      # MOONBIT_INSTALL_VERSION is pinned to the same value as gate.yml, for
-      # the same reason: the installer defaults to `latest`, and the formatter
-      # is not stable across moon releases. See gate.yml for the measurement.
       - name: Install moon
-        env:
-          MOONBIT_INSTALL_VERSION: "0.1.20260920"
+        # The official install script, not a setup action: moonbitlang/setup-moonbit
+        # does not exist (404), which is what made the sibling gate.yml fail every
+        # run at "Set up job" -- actions a workflow references are resolved during
+        # job setup, before any step is named in the log.
+        #
+        # The path is install/unix.sh. install.sh answers 403 even from a GitHub
+        # runner, which the first fixed run proved by failing with curl exit 22.
         run: |
           set -euo pipefail
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash

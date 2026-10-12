@@ -4,7 +4,7 @@
 
 ///|
 pub(all) enum Tok {
-  TInt(Int)
+  TInt(Int32)
   /// An integer literal this analyzer gives no value to: it did not fit the
   /// fixed `lit_max` bound, or it carried an `L` / `U` / `UL` suffix naming a
   /// wider type. It is a real integer, not an error — the point is that
@@ -114,9 +114,9 @@ pub(all) enum Tok {
 ///|
 priv struct Lexer {
   chars : Array[Char]
-  mut pos : Int
-  mut line : Int
-  mut col : Int
+  mut pos : Int32
+  mut line : Int32
+  mut col : Int32
   toks : Array[Tok]
   spans : Array[@core.Span]
   reports : Array[@report.Report]
@@ -207,7 +207,7 @@ fn newline_suppressed_after(prev : Tok) -> Bool {
 /// with the closer on its own line would die the same way. A `)`/`]` can
 /// only ever close the group the current expression is inside, so no
 /// well-formed statement boundary is lost to this suppression.
-fn closer_ahead(chars : Array[Char], start : Int) -> Bool {
+fn closer_ahead(chars : Array[Char], start : Int32) -> Bool {
   let n = chars.length()
   let mut i = start
   let mut scanning = true
@@ -233,7 +233,13 @@ fn closer_ahead(chars : Array[Char], start : Int) -> Bool {
 }
 
 ///|
-fn Lexer::emit(self : Lexer, t : Tok, line : Int, col : Int, len : Int) -> Unit {
+fn Lexer::emit(
+  self : Lexer,
+  t : Tok,
+  line : Int32,
+  col : Int32,
+  len : Int32,
+) -> Unit {
   self.toks.push(t)
   self.spans.push(@core.span_at(line, col, len))
 }
@@ -389,7 +395,7 @@ fn Lexer::lex_attribute(self : Lexer) -> Unit {
 /// bound still lexes, still parses and still types as an integer — it just
 /// carries no value, which is what stops `const_eval` from folding a dead
 /// branch on a number it could not read. See `TBigInt`.
-let lit_max : Int = 2147483647
+let lit_max : Int32 = 2147483647
 
 ///|
 /// `acc * base + d`, or `ok = false` rather than a wrapped answer.
@@ -398,7 +404,7 @@ let lit_max : Int = 2147483647
 /// computed in the first place. That matters because `Int` is 32-bit on wasm:
 /// a plain `acc * 16 + 15` on `0xFFFFFFFF` would trap the whole scan instead of
 /// degrading to "no value".
-fn lit_step(acc : Int, base : Int, d : Int) -> (Int, Bool) {
+fn lit_step(acc : Int32, base : Int32, d : Int32) -> (Int32, Bool) {
   if acc > (lit_max - d) / base {
     (-1, false)
   } else {
@@ -408,7 +414,7 @@ fn lit_step(acc : Int, base : Int, d : Int) -> (Int, Bool) {
 
 ///|
 /// Digit value for a base, or -1 when the character is not a digit of it.
-fn digit_value(c : Char, base : Int) -> Int {
+fn digit_value(c : Char, base : Int32) -> Int32 {
   let mut v = -1
   let ci = c.to_int()
   if is_digit(c) {
@@ -596,7 +602,7 @@ fn Lexer::lex_number(self : Lexer) -> Tok {
 }
 
 ///|
-fn Lexer::slice(self : Lexer, from : Int, to : Int) -> String {
+fn Lexer::slice(self : Lexer, from : Int32, to : Int32) -> String {
   let buf = StringBuilder()
   let mut i = from
   while i < to {
@@ -1071,7 +1077,7 @@ fn Lexer::lex_block_string(self : Lexer) -> Tok {
 }
 
 ///|
-fn Lexer::lex_name(self : Lexer) -> (Tok, Int, Int, Int) {
+fn Lexer::lex_name(self : Lexer) -> (Tok, Int32, Int32, Int32) {
   let l = self.line
   let c0 = self.col
   let start = self.pos
@@ -1261,7 +1267,7 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
 /// practice are small, and this way a hostile or accidental literal such as
 /// `1.0e999999` cannot run the scan long. Past this cap the result is already 0
 /// or infinity as a Double anyway.
-fn pow10(k : Int) -> Double {
+fn pow10(k : Int32) -> Double {
   let cap = 400
   let mut r = 1.0
   let mut i = 0

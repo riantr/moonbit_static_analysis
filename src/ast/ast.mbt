@@ -68,7 +68,7 @@ pub(all) enum UOp {
 
 ///|
 pub(all) enum EKind {
-  EInt(Int)
+  EInt(Int32)
   /// An integer literal with NO value attached: it exceeded the analyzer's
   /// fixed bound, or it carried an `L` / `U` / `UL` suffix for a wider type.
   ///
@@ -145,7 +145,7 @@ pub(all) enum EKind {
   /// TFloat and reports honestly instead of misparsing. There is no tuple
   /// Ty to per-element, so the lenses type the base and leave the element
   /// unknown.
-  ETupleField(Expr, Int)
+  ETupleField(Expr, Int32)
   /// An `is` test `base is Pattern`. The pattern is reduced AT PARSE TIME
   /// to the binding name it introduces — `TName(tag)` -> "tag", `TEOF` ->
   /// "" — and no lens ever sees pattern text: MoonBit string indexing is

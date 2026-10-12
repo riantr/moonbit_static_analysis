@@ -19,7 +19,7 @@
 // renderer's own output, so it cannot rot into a test that always passes.
 
 ///|
-fn mm_span(line : Int, col : Int) -> @core.Span {
+fn mm_span(line : Int32, col : Int32) -> @core.Span {
   { start: { line, col, }, end: { line, col, }, }
 }
 
@@ -28,7 +28,7 @@ fn mm_rep(
   family : @core.Family,
   lenses : Array[@core.Lens],
   message : String,
-  line : Int,
+  line : Int32,
 ) -> @report.Report {
   @report.Report::{ family, lenses, message, span: mm_span(line, 7), vst: [], }
 }
@@ -38,9 +38,9 @@ fn mm_verdict(
   path : String,
   findings : Array[@report.Report],
   parsed : Bool,
-  region_line : Int,
-  unreliable : Int,
-  notices : Int,
+  region_line : Int32,
+  unreliable : Int32,
+  notices : Int32,
 ) -> @sa.Verdict {
   @sa.Verdict::{
     path,
@@ -62,7 +62,7 @@ fn mm_verdict(
 ///|
 /// A parsed file carrying `n` findings, cycled across three families so more
 /// than one inspection owns a node in the drawing.
-fn mm_parsed_with(n : Int) -> @sa.Verdict {
+fn mm_parsed_with(n : Int32) -> @sa.Verdict {
   let fams = [@core.FUndefinedName, @core.FUnusedLocal, @core.FArgType]
   let reps = []
   for i in 0..<n {
@@ -146,8 +146,8 @@ fn mm_prov() -> @sa.ScanProvenance {
 ///|
 fn mm_render(
   vs : Array[@sa.Verdict],
-  per_file : Int,
-  max_files : Int,
+  per_file : Int32,
+  max_files : Int32,
 ) -> String {
   @sa.mermaid_states(vs, @sa.aggregate(vs), mm_prov(), per_file, max_files)
 }
@@ -191,7 +191,7 @@ fn mm_valid_id(s : String) -> Bool {
 }
 
 ///|
-fn mm_count_quotes(s : String) -> Int {
+fn mm_count_quotes(s : String) -> Int32 {
   let mut n = 0
   for c in s {
     if c == '"' {
@@ -202,7 +202,7 @@ fn mm_count_quotes(s : String) -> Int {
 }
 
 ///|
-fn mm_occurrences(s : String, sub : String) -> Int {
+fn mm_occurrences(s : String, sub : String) -> Int32 {
   s.split(sub).to_array().length() - 1
 }
 

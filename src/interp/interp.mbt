@@ -12,7 +12,7 @@
 /// The abstract value lattice: Bottom < Const < Type < Union < Any.
 pub(all) enum AbsVal {
   ABottom
-  AInt(Int)
+  AInt(Int32)
   ABool(Bool)
   AType(String)
   AUnion(Array[String])
@@ -152,7 +152,7 @@ priv struct MethodDef {
   /// the partial return used on recursive cycles (from the signature)
   cycle_ret : AbsVal
   body : Array[@ast.Stmt]
-  line : Int
+  line : Int32
 }
 
 ///|
@@ -595,7 +595,7 @@ fn Interp::exec_alt(
   elseifs : Array[@ast.ElseIf],
   els : Array[@ast.Stmt]?,
   env : Map[String, AbsVal],
-  idx : Int,
+  idx : Int32,
 ) -> Unit {
   if idx < elseifs.length() {
     match self.eval(elseifs[idx].cond, env) {

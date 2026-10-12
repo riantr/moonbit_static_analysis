@@ -32,7 +32,7 @@ fn kind(s : String) -> String {
 /// Token count EXCLUDING the `TEOF` that `lex` always appends. Measured, not
 /// assumed: the first version of this file forgot the EOF and every count came
 /// out one high, which reads exactly like a lexer that refuses to merge tokens.
-fn ntok(s : String) -> Int {
+fn ntok(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
   let mut n = toks.length()
   match toks[n - 1] {

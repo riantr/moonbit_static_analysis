@@ -402,7 +402,7 @@ fn v_partial_at(path : String, reason : String) -> @sa.Verdict {
 /// The count for a reason, with `-1` for "absent": `Option[Int]` has no Show,
 /// so the tests compare Ints, and an absent reason must stay distinguishable
 /// from a count of zero.
-fn tally_count(reasons : Map[String, Int], r : String) -> Int {
+fn tally_count(reasons : Map[String, Int32], r : String) -> Int32 {
   match reasons.get(r) {
     Some(x) => x
     None => -1

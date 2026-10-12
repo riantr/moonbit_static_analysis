@@ -91,7 +91,7 @@ test "a mid-line #| does not close" {
 /// is not `Eq` or `Debug`, so the enum implements neither trait. Each test
 /// therefore reads the one field it is about, and `kind_at` NAMES the
 /// constructor when the SHAPE is the thing under test.
-fn kind_at(s : String, i? : Int = 0) -> String {
+fn kind_at(s : String, i~ : Int32 = 0) -> String {
   let (toks, _, _) = @lexer.lex(s)
   match toks[i] {
     TInt(_) => "int"
@@ -105,7 +105,7 @@ fn kind_at(s : String, i? : Int = 0) -> String {
 
 ///|
 /// The value of the first token, or -1 when it is not an integer carrying one.
-fn int_value(s : String) -> Int {
+fn int_value(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
   match toks[0] {
     TInt(v) => v
@@ -114,7 +114,7 @@ fn int_value(s : String) -> Int {
 }
 
 ///|
-fn name_at(s : String, i : Int) -> String {
+fn name_at(s : String, i : Int32) -> String {
   let (toks, _, _) = @lexer.lex(s)
   match toks[i] {
     TName(n) => n
@@ -128,7 +128,7 @@ fn name_at(s : String, i : Int) -> String {
 /// and every fragment it leaves behind is then reported as an unbound binding.
 /// Token counts are deliberately not asserted 鈥?they are an implementation
 /// detail, and a whitespace change would make the test lie about the bug.
-fn count_names(s : String) -> Int {
+fn count_names(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
   let mut n = 0
   for t in toks {
@@ -226,7 +226,7 @@ test "a float still lexes as a float" {
 // MoonBit, so each must lex as its own token.
 
 ///|
-fn count_question(s : String) -> Int {
+fn count_question(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
   let mut n = 0
   for t in toks {
@@ -239,7 +239,7 @@ fn count_question(s : String) -> Int {
 }
 
 ///|
-fn count_range(s : String) -> Int {
+fn count_range(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
   let mut n = 0
   for t in toks {
@@ -252,7 +252,7 @@ fn count_range(s : String) -> Int {
 }
 
 ///|
-fn count_dots(s : String) -> Int {
+fn count_dots(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
   let mut n = 0
   for t in toks {
@@ -266,7 +266,7 @@ fn count_dots(s : String) -> Int {
 
 ///|
 /// The string payload of token `i`, or a sentinel when it is not a string.
-fn str_at(s : String, i : Int) -> String {
+fn str_at(s : String, i : Int32) -> String {
   let (toks, _, _) = @lexer.lex(s)
   match toks[i] {
     TStr(v, _) => v

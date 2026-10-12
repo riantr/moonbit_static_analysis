@@ -10,8 +10,8 @@
 ///|
 /// one finding, flattened for JSON
 struct Finding {
-  line : Int
-  col : Int
+  line : Int32
+  col : Int32
   severity : String
   message : String
   family : String
@@ -24,7 +24,7 @@ struct Finding {
 struct FrameRep {
   func : String
   file : String
-  line : Int
+  line : Int32
 } derive(ToJson)
 
 ///|
@@ -32,7 +32,7 @@ struct FrameRep {
 struct Reply {
   ok : Bool
   error : String?
-  count : Int
+  count : Int32
   findings : Array[Finding]
   rendered : String
 } derive(ToJson)

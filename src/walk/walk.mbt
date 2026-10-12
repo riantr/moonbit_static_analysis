@@ -46,7 +46,7 @@ pub(all) struct WalkResult {
 ///|
 /// Constants representable by the folder: the foldFuns subset.
 pub(all) enum Const {
-  CInt(Int)
+  CInt(Int32)
   CBool(Bool)
 } derive(Eq)
 
@@ -117,8 +117,8 @@ pub fn const_eval(e : @ast.Expr) -> Const? {
 ///|
 priv struct Entry {
   param : Bool
-  mut assigns : Int
-  mut varuses : Int
+  mut assigns : Int32
+  mut varuses : Int32
   decl_span : @core.Span
 }
 
@@ -719,7 +719,7 @@ fn Walker::walk_else(
 }
 
 ///|
-fn as_array(a : Array[@ast.ElseIf], from : Int) -> Array[@ast.ElseIf] {
+fn as_array(a : Array[@ast.ElseIf], from : Int32) -> Array[@ast.ElseIf] {
   let out : Array[@ast.ElseIf] = []
   let mut i = from
   while i < a.length() {
@@ -858,7 +858,7 @@ pub fn walk_module(
   m : @ast.Module,
   file : String,
   extern_iface : @core.IfaceSymTab,
-  trusted_line : Int,
+  trusted_line : Int32,
   enum_ctors : Array[String],
   extern_fns : Array[String],
   unread : Array[@core.Span],
@@ -1032,7 +1032,7 @@ pub fn walk_module(
 /// error is at top level between two complete functions the last one before
 /// it is skipped too. That costs one frame audit per partial file and can
 /// never invent a finding.
-fn truncated_fn(fns : Array[FnInfo], trusted_line : Int) -> Int {
+fn truncated_fn(fns : Array[FnInfo], trusted_line : Int32) -> Int32 {
   if trusted_line <= 0 {
     return -1
   }

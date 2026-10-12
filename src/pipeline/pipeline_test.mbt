@@ -791,7 +791,7 @@ test "a discard binding is never reported unused" {
 // which would also make these pass.
 
 ///|
-fn count_family(r : @pipeline.PipelineResult, name : String) -> Int {
+fn count_family(r : @pipeline.PipelineResult, name : String) -> Int32 {
   let mut n = 0
   for rep in r.reports {
     if rep.family.name() == name {
@@ -812,7 +812,7 @@ fn count_family_in(
   r : @pipeline.PipelineResult,
   name : String,
   lens : @core.Lens,
-) -> Int {
+) -> Int32 {
   let mut n = 0
   for rep in r.reports {
     if rep.family.name() == name && rep.lenses.contains(lens) {

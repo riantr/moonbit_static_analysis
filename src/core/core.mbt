@@ -5,8 +5,8 @@
 
 ///|
 pub(all) struct Pos {
-  line : Int
-  col : Int
+  line : Int32
+  col : Int32
 } derive(Eq)
 
 ///|
@@ -17,13 +17,13 @@ pub(all) struct Span {
 
 ///|
 #proof_pure
-pub fn pos(line : Int, col : Int) -> Pos {
+pub fn pos(line : Int32, col : Int32) -> Pos {
   { line, col, }
 }
 
 ///|
 #proof_pure
-pub fn span_at(line : Int, col : Int, len : Int) -> Span {
+pub fn span_at(line : Int32, col : Int32, len : Int32) -> Span {
   { start: pos(line, col), end: pos(line, col + len), }
 }
 
@@ -275,12 +275,12 @@ pub fn IfaceSymTab::has_value(self : IfaceSymTab, name : String) -> Bool {
 }
 
 ///|
-pub fn IfaceSymTab::n_types(self : IfaceSymTab) -> Int {
+pub fn IfaceSymTab::n_types(self : IfaceSymTab) -> Int32 {
   self.types.length()
 }
 
 ///|
-pub fn IfaceSymTab::n_values(self : IfaceSymTab) -> Int {
+pub fn IfaceSymTab::n_values(self : IfaceSymTab) -> Int32 {
   self.values.length()
 }
 
@@ -311,7 +311,7 @@ pub fn Lens::name(self : Lens) -> String {
 
 ///|
 #proof_pure
-pub fn Lens::rank(self : Lens) -> Int {
+pub fn Lens::rank(self : Lens) -> Int32 {
   match self {
     LStructural => 0
     LType => 1
@@ -389,7 +389,7 @@ pub fn Family::merge_group(self : Family) -> String {
 pub(all) struct Frame {
   func : String
   file : String
-  line : Int
+  line : Int32
 } derive(Eq)
 
 ///|

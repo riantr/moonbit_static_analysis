@@ -18,9 +18,9 @@ pub(all) struct PipelineResult {
   sigs : Array[String]
   /// per-lens finding counts BEFORE the merge — the merge is lossless:
   /// the lens attribution survives inside each report
-  n_structural : Int
-  n_type : Int
-  n_behavior : Int
+  n_structural : Int32
+  n_type : Int32
+  n_behavior : Int32
   /// `.mbtx` script imports, recorded but not resolved; empty for `.mbt`
   /// package sources. Surfaced so the script file kind reports its own
   /// dependency surface instead of silently swallowing the block.
@@ -28,7 +28,7 @@ pub(all) struct PipelineResult {
   /// Lexer/parser complaints, subset exclusions included. Zero means the
   /// frontend understood the whole file, and only then are the findings above
   /// a statement about the code rather than about the analyzer.
-  n_parse : Int
+  n_parse : Int32
   /// The most frequent parser message, as the file-level explanation. Empty
   /// exactly when `n_parse` is zero. Ties go to the message seen first, so the
   /// line is stable across runs.
@@ -37,16 +37,16 @@ pub(all) struct PipelineResult {
   /// failures. They stay in `reports` — the reader should see "this struct was
   /// not analysed" — but they are NOT defects, so a caller counting problems
   /// must subtract them.
-  n_subset : Int
+  n_subset : Int32
   /// Earliest line the frontend genuinely failed to read; 0 when it read the
   /// whole source. Everything before it is trustworthy, everything after it is
   /// derived from a tree that is already wrong. Subset exclusions do NOT move
   /// this boundary — skipping a `test` block leaves the code after it intact.
-  first_error_line : Int
+  first_error_line : Int32
 }
 
 ///|
-fn lens_count(lens : @core.Lens, r : @report.Report) -> Int {
+fn lens_count(lens : @core.Lens, r : @report.Report) -> Int32 {
   if r.lenses.contains(lens) {
     1
   } else {
@@ -76,7 +76,7 @@ pub fn run(
   // a finding's family to the representative's, so counting FParse afterwards
   // would under-report it and a partly-understood file could read as clean.
   let mut n_parse = 0
-  let reasons : Map[String, Int] = Map([])
+  let reasons : Map[String, Int32] = Map([])
   let mut reason = ""
   let mut reason_n = 0
   for r in parsed.reports {
@@ -254,7 +254,7 @@ pub fn merge_group(g : Array[@report.Report]) -> @report.Report {
 }
 
 ///|
-fn rep_lens_rank(r : @report.Report) -> Int {
+fn rep_lens_rank(r : @report.Report) -> Int32 {
   let mut best = 0
   for l in r.lenses {
     if l.rank() > best {

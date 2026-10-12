@@ -271,6 +271,50 @@ cycle's shape family:
   matches containing a colon are qualified paths like `@core.Role::Checked`). The `:`
   rule is in place but is **not corpus-verified**, and is not claimed as covered.
 
+### The toolchain moved on the day of this release, and CI went red
+
+The moment the `v0.4.21` tag was pushed, `gate` went **red at
+`moon fmt --check`** while `moon check` was green. Both workflows install moon
+from `curl .../install/unix.sh | bash` — **unpinned**, i.e. `latest`.
+
+**Measure first, then decide how to fix it:**
+
+1. `moon fmt --check` is green locally, so it is not my tree.
+2. Checking out the already-shipped **v0.4.20 tag** and running the same new
+   moon — **also red**. So this is a pre-existing environment problem, unrelated
+   to any commit: the moment upstream changes the formatter, an unpinned gate
+   turns red on everything, including a revert.
+3. The new moon is `0.1.20261012`, released that day; local is `0.1.20260920`.
+   The difference is not whitespace: it rewrites `src/core/moon.pkg`'s
+   `options("proof-enabled": true,)` to `proof_enabled = true` and reformats
+   **19 files tree-wide**, including a `Int` → `Int32` type rewrite.
+4. Pinning first, since it is the cheapest fix.
+   `MOONBIT_INSTALL_VERSION=0.1.20260920` on CI, and **`Install moon` itself
+   fails**: the CDN no longer carries that version's Linux binary. **Pinning is a
+   dead end**, because old builds get pruned.
+5. Which leaves one option: accept the new toolchain's formatting.
+
+Before accepting, measure whether it changes anything. The **un-reformatted**
+0.4.21 source under the new moon gives `moon check` exit 0 and `moon test`
+415/415 — so `Int` → `Int32` is the formatter's canonical form, not a
+requirement. After reformatting: check 0, three targets 343/415/343 all green,
+self-scan 59/59 `actionable=0`, and the **six corpora's SUMMARY lines are
+byte-identical**. None of those 19 files moved a single measurable number.
+
+### Also found: a mutation script that silently stops matching
+
+The reformat flipped the `.mbt` files from LF to CRLF, while
+`mutate_0421.ps1` itself stayed LF — it is not MoonBit source, so the formatter
+never touches it. Every multi-line pattern then matched nothing, and six of the
+eight mutations reported NO-OP.
+
+The gate **failed loudly** (NO-OP counts as a failure, which is the behaviour it
+should have), but a gate that silently stops matching is one edit away from being
+decorative. So the comparison now **normalises line endings on both sides** and
+writes back in whatever style the file already used. All eight are killed
+afterwards, and each restore is still byte-identical by SHA256 — which is also
+what proves the normalisation round-trips.
+
 ### Tests
 
 415 (js 343 / wasm 415 / wasm-gc 343). Self-scan 59/59, `actionable=0`,

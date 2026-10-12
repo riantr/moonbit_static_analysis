@@ -16,7 +16,7 @@ pub(all) struct ParseResult {
   /// Earliest line at which the source genuinely failed to read; 0 when it read
   /// all of it. Deliberate subset exclusions do not move it, so this marks the
   /// boundary of the region where findings can still be trusted.
-  first_error : Int
+  first_error : Int32
   /// Constructor names harvested from `enum` bodies this frontend did not
   /// analyse, as module-level VALUES.
   ///
@@ -51,13 +51,13 @@ pub(all) struct ParseResult {
 priv struct Parser {
   toks : Array[@lexer.Tok]
   spans : Array[@core.Span]
-  mut p : Int
+  mut p : Int32
   reports : Array[@report.Report]
   /// Messages of the deliberate subset exclusions among `reports`
   skips : Array[String]
   /// Earliest line at which the source genuinely failed to read; 0 if it read
   /// all of it. Deliberate exclusions do not move it.
-  mut first_error : Int
+  mut first_error : Int32
   /// Constructor names seen while skipping an `enum` body. See the field of
   /// the same name on `ParseResult`.
   enum_ctors : Array[String]
@@ -547,7 +547,7 @@ fn Parser::skip_decl_braced(
 /// analysed, and a harvested name resolves to "a value whose type is
 /// unknown" — the same shape a name from another package gets. What is
 /// recovered is the one thing a name lookup needs and nothing more.
-fn Parser::harvest_ctors(self : Parser, from : Int, to : Int) -> Unit {
+fn Parser::harvest_ctors(self : Parser, from : Int32, to : Int32) -> Unit {
   let mut depth = 0
   let mut i = from + 1
   while i < to && i < self.toks.length() {
@@ -571,7 +571,7 @@ fn Parser::harvest_ctors(self : Parser, from : Int, to : Int) -> Unit {
 /// of a field or package path rather than a member head. `::` arrives as two
 /// `TColon` tokens, but a name after a colon is a type parameter in the
 /// payload and always nested, so depth 0 already excludes it.
-fn Parser::after_path_marker(self : Parser, i : Int) -> Bool {
+fn Parser::after_path_marker(self : Parser, i : Int32) -> Bool {
   if i <= 0 {
     return false
   }
@@ -756,9 +756,9 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
 /// tokenize the way this frontend would have to model to read it correctly.
 fn collect_using(
   toks : Array[@lexer.Tok],
-  i : Int,
+  i : Int32,
   tab : @core.IfaceSymTab,
-) -> Int {
+) -> Int32 {
   let n = toks.length()
   let mut j = i + 1
   // step to the brace
@@ -820,7 +820,7 @@ fn collect_using(
 fn starts_variant(
   toks : Array[@lexer.Tok],
   spans : Array[@core.Span],
-  i : Int,
+  i : Int32,
 ) -> Bool {
   if i == 0 {
     return true
@@ -843,7 +843,7 @@ fn starts_variant(
 /// simply ends the line. A bare name followed by something else is an
 /// expression inside the enum body, which MoonBit has none of — so refusing it
 /// is what keeps the harvest from walking off into unrelated text.
-fn ends_variant(toks : Array[@lexer.Tok], i : Int) -> Bool {
+fn ends_variant(toks : Array[@lexer.Tok], i : Int32) -> Bool {
   if i >= toks.length() {
     return false
   }
@@ -861,7 +861,7 @@ fn ends_variant(toks : Array[@lexer.Tok], i : Int) -> Bool {
 /// Returns `None` unless a name starts exactly at `i`. That immediacy is the
 /// guard described on `collect_declared_names`: a keyword whose next token is
 /// a `(` or a string declares nothing this harvest can name.
-fn declared_name_at(toks : Array[@lexer.Tok], i : Int) -> String? {
+fn declared_name_at(toks : Array[@lexer.Tok], i : Int32) -> String? {
   if i >= toks.length() {
     return None
   }
@@ -1496,7 +1496,7 @@ fn method_holder(kw : String) -> Bool {
 }
 
 ///|
-fn declared_name_after_kw(toks : Array[@lexer.Tok], kw_i : Int) -> String? {
+fn declared_name_after_kw(toks : Array[@lexer.Tok], kw_i : Int32) -> String? {
   let mut i = kw_i + 1
   if i < toks.length() && toks[i] is TLBracket {
     let mut depth = 0
@@ -2041,7 +2041,7 @@ fn Parser::parse_is(self : Parser) -> @ast.Expr {
 /// `is Some(DragLeft(Some(event_position)))` then `event_position + 1` at
 /// `.../event_wbtest.mbt:25`. Both bind their inner name; both reported
 /// `undefined variable` while only depth 1 was read.
-fn Parser::pattern_binding_at(self : Parser, j : Int) -> Bool {
+fn Parser::pattern_binding_at(self : Parser, j : Int32) -> Bool {
   if j >= self.toks.length() {
     return false
   }

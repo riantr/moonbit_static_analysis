@@ -578,6 +578,28 @@ file, and the sources live under `src/`; without `moon.pkg`, `moon check` report
 — moon walks up and resolves the outer `moon.mod`, and an inner `moon.mod` is
 ignored.
 
+**The CI toolchain is UNPINNED and the formatter is not stable across moon
+releases.** Both workflows install `latest` via `install/unix.sh`. On 2026-10-12
+the `v0.4.21` tag went red at `moon fmt --check` while `moon check` was green,
+and the already-shipped **v0.4.20 tag was red too** — so when a gate step fails,
+**test the previous tag before blaming your change**. Pinning is NOT the fix:
+`MOONBIT_INSTALL_VERSION` is honoured by the installer, but old Linux binaries
+have already been pruned from the CDN and `Install moon` fails outright. The
+formatter's rewrite is not whitespace either — it changed
+`options("proof-enabled": true,)` to `proof_enabled = true` and `Int` to
+`Int32`. Measure the effect before accepting it: the un-reformatted source still
+passes check and every test under the new moon, and afterwards all six corpora
+were byte-identical.
+
+**A mutation script's multi-line patterns must normalise line endings.** `moon
+fmt` flipped every `.mbt` from LF to CRLF in that release, and the gate script
+itself stayed LF because it is not MoonBit source. Every multi-line pattern then
+matched nothing and six of eight mutations reported NO-OP. NO-OP counts as a
+failure, so the gate still failed loudly — but a gate that silently stops
+matching is one edit from being decorative. Normalise both sides, write back in
+the file's existing style, and keep the SHA256 restore assertion: it is what
+proves the round-trip.
+
 If you are scanning a package whose dependencies you care about, pass
 `--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at
 all and says so in its own output: measured on riantr/moonbit_labeler, it goes from 5

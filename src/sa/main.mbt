@@ -28,16 +28,16 @@
 /// Ceiling on files per scan, and how often the walk reports progress. Both are
 /// stated rather than silent: a scan that quietly stops at an arbitrary point
 /// is indistinguishable from a complete one.
-let max_files : Int = 20000
+let max_files : Int32 = 20000
 
 ///|
-let progress_every : Int = 500
+let progress_every : Int32 = 500
 
 ///|
 /// Per-file findings shown before the scan stops printing them for that file.
 /// A file the frontend understood is a file whose findings are worth reading;
 /// a hundred of them is still noise, and the file is named either way.
-let findings_shown_per_file : Int = 40
+let findings_shown_per_file : Int32 = 40
 
 ///|
 /// What the scan can honestly say about one file.
@@ -65,44 +65,44 @@ pub(all) struct Verdict {
   /// post-boundary (rejected). `unreliable` is the post-boundary count; the two
   /// are kept separate so the SUMMARY can assert that nothing was dropped
   /// silently and so the size of the "rejected" region is visible.
-  total : Int
+  total : Int32
   /// How many of `findings` are "this declaration form is not analysed"
   /// notices rather than defects. Zero when the file is not understood.
-  notices : Int
+  notices : Int32
   /// Line of the first genuine read failure, or 0 when the whole file was
   /// understood. `findings` holds only what happens BEFORE it; everything from
   /// that line on is counted in `unreliable` and not shown.
-  region_line : Int
+  region_line : Int32
   /// Findings at or after `region_line` — derived from an already-wrong tree, so
   /// reported only as a count, never as results.
-  unreliable : Int
+  unreliable : Int32
 }
 
 ///|
 /// Numbers that go onto the SUMMARY line. Computed in one place so the
 /// printed identity has a single source of truth and a unit test can pin it.
 pub struct Summary {
-  parsed_files : Int
-  partial_files : Int
+  parsed_files : Int32
+  partial_files : Int32
   /// Pre-boundary defects: findings in parsed files, plus findings before the
   /// first parse error in partial files. Subtracting `notices` from
   /// `findings.length()` per file is the conversion from "things the analyzer
   /// has to say" to "things you should look at".
-  actionable : Int
+  actionable : Int32
   /// Pre-boundary notices: "this declaration form is outside the analysed
   /// subset" findings. Not a defect, but a real signal about coverage.
-  notices : Int
+  notices : Int32
   /// Post-boundary findings across every file. The "noisy tail" the
   /// trusted-region split hides.
-  unreliable : Int
+  unreliable : Int32
   /// Post-boundary findings in partial files whose pre-boundary finding count
   /// is zero. A subset of `unreliable` (every withheld finding is also
   /// unreliable) reported separately because "this many findings are in files
   /// the analyzer found nothing trustworthy in" is a useful number on its own.
   /// NOT part of the SUMMARY sum.
-  withheld : Int
+  withheld : Int32
   /// Pre-boundary + post-boundary. Equals `actionable + notices + unreliable`.
-  total : Int
+  total : Int32
 }
 
 ///|
@@ -163,8 +163,8 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
 /// part of what the output claims, and `sa_test.mbt` pins them.
 pub fn tally_partial_reasons(
   verdicts : Array[Verdict],
-) -> (Map[String, Int], Map[String, Array[String]]) {
-  let reasons : Map[String, Int] = Map([])
+) -> (Map[String, Int32], Map[String, Array[String]]) {
+  let reasons : Map[String, Int32] = Map([])
   let examples : Map[String, Array[String]] = Map([])
   for v in verdicts {
     if !v.parsed {
@@ -281,10 +281,10 @@ pub async fn scan(
   // are audited properly and show a high parsed ratio; `.mbt` is a subset and
   // shows a low one. A user can now see that in one place instead of having to
   // take the word for it.
-  let kind_files : Map[String, Int] = Map([])
-  let kind_parsed : Map[String, Int] = Map([])
-  let kind_defects : Map[String, Int] = Map([])
-  let kind_notices : Map[String, Int] = Map([])
+  let kind_files : Map[String, Int32] = Map([])
+  let kind_parsed : Map[String, Int32] = Map([])
+  let kind_defects : Map[String, Int32] = Map([])
+  let kind_notices : Map[String, Int32] = Map([])
   let kinds : Array[String] = [".mbt", ".mbti", ".mbtp", ".mbt.md", ".mbtx"]
   for f in files {
     // a directory with no `.mbt` of its own — a lone `.mbti`, a script — falls
@@ -786,7 +786,7 @@ async fn analyze(p : String, extern_iface : @core.IfaceSymTab) -> Verdict {
 }
 
 ///|
-fn get_or_zero(m : Map[String, Int], k : String) -> Int {
+fn get_or_zero(m : Map[String, Int32], k : String) -> Int32 {
   match m.get(k) {
     Some(x) => x
     None => 0
@@ -794,7 +794,7 @@ fn get_or_zero(m : Map[String, Int], k : String) -> Int {
 }
 
 ///|
-fn bump(m : Map[String, Int], k : String) -> Int {
+fn bump(m : Map[String, Int32], k : String) -> Int32 {
   let n = match m.get(k) {
     Some(x) => x
     None => 0
@@ -1081,7 +1081,7 @@ pub fn is_module_coord(s : String) -> Bool {
 
 ///|
 /// One `/`-separated segment in [from, to): non-empty, and not `.` or `..`.
-fn ok_segment(chars : Array[Char], from : Int, to : Int) -> Bool {
+fn ok_segment(chars : Array[Char], from : Int32, to : Int32) -> Bool {
   if to <= from {
     return false
   }
@@ -1114,7 +1114,7 @@ fn ok_segment(chars : Array[Char], from : Int, to : Int) -> Bool {
 /// "never looked".
 async fn collect_iface_symtabs(
   roots : Array[String],
-) -> (@core.IfaceSymTab, Int) {
+) -> (@core.IfaceSymTab, Int32) {
   let tab = @core.IfaceSymTab::empty()
   let mut skipped_dot = 0
   for ri, root in roots {

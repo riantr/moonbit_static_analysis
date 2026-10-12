@@ -154,7 +154,7 @@ pub fn stamp_utc(ms : Int64) -> String {
 /// how often the leap-year rule repeats, so the leap correction is a single
 /// division rather than a search. The shift by 719468 days puts the era
 /// boundary on 0000-03-01, which is where the rule starts repeating.
-fn civil_from_days(days : Int) -> (Int, Int, Int) {
+fn civil_from_days(days : Int32) -> (Int32, Int32, Int32) {
   let z = days + 719468
   let era = z / 146097
   let doe = z - era * 146097
@@ -169,7 +169,7 @@ fn civil_from_days(days : Int) -> (Int, Int, Int) {
 }
 
 ///|
-fn pad2(n : Int) -> String {
+fn pad2(n : Int32) -> String {
   if n < 10 {
     "0" + n.to_string()
   } else {
@@ -178,7 +178,7 @@ fn pad2(n : Int) -> String {
 }
 
 ///|
-fn pad4(n : Int) -> String {
+fn pad4(n : Int32) -> String {
   if n < 10 {
     "000" + n.to_string()
   } else if n < 100 {
