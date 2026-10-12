@@ -807,7 +807,7 @@ fn is_ident_char(c : Char) -> Bool {
 /// identifiers to the lexer and would otherwise be reported as unbound.
 
 ///|
-fn is_moonbit_keyword(s : String) -> Bool {
+pub fn is_moonbit_keyword(s : String) -> Bool {
   match s {
     "if"
     | "else"

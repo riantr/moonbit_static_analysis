@@ -153,6 +153,91 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.19 — 389 → 432: a literal bound as a variable, and a function type that ended the file
+
+Same corpus, wzzc-dev/moui 0.1.12. Files understood 389 → **432** (71.1%),
+withheld 219 → 176, unreliable 4388 → **3193**.
+
+### `if x is Some(true)` bound the literal `true`
+
+`core/view_node_test.mbt` reported `local variable 'true' assigned but may not
+be used`. `parse_is_pattern` treated ANY name in the payload as a binding — but
+a binding is a name that INTRODUCES A VARIABLE, and a keyword introduces none.
+
+The test is `@lexer.is_moonbit_keyword`, **not** a second copy of the list in the
+parser. That table already carries `true`/`false`, and it already holds a long
+comment on why `self` is deliberately NOT in it; a private copy is exactly how
+the two would drift. `self` therefore still binds (`if x is Some(self)` means
+that), and that is pinned as a control test.
+
+### Function types in annotations: 845 sites / 171 files
+
+`on_input~ : ((String) -> Msg)?`, `key : (T) -> String`, `emit : (Msg) -> Unit`.
+The `(` used to hit `expect_name`, report "expected type name", and end the file.
+
+The annotation's elements are read by `type_annotation` ITSELF, which is what
+makes nesting fall out: `((String) -> Msg)?` is a function type returning a
+function type. It is rendered faithfully rather than flattened, so the string
+the type lens receives still says what it said; `ann_to_ty` has no arm for a
+`(`-leading annotation and returns `TUnknown`, which is the honest answer — the
+lens models no function types, and unknown is what keeps every operation on one
+quiet.
+
+Return position has an extra trap: the tuple arm of `return_annotation` accepts
+ANY `(`. The first version recognised a function type by the three tokens `(`,
+`)`, `->` — which matches only `() -> T`, because `(Int) -> String` has `Int`
+BETWEEN the brackets. The fixture (4 parse errors) is what caught it. It now
+SCANS to the matching `)` and asks whether `->` follows.
+
+### Honest entry: actionable went from 4 to 14
+
+43 more readable files necessarily produced 9 new findings. **Seven of them are
+false positives**, from three classes this release only made VISIBLE. All three
+are measured and written down in SKILL:
+
+| Class | Count | Corpus size | Root cause |
+|---|---|---|---|
+| Named arguments compared positionally | 5 | `ActionCommand::new(...)` ×5 | the call OMITS defaulted parameters and passes the rest by label; the lens drops labels and compares by position, so `description` (String) was checked against the 4th parameter `enabled` (Bool) |
+| `self` in `impl ... with fn name(self)` | 4 | 1047 sites / 204 files | `skip_decl_braced`'s sentinel gives up on the impl body, so the parameters are never bound |
+| `expr as Type` cast | 1 | 29 sites / 21 files | `as` is unhandled and read as a bare name |
+
+The first two need an **AST change** (`ECall`'s arguments must carry labels;
+`Param` must record whether it has a default) — not a one-line change. Not
+attempted here; logged as next cycle's work.
+
+The leading `is` matcher (`f(x)` then `is Some(_)` on the next line) was **not
+settled** this round: the minimal probe could not reproduce a legal form, so no
+fix was written on it. It stays a known gap.
+
+### Differential
+
+| Corpus | 0.4.18 | 0.4.19 |
+|---|---|---|
+| `riantr/moonbit_labeler` 0.2.13 | parsed 22 / actionable 3 | **parsed 23 / actionable 3** |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **byte-identical on all six metrics** |
+| `wzzc-dev/moui` 0.1.12 | parsed 389 / actionable 4 | **parsed 432 / actionable 14** |
+
+labeler's unreliable fell 360 → 352 with actionable unchanged at 3. Self-scan
+55/55, `actionable=0`, `unreliable=0`, `withheld=0`.
+
+### One mutation survives, and it SHOULD
+
+Four mutations, three killed. The fourth — "treat every `(`-leading return as a
+function type" — survived, and the reason is honest: for every annotation this
+lens can read, the tuple arm and the function-type arm consume EXACTLY the same
+tokens. With no `->` after the close, `fn_type_annotation` renders it and
+returns, and `ann_to_ty` gets an unknown either way. `n_parse` cannot tell them
+apart, so the mutation is genuinely non-discriminating. The tuple test stays
+anyway — not as a kill for this mutation, but as a regression test for a future
+change that breaks tuple parsing.
+
+And one instrument was simply wrong: the `.mbti` export of `is_moonbit_keyword`
+has **no** mutation coverage, because `moon test` compiles from SOURCE and only
+the SELF-SCAN reads the tracked `.mbti` interface files. Delete the export line
+and all 391 tests stay green. That gap is real — it already bit once in 0.4.18
+with `TTilde` — so the release check runs the self-scan and requires
+`actionable=0`.
+
 ## 0.4.18 — a fresh corpus: 193 → 389 of 608 files, actionable 588 → 6
 
 The first seventeen versions all scanned corpora this project already knew. This
@@ -864,7 +949,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.18
+moon add riantr/moonbit_static_analysis@0.4.19
 ```
 
 ```moonbit
@@ -1246,7 +1331,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.18` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.19` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

@@ -129,6 +129,78 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.19 —— 389 → 432：一个字面量被当成绑定名，和一个把文件读废的类型注解
+
+接着用 `wzzc-dev/moui` 0.1.12。读得懂的文件 389 → **432**（71.1%），withheld
+219 → 176，unreliable 4388 → **3193**。
+
+### `if x is Some(true)` 把 `true` 当成了绑定名
+
+`core/view_node_test.mbt` 一带报了 `local variable 'true' assigned but may not be
+used`。`parse_is_pattern` 把 payload 里**任何**名字都当成绑定——而绑定的前提是
+「这个名字引入一个变量」，关键字不引入。
+
+判据用 `@lexer.is_moonbit_keyword`，**不**在 parser 里另抄一份。那张表本来就含
+`true`/`false`，而且里面有一段长注释专门说明为什么 `self` **不在**表里；另抄一份
+正是两边漂移的开始。`self` 因此照样能绑定（`if x is Some(self)` 就是这个意思），
+这条也进了测试当反向对照。
+
+### 函数类型注解：845 处 / 171 个文件
+
+`on_input~ : ((String) -> Msg)?`、`key : (T) -> String`、`emit : (Msg) -> Unit`。
+`(` 原来直接撞上 `expect_name`，报 "expected type name"，文件到此为止。
+
+注解的元素由 `type_annotation` **自己**读，所以嵌套自然成立——`((String) -> Msg)?`
+是「返回函数类型的函数类型」。渲染是**如实**渲染的，不是拍平，所以交给类型镜头的
+字符串还是原来那句话；`ann_to_ty` 对 `(` 开头的注解没有分支，返回 `TUnknown`，
+这是诚实的答案：镜头不建模函数类型，而 unknown 才能让上面任何操作保持安静。
+
+返回位置多一个坑：`return_annotation` 的元组分支接受**任何** `(`。第一版用
+「三个 token `(`, `)`, `->`」去认函数类型——那只匹配 `() -> T`，因为
+`(Int) -> String` 的括号**中间**有个 `Int`。是那个夹具（4 个 parse error）把
+这条抓出来的。改成**扫描到配对的 `)` 再看后面是不是 `->`**。
+
+### 诚实记账：这一版 actionable 从 4 涨到 14
+
+多读 43 个文件，必然多出 9 条新发现。**其中 7 条是假阳性**，来自三个这轮只是
+「变得可见」的类别，都已量过、已写进 SKILL：
+
+| 类别 | 条数 | 语料规模 | 根因 |
+|---|---|---|---|
+| 具名实参按位置比对 | 5 | `ActionCommand::new(...)` ×5 | 调用**省略了有默认值的参数**并按名字传剩下的，镜头丢标签按位置比，于是 `description`(String) 对上了第 4 个形参 `enabled`(Bool) |
+| `impl ... with fn name(self)` 的 `self` | 4 | 1047 处 / 204 文件 | `skip_decl_braced` 的哨兵放弃 impl 体，形参没有绑定 |
+| `expr as Type` 转换 | 1 | 29 处 / 21 文件 | `as` 没有处理，当成裸名字 |
+
+前两类都需要**改 AST**（`ECall` 的实参要带标签；`Param` 要记有没有默认值），
+不是一处几行的改动。这轮不做，写下来当下一轮的账。
+
+行首 `is` matcher 那个（`f(x)` 换行后接 `is Some(_)`）这轮**没有 settle 掉**：
+最小探针复现不出合法形态，所以没有据此写修复，仍然是已知缺口。
+
+### 差分
+
+| 语料 | 0.4.18 | 0.4.19 |
+|---|---|---|
+| `riantr/moonbit_labeler` 0.2.13 | parsed 22 / actionable 3 | **parsed 23 / actionable 3** |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **六项指标逐字节一致** |
+| `wzzc-dev/moui` 0.1.12 | parsed 389 / actionable 4 | **parsed 432 / actionable 14** |
+
+labeler 的 unreliable 360 → 352，actionable 一条没动。自检 55/55，
+`actionable=0`、`unreliable=0`、`withheld=0`。
+
+### 突变：一道杀不掉，而且**应该**杀不掉
+
+4 道突变 3 杀。第 4 道把「每个 `(` 开头的返回都当函数类型」，**活了下来**——
+原因是诚实的：对镜头读得懂的任何注解，元组分支和函数类型分支消耗的
+**token 完全相同**，没有 `->` 时 `fn_type_annotation` 渲染完就返回，`ann_to_ty`
+两边都得到 unknown。所以 `n_parse` 分辨不了它们，这道突变**本质上不可分辨**。
+元组那条测试仍然留着——它不是给这道突变当击杀的，是防将来把元组解析改坏的。
+
+还有一处工具选错了：`is_moonbit_keyword` 的 `.mbti` 导出**没有**突变覆盖——
+`moon test` 从**源码**编译，而只有**自检**读被跟踪的 `.mbti` 接口文件；把那行
+删掉，391 个测试照样全绿。这个洞是真的（0.4.18 已经踩过一次 `TTilde`），
+所以发布检查里跑自检并要求 `actionable=0`。
+
 ## 0.4.18 —— 换一个语料：608 个文件里 193 → 389，actionable 588 → 6
 
 前十七版的语料都是本项目熟悉的东西。这轮换了一个**从未扫过**的包：
@@ -387,7 +459,7 @@ r: 3.0F * hz,   // hz 是 @snn_kw 的 const hz : Float
 
 `suberror` 有两种写法：`suberror Timeout of String`（一行）和
 `pub suberror DecodeError { ... }`（带体）。原来**一律**走「跳到行尾」，
-于是带体的那种跳到换行就停了，剩下的 `{ ... }` 被当��表达式块解析，
+于是带体的那种跳到换行就停了，剩下的 `{ ... }` 被当作表达式块解析，
 里面的载荷类型一个个变成 undefined name——`moonbit_image/types.mbt` 里
 `String` 报了 4 次。
 
@@ -780,7 +852,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.18
+moon add riantr/moonbit_static_analysis@0.4.19
 ```
 
 ```moonbit
@@ -1112,7 +1184,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.18` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.19` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

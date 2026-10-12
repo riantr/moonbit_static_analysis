@@ -444,14 +444,51 @@ removes these findings as a side effect; fixing them one at a time does not.
 **KNOWN GAP, still open (as of 0.4.18): a leading `is` expression.** `is` is
 matched by NAME and the parser requires a left operand, so an expression
 statement that is just `is Some(_)` — MoonBit's newline-tolerant matcher on the
-preceding line — is read as the bare name `is`. Separately, `parse_is_pattern`
-binds the literal in `if x is Some(true)`, reporting `local variable 'true'`.
+preceding line — is read as the bare name `is`. NOT settled as of 0.4.19: a
+minimal `moon check` probe could not reproduce a legal form of it, so no fix was
+written on an unverified reading. Treat the semantics as open.
+
+The SECOND half of that entry is fixed in 0.4.19: `parse_is_pattern` no longer
+binds the literal in `if x is Some(true)`. The test is
+`@lexer.is_moonbit_keyword`, not a private copy of the list — that table already
+holds `true`/`false` and documents why `self` is deliberately excluded, so
+`if x is Some(self)` still binds.
 
 **KNOWN GAP, still open (as of 0.4.18): an untyped `self` in
 `impl ... with fn layout(self, context)`.** The sentinel logic in
 `skip_decl_braced` gives up on the impl body and re-reads `fn layout` as a
 top-level declaration, so the method's own parameters are not bound. Typed
-parameters (`self : Pos`) do not hit this.
+parameters (`self : Pos`) do not hit this. As of 0.4.19 this is 4 of the 14
+actionable findings in moui and covers 1047 declarations across 204 files — it
+is now the single largest false-positive class by declaration count.
+
+**A function type is a valid annotation (since 0.4.19).** `(A) -> B` in a
+parameter annotation is 845 sites across 171 files of moui. The elements are read
+by `type_annotation` itself, so `((String) -> Msg)?` nests with no special case.
+`ann_to_ty` returns `TUnknown` deliberately — the lens models no function types,
+and unknown is what keeps operations on one quiet.
+
+**KNOWN GAP, largest by finding count (as of 0.4.19): a named argument is
+matched POSITIONALLY.** `ECall(String, Array[Expr])` carries no label — the
+parser drops them — so a call that OMITS defaulted parameters and passes the rest
+by label is compared against the declaration in order.
+`ActionCommand::new(intent=…, label=…, group=…, description=…, shortcut=…)` has 7
+declared parameters, the first 5 of the call skip `enabled`, and `description`
+(String) is checked against parameter 4 `enabled` (Bool). That is 5 false
+positives in moui from one declaration. A correct fix carries the label through
+the AST and matches by name.
+
+**KNOWN GAP (as of 0.4.19): `expr as Type` is a cast and is not modelled.** `as`
+is a keyword, falls through, and is reported as an undefined name. 29 sites
+across 21 files in moui. There is no `ECast` node; adding one is the fix and it
+was not attempted.
+
+**NOT the analyzer (as of 0.4.19): a stale `pkg.generated.mbti`.** `moon test`
+compiles from SOURCE; only the SELF-SCAN reads the git-tracked `.mbti` interface
+files, and neither `moon update` nor `moon doc` regenerates them. A newly
+exported symbol can therefore be absent with every test green — it bit 0.4.18
+with `TTilde`. A self-scan reporting `undefined name '<a name you just added>'`
+is this, not a code bug.
 
 If you are scanning a package whose dependencies you care about, pass
 `--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at

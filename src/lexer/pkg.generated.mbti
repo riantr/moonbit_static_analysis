@@ -9,6 +9,8 @@ import {
 // Values
 pub fn lex(String) -> (Array[Tok], Array[@core.Span], Array[@report.Report])
 
+pub fn is_moonbit_keyword(String) -> Bool
+
 // Errors
 
 // Types and methods

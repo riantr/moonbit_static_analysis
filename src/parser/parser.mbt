@@ -929,6 +929,64 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 }
 
 ///|
+
+///|
+/// A FUNCTION TYPE: `( A, B, ... ) -> C`, with `?` allowed after either half.
+///
+/// Each element is read by `type_annotation` itself, which is what makes the
+/// nesting work — `((String) -> Msg)?` is a function type returning a function
+/// type, and it appears 169 files' worth more often than the flat form. The
+/// result is RENDERED faithfully rather than flattened, so the string handed to
+/// the type lens still says what it said. `ann_to_ty` has no case for a `(`-
+/// leading annotation and returns `TUnknown`, which is the honest answer: the
+/// lens models no function types, and an unknown is what keeps every operation
+/// on one silent.
+///
+/// A bare `(A)` with no `->` is not a function type and renders as `(A)`, which
+/// is also `TUnknown` — the same answer it had before this existed, so nothing
+/// becomes quieter than it was.
+fn Parser::fn_type_annotation(self : Parser) -> String {
+  let _ = self.bump() // (
+  let params : Array[String] = []
+  while !self.at(TRParen) && !self.at(TEOF) {
+    self.skip_seps()
+    if self.at(TRParen) || self.at(TEOF) {
+      break
+    }
+    params.push(self.type_annotation())
+    self.skip_seps()
+    if self.at(TComma) {
+      let _ = self.bump()
+    } else {
+      break
+    }
+  }
+  self.skip_seps()
+  self.expect(TRParen, "')'")
+  let mut out = "("
+  let mut first = true
+  for p in params {
+    if first {
+      first = false
+    } else {
+      out = out + ", "
+    }
+    out = out + p
+  }
+  out = out + ")"
+  if self.at(TArrow) {
+    let _ = self.bump()
+    let ret = self.type_annotation()
+    out = out + " -> " + ret
+  }
+  if self.at(TQuestion) {
+    let _ = self.bump()
+    out = out + "?"
+  }
+  out
+}
+
+///|
 /// A type annotation: an optional `&`, a head name, then any number of
 /// `[...]` argument lists and `.Tail` segments.
 ///
@@ -981,6 +1039,14 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 /// cost precision, never invent a type. A `.Tail` argument list
 /// (`@pkg.T[X]`) is still discarded, since the head is already qualified.
 fn Parser::type_annotation(self : Parser) -> String {
+  // `(A, B) -> C` — a FUNCTION TYPE, and the single largest remaining parse
+  // blocker: 845 parameter annotations of this shape across 171 files of
+  // wzzc-dev/moui 0.1.12 (`on_input~ : ((String) -> Msg)?`, `key : (T) ->
+  // String`, `measure~ : (@core.Constraints) -> @core.Size`). The `(` used to
+  // reach `expect_name`, which reported "expected type name" and ended the file.
+  if self.at(TLParen) {
+    return self.fn_type_annotation()
+  }
   // `&T` = `Ref[T]`. Consumed here, folded into the name below, so the head
   // name is still a TName and the rest of the parameter list stays in step.
   let amp = if self.at(TAmp) {
@@ -1082,7 +1148,39 @@ fn Parser::skip_indexed(self : Parser) -> Unit {
 /// the honest answer rather than pretending the first component is the whole
 /// return type.
 fn Parser::return_annotation(self : Parser) -> String {
-  if self.at(TLParen) {
+  // `(A) -> B` in return position is a FUNCTION TYPE, not a one-element tuple:
+  // `fn f() -> (Int) -> String` returns a function. The tuple arm below accepts
+  // any `(`, so this shape needs to be told apart first.
+  //
+  // The test is "the matching `)` is followed by `->`", found by SCANNING to the
+  // matching close and counting nesting. The first attempt looked only at the
+  // three tokens `(`, `)`, `->`, which is the shape of `() -> T` and nothing
+  // else: `(Int) -> String` has `Int` between the brackets, so it missed and
+  // the fixture failed with 4 parse errors. Real annotations have a parameter.
+  let fn_type = if self.at(TLParen) {
+    let mut depth = 0
+    let mut j = self.p
+    let mut is_fn = false
+    while j < self.toks.length() {
+      match self.toks[j] {
+        TLParen => depth += 1
+        TRParen => {
+          depth -= 1
+          if depth == 0 {
+            is_fn = j + 1 < self.toks.length() && self.toks[j + 1] == TArrow
+            break
+          }
+        }
+        TEOF => break
+        _ => ()
+      }
+      j += 1
+    }
+    is_fn
+  } else {
+    false
+  }
+  if self.at(TLParen) && !fn_type {
     let _ = self.bump()
     while !self.at(TRParen) && !self.at(TEOF) {
       if !self.at(TComma) {
@@ -1786,6 +1884,16 @@ fn Parser::parse_is(self : Parser) -> @ast.Expr {
 /// here and reports honestly at the `x` use). Unmodelled shapes stay in
 /// step as far as the balanced paren and report at the first token they
 /// cannot place.
+///
+/// A binding must also be a NAME THAT INTRODUCES A VARIABLE, and a keyword is
+/// not one: `if info.required is Some(true)` bound the literal `true` and
+/// reported `local variable 'true' assigned but may not be used` — twice, on
+/// `wzzc-dev/moui 0.1.12` `views/form/form_field_semantics_test.mbt:42` and
+/// `:58`, lines `moon check` accepts. The test is `@lexer.is_moonbit_keyword`,
+/// not a second list here: that list already carries `true` and `false`, it
+/// already documents why `self` is deliberately NOT in it, and a private copy
+/// in this file is exactly how the two would drift apart. `self` therefore
+/// still binds, which is what `if x is Some(self)` means.
 fn Parser::parse_is_pattern(self : Parser) -> String {
   if self.peek_name() != "" {
     let _ = self.bump()
@@ -1814,6 +1922,7 @@ fn Parser::parse_is_pattern(self : Parser) -> String {
         binding == "" &&
         self.peek_name() != "" &&
         self.peek_name() != "_" &&
+        !@lexer.is_moonbit_keyword(self.peek_name()) &&
         !self.at_next(TLParen) {
         let (n, _) = self.expect_name("pattern binding")
         binding = n
