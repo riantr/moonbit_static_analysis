@@ -1,0 +1,349 @@
+# 0.4.25 mutation gate.
+#
+# Eight mutations over ONE idea: the behaviour lens must JOIN the flow of an
+# `if`'s branches instead of letting the last one win.
+#
+# The set is deliberately built around the two ways a join can be wrong, because
+# only testing one of them lets the other through:
+#
+#   too STRICT  -> the join says "terminated" when some branch falls through, and
+#                  a false `unreachable code` comes back (M1, M2, M5, M6, M7, M8)
+#   too LOOSE   -> the join says "falls through" unconditionally, and REAL dead
+#                  code goes silent (M3, M4)
+#
+# The loose direction is the one that matters most and the one a coverage number
+# can never see: a check whose precondition can never hold is the 0.4.5 failure
+# mode, and it is worse than the false positive being fixed, because nothing
+# reports it.
+#
+#   M1  a missing `else` stops falling through -> the original false positive,
+#                                             back in `SIf`
+#   M2  the join always terminates               -> same, louder: EVERY statement
+#                                             after any `if` looks dead
+#   M3  the join always falls through            -> real dead code goes silent,
+#                                             EXPECTED KILLER of "over-fixing"
+#   M4  the per-branch flow reset removed       -> the leak returns for the 2nd
+#                                             branch onwards
+#   M5  only the FIRST else-if is visited        -> the join reads one branch of
+#                                             the chain and calls it a join
+#   M6  `exec_alt`'s `else` always reports
+#        fall-through                           -> a chain that really does
+#                                             terminate goes quiet
+#   M7  `exec_alt`'s missing else stops falling  -> same, one level down
+#   M8  `exec_alt`'s TERMINAL missing else does   -> same, for a chain with no
+#                                             else-if at all
+#
+# Same rules as every prior gate: COMPILE-ERR is the absence of a `Total tests:`
+# line, never a grep; every restore is byte-identical by SHA256; NO-OP counts as
+# a failure so that a pattern that stops matching cannot pass silently.
+#
+# THE PRE-FLIGHT EXISTS BECAUSE OF WHAT THIS FILE GOT WRONG ON ITS FIRST TWO
+# RUNS. On the first, three of the seven patterns did not match the source at all
+# -- M5 and M6 were written with the wrong indentation (`exec_alt`'s arms are at
+# 6/8, not 10) and M7 was written as `None => true` where the arm reads
+# `None => falls = true`. Each cost a full `moon test` run to learn nothing,
+# because NO-OP is only reported AFTER the suite has run. So every pattern is
+# now checked against the pristine text first, and an absent pattern aborts in
+# milliseconds with the line it was looking for.
+#
+# On the second, the survivor was M6, and it was a fixture problem rather than a
+# pattern problem: `exec_alt`'s terminal `match els` only runs when there are no
+# else-ifs left, and every chain fixture had one. No amount of re-matching would
+# have killed it. That is why M8 exists at all -- it is the statement behind M6,
+# and it was equally unobserved until the survivor asked the question.
+#
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify/mutate_0425.ps1
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+Set-Location $root
+
+$F = 'src\interp\interp.mbt'
+
+$muts = @(
+  # --- M1: a missing `else` stops falling through ---------------------------
+  # `None => falls = true` is the statement that a missing else falls through:
+  # when no condition holds, nothing runs and control continues. Indent 12/10/10.
+  @{
+    Name = 'M1 a missing else stops falling through'
+    Find = @'
+            None => falls = true
+          }
+          env.clear()
+'@
+    Repl = @'
+            None => falls = false
+          }
+          env.clear()
+'@
+  }
+
+  # --- M2: the join always terminates ---------------------------------------
+  # The loud failure. Every statement after every `if` becomes dead code, so this
+  # turns a precision bug into a volume bug. Indent 10/8/6/4.
+  @{
+    Name = 'M2 the join always terminates'
+    Find = @'
+          self.flow = if falls { FNormal } else { FReturn }
+        }
+      }
+    SWhile(cond, body) => {
+'@
+    Repl = @'
+          self.flow = FReturn
+        }
+      }
+    SWhile(cond, body) => {
+'@
+  }
+
+  # --- M3: the join always falls through ------------------------------------
+  # THE DANGEROUS ONE, and the reason the "real dead code" fixtures exist. If the
+  # join were written as a bare `self.flow = FNormal`, every genuine
+  # `unreachable code` in the language would stop being reported and nothing would
+  # say so -- a check whose precondition can never hold.
+  @{
+    Name = 'M3 the join always falls through'
+    Find = @'
+          self.flow = if falls { FNormal } else { FReturn }
+        }
+      }
+    SWhile(cond, body) => {
+'@
+    Repl = @'
+          self.flow = FNormal
+        }
+      }
+    SWhile(cond, body) => {
+'@
+  }
+
+  # --- M4: the per-branch flow reset removed ---------------------------------
+  # The reset is what stops one branch from marking the NEXT branch's statements
+  # dead. Removing it reinstates the original leak for the second branch onwards,
+  # which is why the else-if fixture and the plain if fixture are separate tests.
+  # Indent 12/12/12.
+  @{
+    Name = 'M4 the per-branch flow reset removed'
+    Find = @'
+            let env_ei = copy_env(acc)
+            self.flow = FNormal
+            self.exec_block(ei.body, env_ei)
+'@
+    Repl = @'
+            let env_ei = copy_env(acc)
+            self.exec_block(ei.body, env_ei)
+'@
+  }
+
+  # --- M5: only the first else-if is visited ---------------------------------
+  # A "join" that reads a single branch is not a join. With the chain's later
+  # branches unvisited, the result depends on which branch happened to be first.
+  # `while j < 0` and not `while false`: a literal-false condition may draw a
+  # compile warning, and a COMPILE-ERR here would be indistinguishable from a kill.
+  @{
+    Name = 'M5 only the first else-if is visited'
+    Find = @'
+        let mut j = idx + 1
+        // A `while` and not `for j in (idx + 1)..elseifs.length()`: the range
+        // operator binds tighter than the call after it, so that expression
+        // parses as `(idx + 1)..elseifs` and then `.length()`.
+        while j < elseifs.length() {
+'@
+    Repl = @'
+        let mut j = idx + 1
+        // A `while` and not `for j in (idx + 1)..elseifs.length()`: the range
+        // operator binds tighter than the call after it, so that expression
+        // parses as `(idx + 1)..elseifs` and then `.length()`.
+        while j < 0 {
+'@
+  }
+
+  # --- M6: exec_alt's `else` always reports fall-through ---------------------
+  # `exec_alt`'s terminal `else` is the last word on the whole chain, so it has to
+  # be able to say "terminated". The ABool(false) arm of SIf takes its flow from
+  # it. Indent 4/6/8/8/8/6/6/4 -- this whole block, so the string is unique.
+  @{
+    Name = 'M6 exec_alt else always reports fall-through'
+    Find = @'
+    match els {
+      Some(e) => {
+        self.flow = FNormal
+        self.exec_block(e, env)
+        self.flow == FNormal
+      }
+      None => true
+    }
+'@
+    Repl = @'
+    match els {
+      Some(e) => {
+        self.flow = FNormal
+        self.exec_block(e, env)
+        true
+      }
+      None => true
+    }
+'@
+  }
+
+  # --- M7: exec_alt's missing else stops falling through ---------------------
+  # The same statement one level down, inside exec_alt's own unknown-condition
+  # arm -- a chain that still HAS an else-if. Indent 8/10/12/12/12/14/12/10/10/10/10/8/8.
+  @{
+    Name = 'M7 exec_alt missing else stops falling'
+    Find = @'
+        match els {
+          Some(e) => {
+            self.flow = FNormal
+            self.exec_block(e, env)
+            if self.flow == FNormal {
+              falls = true
+            }
+          }
+          // A MISSING else always falls through: when no condition holds,
+          // nothing runs and control continues.
+          None => falls = true
+        }
+        falls
+'@
+    Repl = @'
+        match els {
+          Some(e) => {
+            self.flow = FNormal
+            self.exec_block(e, env)
+            if self.flow == FNormal {
+              falls = true
+            }
+          }
+          // A MISSING else always falls through: when no condition holds,
+          // nothing runs and control continues.
+          None => falls = false
+        }
+        falls
+'@
+  }
+
+  # --- M8: exec_alt's TERMINAL `None` stops falling through ------------------
+  # The fourth statement that decides "a missing else falls through", and the
+  # only one of the four nothing tested until the M6 survivor forced the question.
+  # `exec_alt`'s inner `match` (M7) handles a chain that still HAS an else-if;
+  # this terminal block handles one that does not.
+  #
+  # Its Find string is M6's, on purpose: the two mutations differ by ONE line
+  # inside the same eight-line block, and they are the two directions of the
+  # same decision. M6 makes the terminal arm unable to say "terminated"; M8 makes
+  # it unable to say "falls through". A block that can say neither is useless,
+  # and neither mutation is visible without the other's fixture.
+  #
+  # (The first version of this entry carried M6's REPLACED text instead, so the
+  # pre-flight aborted in milliseconds. Which is the point of the pre-flight.)
+  @{
+    Name = 'M8 exec_alt terminal missing else stops falling'
+    Find = @'
+    match els {
+      Some(e) => {
+        self.flow = FNormal
+        self.exec_block(e, env)
+        self.flow == FNormal
+      }
+      None => true
+    }
+'@
+    Repl = @'
+    match els {
+      Some(e) => {
+        self.flow = FNormal
+        self.exec_block(e, env)
+        self.flow == FNormal
+      }
+      None => false
+    }
+'@
+  }
+)
+
+# ---------------------------------------------------------------------------
+# PRE-FLIGHT: every pattern must be present before a single suite runs.
+# ---------------------------------------------------------------------------
+$path = Join-Path $root $F
+$bytes0 = [System.IO.File]::ReadAllBytes($path)
+$text0 = [System.Text.Encoding]::UTF8.GetString($bytes0)
+$nl = [string][char]10
+
+$absent = @()
+foreach ($m in $muts) {
+  # NOT `$f`: PowerShell variable names are case-INSENSITIVE, so `$f` silently
+  # overwrote `$F` (the file path) on the first loop of the previous version and
+  # the pre-flight banner printed a mutation pattern instead of the path.
+  $findText = $m.Find.Replace("`r`n", $nl)
+  if ($text0.IndexOf($findText, [System.StringComparison]::Ordinal) -lt 0) {
+    $absent += $m.Name
+    $firstLine = ($findText -split "`n")[0]
+    Write-Output ("PREFLIGHT MISS: " + $m.Name)
+    Write-Output ("  looking for: |" + $firstLine + "|")
+  }
+}
+if ($absent.Count -gt 0) {
+  Write-Output ("ABORT: " + $absent.Count + " pattern(s) absent from " + $F)
+  Write-Output 'No suite was run. Fix the pattern (indentation is significant) and retry.'
+  exit 1
+}
+Write-Output ('Pre-flight: all ' + $muts.Count + ' patterns present in ' + $F)
+
+# ---------------------------------------------------------------------------
+# RUN
+# ---------------------------------------------------------------------------
+$results = @()
+$failed  = @()
+
+foreach ($m in $muts) {
+  $sha0 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+  $text = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($path))
+  $eol = if ($text.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { [string][char]10 }
+  $norm  = $text.Replace($eol, $nl)
+  $findN = $m.Find.Replace("`r`n", $nl)
+  $replN = $m.Repl.Replace("`r`n", $nl)
+
+  if ($norm.IndexOf($findN, [System.StringComparison]::Ordinal) -lt 0) {
+    $results += [pscustomobject]@{ Mutation=$m.Name; Outcome='NO-OP'; Killed=0; Detail='pattern absent' }
+    $failed += $m.Name
+    continue
+  }
+  $mutated = $norm.Replace($findN, $replN)
+  [System.IO.File]::WriteAllText($path, $mutated.Replace($nl, $eol), (New-Object System.Text.UTF8Encoding($false)))
+
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $out = & C:\Users\31379\.moon\bin\moon.exe test --target js 2>&1 | Out-String
+  $ErrorActionPreference = $prev
+
+  $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
+  $killed = 0; $detail = ''
+  if ($ran.Count -ge 1) {
+    $m2 = $ran[$ran.Count - 1]
+    $total = [int]$m2.Groups[1].Value
+    $passed = [int]$m2.Groups[2].Value
+    if ($total -le 0) { $outcome='NO-RUN'; $detail='Total tests: 0'; $failed += $m.Name }
+    else {
+      $killed = $total - $passed
+      if ($killed -gt 0) { $outcome='KILLED'; $detail="$killed of $total red" }
+      else { $outcome='SURVIVED'; $detail="$total/$total still green" }
+    }
+  } else { $outcome='COMPILE-ERR'; $detail='no Total tests line; the suite did not run' }
+
+  [System.IO.File]::WriteAllBytes($path, $bytes0)
+  if ($sha0 -ne (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash) {
+    $detail += ' RESTORE-MISMATCH'; $failed += ($m.Name + ' (restore)')
+  }
+  $results += [pscustomobject]@{ Mutation=$m.Name; Outcome=$outcome; Killed=$killed; Detail=$detail }
+  if ($outcome -ne 'KILLED') { $failed += $m.Name }
+  Write-Output ('  ' + $outcome.PadRight(11) + ' ' + $m.Name + '  -- ' + $detail)
+}
+
+Write-Output ''
+Write-Output '=== 0.4.25 mutation results ==='
+$results | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
+$killedCount = @($results | Where-Object { $_.Outcome -eq 'KILLED' }).Count
+$survived = @($results | Where-Object { $_.Outcome -eq 'SURVIVED' }).Count
+Write-Output ("{0} killed, {1} survived; every restore verified byte-identical" -f $killedCount, $survived)
+if ($failed.Count -gt 0) { Write-Output ("FAILED: {0}" -f ($failed -join ', ')); exit 1 }
+exit 0

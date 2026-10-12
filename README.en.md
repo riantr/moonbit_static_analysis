@@ -153,6 +153,110 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.25 — the behaviour lens leaked flow between `if` branches, and a check that could not fire
+
+**This release has no corpus delta, and that is measured, not inferred.** Six corpora,
+12,428 files: every scan is byte-identical before and after. `Unreachable` was 0 findings
+before and is 0 after. So this is **a correctness fix with a reproducer** — not a claim
+that it cleaned up anything. Turning a zero into a win is exactly the sentence this
+project keeps refusing to write.
+
+### The defect: no join between branches
+
+`Interp` explores an unknown condition's branches ONE AFTER ANOTHER in the same
+instance, so the flow state simply carried over between them: a branch that terminated
+made the **next** branch's first statement look unreachable, and whatever the **last**
+branch left behind was what survived past the whole `if`.
+
+The shortest reproducer contains **no `raise` at all**:
+
+```moonbit
+fn f(g : Int?) -> Int {
+  guard g is Some(v) else {
+    return 0
+  }
+  return v
+}
+```
+
+reported `return v` as `unreachable code`. The else terminates, the then does not, and
+the else's flow won the race. `guard` is modelled as an `SIf` with an **empty**
+then-branch, so the then never terminates — the defect was live at every
+`guard ... else { ... }`. That is the shape of proton 0.3.4
+`facade_app_metadata.mbt:81-82`, except that the else there holds a `raise`.
+
+### The fix: per-branch reset plus a fall-through join
+
+Each branch resets `self.flow = FNormal` before running and contributes
+`falls = self.flow == FNormal` after; a **missing else is always `falls = true`** (no
+branch is taken, so control continues); the join at the end is
+`self.flow = if falls { FNormal } else { FReturn }`. `exec_alt` changed from `Unit` to
+returning `Bool`, and its own `ABool(false)` arm does the same join.
+
+Two MoonBit details are recorded in the source:
+
+- **An enum does not implement `Eq` by default.** `self.flow == FNormal` reports
+  `Type Flow does not implement trait Eq`, so `priv enum Flow` gained `derive(Eq)`.
+- `for j in (idx + 1)..elseifs.length()` parses as `(idx+1)..elseifs` and then
+  `.length()` (reported as `type Int has no method arr`), so walking the remaining
+  else-ifs has to be a `while`.
+
+An `ABottom` condition keeps its old meaning (it does not terminate, it falls through).
+Whether a bottom condition should suppress everything downstream is a separate question,
+and this release does not answer it in either direction.
+
+### Mutation gate: eight mutations, three rounds to green
+
+| Round | Result | Why |
+|---|---|---|
+| 1st | **1 killed / 3 survived / 3 no-op** | three pattern strings never matched the source at all |
+| 2nd | **6 killed / 1 survived (M6)** | patterns fixed; M6 turned out to be a fixture-coverage problem |
+| 3rd | **8 killed / 0 survived** | two fixtures added, plus M8 |
+
+Neither kind of survivor was "not enough tests". They were dumber than that, and they
+are written down here because they will happen again.
+
+**One: a fixture has to actually reach the code it claims to test.** `f(1)` binds `n` to
+`AInt(1)`, `binop` folds `n > 0` to `ABool(true)`, and the then-branch runs alone — the
+arm the join lives in is never entered. `f(g())` with `g` undefined returns `ABottom`,
+which silences the whole body: "no findings" and "the test passed" look identical. Four
+mutations died on this in the first version.
+
+The shape that does reach it is `s == "a"`: `binop`'s `OpEq | OpNe` arm returns
+`AType("bool")` unconditionally, and there is no string arm to fold with. Two
+alternatives were measured too: `f(@core.nothing)` (`AAny` absorbs into
+`AType("bool")`) and `x is Some(v)` (`EIs` returns `AAny` on purpose — so **every
+`guard` in real code already reaches the join**).
+
+The control that goes with it matters: **same shape, opposite expectation**. The folded
+fixture (`f(1)`, no `else`, then-branch returns) expects **1**; the unfolded fixture
+(`f("a")`, same shape) expects **0**. That inversion is the evidence they really take
+different arms. The first version used `f(1)` for both, so its "control" was only
+re-testing constant folding.
+
+**Two: a NO-OP mutation is only reported after a full suite run.** M5 and M6 were
+written with 10 spaces of indentation where the file has 8 and 6, and M7's pattern said
+`None => true` where the source reads `None => falls = true` — three wasted
+`moon test` runs, each learning nothing. There is now a **pre-flight**: if any pattern
+is absent from the pristine text the run aborts in milliseconds and prints the line it
+was looking for. On the fourth round it immediately caught one of my own mistakes (M8's
+Find string had copied M6's **replaced** text).
+
+**Three: M6's survivor was a coverage problem, not a pattern problem.** `exec_alt`'s
+**terminal** `match els` only runs when there are **no else-ifs left**, and every chain
+fixture at the time had one. No amount of re-matching could kill it, because no fixture
+reached that code. Adding one also turned up **M8** — the terminal version of "a missing
+else always falls through", equally unobserved — so M8 was added. M6 and M8 now change
+**one line inside the same 8-line block**, and they are the two directions of one
+decision: M6 makes the terminal arm unable to say "terminated", M8 makes it unable to
+say "falls through". A block that can say neither is useless, and neither mutation is
+visible without the other's fixture.
+
+Tests js 398 / wasm 470 / wasm-gc 398. `_verify/scan_0425.ps1` compares BOTH baselines
+(0.4.24 and the earlier 0.4.25 scan) and writes a fresh filename rather than
+overwriting — the same reason `scan_0423.ps1` says "two scans writing the same filename
+is how a baseline silently becomes its own comparison", now used a second time.
+
 ## 0.4.24 — `raise` as an expression: the clause's third position
 
 **A measurement redirected this release.** When 0.4.23 finished with actionable
@@ -1549,7 +1653,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.24
+moon add riantr/moonbit_static_analysis@0.4.25
 ```
 
 ```moonbit
@@ -1931,7 +2035,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.24` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.25` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

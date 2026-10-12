@@ -140,7 +140,7 @@ priv enum Flow {
   FReturn
   FBreak
   FContinue
-}
+} derive(Eq)
 
 ///|
 priv struct MethodDef {
@@ -478,7 +478,13 @@ fn Interp::exec_stmt(
       // ABool constants prune dead branches (assembly point 3)
       match self.eval(cond, env) {
         ABool(true) => self.exec_block(then, env)
-        ABool(false) => self.exec_alt(elseifs, els, env, 0)
+        ABool(false) => {
+          // Same join as the unknown-condition arm below, for the same reason:
+          // the then-branch is not taken, so the `if` falls through exactly when
+          // the elseifs/else chain does.
+          let falls = self.exec_alt(elseifs, els, env, 0)
+          self.flow = if falls { FNormal } else { FReturn }
+        }
         ABottom => ()
         cv => {
           if !vboolean(cv) {
@@ -489,11 +495,26 @@ fn Interp::exec_stmt(
             )
           }
           let env_then = copy_env(env)
+          // The branches below are explored ONE AFTER ANOTHER in this same
+          // `Interp`, so the flow state used to simply carry over between them:
+          // a branch that terminated made the NEXT branch's first statement
+          // look unreachable, and whatever the LAST branch left behind was
+          // what survived past the whole `if`.
+          //
+          // The entry flow is always FNormal here -- `exec_block` only calls
+          // `exec_stmt` when the frame is live and reports otherwise -- so each
+          // branch starts from FNormal and the results are joined at the end.
+          self.flow = FNormal
           self.exec_block(then, env_then)
+          let mut falls = self.flow == FNormal
           let acc = env_then
           for ei in elseifs {
             let env_ei = copy_env(acc)
+            self.flow = FNormal
             self.exec_block(ei.body, env_ei)
+            if self.flow == FNormal {
+              falls = true
+            }
             let merged = Interp::merge_env(self, acc, env_ei)
             acc.clear()
             for k, v in merged {
@@ -503,19 +524,32 @@ fn Interp::exec_stmt(
           match els {
             Some(e) => {
               let env_e = copy_env(acc)
+              self.flow = FNormal
               self.exec_block(e, env_e)
+              if self.flow == FNormal {
+                falls = true
+              }
               let merged = Interp::merge_env(self, acc, env_e)
               acc.clear()
               for k, v in merged {
                 acc.set(k, v)
               }
             }
-            None => ()
+            // A MISSING else always falls through: when no branch is taken,
+            // nothing runs and control continues, so it must not make the
+            // statements after the `if` look dead either.
+            None => falls = true
           }
           env.clear()
           for k, v in acc {
             env.set(k, v)
           }
+          // The join. Falls through if ANY branch does, which is the standard
+          // join and the whole point: a terminating `else` can no longer make
+          // the statements after the `if` unreachable when the then-branch
+          // reaches them. When every branch really does terminate, the code
+          // after the `if` IS dead and FReturn keeps `exec_block` reporting it.
+          self.flow = if falls { FNormal } else { FReturn }
         }
       }
     SWhile(cond, body) => {
@@ -610,12 +644,20 @@ fn Interp::exec_alt(
   els : Array[@ast.Stmt]?,
   env : Map[String, AbsVal],
   idx : Int32,
-) -> Unit {
+) -> Bool {
   if idx < elseifs.length() {
     match self.eval(elseifs[idx].cond, env) {
-      ABool(true) => self.exec_block(elseifs[idx].body, env)
+      ABool(true) => {
+        self.flow = FNormal
+        self.exec_block(elseifs[idx].body, env)
+        self.flow == FNormal
+      }
       ABool(false) => self.exec_alt(elseifs, els, env, idx + 1)
-      ABottom => ()
+      // A BOTTOM condition reports nothing and, as before this join existed,
+      // leaves the flow alone -- so it falls through. Whether a bottom
+      // condition should suppress everything downstream is a separate question
+      // and this fix does not answer it either way.
+      ABottom => true
       cv => {
         if !vboolean(cv) {
           self.report(
@@ -624,13 +666,45 @@ fn Interp::exec_alt(
             elseifs[idx].cond.span,
           )
         }
+        // Same join as the then/elseif arms: fall through if ANY branch does.
+        self.flow = FNormal
         self.exec_block(elseifs[idx].body, env)
+        let mut falls = self.flow == FNormal
+        let mut j = idx + 1
+        // A `while` and not `for j in (idx + 1)..elseifs.length()`: the range
+        // operator binds tighter than the call after it, so that expression
+        // parses as `(idx + 1)..elseifs` and then `.length()`.
+        while j < elseifs.length() {
+          self.flow = FNormal
+          self.exec_block(elseifs[j].body, env)
+          if self.flow == FNormal {
+            falls = true
+          }
+          j += 1
+        }
+        match els {
+          Some(e) => {
+            self.flow = FNormal
+            self.exec_block(e, env)
+            if self.flow == FNormal {
+              falls = true
+            }
+          }
+          // A MISSING else always falls through: when no condition holds,
+          // nothing runs and control continues.
+          None => falls = true
+        }
+        falls
       }
     }
   } else {
     match els {
-      Some(e) => self.exec_block(e, env)
-      None => ()
+      Some(e) => {
+        self.flow = FNormal
+        self.exec_block(e, env)
+        self.flow == FNormal
+      }
+      None => true
     }
   }
 }

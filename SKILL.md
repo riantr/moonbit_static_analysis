@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.24 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.25 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -528,6 +528,29 @@ modelled as an `SIf` with an empty `then`, which is the honest mapping for a fra
 model that is not flow-scoped: the condition is walked FIRST, so an `is` pattern in
 it binds in the current frame exactly where a guard binding belongs. The `else`
 block is analyzed like any other block.
+
+**An `if`'s branches are JOINED, not chained (since 0.4.25).** This is the other
+half of the `guard` mapping above, and it is where `guard` was paying for it. An
+unknown condition's branches are explored ONE AFTER ANOTHER in the same `Interp`,
+so before 0.4.25 the flow state simply carried over between them: a branch that
+terminated made the NEXT branch's first statement look unreachable, and whatever
+the LAST branch left behind was what survived past the whole `if`. With `guard`'s
+empty then-branch, `guard g is Some(v) else { return 0 }` followed by `return v`
+reported a FALSE `unreachable code` — the else terminates, the then does not, and
+the else's flow won the race. It reproduces with no `raise` anywhere.
+
+Each branch now resets `self.flow = FNormal` before running and contributes
+`falls = self.flow == FNormal` after; a **missing `else` is always `falls = true`**;
+the join is `self.flow = if falls { FNormal } else { FReturn }`. `exec_alt`
+returns `Bool` and joins the same way. So every branch terminating is STILL
+reported as dead code — the fix makes false positives go away without making the
+check unfireable.
+
+MEASURED across six corpora and 12,428 files: every scan byte-identical before and
+after, `Unreachable` 0 → 0. **A correctness fix with a reproducer, not a cleanup.**
+An `ABottom` condition keeps its old meaning (does not terminate, falls through) —
+whether a bottom condition should suppress everything downstream is a separate
+open question this does not answer in either direction.
 
 **A pattern in `is` binds EVERY name, at EVERY depth (since 0.4.21).** The rules
 collapse into one predicate, `Parser::pattern_binding_at(j)`, called from both the

@@ -129,6 +129,93 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.25 —— 行为透镜的 if 分支 flow 泄漏，和一个测不出来的东西
+
+**这一版没有语料 delta，而这是量出来的，不是推出来的。** 六个语料、12,428 个文件，
+改前改后**逐字节一致**；改前 `Unreachable` 是 0 条，改后也是 0 条。所以它是**一个带
+复现器的正确性修复**，不是「清理掉了什么」——把 0 说成成果，正是这个项目一直在拒绝
+的那种话。
+
+### 缺陷：分支之间没有 join
+
+`Interp` 在**同一个实例**里依次探索条件未知的 `if` 的各个分支，于是 flow 状态直接在
+分支之间传递：一个分支终止了，**下一个**分支的第一条语句就看起来不可达；而整个 `if`
+之后活下来的，是**最后一个**分支留下的状态。
+
+最短的复现器里**没有 `raise`**：
+
+```moonbit
+fn f(g : Int?) -> Int {
+  guard g is Some(v) else {
+    return 0
+  }
+  return v
+}
+```
+
+报 `return v` 是 `unreachable code`。else 终止、then 不终止，而 else 的 flow 赢了接力。
+`guard` 被建模成 then-branch 为**空**的 `SIf`，所以 then 永远不终止——缺陷因此在每一处
+`guard ... else { ... }` 上都是活的。这个形状就是 proton 0.3.4
+`facade_app_metadata.mbt:81-82` 的形状，只是那里 else 里写的是 `raise`。
+
+### 修法：逐分支重置 + fall-through join
+
+每个分支执行前 `self.flow = FNormal`，分支结束后 `falls = self.flow == FNormal`；
+**缺 else 恒为 `falls = true`**（没有分支被取，控制就继续）；末尾
+`self.flow = if falls { FNormal } else { FReturn }`。`exec_alt` 从 `Unit` 改成返回
+`Bool`，它自己的 `ABool(false)` 臂也做同一个 join。
+
+两个 MoonBit 细节记在源码里：
+
+- **枚举默认不实现 `Eq`**，`self.flow == FNormal` 报 `Type Flow does not implement trait
+  Eq`，所以 `priv enum Flow` 加了 `derive(Eq)`；
+- `for j in (idx + 1)..elseifs.length()` 会解析成 `(idx+1)..elseifs` 再 `.length()`
+  （报 `type Int has no method arr`），遍历剩余 else-if 必须用 `while`。
+
+`ABottom` 条件保持原语义（不终止、falls through）——「bottom 条件该不该压制下游」是另一
+个问题，这一版不回答，两个方向都没改。
+
+### 突变门禁：8 道，三轮才全绿
+
+| 轮次 | 结果 | 说明 |
+|---|---|---|
+| 第一轮 | **1 杀 / 3 存活 / 3 空转** | 3 个模式串根本没匹配上源码 |
+| 第二轮 | **6 杀 / 1 存活（M6）** | 模式串修好了，M6 暴露的是夹具覆盖问题 |
+| 第三轮 | **8 杀 / 0 存活** | 补 2 个夹具 + M8 |
+
+两道活下来的原因都不是「测试没写够」，而是更蠢的东西，记在这里因为它们会再发生：
+
+**一、夹具必须真的走到它声称在测的那段代码。** `f(1)` 会让 `n` 绑成 `AInt(1)`，
+`binop` 把 `n > 0` 折叠成 `ABool(true)`，于是 then-branch 单独跑，**join 所在的臂压根
+没进**。而 `f(g())`（`g` 未定义）让调用返回 `ABottom`，整个函数体静默——「没有发现」和
+「通过」长得一模一样。第一版有 4 道死在这上面。
+
+真正能走到的形状是 `s == "a"`：`binop` 的 `OpEq | OpNe` 臂无条件返回 `AType("bool")`，
+**根本没有字符串臂可折叠**。另外两条备选也实测过：`f(@core.nothing)`（`AAny` 被吸收成
+`AType("bool")`）和 `x is Some(v)`（`EIs` 故意返回 `AAny`——**所有真实代码里的 `guard`
+本来就走 join**）。
+
+配套的对照很重要：**同形状、相反的期望值**。折叠夹具（`f(1)`，无 else，then 返回）
+期望 **1**，不折叠夹具（`f("a")`，同形状）期望 **0**。这个反转就是「它们真的走了不同
+的臂」的证据；第一版两个都用 `f(1)`，于是那条「对照」只是在重测常量折叠。
+
+**二、空转变异只有跑完全套件才会报出来。** M5/M6 的缩进按 10 空格写而文件里是 8/6，
+M7 的模式串写成 `None => true` 而源码是 `None => falls = true`——三道各白跑一次
+`moon test`。所以现在**先做 pre-flight**：任何模式串在原文里找不到就在毫秒级中止并打出
+它要找的那一行。第四轮修 M8 时它立刻抓到了我自己的一个错（M8 的 Find 串误抄了 M6 的
+**替换后**文本）。
+
+**三、M6 的存活是夹具覆盖问题，不是模式串问题。** `exec_alt` 的**终止** `match els`
+只有在**没有剩余 else-if** 时才执行，而当时每一个链式夹具都带 else-if。没有夹具到得了
+那段代码，怎么调模式串都杀不掉它。补夹具时顺手发现 **M8**——M6 背后那条
+「缺 else 恒 falls through」的**终止版**同样没人测过，于是加了一道。现在 M6/M8 改的是
+**同一个 8 行块里的一行**，两个方向互为对照：一个让终止版没法说「终止」，一个让它没法
+说「落空」。两句话都说不了的那块代码是没有用的。
+
+测试 js 398 / wasm 470 / wasm-gc 398。扫描脚本 `_verify/scan_0425.ps1` 连比两个基线
+（0.4.24 与本次之前的那次 0.4.25 扫描），写新文件名而不是覆盖——`scan_0423.ps1` 里那句
+「两次扫描写同一个文件名，就是让基线悄悄变成它自己的对照」在这里又用了一次。
+
 ## 0.4.24 —— `raise` 作为表达式：一条子句的第三个位置
 
 **这一版是被一个测量改道的。** 0.4.23 结束时 actionable 涨了，我把每一个 `UndefinedName`
@@ -1349,7 +1436,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.24
+moon add riantr/moonbit_static_analysis@0.4.25
 ```
 
 ```moonbit
@@ -1681,7 +1768,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.24` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.25` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
