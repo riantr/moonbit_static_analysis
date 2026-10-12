@@ -76,6 +76,22 @@ pub(all) enum Tok {
   /// so it must not be reported by the lexer. This frontend consumes it in the
   /// annotation positions above; anywhere else it reaches the parser.
   TQuestion
+  /// `~` — the LABEL sigil, and it has two settled sides (0.4.18, both
+  /// confirmed by `moon check` on wzzc-dev/moui 0.1.12):
+  ///
+  ///   - DECLARATION `f~ : T` declares a parameter that must be supplied BY
+  ///     LABEL. The compiler rejects a positional pass with "The labels f~ are
+  ///     required by this function, but not supplied."
+  ///   - CALL `f(x~)` is the shorthand for `f(x=x)`. The compiler rejects a
+  ///     wrong label with "This function has no parameter with label x~."
+  ///
+  /// Before this existed `~` reached lex_op's unknown-char arm: 60 of the 415
+  /// files wzzc-dev/moui could not read reported "unexpected character '~'"
+  /// as their FIRST error, and the character occurs in 594 of its .mbt files
+  /// — 407 in a `~ :` declaration, 341 in a `~,` argument. It is deliberately
+  /// NOT in the expression-terminator list above: `~` never ends a line, since
+  /// it is written tight against the name it qualifies.
+  TTilde
   /// `..<` — the exclusive range operator, one token. A bare `..` stays two
   /// TDots, and `..=` is not modelled: it was not measured in the blocked
   /// corpus this token was added for (`1..<chars.length()`).
@@ -285,6 +301,22 @@ fn Lexer::run(self : Lexer) -> Unit {
         self.lex_attribute()
         continue
       }
+    }
+    // A byte-string literal `b"\x00"`. Real MoonBit, and 878 of them appear in
+    // wzzc-dev/moui 0.1.12 across 134 files. Without this branch the `b` lexed
+    // as an identifier and the string after it became a second atom, so the
+    // pair hit `parse_atom`'s catch-all and ended the file at
+    // `views/date_picker_control.mbt:40` (`if bytes == b"\x00"`).
+    //
+    // The test is the character AFTER the `b`, so an identifier that merely
+    // starts with `b` — `box`, `b2` — still lexes as one name.
+    if c == 'b' &&
+      self.pos + 1 < self.chars.length() &&
+      self.chars[self.pos + 1] == '"' {
+      self.pos += 1
+      self.col += 1
+      last = self.lex_string()
+      continue
     }
     if is_letter(c) || c == '@' {
       // '@' starts a package alias token ("@q") so `.mbtx` import blocks lex
@@ -1204,6 +1236,9 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
     // file partial; the PARSER owns whether the operator is legal here.
     '&' => TAmp
     '^' => TCaret
+    // `~` — the label sigil. Real MoonBit, so it must not be reported by the
+    // lexer; the PARSER owns the two positions it can appear in.
+    '~' => TTilde
     other => {
       self.reports.push(@report.Report::{
         family: @core.FParse,

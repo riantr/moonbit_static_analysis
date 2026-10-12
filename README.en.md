@@ -153,6 +153,130 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.18 — a fresh corpus: 193 → 389 of 608 files, actionable 588 → 6
+
+The first seventeen versions all scanned corpora this project already knew. This
+one is a package never scanned before: **wzzc-dev/moui 0.1.12** (608 files). It
+was chosen for one reason — `moon check` runs through it, so anything the
+analyzer reports about it is either valid MoonBit it cannot read, or a real
+defect. There is no third possibility.
+
+Result: 193/608 files understood (31.7%), then **389/608 (63.9%)** after six
+fixes; actionable **588 → 6**.
+
+### Settle first, then act
+
+One root cause was wrong, and wrong in exactly the way I assumed right. The `&`
+in `data : &RuntimeViewNode` I had been reading as a reference type. `moon check`
+says otherwise:
+
+```
+Error [4100] x : &Node
+  ╰── The type Node is not a trait
+Error [4091] x.n
+  ╰── @moonbitlang/core/ref.Ref[Node] has no field n
+```
+
+`&T` is `Ref[T]`, and `T` must be a **trait** — moui only writes it on traits
+(`&RuntimeViewNode`), which is the shape that typechecks. So the fix is not "add
+a reference type": it is to consume the `&`, fold it into the type name, and let
+`ann_to_ty` return `TUnknown` honestly (the same answer `Map[K,V]` already gets).
+
+`~` also turned out to be two-sided. The compiler's own words: `The labels f~
+are required by this function` (declaration) and `This function has no parameter
+with label x~` (call).
+
+### Six fixes, each costed
+
+| Fix | Shape | Corpus volume |
+|---|---|---|
+| `&T` | `Ref[T]` annotation | 31 sites / 13 files |
+| `~` | `label~ : T` / `x~` | 594 files |
+| `fn[T]` | type parameters | 1563 sites / 266 files |
+| `b"..."` | byte-string literal | 878 sites / 134 files |
+| `{ ..base }` | struct update | 370 sites / 88 files |
+| `.m(...)` | leading-dot continuation | 1124 lines / 131 files |
+
+Files understood, fix by fix: 193 →(`&`)195 →(`~`)313 →(`fn[T]`)342 →(`{..}`)373 →(`.`)389.
+
+### Three "read it and dropped it", not three rules
+
+`b"..."`, `{ ..base }` and the leading-dot chain would each MANUFACTURE a new
+false positive if the fix simply ate the tokens: the arguments inside a chain or
+a spread are ordinary expressions, and dropping them reports a parameter that is
+used only inside one as unused. So all three preserve the reads:
+
+- the spread base is pushed under an **empty field name** — `walk`, `infer` and
+  `interp` all destructure as `let (_, v) = f` and only ever traverse the value,
+  so the empty name is invisible to them while the expression stays alive and
+  `self` is still seen used;
+- the leading-dot chain reuses the **real postfix builder** (`parse_postfix` split
+  into a `parse_postfix_from`), so segments become `EMethodCall`s whose arguments
+  are naturally in the tree.
+
+### One honest entry: `b"..."` bought no readable files
+
+The parsed count did not move at all (342 → 342). In moui `b"` is never a file's
+*first* error — something earlier always blocks first. It is a real lexer defect
+(mutation-verified: without it, `undefined variable 'b'` plus `expected ')'`),
+but on this corpus it shows no benefit. Kept, and booked as such.
+
+### The mutation script caught the script's own bug
+
+Twelve mutations, eleven killed. The twelfth (the chain rewind) is deliberately
+marked SURVIVED: removing `self.p = save` leaves the cursor past the separators,
+but the enclosing statement loop calls `skip_seps` anyway, so the result is
+identical. That line is **defensive**, and no test or corpus line distinguishes
+it. It stays (the loop is correct on its own terms rather than because a caller
+tidies up), but it is not pretended to be covered.
+
+More worth recording: the script's own error. The first version detected
+COMPILE-ERR by grepping for `Parse error`, and matched its own test **named**
+"0418: &T in a parameter type is not a parse error" — reporting a mutation that
+killed 2 tests as "build broke; not evidence". It now keys off whether a
+`Total tests:` line exists at all. A fragile detector that hides a working gate
+is worse than none: it would have pushed a real fix out of the release.
+
+The `Buffer` gate was also written wrong first: it mentioned `Buffer` only in a
+type annotation, and the `.mbt` frontend does not report unknown type names at
+all — so the test was permanently green and mutation M12 survived it. The real
+corpus shape is `Buffer(size_hint=12)`, a **constructor call**. Rewritten to the
+corpus shape, it kills.
+
+### Differential
+
+| Corpus | 0.4.17 | 0.4.18 |
+|---|---|---|
+| `riantr/moonbit_labeler` 0.2.13 | parsed 18 / actionable 3 | **parsed 22 / actionable 3** |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **parsed 1 / actionable 0 (byte-identical)** |
+| `moonbit-community/proton` 0.3.4 | — | parsed 70 / actionable 45 |
+| `moonbit-community/proton_contract` 0.3.4 | — | parsed 3 / actionable 1 |
+| `moonbitlang/async` 0.22.4 | — | parsed 196 / actionable 30 |
+| `wzzc-dev/moui` 0.1.12 | parsed 193 / actionable 588 | **parsed 389 / actionable 6** |
+
+labeler's unreliable fell 612 → 360 and withheld 179 → 146 with actionable
+unchanged at 3 — **more readable, no new verdicts**. moonbit_image is identical
+on all six metrics.
+
+Self-scan: 54/54 files understood, `actionable=0`, `unreliable=0`, `withheld=0`.
+
+(A real problem surfaced here too: after adding `TTilde` the self-scan reported
+2 × `undefined name 'TTilde'`. Not a code bug — `src/lexer/pkg.generated.mbti` is
+a **git-tracked generated file** that did not follow, and neither `moon update`
+nor `moon doc` rewrites it. After adding the variant by hand the self-scan
+returns to 0.)
+
+### Still unfixed (all parser; deliberately unchanged in behavior)
+
+- A leading `is` expression (an `f(x)` followed by `is Some(_)` on the next line)
+  is read as the bare name `is`, giving `undefined name 'is'`; `if x is Some(true)`
+  binds the literal `true`, giving `local variable 'true'`. Three actionable in
+  total, around `core/view_node_test.mbt`.
+- The untyped `self` in `impl ... with fn layout(self, context)` is reported
+  undefined — one finding.
+- After the three parser fixes 219 files are still not read whole; the dominant
+  cause remains `unexpected token`.
+
 ## 0.4.17 — 11 → 9: one root cause was "0.4.16 wrote the probe wrong", the other "it read the answer and threw it away"
 
 0.4.16 left 11. This release went back to the `Array::make` finding that 0.4.16
@@ -740,7 +864,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.17
+moon add riantr/moonbit_static_analysis@0.4.18
 ```
 
 ```moonbit
@@ -1122,7 +1246,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.17` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.18` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

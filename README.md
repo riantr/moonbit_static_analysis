@@ -129,6 +129,116 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.18 —— 换一个语料：608 个文件里 193 → 389，actionable 588 → 6
+
+前十七版的语料都是本项目熟悉的东西。这轮换了一个**从未扫过**的包：
+`wzzc-dev/moui` 0.1.12（608 文件）。选它的理由只有一条——`moon check` 能跑通，
+所以凡是它报出来的问题，要么是解析器读不懂的**合法 MoonBit**，要么就是真缺陷。
+没有第三种可能。
+
+结果：193/608（31.7%）读得懂，六处修复后 389/608（63.9%）；actionable 从
+**588 降到 6**。
+
+### 先 settle，再动手
+
+六处里有一处的**根因是错的**，而且是我自己以为对了的那种。`data : &RuntimeViewNode`
+里的 `&` 我一直当「引用类型」。`moon check` 说不是：
+
+```
+Error [4100] x : &Node
+  ╰── The type Node is not a trait
+Error [4091] x.n
+  ╰── @moonbitlang/core/ref.Ref[Node] has no field n
+```
+
+`&T` 是 `Ref[T]`，而且 `T` 必须是 **trait**——moui 只在 trait 上写它
+（`&RuntimeViewNode`），那才是能过编译的形状。修法因此不是「加个引用类型」，
+而是在 `type_annotation` 里把 `&` 收掉、折进类型名，让 `ann_to_ty` 老老实实
+返回 `TUnknown`（和 `Map[K,V]` 同一个答案）。
+
+`~` 也是先 settle 才知道有两个面：编译器原话是
+`The labels f~ are required by this function`（声明侧）与
+`This function has no parameter with label x~`（调用侧）。
+
+### 六处修复，各自的账
+
+| 修复 | 形状 | 语料里的量 |
+|---|---|---|
+| `&T` | `Ref[T]` 注解 | 31 处 / 13 文件 |
+| `~` | `label~ : T` / `x~` | 594 文件 |
+| `fn[T]` | 类型参数 | 1563 处 / 266 文件 |
+| `b"..."` | 字节串字面量 | 878 处 / 134 文件 |
+| `{ ..base }` | struct update | 370 处 / 88 文件 |
+| `.m(...)` | 行首点号续链 | 1124 行 / 131 文件 |
+
+可读文件数逐条：193 →(`&`)195 →(`~`)313 →(`fn[T]`)342 →(`{..}`)373 →(`.`)389。
+
+### 三条「读到了但丢掉」，不是三条规则
+
+`b"..."`、`{ ..base }`、行首 `.m(...)` 链，这三处如果只把 token 吃掉，
+会各自造出一个**新的假阳性**：链和 spread 里的实参是真实表达式，丢掉就等于
+把「只在链里用过的参数」报成 unused。所以三处都保留了读：
+
+- spread 的 base 以**空名**压进字段表——`walk`/`infer`/`interp` 三家都写成
+  `let (_, v) = f`，只看值不看名，所以空名对它们不可见，而表达式活着，
+  `self` 就还是被读到的；
+- 行首链复用**真正的 postfix 构造器**（把 `parse_postfix` 拆出一个
+  `parse_postfix_from`），链段于是成为 `EMethodCall`，实参自然在树里。
+
+### 一处如实记账：`b"..."` 没有换来可读文件
+
+改了之后 moui 的 parsed 数**一个没动**（342 → 342）。因为 `b"` 在 moui 里从来
+不是任何文件的**第一个**错误，前面总有别的构造先挡住。这是个真的解析器缺陷
+（突变验证证明：不修就会 `undefined variable 'b'` + `expected ')'`），只是
+这一版语料上**测不出收益**。留着，账照实记。
+
+### 突变验证里，脚本自己抓到了自己的错
+
+12 道突变，11 道被杀。第 12 道（链的 rewind）**故意标成 SURVIVED**：把
+`self.p = save` 去掉之后，cursor 停在分隔符之后——但外层语句循环本来就会再调
+`skip_seps`，所以结果完全一样。那行是**防御性的**，没有任何测试或语料能区分它。
+留着它（让循环自洽，而不是靠调用方兜底），但不假装它被覆盖了。
+
+更值得记的是脚本自己出的错：第一版用 `Parse error` 判断 COMPILE-ERR，
+结果它匹配上了我自己那条**名字里带 "parse error"** 的测试，把一道杀了 2 条
+的突变报成「build 坏了，不算证据」。改成**用 `Total tests:` 行是否存在**来判断，
+脆弱的探测器会把一个真修复挡在发布外面，这比没有探测器更糟。
+
+`Buffer` 那道也先写了错版本：只让它出现在**类型注解**里，而 `.mbt` 前端对
+未知类型名根本不开火——测试恒绿，突变 M12 活了。语料里真正的形状是
+`Buffer(size_hint=12)`，**构造函数调用**。按语料改完才杀掉。
+
+### 差分
+
+| 语料 | 0.4.17 | 0.4.18 |
+|---|---|---|
+| `riantr/moonbit_labeler` 0.2.13 | parsed 18 / actionable 3 | **parsed 22 / actionable 3** |
+| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **parsed 1 / actionable 0（逐字节一致）** |
+| `moonbit-community/proton` 0.3.4 | — | parsed 70 / actionable 45 |
+| `moonbit-community/proton_contract` 0.3.4 | — | parsed 3 / actionable 1 |
+| `moonbitlang/async` 0.22.4 | — | parsed 196 / actionable 30 |
+| `wzzc-dev/moui` 0.1.12 | parsed 193 / actionable 588 | **parsed 389 / actionable 6** |
+
+labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，actionable
+一条没动——**只读得更多，没有新增判定**。moonbit_image 六项指标全部相同。
+
+自检：54/54 文件读懂，`actionable=0`、`unreliable=0`、`withheld=0`。
+
+（中途这里也出过一次真问题：加了 `TTilde` 之后自检冒出 2 条
+`undefined name 'TTilde'`。不是代码错，是 `src/lexer/pkg.generated.mbti`
+这个**被 git 跟踪的生成文件**没跟着更新——`moon update` / `moon doc` 都不会
+重新写它。补进去之后自检回到 0。）
+
+### 还没修的（都是 parser，行为上有意不改）
+
+- `is` 打头的表达式（`f(x)` 换行后接 `is Some(_)`）会被读成裸名字 `is`，
+  报 `undefined name 'is'`；`if x is Some(true)` 会把字面量 `true` 当成绑定名，
+  报 `local variable 'true'`。两处共 3 条 actionable，都在
+  `core/view_node_test.mbt` 一带。
+- `impl ... with fn layout(self, context)` 里未标注类型的 `self` 报未定义，
+  1 条。
+- 三处 parser 补完之后 219 个文件仍读不到全文，主因还是 `unexpected token`。
+
 ## 0.4.17 —— 11 → 9：一条的根因是「上一版把探针写坏了」，另一条是「读到了却丢掉」
 
 0.4.16 剩 11 条。这轮回头查了 0.4.16 判定为**不可观测**、因而撤回的那条
@@ -670,7 +780,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.17
+moon add riantr/moonbit_static_analysis@0.4.18
 ```
 
 ```moonbit
@@ -1002,7 +1112,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.17` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.18` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

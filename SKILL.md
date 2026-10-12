@@ -406,6 +406,53 @@ reported like any other name. The behavioral lens analyzes a body only when a
 top-level statement reaches it — a large private helper nobody calls will
 produce far fewer behavior findings than its size suggests.
 
+**Six shapes that are real MoonBit and used to end the file (since 0.4.18).**
+Measured on wzzc-dev/moui 0.1.12, a package `moon check` runs through:
+
+- `&T` in a type annotation is **`Ref[T]`, not a reference type**, and `T` must be
+  a trait — `moon check` reports `The type Node is not a trait` and types the
+  binding `@moonbitlang/core/ref.Ref[Node]`. It reads as `TUnknown`, the same
+  answer `Map[K,V]` gets.
+- `~` is the label sigil and has TWO sides: `f~ : T` declares a parameter that
+  must be passed BY LABEL, and `x~` is the shorthand for `x=x`. It never changes
+  a parameter's name, so it never changes an arity.
+- `fn[T]`, `fn[T : Bound]` and `extern fn[T]` carry a type-parameter list. It is
+  consumed and discarded: the type variable is not a parameter type, so nothing
+  downstream reads it.
+- `b"..."` is a byte-string literal. It looks like an identifier followed by a
+  string, and the pair ended the file.
+- `{ ..base, f: v }` is the struct update. Its base is pushed under an EMPTY
+  field name, which keeps the reads (all three consumers destructure
+  `let (_, v) = f` and traverse only the value) without inventing a field.
+- A `.` at STATEMENT position continues the PREVIOUS line's expression. This is
+  by far the most common of the six — 1124 lines across 131 files.
+
+**KNOWN GAP: the shape harvest that feeds the SIBLING table is a second, separate
+name reader (as of 0.4.18).** When a new declaration form is taught to the parser,
+the name harvest does not follow automatically. `fn[Msg] feedback_panel(` was
+parsed correctly but never entered the package-private table, so all four of its
+call sites in two other files were reported "no visible binding". If a scan
+reports a sibling function as undefined, check the FORM of its declaration
+before assuming the scope logic is wrong.
+
+**KNOWN GAP, and the cause is not the analyzer: a blocked file poisons its own
+package's names (as of 0.4.18).** The sibling table is filled from files that
+were read successfully, so a name declared in a file that stopped at a parse
+error is invisible to every other file in the package. Raising parse coverage
+removes these findings as a side effect; fixing them one at a time does not.
+
+**KNOWN GAP, still open (as of 0.4.18): a leading `is` expression.** `is` is
+matched by NAME and the parser requires a left operand, so an expression
+statement that is just `is Some(_)` — MoonBit's newline-tolerant matcher on the
+preceding line — is read as the bare name `is`. Separately, `parse_is_pattern`
+binds the literal in `if x is Some(true)`, reporting `local variable 'true'`.
+
+**KNOWN GAP, still open (as of 0.4.18): an untyped `self` in
+`impl ... with fn layout(self, context)`.** The sentinel logic in
+`skip_decl_braced` gives up on the impl body and re-reads `fn layout` as a
+top-level declaration, so the method's own parameters are not bound. Typed
+parameters (`self : Pos`) do not hit this.
+
 If you are scanning a package whose dependencies you care about, pass
 `--extern-iface-dir .repos`. Without it the analyzer cannot see cross-package names at
 all and says so in its own output: measured on riantr/moonbit_labeler, it goes from 5

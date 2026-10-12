@@ -204,6 +204,28 @@ pub fn parse(src : String) -> ParseResult {
       } else {
         p.skip_decl_line(kw, sp)
       }
+    } else if kw == "using" {
+      // A RE-EXPORT: `pub using @core { type View, ... }`. Its effect — the
+      // named items become visible in this package — is recorded by
+      // `collect_declared_names`; what the PARSER owes the rest of the file is
+      // a correct skip, so the brace block is consumed whole instead of being
+      // parsed as expressions.
+      //
+      // Before 0.4.18 this line fell through to the statement parser, `using`
+      // was read as an ordinary identifier, and every re-export in the corpus
+      // reported it: 73 `undefined variable 'using'` across the 19 files of
+      // wzzc-dev/moui 0.1.12 that use the form (115 lines). The `.mbti`
+      // frontend has understood `using` since 0.4.8 — `moonfiles.mbt:1185`.
+      let _ = p.bump()
+      // The package qualifier between the keyword and the brace. It is NOT
+      // parsed: `@wzzc-dev/moui/core` glues and splits in ways this frontend
+      // does not model, and nothing downstream needs it — the re-export names a
+      // symbol into THIS package, and the referenced package is out of scope by
+      // the same rule that silences every `@`-prefixed name.
+      while !p.at(TLBrace) && !p.at(TEOF) && !p.at(TNewline) {
+        let _ = p.bump()
+      }
+      p.skip_braces()
     } else {
       body.push(p.parse_stmt())
     }
@@ -632,11 +654,22 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
       TLParen => if enum_body && depth == 1 { paren += 1 }
       TRParen => if enum_body && depth == 1 && paren > 0 { paren -= 1 }
       TName(n) =>
-        if depth == 0 && (declares_value(n) || declares_type(n)) {
+        if depth == 0 && n == "using" {
+          // A re-export block. Collected here because this is where the
+          // package's top-level names are enumerated, and a re-export is a
+          // declaration: the names it lists ARE bound in this package.
+          //
+          // Measured on wzzc-dev/moui 0.1.12: 115 such lines across 19 files,
+          // and before this none of the names reached a sibling file, so
+          // `views_ambient_theme`, `max_view_double`, `view_record_key`,
+          // `view_double_option_key` and `view_layout_declaration` were each
+          // reported as undefined variable by their own package.
+          i = collect_using(toks, i, tab) - 1
+        } else if depth == 0 && (declares_value(n) || declares_type(n)) {
           if n == "enum" {
             enum_pending = true
           }
-          match declared_name_at(toks, i + 1) {
+          match declared_name_after_kw(toks, i) {
             Some(d) => {
               if declares_value(n) {
                 tab.values.set(d, true)
@@ -660,6 +693,81 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
     i += 1
   }
   tab
+}
+
+///|
+/// The names inside one `using @pkg { ... }` block, recorded into `tab`.
+/// Returns the index just past the closing brace.
+///
+/// The rule mirrors what the `.mbti` frontend does at `moonfiles.mbt:1185`, and
+/// the two halves of the alias rule are the `.mbti` frontend's:
+///
+///   - `type X` and `trait X` bind a TYPE. `pub using @core {type View}` is 41
+///     of moui's 115 lines and this is what makes `View` resolvable.
+///   - a BARE `x` binds something whose kind this scanner cannot know, so it
+///     goes into BOTH halves — the same thing `type` and `suberror` already do
+///     in `declares_value` / `declares_type`, and the same trade: a name in the
+///     table is a name that is not reported, never one that is.
+///   - `X as Y` exports Y. X lives in the other package and is NOT visible here,
+///     which `moonfiles_test.mbt` already pins for the `.mbti` side
+///     (`type Iter as Iterator` records `Iterator` and not `Iter`).
+///
+/// The package qualifier between `using` and `{` is stepped over rather than
+/// read: nothing downstream needs it, and `@wzzc-dev/moui/core` does not
+/// tokenize the way this frontend would have to model to read it correctly.
+fn collect_using(
+  toks : Array[@lexer.Tok],
+  i : Int,
+  tab : @core.IfaceSymTab,
+) -> Int {
+  let n = toks.length()
+  let mut j = i + 1
+  // step to the brace
+  while j < n && !(toks[j] is TLBrace) {
+    j += 1
+  }
+  if j >= n {
+    return n
+  }
+  j += 1
+  let mut is_type = false
+  while j < n && !(toks[j] is TRBrace) {
+    match toks[j] {
+      TName(kw) =>
+        if kw == "type" || kw == "trait" {
+          is_type = true
+        } else if kw == "as" {
+          // the next name is the exported one
+          if j + 1 < n {
+            match toks[j + 1] {
+              TName(exported) =>
+                if is_type {
+                  tab.types.set(exported, true)
+                } else {
+                  tab.values.set(exported, true)
+                  tab.types.set(exported, true)
+                }
+              _ => ()
+            }
+            j += 1
+          }
+        } else if is_type {
+          tab.types.set(kw, true)
+        } else {
+          tab.values.set(kw, true)
+          tab.types.set(kw, true)
+        }
+      TComma => is_type = false
+      TNewline => ()
+      _ => ()
+    }
+    j += 1
+  }
+  if j < n {
+    j + 1
+  } else {
+    n
+  }
 }
 
 ///|
@@ -821,9 +929,26 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 }
 
 ///|
-/// A type annotation: a head name, then any number of `[...]` argument
-/// lists and `.Tail` segments.
+/// A type annotation: an optional `&`, a head name, then any number of
+/// `[...]` argument lists and `.Tail` segments.
 ///
+/// `&T` is NOT a reference type — it is `Ref[T]`, a container whose element
+/// type must be a TRAIT. Settled with `moon check` (0.4.18), which reports
+/// `x : &Node` as "The type Node is not a trait" and gives `x` the type
+/// `@moonbitlang/core/ref.Ref[Node]`; wzzc-dev/moui only ever writes it on a
+/// trait (`data : &RuntimeViewNode`), which is the shape that typechecks. The
+/// `&` used to reach `expect_name` first, so it reported "expected type name"
+/// and then lost the rest of the token stream: a six-parameter declaration with
+/// one reference produced 15 ParseErrors, which is how
+/// `runtime/text_input_state.mbt:42` was reported as "expected 2, got 6"
+/// arguments when the call site passes six.
+///
+/// The `&` is FOLDED into the returned name rather than dropped, for the same
+/// reason `Int?` is: dropping it would claim `&T` was read as bare `T`, which
+/// it was not. `ann_to_ty` has no case for a `&` head, so it returns
+/// `TUnknown` — the honest answer, and the same one `Map[K, V]` already gets.
+
+///|
 /// `Array[Double]` was the single largest parse blocker measured across real
 /// projects: 74 of 84 blocked files stopped on it, counting the tuple returns
 /// that contain one (`-> (Matrix, Array[Double])`).
@@ -856,8 +981,16 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 /// cost precision, never invent a type. A `.Tail` argument list
 /// (`@pkg.T[X]`) is still discarded, since the head is already qualified.
 fn Parser::type_annotation(self : Parser) -> String {
+  // `&T` = `Ref[T]`. Consumed here, folded into the name below, so the head
+  // name is still a TName and the rest of the parameter list stays in step.
+  let amp = if self.at(TAmp) {
+    let _ = self.bump()
+    "&"
+  } else {
+    ""
+  }
   let (name, _) = self.expect_name("type name")
-  let mut n = name + self.indexed_suffix()
+  let mut n = amp + name + self.indexed_suffix()
   // Consume a `.Tail` chain. `@pkg.T.U.V` becomes "@pkg.T.U.V" in the name
   // returned to the caller; the lexer does not include the `.` in TName.
   while self.at(TDot) {
@@ -1008,9 +1141,25 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
 /// one name, exactly as the expression-side `::` fold does. The parameter
 /// list may be absent — `fn main { ... }` — and is then empty: a paren-less
 /// function's braces open its BODY, not a second parameter list.
+///
+/// A leading `[...]` is the TYPE-PARAMETER list of `fn[T]` / `fn[T : Bound]`
+/// / `fn[+A]`. It is consumed and DISCARDED, because nothing downstream reads
+/// it: the lenses this frontend models key off parameter types and call
+/// arity, and a type variable is not either. That is the same trade the tuple
+/// return type already makes below, and it is deliberately not a notice —
+/// wzzc-dev/moui 0.1.12 writes `fn[` 1563 times across 266 files, so a
+/// per-occurrence notice would bury every real finding under subset noise.
+/// The cost is stated rather than hidden: `Msg` in `fn[Msg]` is not a known
+/// type to the type lens, so it reads as `TUnknown`, exactly as an unmodelled
+/// base type does.
+///
+/// Before this, the `[` reached `expect_name` and reported "unexpected token",
+/// which ends the file: `views/presentation.mbt` stopped dead at line 152 on
+/// `pub fn[Msg] PresentationSpec::new(`.
 fn Parser::parse_fn_signature(
   self : Parser,
 ) -> (String, Array[@ast.Param], String) {
+  self.skip_indexed()
   let (name, _) = self.expect_name("function name")
   let mut full = name
   if self.at(TColon) && self.at_next(TColon) {
@@ -1046,8 +1195,21 @@ fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
   let _ = self.bump()
   while !self.at(TRParen) && !self.at(TEOF) {
     let (pname, psp) = self.expect_name("parameter name")
-    if self.at(TQuestion) {
-      let _ = self.bump()
+    // `name~` (must be passed BY LABEL) and `name?` (optional) are
+    // independent modifiers written tight against the name. Either order is
+    // accepted, and so is both at once (`name~? : T`). Neither changes the
+    // parameter's NAME, so the binding table and the arity check are
+    // unchanged — `f~ : T` is still one parameter called `f`.
+    let mut more_mods = true
+    while more_mods {
+      more_mods = false
+      if self.at(TQuestion) {
+        let _ = self.bump()
+        more_mods = true
+      } else if self.at(TTilde) {
+        let _ = self.bump()
+        more_mods = true
+      }
     }
     let mut ann = ""
     if self.at(TColon) {
@@ -1167,8 +1329,89 @@ fn Parser::parse_block(self : Parser) -> (Array[@ast.Stmt], @core.Span) {
 }
 
 ///|
+
+///|
+/// The declaration name for the top-level keyword at `kw_i`, tolerating a
+/// type-parameter list BETWEEN the keyword and the name — `fn[Msg] name(...)`.
+///
+/// `fn` is the only declaration form that takes one, and it is 1563 occurrences
+/// across 266 files in wzzc-dev/moui 0.1.12. This matters more than its share:
+/// the harvest is what fills the SIBLING table, so before this a generic
+/// function was invisible to every other file in its own package. Measured:
+/// `views/feedback/feedback_panel.mbt` declares `fn[Msg] feedback_panel(`, and
+/// all four of its call sites in `feedback_guidance.mbt` and
+/// `feedback_transient.mbt` were reported "no visible binding", while
+/// `runtime/view_tree.mbt:9` lost `modifier_view` the same way.
+///
+/// The `[` is only skipped when it sits IMMEDIATELY after the keyword. Every
+/// other shape reaches `declared_name_at` at exactly the index it did before.
+fn declared_name_after_kw(toks : Array[@lexer.Tok], kw_i : Int) -> String? {
+  let mut i = kw_i + 1
+  if i < toks.length() && toks[i] is TLBracket {
+    let mut depth = 0
+    while i < toks.length() {
+      match toks[i] {
+        TLBracket => depth += 1
+        TRBracket => {
+          depth -= 1
+          if depth == 0 {
+            i += 1
+            break
+          }
+        }
+        TEOF => break
+        _ => ()
+      }
+      i += 1
+    }
+  }
+  declared_name_at(toks, i)
+}
+
+///|
 fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   let sp = self.span()
+  // A `.` in STATEMENT position CONTINUES the previous line's expression:
+  //
+  //   button(
+  //     label,
+  //   )
+  //   .semantics_role(@core.SemanticsRole::Group)
+  //
+  // It used to reach `parse_atom`'s catch-all and end the file. wzzc-dev/moui
+  // 0.1.12 writes 1124 such lines across 131 files.
+  //
+  // The BASE is on the previous line and is already parsed, so this loop
+  // starts from an opaque placeholder and lets the real postfix builder grow
+  // the chain from there. That is what keeps the ARGUMENT reads: the segments
+  // become `EMethodCall`s whose arguments are ordinary expressions, so a
+  // parameter used only inside `.unwrap_or(self.style)` is still seen used.
+  //
+  // The base being a PLACEHOLDER rather than the previous expression is a
+  // stated limit: the chain's receiver is not re-attached, so the value is
+  // "some method result", not the true type. That costs precision and nothing
+  // else — no lens can be handed a receiver it did not read.
+  //
+  // The newline case is the whole difficulty. A newline ends the chain unless
+  // the NEXT line also opens with `.`, so the separators are consumed
+  // speculatively and rewound when the continuation does not follow. Swallowing
+  // them unconditionally would fuse the next real statement into this one.
+  if self.at(TDot) {
+    let sp0 = sp
+    let mut e : @ast.Expr = { span: sp0, kind: @ast.EBigInt, }
+    while self.at(TDot) {
+      e = self.parse_postfix_from(e)
+      if self.at(TNewline) {
+        let save = self.p
+        self.skip_seps()
+        if !self.at(TDot) {
+          self.p = save
+          break
+        }
+      }
+    }
+    return { span: sp, kind: @ast.SExpr(e), }
+  }
   if self.at_name("let") {
     let _ = self.bump()
     // `let mut x = ...` — the mutability marker is consumed and dropped. The
@@ -1712,7 +1955,23 @@ fn Parser::parse_unary(self : Parser) -> @ast.Expr {
 
 ///|
 fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
-  let mut e = self.parse_atom()
+  self.parse_postfix_from(self.parse_atom())
+}
+
+///| The postfix LOOP, split out so a caller that already holds an expression
+
+///| can KEEP EXTENDING it. `parse_postfix` is exactly this loop applied to a
+
+///|
+/// freshly parsed atom and nothing else, so the two forms cannot drift.
+///
+/// The caller that needs it is the leading-dot continuation in `parse_stmt`,
+/// where the BASE is the expression on the PREVIOUS line — already parsed, and
+/// owned by the preceding statement. Rebuilding that chain by hand here would
+/// have meant re-implementing `.field`, `.field(args)`, `::path`, `[i]` and
+/// `catch`, and every one of those is a shape real code writes.
+fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
+  let mut e = start
   while true {
     if self.at(TDot) {
       let _ = self.bump()
@@ -1912,6 +2171,15 @@ fn Parser::parse_call_args(self : Parser) -> Array[@ast.Expr] {
     } else {
       args.push(self.parse_expr())
     }
+    // `f(x~)` — the shorthand for `f(x=x)`, settled by `moon check` (0.4.18):
+    // it passes the local `x` under its own label. The label is dropped for
+    // the same reason `name = value` above drops it — the call lens reads the
+    // value, not the label — so an arity check counts this exactly as it
+    // counts `x` positionally. Only reached after a real argument, so the
+    // short-lambda branch above (which `continue`s) is unaffected.
+    if self.at(TTilde) {
+      let _ = self.bump()
+    }
     if self.at(TComma) {
       let _ = self.bump()
     } else {
@@ -1978,6 +2246,26 @@ fn Parser::parse_struct_fields(
     self.skip_seps()
     if self.at(TRBrace) || self.at(TEOF) {
       break
+    }
+    // `{ ..base, f: v }` — the struct UPDATE syntax, and the only field shape
+    // that does not start with a name. `..` arrives as TWO TDot tokens: the
+    // lexer has a `..<` token but no bare `..` one.
+    //
+    // The base is pushed under an EMPTY name rather than dropped. All three
+    // consumers (`walk`, `types::infer`, `interp`) destructure the field as
+    // `let (_, v) = f` and only ever traverse the VALUE, so an empty name is
+    // invisible to them — while keeping the expression alive is what stops
+    // `{ ..self, cursor: c }` from reporting `self` as an unused parameter.
+    // wzzc-dev/moui 0.1.12 writes `{ ..` 370 times across 88 files.
+    if self.at(TDot) && self.at_next(TDot) {
+      let _ = self.bump()
+      let _ = self.bump()
+      let base = self.parse_expr()
+      fields.push(("", base))
+      if self.at(TComma) {
+        let _ = self.bump()
+      }
+      continue
     }
     // A field starts with a name. Anything else here — a number (`{ 1 }`),
     // a punctuation token — is not a struct literal at all.
@@ -2060,6 +2348,9 @@ fn Parser::at_struct_literal(self : Parser) -> Bool {
   }
   match (self.toks[i], self.toks[i + 1]) {
     (TName(_), TColon) | (TName(_), TComma) => true
+    // `{ ..base, ... }` — the struct update form, whose first field starts with
+    // the two TDot tokens of a bare `..` rather than with a name.
+    (TDot, TDot) => true
     _ => false
   }
 }

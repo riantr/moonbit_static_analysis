@@ -775,8 +775,26 @@ fn type_names(s : String) -> Array[String] {
       let buf = StringBuilder()
       buf.write_char('@')
       i += 1
+      // `-` belongs here and did not until 0.4.18. A package path segment may
+      // contain one — `wzzc-dev/moui` — and `moon info` EMITS that spelling, so
+      // this is the toolchain's own output being misread. The scan used to stop
+      // at the hyphen, push `@wzzc`, and leave `dev`, `moui` and `core` to be
+      // harvested as ordinary type names and reported as unknown. Measured on
+      // wzzc-dev/moui 0.1.12: 494 such findings, every one a path segment, in
+      // the `.mbti` files under `backend/`.
+      //
+      // Widening this set is safe in the direction that matters: whatever is
+      // consumed after a `@` is pushed as one name starting with `@`, and every
+      // consumer skips those (`moonfiles.mbt:1358`, "external by shape"). So a
+      // character added here can only turn a harvested name into a skipped one,
+      // never the reverse — it can silence a finding, never invent one.
       while i < chars.length() &&
-            (is_ident_char(chars[i]) || chars[i] == '.' || chars[i] == '/') {
+            (
+              is_ident_char(chars[i]) ||
+              chars[i] == '.' ||
+              chars[i] == '/' ||
+              chars[i] == '-'
+            ) {
         buf.write_char(chars[i])
         i += 1
       }

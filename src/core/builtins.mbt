@@ -82,6 +82,38 @@ pub fn ambient_names() -> Array[String] {
     "Json", "Map", "MutArrayView", "Option", "ReadOnlyArray", "Result", "SourceLoc",
     "String", "StringBuilder", "StringView", "UInt", "UInt16", "UInt64", "UninitializedArray",
     "Unit",
+    // --- not in `core/builtin`'s interface, but ambient all the same ---
+    //
+    // `Ref` is declared by `moonbitlang/core/ref` and reaches every package the
+    // way `Repr` does: `core/prelude` re-exports it, and `prelude` is in
+    // implicit scope. So the rule this list already follows — a name in
+    // implicit scope belongs here even when `core/builtin`'s interface does
+    // not mention it — applies to it exactly as it did to `Repr`. Missing it
+    // reported `undefined function 'Ref'` on 6 lines of
+    // wzzc-dev/moui 0.1.12 `backend/web/web_async_services.mbt`, on
+    // `let r : Ref[Int] = Ref(1)`, which `moon check` accepts.
+    //
+    // Settled with the toolchain, not inferred: a probe using `Ref(1)`, `Ref[Int]`
+    // and `.val` produces no type error, while the same file with a name that
+    // cannot exist produces two. The one error the clean probe still printed is
+    // `Unexpected main function in the non-main package`, which is about the
+    // probe's own package layout and says nothing about `Ref`.
+     "Ref",
+    // Two more builtin TYPE names, settled the same way (0.4.18). Both were
+    // reported on lines `moon check` accepts:
+    //   `unknown type 'FuncRef' in interface signature` —
+    //     wzzc-dev/moui 0.1.12 `services/pkg.generated.mbti:355`
+    //   `no visible binding for 'Buffer'` —
+    //     wzzc-dev/moui 0.1.12 `core/view_state_slot_test.mbt:16`
+    //
+    // The settle probe declared `f : FuncRef[(Int) -> Int]` and `b : Buffer`
+    // with trivial bodies. Its ONLY diagnostics were `Warning (unused_value)`
+    // on the parameters and a `Show`-trait error on the `println` — nothing
+    // about resolving either annotation, so both names are ambient builtins
+    // reachable with no import. `Buffer` is additionally confirmed by
+    // `Type @moonbitlang/core/buffer.Buffer has no method new`: the type
+    // resolved and only the method name was wrong.
+     "Buffer", "FuncRef",
     // functions
      "abort", "assert_false", "assert_true", "compare", "debug_assert", "eprintln",
     "fail", "hash", "ignore", "inspect", "not", "null", "op_notequal", "panic", "physical_equal",

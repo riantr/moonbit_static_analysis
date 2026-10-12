@@ -733,3 +733,48 @@ test ".mbti: the ambient table carries methods and not mistakes" {
   // The negative half: absent, so the pipeline side can still report it.
   assert_false(a.contains("Array::mkae"))
 }
+
+///|
+/// 0.4.18 — a package path segment may contain `-`, and `moon info` EMITS it.
+///
+/// This line is verbatim from riantr-independent wzzc-dev/moui 0.1.12,
+/// `backend/common/input/pkg.generated.mbti:12`, a file the toolchain generated:
+///
+///     pub fn core_size_to_window_surface_size(@wzzc-dev/moui/core.Size) -> @dpi.Size
+///
+/// The qualified-name scan consumed `is_ident_char` plus `.` and `/`, which has
+/// no `-` in it. So the reference broke at `@wzzc`, and `dev`, `moui`, `core`
+/// were each harvested as an ordinary TYPE NAME and reported as unknown. On
+/// that one corpus the five `.mbti` files under `backend/` produced 494 such
+/// findings between them, every one of them a package path segment.
+///
+/// The whole toolchain accepts these lines, which is the whole oracle: they
+/// came out of `moon info`.
+test ".mbti: a package path segment with a hyphen is one qualified reference" {
+  let src = "package \"wzzc-dev/moui/backend/common/input\"\n\nimport {\n  \"wzzc-dev/moui/backend\",\n}\n\n// Values\npub fn core_size_to_window_surface_size(@wzzc-dev/moui/core.Size) -> @dpi.Size\n\npub fn element_state_pressed(@wzzc-dev/window/core.ElementState) -> Bool\n"
+  assert_eq(
+    @moonfiles.iface(src, "input.mbti", @core.IfaceSymTab::empty()).length(),
+    0,
+  )
+}
+
+///|
+/// THE CONTROL. Widening the qualified-name scan must not make the unknown-type
+/// check stop working: a plain, unqualified unknown type is still unknown, and
+/// so is one qualified on a package path that is otherwise well formed. If
+/// either went quiet, the fix above would be "stop reporting unknown types"
+/// wearing a disguise.
+test ".mbti: an unknown type is still reported beside a hyphenated path" {
+  let plain = "package \"d\"\npub fn f(ZzNoSuchType) -> Int\n"
+  assert_true(
+    @moonfiles.iface(plain, "d.mbti", @core.IfaceSymTab::empty()).length() > 0,
+  )
+  // A qualified name whose SEGMENT is unknown is not checkable either way — it
+  // is external by shape — so it must stay silent rather than invent a claim
+  // about a package this scan cannot read.
+  let qualified = "package \"d\"\npub fn f(@nope-zz/ZzNoSuchType) -> Int\n"
+  assert_eq(
+    @moonfiles.iface(qualified, "d.mbti", @core.IfaceSymTab::empty()).length(),
+    0,
+  )
+}

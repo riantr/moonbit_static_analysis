@@ -656,6 +656,21 @@ fn Interp::eval(
                 // names and stay silent — `@pkg` is a package, not a
                 // variable — and the interpreter must not contradict them.
                 AAny
+              } else if self.ambient.contains(n) {
+                // An ambient NAME read as a VALUE. `Interp::call` has consulted
+                // this table since 0.4.4 and this branch did not, so every
+                // ambient value read outside a call position was invented
+                // here while the structural lens — which does consult the
+                // table — stayed silent on the same line. Measured on
+                // wzzc-dev/moui 0.1.12 `backend/wechat/host_runtime.mbt:16`:
+                // `driver: None,` inside a struct literal, 5 findings.
+                //
+                // It is not only the struct-literal shape: an ambient name used
+                // as an ARGUMENT is evaluated here too, so `use_it(None)`
+                // reported exactly as `{ a: None }` did, even though `None` is
+                // a compiler constructor on the ambient list. That pair is
+                // what rules out "call handles it" as the explanation.
+                AAny
               } else {
                 // UndefVarErrorReport (jetanalyzer.jl:862)
                 self.report(
