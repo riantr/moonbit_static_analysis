@@ -10,131 +10,111 @@
 #   * a mutation that cannot go red is reported as SURVIVED, not counted.
 #
 # Usage: pwsh -File _verify/mutate_0419.ps1
-$ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
-Set-Location $root
 
-$results = @()
-$failed  = @()
-
-function Invoke-Mutation {
-  param(
-    [string]$Name,
-    [string]$File,
-    [string]$Find,
-    [string]$Replace,
-    [string]$Expect = 'KILLED'
-  )
-
-  $path = Join-Path $root $File
-  if (-not (Test-Path $path)) {
-    $script:results += [pscustomobject]@{ Mutation = $Name; Outcome = 'NO-FILE'; Killed = 0; Detail = "missing $File" }
-    $script:failed  += $Name
-    return
-  }
-
-  $bytes = [System.IO.File]::ReadAllBytes($path)
-  $sha0  = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  $text0 = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-  if ($text0.IndexOf($Find, [System.StringComparison]::Ordinal) -lt 0) {
-    $script:results += [pscustomobject]@{ Mutation = $Name; Outcome = 'NO-OP'; Killed = 0; Detail = 'pattern absent' }
-    $script:failed  += $Name
-    return
-  }
-
-  $text1 = $text0.Replace($Find, $Replace)
-  [System.IO.File]::WriteAllText($path, $text1, (New-Object System.Text.UTF8Encoding($false)))
-
-  $prevPref = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  $out = & moon test 2>&1 | Out-String
-  $ErrorActionPreference = $prevPref
-
-  $ran = ([regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)'))
-  $killed = 0
-  $detail = ''
-  if ($ran.Count -ge 1) {
-    $m = $ran[$ran.Count - 1]
-    $passed = [int]$m.Groups[2].Value
-    $total  = [int]$m.Groups[1].Value
-    if ($total -le 0) {
-      $outcome = 'NO-RUN'; $detail = 'Total tests: 0'; $script:failed += $Name
-    } else {
-      $killed = $total - $passed
-      if ($killed -gt 0) { $outcome = 'KILLED'; $detail = "$killed of $total red" }
-      else { $outcome = 'SURVIVED'; $detail = "$total/$total still green" }
-    }
-  } else {
-    $outcome = 'COMPILE-ERR'
-    $detail  = 'no Total tests line; the suite did not run'
-  }
-
-  [System.IO.File]::WriteAllBytes($path, $bytes)
-  $sha1 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  if ($sha0 -ne $sha1) {
-    $detail += " RESTORE-MISMATCH"
-    $script:failed += "$Name (restore)"
-  }
-
-  $script:results += [pscustomobject]@{ Mutation = $Name; Outcome = $outcome; Killed = $killed; Detail = $detail }
-  if ($outcome -ne $Expect) { $script:failed += $Name }
-}
-
-# --- M1: the is-pattern keyword test removed -------------------------------
-# `if x is Some(true)` binds the literal `true` again.
-Invoke-Mutation 'M1 is-pattern keyword test' 'src\parser\parser.mbt' `
-  '        !@lexer.is_moonbit_keyword(self.peek_name()) &&' `
-  '' 'KILLED'
-
-# --- M2: function types no longer recognized in an annotation -------------
-Invoke-Mutation 'M2 fn-type annotation' 'src\parser\parser.mbt' `
-  '  if self.at(TLParen) {
-    return self.fn_type_annotation()
-  }' `
-  '' 'KILLED'
-
-# --- M3: return-position function type reverted to the old 3-token guess --
-# This is the version that actually shipped by mistake once: it matches only
-# `() -> T` and misses `(Int) -> String`, because `Int` sits between the
-# brackets. The fixture that caught it is "0419: a function-type return
-# annotation parses".
-Invoke-Mutation 'M3 return fn-type (3-token)' 'src\parser\parser.mbt' `
-  '            is_fn = j + 1 < self.toks.length() && self.toks[j + 1] == TArrow' `
-  '            is_fn = j + 1 < self.toks.length() && self.toks[j - 1] == TArrow' 'KILLED'
-
-# --- M4: every paren return treated as a function type --------------------
-# EXPECTED TO SURVIVE, and the reason is worth keeping: for every annotation
-# this lens can read, the tuple arm and the function-type arm consume EXACTLY
-# the same tokens. A tuple `(Int, String)` has no `->` after its close, so
-# `fn_type_annotation` renders it and returns just as the tuple arm consumed it
-# and returned "". Both reach `ann_to_ty` as an unknown. So `n_parse` cannot
-# distinguish them and the mutation is genuinely non-discriminating.
+# -----------------------------------------------------------------------------
+# CONVERTED to ``_verify/mutate_lib.ps1``. This gate carried its own runner with
+# the SHA256 restore and the `Total tests:` COMPILE-ERR judgement; what it lacked
+# was a green BASELINE, PRE-FLIGHT, and line-ending normalisation. The prose above
+# is VERBATIM and each mutation keeps the comment block that argued for it.
 #
-# The tuple test is KEPT regardless — not as a kill for this mutation, but as a
-# regression test for a future change that breaks tuple parsing for real.
-Invoke-Mutation 'M4 return fn-type over-eager (expected to survive)' 'src\parser\parser.mbt' `
-  '            is_fn = j + 1 < self.toks.length() && self.toks[j + 1] == TArrow' `
-  '            is_fn = true' 'SURVIVED'
+# The call arguments were lifted out of the original file with the PowerShell AST
+# parser, not retyped. The patterns are multi-line with load-bearing indentation,
+# and a transcription slip would not fail loudly -- it would make the pattern stop
+# matching, which this harness reports as a NO-OP on a mutation whose real anchor
+# is fine. That is a bug indistinguishable from a rotted anchor, so the conversion
+# does not create one.
+#
+# The target is now PINNED to wasm. This gate ran bare `moon test`, which resolved
+# through `preferred_target = "wasm"` in `moon.mod` -- 514 tests rather than the
+# 442 the js target runs. The scope of the whole gate therefore depended on a field
+# in the module manifest rather than on anything in this script.
 
-# NOTE — the `is_moonbit_keyword` export in `src/lexer/pkg.generated.mbti` has
-# NO mutation here, because `moon test` is the wrong instrument for it: the
-# suite compiles from SOURCE, and only the SELF-SCAN reads the tracked `.mbti`
-# interface files. Deleting the export line leaves all 391 tests green. That
-# gap is real and it already bit once in 0.4.18, so the release check runs the
-# self-scan and requires `actionable=0` — with the export removed, the
-# self-scan reports `undefined name 'is_moonbit_keyword'` in the parser's own
-# source. Asserted there rather than here.
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
-Write-Output ''
-Write-Output '=== 0.4.19 mutation results ==='
-$results | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
-$killedCount = @($results | Where-Object { $_.Outcome -eq 'KILLED' }).Count
-Write-Output ("KILLED {0} / {1}" -f $killedCount, $results.Count)
-if ($failed.Count -gt 0) {
-  Write-Output ("FAILED: {0}" -f ($failed -join ', '))
-  exit 1
-}
-$survived = @($results | Where-Object { $_.Outcome -eq 'SURVIVED' }).Count
-Write-Output ("{0} killed, {1} survived (each recorded above with its reason); every restore verified byte-identical" -f $killedCount, $survived)
+$mutations = @(
+  # --- M1: the is-pattern keyword test removed -------------------------------
+  # `if x is Some(true)` binds the literal `true` again.
+  #
+  # RE-ANCHORED. The original pattern was an inline `!@lexer.is_moonbit_keyword(
+  # self.peek_name()) &&` inside the reader itself. That code no longer exists: the
+  # predicate was lifted into a NAMED helper, `Parser::pattern_binding_at`, and the
+  # keyword test is now one clause of its rejection list at
+  # src/parser/parser.mbt:2250. Same predicate, same call, same role -- the drift is
+  # that it stopped being inline. The new pattern occurs exactly once in the file
+  # (checked before the edit), so the mutation still touches one guard and not two.
+  #
+  # Re-anchoring is right here and retiring would not be: the guard is live, and the
+  # whole point of M1 is that `true` stops being bindable in an is-pattern. The
+  # 0.4.19 corpus evidence it cites is still true.
+  @{
+    Name = 'M1 is-pattern keyword test'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+  if n == "_" || @lexer.is_moonbit_keyword(n) {
+    return false
+  }
+'@
+    Repl = @'
+  if n == "_" {
+    return false
+  }
+'@
+  }
+
+  # --- M2: function types no longer recognized in an annotation -------------
+  @{
+    Name = 'M2 fn-type annotation'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+  if self.at(TLParen) {
+    return self.fn_type_annotation()
+  }
+'@
+    Repl = ''
+  }
+
+  # --- M3: return-position function type reverted to the old 3-token guess --
+  # This is the version that actually shipped by mistake once: it matches only
+  # `() -> T` and misses `(Int) -> String`, because `Int` sits between the
+  # brackets. The fixture that caught it is "0419: a function-type return
+  # annotation parses".
+  @{
+    Name = 'M3 return fn-type (3-token)'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+            is_fn = j + 1 < self.toks.length() && self.toks[j + 1] == TArrow
+'@
+    Repl = @'
+            is_fn = j + 1 < self.toks.length() && self.toks[j - 1] == TArrow
+'@
+  }
+
+  # --- M4: every paren return treated as a function type --------------------
+  # EXPECTED TO SURVIVE, and the reason is worth keeping: for every annotation
+  # this lens can read, the tuple arm and the function-type arm consume EXACTLY
+  # the same tokens. A tuple `(Int, String)` has no `->` after its close, so
+  # `fn_type_annotation` renders it and returns just as the tuple arm consumed it
+  # and returned "". Both reach `ann_to_ty` as an unknown. So `n_parse` cannot
+  # distinguish them and the mutation is genuinely non-discriminating.
+  #
+  # The tuple test is KEPT regardless — not as a kill for this mutation, but as a
+  # regression test for a future change that breaks tuple parsing for real.
+  @{
+    Name = 'M4 return fn-type over-eager (expected to survive)'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+            is_fn = j + 1 < self.toks.length() && self.toks[j + 1] == TArrow
+'@
+    Repl = @'
+            is_fn = true
+'@
+    Expect = 'SURVIVED'
+  }
+
+)
+
+Invoke-MutationGate -Name '0419' -Target 'wasm' -Mutations $mutations
+Write-MutationGateVerdict -Name '0419 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
 exit 0

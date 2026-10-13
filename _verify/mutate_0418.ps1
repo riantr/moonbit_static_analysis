@@ -17,203 +17,228 @@
 #     silently rewrite UTF-8 as GBK.
 #
 # Usage: pwsh -File _verify/mutate_0418.ps1
+
+# -----------------------------------------------------------------------------
+# CONVERTED to ``_verify/mutate_lib.ps1``. This gate carried its own runner with
+# the SHA256 restore and the `Total tests:` COMPILE-ERR judgement; what it lacked
+# was a green BASELINE, PRE-FLIGHT, and line-ending normalisation. The prose above
+# is VERBATIM and each mutation keeps the comment block that argued for it.
+#
+# The call arguments were lifted out of the original file with the PowerShell AST
+# parser, not retyped. The patterns are multi-line with load-bearing indentation,
+# and a transcription slip would not fail loudly -- it would make the pattern stop
+# matching, which this harness reports as a NO-OP on a mutation whose real anchor
+# is fine. That is a bug indistinguishable from a rotted anchor, so the conversion
+# does not create one.
+#
+# The target is now PINNED to wasm. This gate ran bare `moon test`, which resolved
+# through `preferred_target = "wasm"` in `moon.mod` -- 514 tests rather than the
+# 442 the js target runs. The scope of the whole gate therefore depended on a field
+# in the module manifest rather than on anything in this script.
+
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
-$root = Split-Path -Parent $PSScriptRoot
-Set-Location $root
-
-$results = @()
-$failed  = @()
-
-function Invoke-Mutation {
-  param(
-    [string]$Name,
-    [string]$File,
-    [string]$Find,
-    [string]$Replace,
-    [string[]]$ExpectRed,   # test-name substrings that MUST go red
-    [string]$Expect = 'KILLED'
-  )
-
-  $path = Join-Path $root $File
-  if (-not (Test-Path $path)) {
-    $script:results += [pscustomobject]@{ Mutation = $Name; Outcome = 'NO-FILE'; Killed = 0; Detail = "missing $File" }
-    $script:failed  += $Name
-    return
+$mutations = @(
+  # --- M1: &T no longer consumed in a type annotation ------------------------
+  # `if false` was the first attempt and it is a COMPILE-ERR, which this script
+  # deliberately does not count as evidence. `TCaret` is a real token of the same
+  # type, so the mutation compiles and simply never fires on the `&` that starts
+  # a `Ref[T]` annotation.
+  @{
+    Name = 'M1 &T in type_annotation'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+let amp = if self.at(TAmp) {
+'@
+    Repl = @'
+let amp = if self.at(TQuestion) {
+'@
   }
 
-  # Byte-exact backup BEFORE any edit.
-  $bytes = [System.IO.File]::ReadAllBytes($path)
-  $sha0  = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  $text0 = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-  if ($text0.IndexOf($Find, [System.StringComparison]::Ordinal) -lt 0) {
-    $script:results += [pscustomobject]@{ Mutation = $Name; Outcome = 'NO-OP'; Killed = 0; Detail = 'pattern absent' }
-    $script:failed  += $Name
-    return
+  # --- M2: TTilde removed from the lexer -------------------------------------
+  @{
+    Name = 'M2 TTilde lexer token'
+    File = 'src\lexer\lexer.mbt'
+    Find = @'
+'~' => TTilde
+'@
+    Repl = @'
+'~' => TBang
+'@
   }
 
-  $text1 = $text0.Replace($Find, $Replace)
-  [System.IO.File]::WriteAllText($path, $text1, (New-Object System.Text.UTF8Encoding($false)))
-
-  # `moon test` writes diagnostics to stderr even on success. Under
-  # `$ErrorActionPreference = 'Stop'` PowerShell turns a native command's stderr
-  # into a terminating error, which killed this script on the FIRST mutation
-  # before it could record anything. Relaxed for the call, then restored.
-  $prevPref = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  $out = & moon test 2>&1 | Out-String
-  $ErrorActionPreference = $prevPref
-  # COMPILE-ERR is detected by the ABSENCE of a `Total tests:` line, not by
-  # pattern-matching the output. The first version of this script grepped for
-  # `Parse error`, and it misfired on a test literally NAMED
-  # "0418: &T in a parameter type is not a parse error" — reporting that
-  # mutation as "build broke; not evidence" when it in fact killed two tests.
-  # A fragile detector that hides a working gate is worse than no detector:
-  # it would have pushed a real fix out of the release.
-  $ran = ([regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)'))
-
-  $killed = 0
-  $detail = ''
-  if ($ran.Count -ge 1) {
-    $m = $ran[$ran.Count - 1]
-    $passed = [int]$m.Groups[2].Value
-    $total  = [int]$m.Groups[1].Value
-    if ($total -le 0) {
-      $outcome = 'NO-RUN'
-      $detail  = 'Total tests: 0'
-      $script:failed += $Name
-    } else {
-      $killed = $total - $passed
-      if ($killed -gt 0) { $outcome = 'KILLED'; $detail = "$killed of $total red" }
-      else { $outcome = 'SURVIVED'; $detail = "$total/$total still green" }
-    }
-  } else {
-    $outcome = 'COMPILE-ERR'
-    $detail  = 'no Total tests line; the suite did not run'
-  }
-
-  # Restore bytes exactly as they were.
-  [System.IO.File]::WriteAllBytes($path, $bytes)
-  $sha1 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  $restored = ($sha0 -eq $sha1)
-  if (-not $restored) {
-    $detail += " RESTORE-MISMATCH($sha1)"
-    $script:failed += "$Name (restore)"
-  }
-
-  $script:results += [pscustomobject]@{
-    Mutation = $Name; Outcome = $outcome; Killed = $killed; Detail = $detail
-  }
-  if ($outcome -ne $Expect) { $script:failed += $Name }
-}
-
-# --- M1: &T no longer consumed in a type annotation ------------------------
-# `if false` was the first attempt and it is a COMPILE-ERR, which this script
-# deliberately does not count as evidence. `TCaret` is a real token of the same
-# type, so the mutation compiles and simply never fires on the `&` that starts
-# a `Ref[T]` annotation.
-Invoke-Mutation 'M1 &T in type_annotation' 'src\parser\parser.mbt' `
-  'let amp = if self.at(TAmp) {' `
-  'let amp = if self.at(TQuestion) {' 'expectRed'
-
-# --- M2: TTilde removed from the lexer -------------------------------------
-Invoke-Mutation 'M2 TTilde lexer token' 'src\lexer\lexer.mbt' `
-  "'~' => TTilde" `
-  "'~' => TBang" 'expectRed'
-
-# --- M3: label~ no longer accepted in a parameter list ---------------------
-Invoke-Mutation 'M3 TTilde in param list' 'src\parser\parser.mbt' `
-  '} else if self.at(TTilde) {
+  # --- M3: label~ no longer accepted in a parameter list ---------------------
+  @{
+    Name = 'M3 TTilde in param list'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+} else if self.at(TTilde) {
         let _ = self.bump()
         more_mods = true
-      }' `
-  '}' 'expectRed'
+      }
+'@
+    Repl = @'
+}
+'@
+  }
 
-# --- M4: value~ no longer accepted at a call site --------------------------
-Invoke-Mutation 'M4 TTilde in call args' 'src\parser\parser.mbt' `
-  'if self.at(TTilde) {
+  # --- M4: value~ no longer accepted at a call site --------------------------
+  # RE-ANCHORED, and the reason recorded rather than glossed. The original pattern
+  # was the `TTilde` arm plus the `TComma` arm after it; that text no longer exists
+  # because the arm GREW. `f(x~)` used to consume the `~` and stop; it now also
+  # records the argument's LABEL, added when `~` was settled as the shorthand for
+  # `f(x = x)`. The mutation is unchanged in MEANING -- value~ no longer accepted at
+  # a call site -- and now removes the whole arm, label assignment included.
+  #
+  # This is a re-anchor, not a fresh anchor. The guard is still at
+  # src/parser/parser.mbt:2770, in the same role, and the new pattern occurs exactly
+  # once in the file (checked before the edit). Retiring it instead would have
+  # dropped a LIVE guard from the gate because the code around it grew, which is not
+  # what a rotted anchor means.
+  @{
+    Name = 'M4 TTilde in call args'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+    if self.at(TTilde) {
       let _ = self.bump()
+      if labels[labels.length() - 1] == "" {
+        labels[labels.length() - 1] = self.name_at(arg_start)
+      }
     }
-    if self.at(TComma) {' `
-  'if self.at(TComma) {' 'expectRed'
+    if self.at(TComma) {
+'@
+    Repl = @'
+    if self.at(TComma) {
+'@
+  }
 
-# --- M5: fn[T] type parameters no longer skipped --------------------------
-Invoke-Mutation 'M5 fn[T] type params' 'src\parser\parser.mbt' `
-  '  self.skip_indexed()
-  let (name, _) = self.expect_name("function name")' `
-  '  let (name, _) = self.expect_name("function name")' 'expectRed'
+  # --- M5: fn[T] type parameters no longer skipped --------------------------
+  @{
+    Name = 'M5 fn[T] type params'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+  self.skip_indexed()
+  let (name, _) = self.expect_name("function name")
+'@
+    Repl = @'
+  let (name, _) = self.expect_name("function name")
+'@
+  }
 
-# --- M6: sibling harvest no longer tolerates fn[T] -------------------------
-Invoke-Mutation 'M6 sibling name after fn[T]' 'src\parser\parser.mbt' `
-  'match declared_name_after_kw(toks, i) {' `
-  'match declared_name_at(toks, i + 1) {' 'expectRed'
+  # --- M6: sibling harvest no longer tolerates fn[T] -------------------------
+  @{
+    Name = 'M6 sibling name after fn[T]'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+match declared_name_after_kw(toks, i) {
+'@
+    Repl = @'
+match declared_name_at(toks, i + 1) {
+'@
+  }
 
-# --- M7: byte-string literal no longer lexed ------------------------------
-Invoke-Mutation 'M7 b"" byte-string' 'src\lexer\lexer.mbt' `
-  "if c == 'b' &&" `
-  "if c == 'Z' &&" 'expectRed'
+  # --- M7: byte-string literal no longer lexed ------------------------------
+  @{
+    Name = 'M7 b"" byte-string'
+    File = 'src\lexer\lexer.mbt'
+    Find = @'
+if c == 'b' &&
+'@
+    Repl = @'
+if c == 'Z' &&
+'@
+  }
 
-# --- M8: struct spread base no longer consumed ----------------------------
-Invoke-Mutation 'M8 { ..base } spread' 'src\parser\parser.mbt' `
-  'if self.at(TDot) && self.at_next(TDot) {
+  # --- M8: struct spread base no longer consumed ----------------------------
+  @{
+    Name = 'M8 { ..base } spread'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+if self.at(TDot) && self.at_next(TDot) {
       let _ = self.bump()
       let _ = self.bump()
-      let base = self.parse_expr()' `
-  'if false {
-      let base = self.parse_expr()' 'expectRed'
+      let base = self.parse_expr()
+'@
+    Repl = @'
+if false {
+      let base = self.parse_expr()
+'@
+  }
 
-# --- M9: a `{ ..` no longer recognized as a struct literal -----------------
-Invoke-Mutation 'M9 at_struct_literal (TDot,TDot)' 'src\parser\parser.mbt' `
-  '(TDot, TDot) => true' `
-  '(TDot, TRBrace) => true' 'expectRed'
+  # --- M9: a `{ ..` no longer recognized as a struct literal -----------------
+  @{
+    Name = 'M9 at_struct_literal (TDot,TDot)'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+(TDot, TDot) => true
+'@
+    Repl = @'
+(TDot, TRBrace) => true
+'@
+  }
 
-# --- M10: leading-dot chain branch removed --------------------------------
-Invoke-Mutation 'M10 leading-dot chain' 'src\parser\parser.mbt' `
-  'if self.at(TDot) {
-    let sp0 = sp' `
-  'if false {
-    let sp0 = sp' 'expectRed'
+  # --- M10: leading-dot chain branch removed --------------------------------
+  @{
+    Name = 'M10 leading-dot chain'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+if self.at(TDot) {
+    let sp0 = sp
+'@
+    Repl = @'
+if false {
+    let sp0 = sp
+'@
+  }
 
-# --- M11: the rewind removed — EXPECTED TO SURVIVE -------------------------
-# This one is a deliberate exception and the reason is worth stating, because
-# the honest answer is "this line is defensive and nothing distinguishes it".
-#
-# The chain loop speculatively consumes separators after a segment and rewinds
-# when the next line does not open with `.`. Removing the rewind leaves the
-# cursor AFTER those separators — but the enclosing statement loop calls
-# `skip_seps` again anyway, so the next statement starts in the same place and
-# the same findings are produced. A test cannot distinguish the two, and the
-# corpus does not either.
-#
-# So the rewind is KEPT — it makes the loop correct on its own terms rather
-# than correct only because a caller happens to clean up — and this mutation
-# records that it is unobservable. Reporting it as a kill would be the error;
-# deleting the line would be a behavior claim this evidence does not support.
-Invoke-Mutation 'M11 chain rewind (expected to survive)' 'src\parser\parser.mbt' `
-  '        if !self.at(TDot) {
+  # --- M11: the rewind removed — EXPECTED TO SURVIVE -------------------------
+  # This one is a deliberate exception and the reason is worth stating, because
+  # the honest answer is "this line is defensive and nothing distinguishes it".
+  #
+  # The chain loop speculatively consumes separators after a segment and rewinds
+  # when the next line does not open with `.`. Removing the rewind leaves the
+  # cursor AFTER those separators — but the enclosing statement loop calls
+  # `skip_seps` again anyway, so the next statement starts in the same place and
+  # the same findings are produced. A test cannot distinguish the two, and the
+  # corpus does not either.
+  #
+  # So the rewind is KEPT — it makes the loop correct on its own terms rather
+  # than correct only because a caller happens to clean up — and this mutation
+  # records that it is unobservable. Reporting it as a kill would be the error;
+  # deleting the line would be a behavior claim this evidence does not support.
+  @{
+    Name = 'M11 chain rewind (expected to survive)'
+    File = 'src\parser\parser.mbt'
+    Find = @'
+        if !self.at(TDot) {
           self.p = save
           break
-        }' `
-  '        if false {
+        }
+'@
+    Repl = @'
+        if false {
           break
-        }' 'expectRed' 'SURVIVED'
+        }
+'@
+    Expect = 'SURVIVED'
+  }
 
-# --- M12: ambient builtin types removed -----------------------------------
-Invoke-Mutation 'M12 Buffer/FuncRef ambient' 'src\core\builtins.mbt' `
-  '"Buffer", "FuncRef",' `
-  '"Zz_not_a_type",' 'expectRed'
+  # --- M12: ambient builtin types removed -----------------------------------
+  @{
+    Name = 'M12 Buffer/FuncRef ambient'
+    File = 'src\core\builtins.mbt'
+    Find = @'
+"Buffer", "FuncRef",
+'@
+    Repl = @'
+"Zz_not_a_type",
+'@
+  }
 
-Write-Output ''
-Write-Output '=== 0.4.18 mutation results ==='
-$results | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
+)
 
-$killedCount = @($results | Where-Object { $_.Outcome -eq 'KILLED' }).Count
-Write-Output ("KILLED {0} / {1}" -f $killedCount, $results.Count)
-
-if ($failed.Count -gt 0) {
-  Write-Output ("FAILED: {0}" -f ($failed -join ', '))
-  exit 1
-}
-Write-Output 'all mutations killed; every restore verified byte-identical'
+Invoke-MutationGate -Name '0418' -Target 'wasm' -Mutations $mutations
+Write-MutationGateVerdict -Name '0418 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
 exit 0
