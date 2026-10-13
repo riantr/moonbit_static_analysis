@@ -994,6 +994,80 @@ fn Parser::expect_name(self : Parser, what : String) -> (String, @core.Span) {
 ///|
 
 ///|
+/// How a token is NAMED inside a diagnostic.
+///
+/// WHY THIS EXISTS. `parse_atom`'s catch-all used to emit a bare "unexpected
+/// token". That sentence is true and useless: on wzzc-dev/moui 0.1.12 it was the
+/// recorded reason for 110 of the 122 files the frontend cannot read at all --
+/// 90% of every coverage blocker in the corpus behind a message that does not say
+/// which token stopped the parse. The scanner tallies partial files BY REASON
+/// MESSAGE, so the message is the ranking key: naming the token turns one
+/// anonymous `110x` row into a distribution, with no change to any other layer.
+///
+/// The wording follows the toolchain's own -- `moon check` says "Parse error,
+/// unexpected token `,`, you may expect ..." -- so a reader can put the two
+/// side by side on the same file without translating vocabularies.
+///
+/// EXHAUSTIVE OVER ALL 46 `Tok` VARIANTS ON PURPOSE. There is no `_ =>` arm. A
+/// new variant must break the build here rather than land in a fallback that
+/// names nothing, which is the defect being fixed.
+///
+/// Compound spellings are assembled from the tokens the lexer really emits
+/// rather than from a table, because the lexer has no compound-operator tokens
+/// for them: `>>=` arrives as `TGt`, `TAssign`. Rendering from the tokens keeps
+/// the two in step by construction.
+fn tok_desc(t : @lexer.Tok) -> String {
+  match t {
+    TInt(i) => "integer `\{i}`"
+    TBigInt => "an integer literal too wide to read"
+    TFloat(f) => "float `\{f}`"
+    TStr(_, _) => "a string literal"
+    TName(n) => "`\{n}`"
+    TPlus => "`+`"
+    TMinus => "`-`"
+    TStar => "`*`"
+    TSlash => "`/`"
+    TPercent => "`%`"
+    TAssign => "`=`"
+    TPlusEq => "`+=`"
+    TMinusEq => "`-=`"
+    TStarEq => "`*=`"
+    TSlashEq => "`/=`"
+    TPercentEq => "`%=`"
+    TEqEq => "`==`"
+    TNe => "`!=`"
+    TLt => "`<`"
+    TLe => "`<=`"
+    TGt => "`>`"
+    TGe => "`>=`"
+    TAndAnd => "`&&`"
+    TOrOr => "`||`"
+    TAmp => "`&`"
+    TCaret => "`^`"
+    TShl => "`<<`"
+    TShr => "`>>`"
+    TBar => "`|`"
+    TBang => "`!`"
+    TQuestion => "`?`"
+    TTilde => "`~`"
+    TRange => "`..`"
+    TLParen => "`(`"
+    TRParen => "`)`"
+    TLBrace => "`{`"
+    TRBrace => "`}`"
+    TLBracket => "`[`"
+    TRBracket => "`]`"
+    TComma => "`,`"
+    TColon => "`:`"
+    TArrow => "`->`"
+    TDot => "`.`"
+    TSemi => "`;`"
+    TNewline => "a line break"
+    TEOF => "end of file"
+  }
+}
+
+///|
 /// A FUNCTION TYPE: `( A, B, ... ) -> C`, with `?` allowed after either half.
 ///
 /// Each element is read by `type_annotation` itself, which is what makes the
@@ -2773,6 +2847,35 @@ fn Parser::parse_call_args(self : Parser) -> (Array[@ast.Expr], Array[String]) {
         labels[labels.length() - 1] = self.name_at(arg_start)
       }
     }
+    // `f(x?)` — the OPTIONAL-PARAMETER shorthand, the `~` sibling above.
+    // `x?` passes the enclosing `x` onward only if the caller has one, so it
+    // names the same label `x~` does and is recorded the same way: the type
+    // lens maps arguments to parameters BY LABEL whenever any argument is
+    // named (see the `ECall` note in ast.mbt), and a blank label here would
+    // send it back to positional index matching.
+    //
+    // Settled with the toolchain, not inferred — `_verify/grammar_probe.ps1`
+    // case `optarg_question`, one form per package with a broken canary
+    // alongside: `fn sink(theme? : Int = 0)` + `sink(theme?)` is 0 errors from
+    // `moon check`. The `~` form beside it is the control that already parsed.
+    //
+    // What this cost before the fix: `f(x?)` left the `?` unconsumed, the
+    // argument loop broke on "not a comma", and the caller then demanded a `)`
+    // that was not there — so the whole file died with `expected ')'`. On
+    // wzzc-dev/moui 0.1.12 that was 34 files, the largest single named blocker
+    // in the corpus, and the cascade surfaced as ``unexpected token `,` ``
+    // wherever a further argument followed.
+    //
+    // Safe because MoonBit has no ternary `?:` and no postfix `?`, so a `?`
+    // directly after an argument is always this sigil. `x?` in TYPE position
+    // (`(v : Int?)`) never reaches here: that is consumed by the type
+    // annotation reader.
+    if self.at(TQuestion) {
+      let _ = self.bump()
+      if labels[labels.length() - 1] == "" {
+        labels[labels.length() - 1] = self.name_at(arg_start)
+      }
+    }
     if self.at(TComma) {
       let _ = self.bump()
     } else {
@@ -3436,7 +3539,9 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       { span: sp, kind: @ast.EInt(0), }
     }
     other => {
-      self.err("unexpected token", sp)
+      // Named, not bare. See `tok_desc` for why this one message was hiding
+      // 90% of the corpus's coverage blockers behind a single anonymous row.
+      self.err("unexpected token \{tok_desc(other)}", sp)
       ignore(other)
       { span: sp, kind: @ast.EInt(0), }
     }

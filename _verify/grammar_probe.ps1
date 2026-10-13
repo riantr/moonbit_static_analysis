@@ -1,0 +1,136 @@
+# Settle a MoonBit grammar question, then ask the same question of THIS frontend.
+#
+# WHY THIS EXISTS. This repo's parser comments repeatedly say a form was "settled
+# with `moon check`". That method needs three things bolted on before its answer
+# means anything, and all three have bitten this repo before:
+#
+#   1. A DELIBERATELY BROKEN CANARY FILE alongside the subject. A directory the
+#      toolchain has nothing to do in answers "no work to do" and exits 0 -- a
+#      false green indistinguishable from "the form is legal". The canary makes
+#      that impossible: if the canary is not reported, the probe did not run.
+#   2. ITS OWN PACKAGE PER CASE. One case's build-plan failure otherwise masks
+#      every other case, which reads as "all forms are illegal".
+#   3. `moon check` IS NOT ENOUGH. It answers "is this legal MoonBit". The
+#      question that matters is a PAIR: legal to the toolchain AND read by this
+#      frontend. A form can be legal and still block 34 files here, and only the
+#      second half of the pair finds that.
+#
+# So each case prints `MOON` (the grammar truth) beside `SELF` (what this
+# analyzer does), and the interesting cells are the disagreements:
+#
+#   MOON-OK  SELF-OK     nothing to do
+#   MOON-OK  SELF-FAIL   <- A REAL GAP: valid MoonBit this frontend cannot read
+#   MOON-BAD SELF-OK     <- too permissive: this frontend reads invalid MoonBit
+#   MOON-BAD SELF-FAIL   both wrong, in the harmless direction
+#
+# `MOON-OK SELF-FAIL` is the only cell that justifies work. `MOON-BAD SELF-OK` is
+# worse and has shipped real false readings, so both are worth seeing.
+#
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify\grammar_probe.ps1
+#        [-Only <substring>] [-Cases <path-to-cases.ps1>] [-Keep]
+param(
+  [string]$Only = '',
+  [string]$Cases = '',
+  [switch]$Keep
+)
+$ErrorActionPreference = 'Continue'
+$repo = Split-Path -Parent $PSScriptRoot
+Set-Location $repo
+$moon = 'C:\Users\31379\.moon\bin\moon.exe'
+$moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
+$wasm = Join-Path $repo '_build\wasm\debug\build\moonbit_static_analysis.wasm'
+if (-not (Test-Path -LiteralPath $wasm)) { Write-Output 'ABORT: build first -- moon build --target wasm'; exit 1 }
+
+# --- the cases -------------------------------------------------------------
+# Sourced from a separate file when given, so a caller can sweep a family of
+# forms without editing this script. Default: the forms this repo has an open
+# question about.
+if (-not [string]::IsNullOrEmpty($Cases)) {
+  . $Cases
+} else {
+  $PROBE_CASES = [ordered]@{
+    # --- `match` with its subject on the FOLLOWING line -------------------
+    'match_subject_next_line_stmt' = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  let acc : Array[Int] = []`n  match`n    sub(c) {`n    1 => acc.push(2)`n    _ => acc.push(3)`n  }`n  acc.length()`n}"
+    'match_subject_next_line_let'  = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  let v = match`n    sub(c) {`n    1 => 2`n    _ => 3`n  }`n  v`n}"
+    'match_one_line_control'       = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  match sub(c) {`n    1 => 2`n    _ => 3`n  }`n}"
+    # --- the `?` optional-argument shorthand -----------------------------
+    'optarg_question'              = "fn sink(theme? : Int = 0) -> Int { theme }`nfn pass(theme? : Int) -> Int { sink(theme?) }`n"
+    'optarg_tilde_control'         = "fn sink(theme~ : Int = 0) -> Int { theme }`nfn pass(theme~ : Int) -> Int { sink(theme~) }`n"
+    # --- a function-typed parameter with a lambda default -----------------
+    'lambda_default_1line'         = "fn maker2(sync? : (Int) -> Unit = (_w) => ()) -> Int { 1 }`n"
+    'lambda_default_multiline'     = "fn maker(`n  sync? : (Int, Int) -> Unit = (`n    _w,`n    _m,`n  ) => (),`n) -> Int { 1 }`n"
+    'fntype_param_no_default'      = "fn taker(cb : (Int) -> Unit) -> Int { 1 }`n"
+    # --- generic index type ----------------------------------------------
+    'paren_scalar_return'          = "fn f() -> (Int) { 1 }`n"
+    'generic_indexed_param'        = "fn g(a : FixedArray[Int]) -> Int { a[0] }`n"
+    # --- the canary. MUST be rejected; if it is not, the probe is a no-op ---
+    'zz_canary_must_be_rejected'   = "fn canary( { let = 1 }`n"
+  }
+}
+
+$base = Join-Path $env:TEMP ('grammar_' + [guid]::NewGuid().ToString('N').Substring(0,8))
+New-Item -ItemType Directory -Force -Path $base | Out-Null
+
+Write-Output '=== grammar probe: moon check (truth) vs this frontend (behaviour) ==='
+Write-Output "    (each form in its own package; per-case isolation so one build-plan failure cannot mask another)"
+Write-Output ''
+Write-Output ('  {0,-30} {1,-9} {2,-10} {3}' -f 'case', 'MOON', 'SELF', 'self reason / note')
+Write-Output ('  {0,-30} {1,-9} {2,-10} {3}' -f ('-' * 30), ('-' * 9), ('-' * 10), ('-' * 46))
+
+$rows = @()
+foreach ($k in $PROBE_CASES.Keys) {
+  if (-not [string]::IsNullOrEmpty($Only) -and $k -notlike "*$Only*") { continue }
+  $d = Join-Path $base $k
+  New-Item -ItemType Directory -Force -Path $d | Out-Null
+  Set-Content -LiteralPath (Join-Path $d 'moon.mod') -Value "name = `"mbprobe/$k`"`n`nversion = `"0.1.0`"`n" -NoNewline
+  Set-Content -LiteralPath (Join-Path $d 'moon.pkg') -Value "supported_targets = `"+all`"`n" -NoNewline
+  Set-Content -LiteralPath (Join-Path $d 'subject.mbt') -Value $PROBE_CASES[$k] -NoNewline
+
+  Push-Location $d
+  $mo = (& $moon check 2>&1 | Out-String)
+  Pop-Location
+  $mv = if (($mo -replace "`r?`n", ' ') -match '0 errors') { 'MOON-OK' } else { 'MOON-BAD' }
+
+  $so = (& $moonrun $wasm $d 2>&1 | Out-String)
+  $parsed = [regex]::Match($so, 'parsed=(\d+)').Groups[1].Value
+  $sv = if ($parsed -eq '1') { 'SELF-OK' } else { 'SELF-FAIL' }
+
+  $reason = ([regex]::Match($so, '(?m)^\s+\d+x\s+(.+)$').Groups[1].Value)
+  if ([string]::IsNullOrWhiteSpace($reason)) { $reason = '(parsed; no blocker)' }
+
+  Write-Output ('  {0,-30} {1,-9} {2,-10} {3}' -f $k, $mv, $sv, $reason)
+  $rows += [pscustomobject]@{ Case = $k; Moon = $mv; Self = $sv; Reason = $reason }
+}
+
+# --- the canary, which decides whether any of the above means anything ------
+Write-Output ''
+$canary = $rows | Where-Object { $_.Case -like 'zz_canary*' }
+if ($null -eq $canary) {
+  Write-Output '  [NO CANARY] this run reported nothing about whether the probe executed.'
+  Write-Output '  Treat every SELF-OK above as unverified and re-run with a canary.'
+} elseif ($canary.Moon -eq 'MOON-BAD' -and $canary.Self -eq 'SELF-FAIL') {
+  Write-Output '  canary: REJECTED by both, as it must be -- the probe is live and this run is evidence.'
+} else {
+  Write-Output ("  [CANARY PROBLEM] canary came out {0} -- the toolchain did NOT engage." -f $canary.Moon)
+  Write-Output '  A "no work to do" run exits 0 and looks exactly like a legal form.'
+  Write-Output '  Treat every MOON-OK above as unverified.'
+}
+
+$gaps = $rows | Where-Object { $_.Moon -eq 'MOON-OK' -and $_.Self -eq 'SELF-FAIL' }
+Write-Output ''
+if ($gaps.Count -gt 0) {
+  Write-Output ("  {0} REAL GAP(S) -- legal MoonBit this frontend cannot read:" -f $gaps.Count)
+  foreach ($g in $gaps) { Write-Output ("    {0,-30} {1}" -f $g.Case, $g.Reason) }
+} else {
+  Write-Output '  no gaps: every form moon accepts is a form this frontend reads.'
+}
+
+$loose = $rows | Where-Object { $_.Moon -eq 'MOON-BAD' -and $_.Self -eq 'SELF-OK' }
+if ($loose.Count -gt 0) {
+  Write-Output ''
+  Write-Output ("  {0} TOO-PERMISSIVE -- this frontend reads MoonBit the toolchain rejects:" -f $loose.Count)
+  foreach ($g in $loose) { Write-Output ("    {0}" -f $g.Case) }
+}
+
+if (-not $Keep -and (Test-Path -LiteralPath $base)) { Remove-Item -Recurse -Force $base -ErrorAction SilentlyContinue }
+else { Write-Output ''; Write-Output "  probe tree kept at $base" }
