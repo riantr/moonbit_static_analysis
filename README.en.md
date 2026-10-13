@@ -153,6 +153,63 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.28 — `derive` has no body, and a ParseError notice was saying otherwise
+
+`derive(Debug, Eq, Clone)` is a **parenthesised trait list with no braces**. The top-level
+dispatch sent it through `skip_decl_braced` — the skipper for `struct` / `enum` / `trait` /
+`impl` / `extend` / `test`. Two things followed, and **only one of them was visible**:
+
+**One, the message was false.** `skip` builds its text from a `braced` flag, so every derive
+notice read *"its body was not analyzed"* — and a derive **has no body to analyze**. 570 of
+those in production code across the six corpora.
+
+**Two, it could eat its neighbour.** `skip_decl_braced` scans forward for `{`, breaking only
+at a `fn`. So in
+
+```moonbit
+derive(Debug, Eq)
+struct Box { n : Int }
+```
+
+the **struct's braces were consumed as the derive's body**, and the struct's own exclusion
+notice was never emitted. The file claimed one deliberate exclusion where it had made two, and
+the lost one is exactly the fact the notice exists to record.
+
+### The mistake I made, same family as 0.4.27's
+
+I measured how often `derive` is *immediately* followed by a braced declaration in moui 0.1.12:
+**zero**. And then I wrote down "a latent bug with no corpus impact."
+
+**The measurement was right and the inference was wrong.** The skipper does not stop at the
+next line — it scans until it finds **any** `{`, which may be many lines away. It had been
+eating declarations all along; they just were not the adjacent shape I looked for.
+
+| notice | before | after | delta |
+|---|---:|---:|---:|
+| `derive` (old wording) | 575 | 0 | −575 |
+| `derive` (correct wording) | 0 | 547 | +547 |
+| **struct** | 572 | **829** | **+257** |
+| **enum** | 155 | **246** | **+91** |
+| **extend** | 238 | **308** | **+70** |
+| **total** | **5,026** | **5,399** | **+373** |
+
+**+418 declaration exclusions that were previously invisible.** The notice count going **up** is
+the fix working — those 418 were being swallowed.
+
+**Actionable findings are unchanged in all six corpora** (moui 1 / labeler 0 / image 0 /
+async 19 / proton 68 / proton_contract 2). No new false positives.
+
+### What this release does NOT do
+
+The notice **stays**. The analyzer genuinely does not model derived implementations, so a
+reader is right to be told; only the false claim about a body is removed. **This is not
+looking better by reporting less.**
+
+Tests: 430 js (5 new) / 502 wasm / 430 wasm-gc. Four mutations, four killed, every restore
+byte-identical by SHA256. M1 (revert the routing) and M2 (the message claims a body again) are
+deliberately separate — with only M1 killed, the tests would pin the *routing* and happily
+accept a message claiming a body that does not exist.
+
 ## 0.4.27 — a parenthesised function type in return position is no longer read as a tuple
 
 A function type in return position has two spellings, and only one of them was recognised:
@@ -1876,7 +1933,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.27
+moon add riantr/moonbit_static_analysis@0.4.28
 ```
 
 ```moonbit
@@ -2258,7 +2315,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.27` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.28` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

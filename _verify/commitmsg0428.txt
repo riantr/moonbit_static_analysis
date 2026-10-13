@@ -1,0 +1,42 @@
+A `derive` declaration has no body, and the notice claimed it did
+
+`derive(Debug, Eq, Clone)` is a parenthesised trait list with no braces, but the
+top-level dispatch routed it through `skip_decl_braced` -- the skipper for
+struct / enum / trait / impl / extend / test. Two things followed, and only one of
+them was visible.
+
+The message was false. `skip` builds its text from a `braced` flag, so every
+derive notice read "its body was not analyzed". A derive has no body to analyze.
+570 of those in production code across the six corpora.
+
+It could also eat its neighbour. `skip_decl_braced` scans forward for `{`,
+breaking only at a `fn`, so a derive line consumed a LATER declaration's braces as
+its own body and that declaration's exclusion notice was never emitted. Measured
+across the six corpora: struct 572 -> 829, enum 155 -> 246, extend 238 -> 308.
+
+derive now goes to `skip_decl_line`, which stops at the newline. The notice itself
+stays -- derived implementations are genuinely unmodelled and a reader is right
+to be told -- but the claim about a body is gone.
+
+NOTICE COUNT RISES, ON PURPOSE. Across the six corpora it goes from 5,026 to
+5,399, +373, because 418 declaration exclusions that were being swallowed are now
+reported. Actionable findings are UNCHANGED in all six (moui 1, labeler 0, image 0,
+async 19, proton 68, proton_contract 2) -- no new false positives. A notice count
+going up here is the fix working; a notice count going down would be the opposite.
+
+THE MEASUREMENT I GOT WRONG. I counted how often `derive` is immediately followed
+by a braced declaration in moui 0.1.12, got zero, and wrote "no corpus impact".
+The count was right and the inference was wrong -- the skipper does not stop at the
+next line, it scans until it finds any `{`, possibly many lines away. It had been
+eating declarations all along. This is the same family as 0.4.27's matcher: "I
+measured zero" supports "the shape I measured is absent", never "this mechanism has
+no effect".
+
+M1 and M2 in the gate are deliberately separate halves of the fix. With only the
+routing mutation killed, the tests would pin the dispatch and accept a message
+claiming a body that does not exist.
+
+Tests: 430 js (5 new) / 502 wasm / 430 wasm-gc. Self-scan 65 files, 100% parsed,
+actionable 0. Four mutations, four killed, every restore byte-identical by SHA256.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

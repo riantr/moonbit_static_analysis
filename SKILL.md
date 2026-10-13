@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.27 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.28 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -528,6 +528,16 @@ modelled as an `SIf` with an empty `then`, which is the honest mapping for a fra
 model that is not flow-scoped: the condition is walked FIRST, so an `is` pattern in
 it binds in the current frame exactly where a guard binding belongs. The `else`
 block is analyzed like any other block.
+
+**A `derive` DECLARATION HAS NO BODY (since 0.4.28).** `derive(Debug, Eq, Clone)` is a
+parenthesised trait list, not a braced declaration. It used to be skipped by the braced
+skipper, which scans forward for `{` and so consumed a LATER declaration's braces as its own
+— meaning that declaration's "outside the analyzed subset" notice was never emitted. Across
+the six corpora that hid **418 declaration exclusions**; the notice count rose from 5,026 to
+5,399 when it was fixed. A rising ParseError count here is the fix working, not a regression.
+
+The notice itself is still correct and still emitted: derived implementations are not
+modelled. Only the claim that there was an unanalyzed *body* was false, and that is gone.
 
 **A PARENTHESISED FUNCTION TYPE IN RETURN POSITION IS NOT A TUPLE (since 0.4.27).**
 There are two spellings and the analyzer now reads both:

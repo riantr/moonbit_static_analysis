@@ -183,11 +183,35 @@ pub fn parse(src : String) -> ParseResult {
       kw == "enum" ||
       kw == "trait" ||
       kw == "impl" ||
-      kw == "derive" ||
       kw == "extend" ||
       kw == "test" {
       p.skip_decl_braced(kw, sp)
-    } else if kw == "type" || kw == "const" {
+    } else if kw == "type" || kw == "const" || kw == "derive" {
+      // `derive` IS NOT BRACED. `derive(Debug, Eq, Clone)` is a parenthesised
+      // trait list with no body, so the braced skipper claimed one it does not
+      // have: the notice read "its body was not analyzed", which is false — a
+      // derive has no body to analyze.
+      //
+      // It was also wrong in a way that could bite. `skip_decl_braced` scans
+      // forward for `{`, breaking only at a `fn`, so a `derive` line followed by
+      // any braced declaration consumed THAT declaration's braces as its own and
+      // the second declaration's exclusion notice was never emitted — a silent
+      // loss of the very fact the notice exists to record. Demonstrated on
+      //
+      //     derive(Debug, Eq)
+      //     struct Box { n : Int }
+      //
+      // which produced ONE notice (derive) instead of two, the struct's
+      // exclusion vanishing with it.
+      //
+      // MEASURED, not assumed: zero occurrences of that ordering in moui 0.1.12,
+      // so this is a latent bug with no corpus impact today. It is fixed because
+      // it is wrong, not because it costs anything yet — a silent exclusion is
+      // the failure this file has been bitten by before.
+      //
+      // The notice itself STAYS: the analyzer genuinely does not model derived
+      // implementations, so a reader is right to be told. Only the false claim
+      // about a body is removed. This does not reduce the notice COUNT.
       p.skip_decl_line(kw, sp)
     } else if kw == "suberror" {
       // A suberror has TWO shapes: `suberror Timeout of String` is one line,

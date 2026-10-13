@@ -129,6 +129,57 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.28 —— `derive` 没有函数体：一条 ParseError 在说一件不成立的事
+
+`derive(Debug, Eq, Clone)` 是**带括号的 trait 列表，没有大括号**。但顶层分派把它送进了
+`skip_decl_braced`——那是 `struct` / `enum` / `trait` / `impl` / `extend` / `test` 用的跳過器。
+两个后果，**只有一个是看得见的**：
+
+**一、消息是假的。** `skip` 的文案由一个 `braced` 标志决定，于是每条 derive 通知都写着
+「its body was not analyzed」——**而 derive 根本没有 body 可分析**。六个语料里生产代码共 570 条。
+
+**二、它会吃掉邻居。** `skip_decl_braced` 向前扫找 `{`，只在遇到 `fn` 时停下。所以
+
+```moonbit
+derive(Debug, Eq)
+struct Box { n : Int }
+```
+
+里，**struct 的大括号被 derive 当成自己的 body 吞掉了**，struct 自己那条排除通知从来没被发出来。
+文件声称只做了一次刻意的排除，实际做了两次，而丢掉的那一条正是这条通知存在的意义。
+
+### 我自己犯的那个错，和 0.4.27 是同一族
+
+我量过「`derive` 后面紧跟一个大括号声明」在 moui 0.1.12 里的出现次数：**0**。于是我写下了
+「这是潜伏缺陷，对语料零影响」。
+
+**度量是对的，推论是错的。** 跳過器不是在下一行停下——它扫到**任何** `{` 才停，可能隔着很多行。
+它一直在吞，只是吞的不是我量的那种紧邻形状。
+
+| 通知 | 修之前 | 修之后 | 差 |
+|---|---:|---:|---:|
+| `derive`（旧文案） | 575 | 0 | −575 |
+| `derive`（正确文案） | 0 | 547 | +547 |
+| **struct** | 572 | **829** | **+257** |
+| **enum** | 155 | **246** | **+91** |
+| **extend** | 238 | **308** | **+70** |
+| 合计 | **5,026** | **5,399** | **+373** |
+
+**+418 条此前不可见的排除声明。** 修正之后 notice 数字**上升**——这不是退步，是那 418 条
+一直在被悄悄吞掉。
+
+**六个语料的 actionable 全部不变**（moui 1 / labeler 0 / image 0 / async 19 / proton 68 /
+proton_contract 2），没有新增误报。
+
+### 这一版没有做什么
+
+通知**保留**。分析器确实没有建模 derive 生成的实现，所以读者有权被告知；被去掉的只是那句
+关于「函数体」的假话。**这不是靠少报来好看。**
+
+测试 js 430（新增 5）/ wasm 502 / wasm-gc 430。四道突变全部被杀，每轮 restore 都用 SHA256
+证明逐字节一致。M1（退回 braced）与 M2（消息重新声称有 body）是**故意分开**的——只有 M1 被杀
+的话，测试锁住的是分派而不是行为，一个声称存在函数体的消息照样能过。
+
 ## 0.4.27 —— 返回位置带括号的函数类型，不再被当成元组
 
 返回位置上的函数类型有两种写法，原来只认一种：
@@ -1627,7 +1678,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.27
+moon add riantr/moonbit_static_analysis@0.4.28
 ```
 
 ```moonbit
@@ -1959,7 +2010,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.27` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.28` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）
