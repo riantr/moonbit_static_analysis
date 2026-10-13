@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.28 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.29 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -528,6 +528,29 @@ modelled as an `SIf` with an empty `then`, which is the honest mapping for a fra
 model that is not flow-scoped: the condition is walked FIRST, so an `is` pattern in
 it binds in the current frame exactly where a guard binding belongs. The `else`
 block is analyzed like any other block.
+
+**`expr as &Trait` IS AN OPERATOR, NOT AN IDENTIFIER (since 0.4.29).** `as` was already
+in the lexer's keyword list, but nothing in the EXPRESSION grammar consumed it. The
+postfix loop broke on it, the statement reader took the leftover `as` as the start of the
+next expression, and the binding walk resolved it as an ordinary identifier:
+`undefined name 'as'` — a name that never existed, on a program `moon check` accepts with
+zero errors. Same shape as `guard` (0.4.21) and `raise` (0.4.23): a keyword the lexer
+knows and the parser does not.
+
+    b as &Sink                    a cast on a parameter
+    Box::{ n: 2 } as &Sink       the corpus shape
+    Box::{ ..o, n: 9 } as &Sink   the struct-update shape
+
+Settled against the compiler, not assumed: all three are ACCEPTED, while a bare `b as`
+and a non-trait `b as Box` are REJECTED — `moon check` says *"`Int` is not a trait object
+type, it cannot be used on the right hand side of `as`"*, so only the right-hand side is
+constrained.
+
+The target type is read and **deliberately discarded**: `IfaceSymTab` cannot tell a trait
+from a struct, so no check on it is possible, and carrying a field no lens can consult is
+worse than not carrying it. The OPERAND is walked and typed and evaluated — `b as &Sink`
+reads `b`, and dropping that read would report the parameter as never used, trading one
+false positive for another.
 
 **A `derive` DECLARATION HAS NO BODY (since 0.4.28).** `derive(Debug, Eq, Clone)` is a
 parenthesised trait list, not a braced declaration. It used to be skipped by the braced

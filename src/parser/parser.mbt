@@ -2627,6 +2627,34 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       self.skip_braces()
       continue
     }
+    // `expr as &Trait` — a trait-object cast, and the postfix keyword that
+    // had NO production until 0.4.29. Without this arm the loop broke on the
+    // `as`, the statement reader took it as the start of the next expression,
+    // and the binding walk resolved it as an identifier: `undefined name 'as'`
+    // on a program `moon check` accepts with zero errors. Measured at
+    // wzzc-dev/moui `runtime/view_tree.mbt:69:38`, and it was the corpus's
+    // only actionable finding.
+    //
+    // The target type is read by `type_annotation` and DISCARDED. It is not
+    // carried because nothing can check it: the trait-object rule `as`
+    // obeys needs to tell a trait from a struct, and `IfaceSymTab` keeps no
+    // such distinction. The operand is kept — `ECast(base)` — and walked, so
+    // a parameter read only inside a cast still counts as read.
+    //
+    // THE SPAN IS THE `as` TOKEN, not the operand's. Every other extension in
+    // this loop keeps the base span, but those nodes flatten the base into a
+    // name or a field and the base's own span would otherwise be lost; here
+    // the operand survives as a child, so its position is still reachable
+    // through `ECast`, while the position of `as` itself is recorded nowhere
+    // else. Losing the operand's span would lose nothing; losing this one
+    // would make the node unplaceable.
+    if self.at_name("as") {
+      let asp = self.span()
+      let _ = self.bump()
+      let _ = self.type_annotation()
+      e = { span: asp, kind: @ast.ECast(e), }
+      continue
+    }
     break
   }
   e

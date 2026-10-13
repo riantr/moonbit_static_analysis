@@ -303,6 +303,57 @@ fn f(g : Int?) -> Int {
 M1（退回 braced）与 M2（消息重新声称有 body）是分开的。只有 M1 被杀的话，测试锁住的是
 **分派**，一条声称存在函数体的消息照样能过。
 
+### `as` 没有产生式：以及「门禁自己可以是错的」（2026-10-19，0.4.29）
+
+**修法**：`ECast(Expr)` + `parse_postfix_from` 里的 `as` 分支。`as` 早就在词法器关键字表里，
+但**表达式**文法里没有任何东西消费它，于是 postfix 循环在它上面断开，语句读取器把剩下的 `as`
+当成下一个表达式的开头，绑定遍历把它当成标识符解析 ⇒ `undefined name 'as'`。
+**一个从来没存在过的名字。** `guard`（0.4.21）、`raise`（0.4.23）、`as` 是同一形状的第三次。
+
+**对编译器的定案**（`_verify/settle_0428_cast.ps1`）：三种 `as &Trait` 形式 ACCEPTED；
+`b as` 与 `b as Box` 都 REJECTED。`moon check` 原话：「`Int` is not a trait object type, it
+cannot be used on the right hand side of `as`」⇒ `as` 是解析器必须接受的**运算符**，
+被约束的只有右侧。**这个 settle 的前两稿什么都没定下来**：一稿把 `fn() => 1` 当 lambda
+（MoonBit 用大括号，那是 3002），一稿拿 `as Int` 当目标，所有用例都死在无关的规则上。
+**⇒ 一个因无关原因失败的 settle 用例，什么也没 settle，哪怕它打印了别的什么。**
+
+**⇒ 判据一：看得起来可查 ≠ 可查。**
+`as` 要求 trait object，类型**看起来**可查。**它不可查**：`IfaceSymTab` 不区分 trait 与
+struct——`using @pkg { type View }`、`trait` 声明、`struct` 声明全落进同一个 `types` 集合。
+基于那张表的检查会把每个转成 struct 的 cast 都报出来。所以目标类型**读掉并丢弃**，
+`ECast` 只带操作数。**带着却不读，是一个没有透镜能查的字段，比不写更糟。**
+这是 0.4.26 `()`→TNone 教训的反面形态。
+
+**⇒ 判据二：修掉一个假阳性，可能顺手造出另一个。**
+`walk` **必须**遍历操作数。`fn to_sink(b : Box) -> &Sink { b as &Sink }` 里只有这一处读 `b`；
+不遍历就返回的 arm 会把参数报成未读，**用一个假阳性换另一个**。`EComp` 教训的原样形态：
+**没被遍历的那一半，就是会消失的那一半。** M2 专门杀它。
+
+**⇒ 判据三：存活先问「有没有夹具到得了那段代码」，再问「模式串对不对」。**
+M4（interp 不求值操作数）存活。三版夹具都失败，且**每次失败原因不同**：
+`MethodError` 根本不存在（`1.nomethod()` 什么都不报；我探针数到的那条是**警告** `UnusedParam`，
+被 grep `error:` 滤掉了）；放进从不被调用的函数——`Interp::run_top` 直接跳过 `SFunc`
+（`interp.mbt:389`）；放进 `fn main`——它**也是** `SFunc`。
+最后 `_verify/probe_0429_m4.ps1` 上突变、构建、diff 真实输出，五个程序**全部逐字节一致**，
+两条实测理由：操作数里的未绑定名字是 walk 报的 `undefined name`，与 interp 的
+`undefined variable` **同族同 span**，`merge_findings` 只显示一个；`FMethodError` 与
+`FOpMismatch` 共用 `"arg-type"` 组（`core.mbt:380`）。
+**⇒ 这里记的是「我造不出能观测到它的夹具」，不是「已在整个输入空间证明等价」。**
+保留 `eval` 的理由是每个兄弟 arm 都求值自己的操作数——**一致性是理由，不是证明**。
+
+**⇒ 判据四：门禁自己可以是错的，而且会把「没钉住」报成「钉住了」。**
+早先一次运行报「M4 KILLED, 2 of 442 red」，而**杀死它的两个测试在干净代码上就是红的**
+（断言了一条分析器从不产生的 `MethodError`）。此后每个突变都同样报那两条红，于是门禁看起来
+健康，唯一没被钉住的突变被报成钉住了。
+**⇒ 突变计数只有在基线是绿的时候才有意义。** `_verify/mutate_0429.ps1` 现在先跑一遍未突变的
+套件，不是全绿就中止。同族判据：**「0 problems」在往里植入已知缺陷之前，不算证据。**
+
+**语料效果**：人口用**工具自己的输出**数（分析器每个出现发一条发现、发现里写着 token，
+数它继承不到匹配器的盲区），`undefined name 'as'` 六语料**恰好 1 处**
+（moui `runtime/view_tree.mbt:69:38`）——**而那一条就是 moui 全部的 actionable**。
+A/B：moui actionable **1 → 0**，另外五个语料**逐字节一致**。自检 68/68、actionable=0。
+测试 js 442（新增 12）/ wasm 514 / wasm-gc 442。
+
 ### 返回位置带括号的函数类型：以及「跨两棵树比数字，量的是树」（2026-10-18，0.4.27）
 
 **修法**：`return_annotation` 的判据从「匹配到的 `)` 后面是不是 `->`」扩成

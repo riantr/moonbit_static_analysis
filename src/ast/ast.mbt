@@ -168,6 +168,34 @@ pub(all) enum EKind {
   /// safely. A pattern without a binding ("") is a pure test; or-patterns
   /// never reach here because match bodies are skipped whole.
   EIs(Expr, Array[String])
+  /// A trait-object cast `base as &Trait`.
+  ///
+  /// Without this node the parser had no production for `as` at all: the
+  /// postfix loop broke on it, the tail-expression reader then took `as` as
+  /// the next statement, and the binding walk resolved it as an ordinary
+  /// identifier and reported `undefined name 'as'` — a name that never
+  /// existed, on a program `moon check` accepts with zero errors. Settled
+  /// against the compiler in `_verify/settle_0428_cast.ps1`: three forms of
+  /// `as &Trait` compile, while a bare `as` and `as <plain type>` do not.
+  ///
+  /// THE TARGET TYPE IS DELIBERATELY NOT CARRIED. `as` requires a trait
+  /// object (`moon check` verbatim: "`Int` is not a trait object type, it
+  /// cannot be used on the right hand side of `as`"), which makes the type
+  /// look checkable — and it is not, because `IfaceSymTab` cannot tell a
+  /// trait from a struct: `using @pkg { type View }`, a `trait` declaration
+  /// and a `struct` declaration all land in the same `types` set. A check
+  /// built on that table would report every cast to a struct type, and the
+  /// only way to avoid that is to keep the type and not read it. Carrying
+  /// it would be a field no lens can consult, so the node holds the operand
+  /// alone — the same trade `catch { ... }` makes when it discards its
+  /// handler, and the same reason `ETupleField` keeps only the base.
+  ///
+  /// The operand is NOT optional to the lenses: it is the evaluated
+  /// expression, and walking it is what keeps `b as &Sink` from reporting
+  /// the parameter `b` as never read. This is the `EComp` lesson — both
+  /// halves must be walked or the side that is walked is the side that
+  /// vanishes.
+  ECast(Expr)
 } derive(Eq)
 
 ///|

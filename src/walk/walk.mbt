@@ -556,6 +556,18 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
         }
       }
     }
+    // `base as &Trait`: only the base is walked. The target is a TYPE NAME,
+    // not a binding — the same rule that keeps `EStruct`'s path from being
+    // resolved, and the reason `Infer::{ ... }` does not report the type's
+    // own name as undefined.
+    //
+    // The operand is walked rather than discarded, and that is the whole
+    // reason this arm exists: `fn f(b : Box) -> &Sink { b as &Sink }` reads
+    // `b` and nothing else does. An arm that returned without walking would
+    // report the parameter as never read — a NEW false positive introduced by
+    // the fix, in exchange for removing an old one. The `EComp` lesson, in its
+    // exact form: the half that is not walked is the half that vanishes.
+    ECast(base) => self.walk_expr(base)
     // A string's INTERPOLATED names are real reads, and they are resolved here
     // rather than ignored. `println("k=\{k}")` is the only mention of `k` in
     // the function, and treating the literal as opaque made every such name

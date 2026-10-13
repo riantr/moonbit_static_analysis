@@ -129,6 +129,111 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.29 —— `expr as &Trait` 是运算符，而解析器里根本没有它的产生式
+
+`as` **早就在词法器的关键字表里**。但**表达式**文法里没有任何东西消费它。postfix 循环在它
+上面断开，语句读取器把剩下的 `as` 当成下一个表达式的开头，绑定遍历再把它当成普通标识符
+解析出来：
+
+```
+69:38 - error: undefined name 'as' (UndefinedName) [structural+type]
+```
+
+**一个从来没存在过的名字**，被当成 actionable 报出来——而那个程序 `moon check` 零错误接受。
+这是同一形状的第三次出现：`guard`（0.4.21）、`raise`（0.4.23）、现在是 `as`。词法器认识、
+解析器不认识的关键字。
+
+### 对着编译器定案，不是假设
+
+`_verify/settle_0428_cast.ps1` 编译三种形式，并要求两个反例必须被拒：
+
+| 程序 | `moon check` |
+|---|---|
+| `b as &Sink` | **ACCEPTED** |
+| `Box::{ n: 2 } as &Sink` | **ACCEPTED** |
+| `Box::{ ..o, n: 9 } as &Sink` | **ACCEPTED** |
+| `b as`（没有目标） | REJECTED |
+| `b as Box`（不是 trait object） | REJECTED |
+
+`moon check` 把规则原话说出来了：*「`Int` is not a trait object type, it cannot be used on the
+right hand side of `as`」*。所以 `as` 是解析器**必须接受**的运算符，被约束的只有它的右侧。
+这个 settle 的前两稿**什么都没定下来**：一稿把 `fn() => 1` 当 lambda（MoonBit 的 lambda 用
+大括号，`fn() => 1` 是 3002），另一稿拿 `as Int` 当目标，于是每个用例都死在 trait-object
+规则上，压根没问到 `as` 本身。
+
+### 修法，以及这个节点**故意不**带的东西
+
+`ECast(Expr)`——只带操作数——外加 `parse_postfix_from` 里的 `as` 分支。目标类型由现成的
+`type_annotation` 读掉，然后**丢弃**。
+
+这看起来像错过了一个机会：`as` 要求 trait object，所以类型看着可查。**它不可查。**
+`IfaceSymTab` 不区分 trait 和 struct——`using @pkg { type View }`、`trait` 声明、`struct`
+声明，全都落进同一个 `types` 集合。基于那张表的检查会把**每一个**转成 struct 类型的 cast 都
+报出来。带着这个字段却不读它，是一个没有透镜能查的字段——那比不写它更糟。这就是 0.4.26
+`()`→TNone 那条教训的反面：**前置条件表里根本不成立的检查，是假阳性发生器**，而「不查」
+才是诚实的答案。
+
+**span 取 `as` 那个 token**，不是操作数的。那个循环里其他所有扩展都保留 base span，但那些节点
+把 base 压平成了名字、不这样做就会丢掉位置；而这里操作数作为子节点还活着，它的位置仍能通过
+`ECast` 取到，**`as` 自己的位置则别处无处可记**。
+
+### 三个透镜，以及这个修复**本来可能引入**的假阳性
+
+`walk` **必须**遍历操作数。`fn to_sink(b : Box) -> &Sink { b as &Sink }` 里只有这一处读 `b`
+——一个不遍历就返回的 arm 会把参数报成未读，**用一个假阳性换另一个**。这就是 `EComp` 教训的
+原样形态：**没被遍历的那一半，就是会消失的那一半**。它有专属测试，M2 杀它。
+
+`infer` 对操作数定型（所以里面的错名字、错实参类型照样找得到），结果给 `TUnknown`。
+`interp` 求值操作数并给 `AAny`，保持路径活着，而不是像 `1 as &Trait` 那样折叠掉。
+
+### 实测
+
+人口是**用工具自己的输出**数的，不是用匹配器——分析器本来就每个出现发一条发现，而发现里写着
+那个 token，所以这个数继承不到匹配器的盲区。`undefined name 'as'`，六个语料：**恰好 1 处**，
+在 `wzzc-dev/moui runtime/view_tree.mbt:69:38`。
+
+一处很少。但它同时是 **moui 全部的 actionable**。
+
+| 语料 | actionable 前 | 后 | |
+|---|---:|---:|---|
+| moui | 1 | **0** | 那条 `as` 假阳性 |
+| moonbit_labeler | 0 | 0 | 逐字节一致 |
+| moonbit_image | 0 | 0 | 逐字节一致 |
+| async | 19 | 19 | 逐字节一致 |
+| proton | 68 | 68 | 逐字节一致 |
+| proton_contract | 2 | 2 | 逐字节一致 |
+
+自检 68/68 解析（100%），**actionable = 0**。
+
+测试 js 442（新增 12）/ wasm 514 / wasm-gc 442。五个突变，四个被杀，一个预期存活，
+每次还原都按 SHA256 逐字节核对。
+
+### 那个存活者，以及它暴露出的门禁 bug
+
+**M4**（interp 不再求值 cast 的操作数）存活了。为了确认它是**理直气壮**地存活、而不是
+因为少写一个测试，花了三版夹具加一个测量脚本：
+
+1. 操作数里的 `MethodError`——**根本不存在**。`1.nomethod()` 什么都不报；我探针数到的
+   那一条是**警告**（`UnusedParam`），被我 grep `error:` 过滤掉了。
+2. 同一个想法放进一个从不被调用的函数。`Interp::run_top` 直接跳过 `SFunc`（`interp.mbt:389`）。
+3. 同一个想法放进 `fn main`——它**也是** `SFunc`，同样被跳过。
+
+随后 `_verify/probe_0429_m4.ps1` 上这个突变、重新构建、diff 分析器的真实输出，跑了五个程序。
+**五个全部逐字节一致**，两条实测理由：cast 操作数里的未绑定名字是**walk** 以 `undefined name`
+报的，而 interp 的 `undefined variable` 与它**同族同 span**，`merge_findings` 只显示一个、
+藏起另一个；`FMethodError` 和 `FOpMismatch` 共用 `"arg-type"` 组（`core.mbt:380`），操作数里的
+运算符错配同样会被折叠掉。
+
+**这里记的是「我造不出能观测到它的夹具」，不是「已在整个输入空间证明等价」。** 这是两句不同的
+话，只有第一句有支撑。保留这个 `eval`，是因为每个兄弟 arm（`EField`、`ETupleField`、`EStruct`、
+`EComp`、`EMethodCall`）都求值自己的操作数——一致性是理由，不是证明。
+
+**而门禁自己先是错的。** 早先一次运行报「M4 KILLED, 2 of 442 red」，但**杀死它的两个测试
+在干净代码上就是红的**——它们断言了一条分析器从不产生的 `MethodError`。此后每个突变都同样报
+那两条红，于是门禁看起来健康，而唯一没被钉住的突变被报成钉住了。
+`_verify/mutate_0429.ps1` 现在**先跑一遍未突变的套件，不是全绿就中止**，因为突变计数只有
+在基线是绿的时候才有意义。
+
 ## 0.4.28 —— `derive` 没有函数体：一条 ParseError 在说一件不成立的事
 
 `derive(Debug, Eq, Clone)` 是**带括号的 trait 列表，没有大括号**。但顶层分派把它送进了
@@ -1678,7 +1783,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.28
+moon add riantr/moonbit_static_analysis@0.4.29
 ```
 
 ```moonbit
@@ -2010,7 +2115,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.28` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.29` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

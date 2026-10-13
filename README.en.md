@@ -153,6 +153,120 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.29 — `expr as &Trait` is an operator, and the parser had no production for it
+
+`as` was already in the lexer's keyword list. Nothing in the **expression** grammar consumed it.
+The postfix loop broke on it, the statement reader took the leftover `as` as the start of the next
+expression, and the binding walk resolved it as an ordinary identifier:
+
+```
+69:38 - error: undefined name 'as' (UndefinedName) [structural+type]
+```
+
+**A name that never existed**, reported as actionable, on a program `moon check` accepts with zero
+errors. This is the third instance of the same shape — `guard` (0.4.21), `raise` (0.4.23), now `as`:
+a keyword the lexer knows and the parser does not.
+
+### Settled against the compiler, not assumed
+
+`_verify/settle_0428_cast.ps1` compiles three forms and requires two negatives to be rejected:
+
+| program | `moon check` |
+|---|---|
+| `b as &Sink` | **ACCEPTED** |
+| `Box::{ n: 2 } as &Sink` | **ACCEPTED** |
+| `Box::{ ..o, n: 9 } as &Sink` | **ACCEPTED** |
+| `b as` (no target) | REJECTED |
+| `b as Box` (not a trait object) | REJECTED |
+
+`moon check` spells the rule out verbatim: *"`Int` is not a trait object type, it cannot be used on
+the right hand side of `as`."* So `as` is an operator the parser must accept, and only its
+right-hand side is constrained. Two earlier drafts of this settle settled **nothing** — one used
+`fn() => 1` as a lambda (MoonBit lambdas use braces; `fn() => 1` is a 3002), and one used `as Int`
+as the target, so every case died on the trait-object rule before `as` was ever the question.
+
+### The fix, and what the node deliberately does NOT carry
+
+`ECast(Expr)` — the operand alone — plus an `as` branch in `parse_postfix_from`. The target type is
+read by the existing `type_annotation` and **discarded**.
+
+That looks like a missed opportunity: `as` requires a trait object, so the type looks checkable. It
+is not. `IfaceSymTab` keeps no trait/struct distinction — `using @pkg { type View }`, a `trait`
+declaration and a `struct` declaration all land in the same `types` set. A check built on that table
+would report every cast to a struct type. Carrying the type without reading it would be a field no
+lens can consult, which is a worse thing to add than not adding it. This is the 0.4.26 `()`→TNone
+lesson pointed the other way: a check whose precondition the tables cannot satisfy is a false-positive
+generator, and no check at all is the honest answer.
+
+The **span is the `as` token**, not the operand's. Every other extension in that loop keeps the base
+span, but those nodes flatten the base into a name and would otherwise lose its position; here the
+operand survives as a child, so its position is still reachable through `ECast`, while the position
+of `as` itself is recorded nowhere else.
+
+### The three lenses, and the false positive the fix could have introduced
+
+`walk` **must** walk the operand. `fn to_sink(b : Box) -> &Sink { b as &Sink }` reads `b` and nothing
+else does — an arm that returned without walking would report the parameter as never read, trading one
+false positive for another. That is the `EComp` lesson in its exact form: the half that is not walked
+is the half that vanishes. It has a dedicated test, and M2 kills it.
+
+`infer` types the operand (so a wrong name or a wrong argument type inside it is still found) and
+yields `TUnknown`. `interp` evaluates the operand and yields `AAny`, keeping the path live rather
+than folding it the way `1 as &Trait` would tempt it to.
+
+### Measured
+
+The population was counted **by the tool's own output**, not by a matcher — the analyzer already
+emits one finding per occurrence and the finding names the token, so the count cannot inherit a
+matcher's blind spot. `undefined name 'as'`, six corpora: **exactly one**, at
+`wzzc-dev/moui runtime/view_tree.mbt:69:38`.
+
+One site is small. It was also **moui's entire actionable count**.
+
+| corpus | actionable before | after | |
+|---|---:|---:|---|
+| moui | 1 | **0** | the `as` false positive |
+| moonbit_labeler | 0 | 0 | byte-identical |
+| moonbit_image | 0 | 0 | byte-identical |
+| async | 19 | 19 | byte-identical |
+| proton | 68 | 68 | byte-identical |
+| proton_contract | 2 | 2 | byte-identical |
+
+Self-scan 68/68 parsed (100%), **actionable = 0**.
+
+Tests: 442 js (12 new) / 514 wasm / 442 wasm-gc. Five mutations, four killed, one expected survivor,
+every restore byte-identical by SHA256.
+
+### The survivor, and the gate bug it exposed
+
+**M4** (interp stops evaluating the cast operand) survives, and it took three fixtures and a
+measurement script to establish that it survives *legitimately* rather than for want of a test:
+
+1. `MethodError` inside the operand — there is none. `1.nomethod()` reports nothing, and the one
+   finding my probe counted was a **warning** (`UnusedParam`) that a grep for `error:` had filtered out.
+2. The same idea in a function that is never called. `Interp::run_top` skips `SFunc` outright
+   (`interp.mbt:389`).
+3. The same idea in `fn main` — which is *also* an `SFunc`, and is skipped the same way.
+
+`_verify/probe_0429_m4.ps1` then applied the mutation, rebuilt, and diffed the analyzer's real output
+on five programs. **All five byte-identical**, for two measured reasons: an unbound name inside a
+cast operand is reported by *walk* as `undefined name`, and the interpreter's `undefined variable`
+shares its family and span so `merge_findings` shows one and hides the other; and `FMethodError`
+and `FOpMismatch` share the `"arg-type"` group (`core.mbt:380`), so an operator mismatch inside the
+operand collapses too.
+
+**This is recorded as "no fixture I could build observes it", not as "proven equivalent over the whole
+input space."** Those are different claims and only the first is supported. The `eval` is kept because
+every sibling arm (`EField`, `ETupleField`, `EStruct`, `EComp`, `EMethodCall`) evaluates its operands —
+consistency is a reason, not a proof.
+
+**And the gate itself was wrong first.** An earlier run reported *"M4 KILLED, 2 of 442 red"* while the
+two tests doing the killing were **failing on clean code** — they asserted a `MethodError` the
+analyzer never emits. Every later mutation reported those same two red, so the gate looked healthy
+and the one mutation it had not pinned was reported as pinned. `_verify/mutate_0429.ps1` now runs the
+suite **unmutated first and aborts if it is not green**, because a mutation count only means something
+against a green baseline.
+
 ## 0.4.28 — `derive` has no body, and a ParseError notice was saying otherwise
 
 `derive(Debug, Eq, Clone)` is a **parenthesised trait list with no braces**. The top-level
@@ -1933,7 +2047,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.28
+moon add riantr/moonbit_static_analysis@0.4.29
 ```
 
 ```moonbit
@@ -2315,7 +2429,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.28` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.29` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

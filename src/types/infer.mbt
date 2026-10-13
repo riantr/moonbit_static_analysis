@@ -465,6 +465,22 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       }
       TBool
     }
+    // `base as &Trait`: the base is TYPED — a wrong name inside it is still
+    // found — and the result is TUnknown.
+    //
+    // Unknown is not a shrug here, it is the answer the model already gives
+    // the same type everywhere else: `ann_to_ty("&Sink")` falls through to
+    // `ann_to_list_ty` and returns Unknown, so a function declared `-> &Sink`
+    // already has an Unknown declared type. Returning the operand's type
+    // instead would be the actively wrong choice — `b as &Sink` is a Box at
+    // runtime and an interface at every use, and claiming Box would make
+    // `ty_assignable(TBox, TUnknown)` the only thing keeping the surrounding
+    // function quiet. Unknown is the failure-safe direction, the same one
+    // `EBigInt` takes when it declines to carry a value.
+    ECast(base) => {
+      let _ = self.ty_of(base, TUnknown)
+      TUnknown
+    }
   }
 }
 

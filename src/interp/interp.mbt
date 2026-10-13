@@ -916,6 +916,18 @@ fn Interp::eval(
       }
       AAny
     }
+    // `base as &Trait`: the base is evaluated, the result is AAny.
+    //
+    // AAny rather than the base's abstract value on purpose. The abstract
+    // interpreter prunes on concrete booleans and folds on concrete ints, so
+    // passing a value through would let a cast on a literal (`1 as &Trait`
+    // is a type error, but `x + 1 as &Trait` is not) fold and prune a branch
+    // the compiler never prunes. AAny keeps the path live — the same reason
+    // `EIs` above returns AAny instead of ABool.
+    ECast(base) => {
+      let _ = self.eval(base, env)
+      AAny
+    }
   }
 }
 
