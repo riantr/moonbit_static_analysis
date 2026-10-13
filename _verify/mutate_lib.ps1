@@ -80,8 +80,34 @@ function Invoke-MutationGate {
   }
 
   # ---- pre-flight: every pattern must be present, in milliseconds -------------
+  # Rule 3, with one honest exception. A pattern that does not apply means the
+  # mutation never happened. mutate_0412 discovered this the cheap way: its M1, M2
+  # and M5b anchors stopped matching when `collect_declared_names` and `union` were
+  # refactored after 0.4.12, and the old runner PRINTED "anchor text not found",
+  # counted the mutation as neither kill nor failure, and exited 0. A gate that
+  # reports success for mutations it never applied is worse than no gate.
+  #
+  # `Retired = '<reason>'` is the honest form for a mutation whose target code no
+  # longer exists. It is EXCLUDED, with the reason printed, and it does not fail the
+  # gate -- because the honest verdict is "this guard can no longer be run", not
+  # "this guard still holds". What it must never do is pass silently, and what it
+  # must never be is a fresh anchor invented to make the count look right.
+  $live = @($Mutations | Where-Object { -not $_.ContainsKey('Retired') })
+  $retired = @($Mutations | Where-Object { $_.ContainsKey('Retired') })
+  foreach ($r in $retired) {
+    Write-Output ('  RETIRED: ' + $r.Name + '  -- ' + $r.Retired)
+  }
+  if ($retired.Count -gt 0) {
+    Write-Output ('  ' + $retired.Count + ' of ' + $Mutations.Count + ' mutations retired; ' + $live.Count + ' live.')
+  }
+  if ($live.Count -eq 0) {
+    Write-Output 'ABORT: every mutation in this gate is retired. Nothing left to verify.'
+    $script:MutationGateFailures += ($Name + ' (all mutations retired)')
+    return
+  }
+
   $absent = @()
-  foreach ($m in $Mutations) {
+  foreach ($m in $live) {
     $findText = ([string]$m.Find).Replace("`r`n", $nl)
     if ($texts[$m.File].IndexOf($findText, [System.StringComparison]::Ordinal) -lt 0) {
       $absent += $m.Name
@@ -91,10 +117,12 @@ function Invoke-MutationGate {
   }
   if ($absent.Count -gt 0) {
     Write-Output ('ABORT: ' + $absent.Count + ' pattern(s) absent. No suite was run.')
+    Write-Output '      If the code a mutation targeted has since changed shape, mark it'
+    Write-Output '      Retired = "<reason>" rather than inventing an anchor to match.'
     $script:MutationGateFailures += ($Name + ' (preflight)')
     return
   }
-  Write-Output ('Pre-flight: all ' + $Mutations.Count + ' patterns present.')
+  Write-Output ('Pre-flight: all ' + $live.Count + ' live patterns present.')
 
   # ---- BASELINE --------------------------------------------------------------
   # Rule 1. Without this, every count below is uninterpretable.
@@ -123,8 +151,11 @@ function Invoke-MutationGate {
   }
 
   # ---- run -------------------------------------------------------------------
+  # `$live`, NOT `$Mutations`: a retired entry has no Find pattern, and
+  # `$text.Replace('', '')` is a no-op that would read as SURVIVED -- a retired
+  # mutation silently reporting a result it never tested.
   $results = @()
-  foreach ($m in $Mutations) {
+  foreach ($m in $live) {
     $path = Join-Path $Root $m.File
     $bytes0 = [System.IO.File]::ReadAllBytes($path)
     $sha0 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
@@ -175,8 +206,10 @@ function Invoke-MutationGate {
     $tag = if ($want -eq 'SURVIVED') { '   [expected survivor]' } else { '' }
     Write-Output ('  ' + $outcome.PadRight(11) + ' ' + $m.Name + '  -- ' + $detail + $tag)
 
-    # Rule 5. A survivor has to carry its argument.
-    if ($want -eq 'SURVIVED' -and $outcome -eq 'SURVIVED' -and $m.ContainsKey('Prove')) {
+    # Rule 5. A declared non-KILLED outcome has to carry its argument -- and that
+    # includes COMPILE-ERR, which is the easiest verdict to smuggle past: a mutant
+    # that fails to build looks exactly like a mutant that was caught.
+    if ($want -ne 'KILLED' -and $outcome -eq $want -and $m.ContainsKey('Prove')) {
       Write-Output ('      prove: ' + $m.Prove)
     }
   }
