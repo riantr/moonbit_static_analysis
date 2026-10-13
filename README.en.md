@@ -153,6 +153,117 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.26 — a tail expression is the return value, and a fix found by reading code instead of by a corpus delta
+
+**Correcting myself first.** The note this release started from said the declared return
+type renders `None` for tail-expression bodies and is "**probably bigger than `raise`
+itself**". **Measured, that is wrong.** `raise` accounts for 1,213 sites across the six
+corpora; tail-expression functions account for **305** (moui 108 / moonbit_labeler 64 /
+async 69 / proton 40 / moonbit_image 24). About a quarter, not more.
+
+**The corpus delta is zero.** Six corpora, 12,428 files, byte-identical to 0.4.25. This
+is a **correctness fix** with a reproducer, not a cleanup.
+
+### The defect: the tail expression's value was thrown away
+
+A tail expression parsed as an `SExpr`, and `SExpr` explicitly discards its value:
+
+```moonbit
+Interp::exec_stmt   SExpr(e) => { let _ = self.eval(e, env) }
+Interp::analyze_fn  let ret = join_vals(self.ret_vals)
+join_vals           if vals.length() == 0 { return AType("None") }
+```
+
+So `ret_vals` stayed empty, `join_vals` answered `None`, that `None` went into the **call
+cache**, and **callers inherited it**:
+
+```moonbit
+fn f() -> Int {
+  1
+}
+fn g() -> Int {
+  f() + 1        // reported: no method matching +(None, int)
+}
+```
+
+A confident false positive about code that compiles. The control fixture with `return 1`
+is clean, and the wrong value survives two levels of callers — because it is **stored**,
+not returned.
+
+Equally important: **the analyzer's own signature line said `f() -> None`.** That line is
+its statement about what it understood, so being wrong there is a defect even when no
+finding fires.
+
+### The fix: a new `STail` node and a `fn_body` flag
+
+`STail` is produced only in a **function body** — which is exactly what the
+`fn_body : Bool` flag is for. The same block parser also reads loop bodies, `if` arms and
+bare blocks, and in those a trailing expression is an ordinary **discarded** expression
+statement (`fn f() -> Int { while c { 1 } }` returns nothing at all).
+
+The three lenses differ. walk is identical to `SExpr`. The type lens **joins** the tail's
+type into the inferred return type (`scan_returns` previously knew nothing about it). The
+behaviour lens **records** the value and leaves the **flow alone** — nothing follows a tail
+expression anyway. There it **must** be evaluated, which is the exact opposite of a `raise`
+operand: everything after a terminator is dead code, so there the value is deliberately
+not evaluated.
+
+### The settle: my first version was empty, and empty in two separate ways
+
+The first version reported "0 errors" for twelve shapes, **including one real MoonBit
+rejects**. Two independent bugs, both of the kind that do not announce themselves:
+
+1. **`moon check` only type-checks a body REACHED from `fn main`.** With no `main`,
+   nothing was type-checked at all.
+2. **The script deleted `src/moon.pkg` itself** (`Get-ChildItem src -File | Remove-Item`),
+   so from the first case on there was no package to check and `moon check` printed
+   nothing. Add PowerShell turning a native command writing to stderr into a
+   `NativeCommandError`, and the merged string came back empty — **two independent
+   failures stacked, producing a clean bill of health for a program the compiler
+   rejects.**
+
+Fixed, there are now **two negative controls**: `fn f() -> Int { "a" }` reports 4014 and
+`fn f() { 1 }` reports 4074. **A settle only measures something when its negative control
+goes red.**
+
+It also turned up two facts about the **language**:
+
+- `while s == "a" { "b" }` is **4139** — a loop body's trailing expression is discarded,
+  and only Unit may be discarded silently. My first loop fixture was written exactly that
+  way. **A fixture the compiler rejects is not a fixture.**
+- **A tail expression requires a declared return type** (4074). Which is precisely why
+  the latent surface is 305: the population this defect can touch is the population the
+  compiler already forces you to annotate.
+
+### A regression I caused, caught only by the six-corpus byte diff
+
+I also taught the type lens that `()` is Unit, to match the interpreter. `TNone` is a
+**concrete** type, so an empty tuple compared against anything else became a report —
+wzzc-dev/moui `backend/macos/macos_backend.mbt:204` gained
+`unsupported operand types for '>': 'int' and 'None'`. That file's parse stop point, notice
+count and actionable count were all identical a moment earlier; **only the six-corpus diff
+saw it.**
+
+The type-lens half is reverted; the interpreter half stays — that is where the value the
+signature line prints comes from. **M5 and M6 are now a permanent pair in the gate**: M5
+reproduces the mistake I made, M6 is its opposite ("every tuple is Unit").
+
+### Mutation gate: 7 mutations, green on the first run
+
+Seven mutations over four decisions in four files: the parser's `fn_body` (M3), position
+(M4), whether the flag reaches a function body at all (M7), whether the behaviour lens
+records (M1), what it records (M2), whether `()` is Unit (M5), and whether a real tuple is
+still a tuple (M6). **7 killed, 0 survived**, every restore verified byte-identical by
+SHA256.
+
+The pre-flight added in 0.4.25 paid for itself immediately: two patterns in this gate's
+first version were written against a three-line arm that `moon fmt` collapses to **one
+line**, and the pre-flight aborted in milliseconds and printed the line it was looking
+for — instead of wasting a whole `moon test` run learning nothing.
+
+Tests js 412 / wasm 484 / wasm-gc 412 (was 398 / 470 / 398). Self-scan 63 files,
+**actionable 0**.
+
 ## 0.4.25 — the behaviour lens leaked flow between `if` branches, and a check that could not fire
 
 **This release has no corpus delta, and that is measured, not inferred.** Six corpora,
@@ -1653,7 +1764,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.25
+moon add riantr/moonbit_static_analysis@0.4.26
 ```
 
 ```moonbit
@@ -2035,7 +2146,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.25` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.26` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

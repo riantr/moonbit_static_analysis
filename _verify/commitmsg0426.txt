@@ -1,0 +1,93 @@
+Make a function's tail expression its return value
+
+A tail expression parsed as an `SExpr`, and the behaviour lens evaluates an
+`SExpr` and throws the value away:
+
+    Interp::exec_stmt   SExpr(e) => { let _ = self.eval(e, env) }
+    Interp::analyze_fn  let ret = join_vals(self.ret_vals)
+    join_vals           if vals.length() == 0 { return AType("None") }
+
+so `ret_vals` stayed empty, `join_vals` answered `None`, that `None` went into the
+CALL CACHE, and callers inherited it:
+
+    fn f() -> Int {
+      1
+    }
+    fn g() -> Int {
+      f() + 1        // no method matching +(None, int)
+    }
+
+A confident false positive about a program `moon check` accepts with zero errors.
+The `return 1` control is clean, and the wrong value survives two levels of
+callers, because it is stored rather than returned.
+
+The analyzer also claimed `f() -> None` in its own signature line. That line is
+its statement about what it understood, so being wrong there is a defect even
+when no finding fires.
+
+THE FIX, and the node is its own rather than a flag on `SExpr` for the `SRaise`
+reason: the lenses genuinely differ. walk is identical to `SExpr`; the type lens
+JOINS the tail's type into the inferred return type (`scan_returns` knew nothing
+about it); the behaviour lens RECORDS the value and leaves the FLOW alone, since
+nothing follows a tail expression anyway. There it must be EVALUATED, which is
+the exact opposite of a `raise` operand -- everything after a terminator is dead
+code, so there the value is deliberately not evaluated.
+
+`STail` is produced only in a FUNCTION body, and that is what the new
+`parse_block(fn_body : Bool)` parameter is for: the same block parser also reads
+loop bodies, `if` arms and bare blocks, and in those a trailing expression is a
+discarded statement whose value goes nowhere. `fn f() -> Int { while c { 1 } }`
+returns nothing.
+
+MEASURED, with a correction. The note this release started from said this was
+"probably bigger than raise itself". It is not: `raise` accounts for 1,213 sites
+across the six corpora, tail-expression functions for 305 (moui 108 / labeler 64
+/ async 69 / proton 40 / image 24). Roughly a quarter. The 305 came from a brace
+matching walker rather than a grep, because a one-line regex cannot tell a
+function's last statement from a nested block's.
+
+Corpus delta: six corpora, 12,428 files, every scan byte-identical to 0.4.25.
+**A correctness fix with a reproducer, not a cleanup.**
+
+A REGRESSION I CAUGHT IN MY OWN CHANGE, worth more than the fix. I also taught
+the type lens that `()` is Unit, to match the interpreter. `TNone` is a CONCRETE
+type, so an empty tuple compared against anything else became a report:
+wzzc-dev/moui `backend/macos/macos_backend.mbt:204` gained
+
+    unsupported operand types for '>': 'int' and 'None'
+
+That file's parse stop point, notice count and actionable count were all
+identical a moment earlier. Only the six-corpus byte diff saw it. The type-lens
+half is reverted; the interpreter half stays, because that is where the value
+the signature line prints comes from. M5 and M6 are now a permanent pair in the
+gate: M5 reproduces the mistake, M6 is its opposite ("every tuple is Unit").
+
+THE SETTLE WAS EMPTY TWICE, and both times silently. It reported "0 errors" for
+twelve shapes INCLUDING one real MoonBit rejects, for three stacked reasons:
+`moon check` only type-checks a body REACHED from `fn main`; the script deleted
+`src/moon.pkg` along with the case files, so there was no package to check; and
+PowerShell turns a native command writing to stderr into a `NativeCommandError`,
+so the merged output string came back empty. It now carries two negative controls
+-- `fn f() -> Int { "a" }` is 4014 and `fn f() { 1 }` is 4074 -- and a settle only
+measures something when its negative control goes red.
+
+The settle also corrected two of my fixtures, which matters because a fixture the
+compiler rejects is not a fixture:
+
+  - `while s == "a" { "b" }` is 4139. A loop body's trailing expression is
+    discarded, and only Unit may be discarded silently. My first loop fixture was
+    written exactly that way and had to become a Unit call.
+  - A tail expression REQUIRES a declared return type (4074), which is why the
+    latent surface is exactly the population the compiler already forces you to
+    annotate.
+
+Tests js 412 / wasm 484 / wasm-gc 412 (added 12). Self-scan 63 files,
+actionable 0.
+
+Mutation gate: 7 mutations over four decisions in four files -- the parser's
+`fn_body` flag, the position test, whether the flag reaches a function body, and
+what the behaviour lens records. 7 killed, 0 survived on the first full run, every
+restore verified byte-identical by SHA256. The pre-flight added in 0.4.25 paid for
+itself immediately: two patterns here were written against a three-line arm that
+`moon fmt` collapses to one line, and the pre-flight aborted in milliseconds
+instead of after a full suite run.

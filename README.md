@@ -129,6 +129,97 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.26 —— 尾表达式就是返回值：一次由读代码而不是由语料 delta 找到的修复
+
+**先更正我自己。** 这条待办上一版写的是「声明返回类型在尾表达式函数体上渲染成 `None`
+——**可能比 `raise` 本身还大**」。**实测之后这句话是错的**：`raise` 六个语料共 1213 处，
+而尾表达式函数**只有 305 个**（moui 108 / moonbit_labeler 64 / async 69 / proton 40 /
+moonbit_image 24）。大约是四分之一，不是更大。
+
+**语料 delta 是零。** 六个语料、12,428 个文件，**逐字节与 0.4.25 一致**。这一版是**一次
+正确的修复**（有复现器），不是清理。
+
+### 缺陷：尾表达式的值被丢掉了
+
+尾表达式被解析成 `SExpr`，而 `SExpr` 明确丢弃自己的值：
+
+```moonbit
+Interp::exec_stmt   SExpr(e) => { let _ = self.eval(e, env) }
+Interp::analyze_fn  let ret = join_vals(self.ret_vals)
+join_vals           if vals.length() == 0 { return AType("None") }
+```
+
+于是 `ret_vals` 永远是空的，`join_vals` 答 `None`，这个 `None` 进入**调用缓存**，**调用者
+继承它**：
+
+```moonbit
+fn f() -> Int {
+  1
+}
+fn g() -> Int {
+  f() + 1        // 报 no method matching +(None, int)
+}
+```
+
+一个关于**能编译的代码**的、语气笃定的假阳性。`return 1` 版本的控制夹具是干净的，
+而且错误值能穿过两层调用者——因为它是被**存下来**的，不是被返回的。
+
+顺带一件同样重要的事：**分析器自己对这份文件说的是 `f() -> None`**。签名行是它对「我读懂了
+什么」的陈述，读错了就是缺陷，哪怕没有 finding。
+
+### 修法：新节点 `STail`，加一个 `fn_body` 标志
+
+`STail` 只在**函数体**里产生——这就是 `fn_body : Bool` 存在的理由：同一个块解析器还要读循环
+体、`if` 分支和裸块，在那些位置上尾表达式是一条**被丢弃的普通表达式语句**
+（`fn f() -> Int { while c { 1 } }` 不返回任何东西）。
+
+三个透镜各自不同：walk 与 `SExpr` 完全一致；类型透镜把它的类型 **join 进推断返回类型**
+（`scan_returns` 之前对它一无所知）；行为透镜**记录它的值**，而且**不动 flow**——尾表达式
+后面本来就没有东西了。在行为透镜里它**必须被求值**，这与 `raise` 的操作数正相反：终止符
+之后的值是死的，所以那里刻意不求值。
+
+### settle：我自己的第一版是空的，而且空了两处
+
+第一版 settle 报了 12 个形状全部「0 错误」，**包括一个 MoonBit 明确拒绝的反例**。两处独立的
+bug，而且都是那种不报错的：
+
+1. **`moon check` 只检查从 `fn main` 可达的函数体。** 没有 `main` 就没有任何类型检查。
+2. **脚本自己删掉了 `src/moon.pkg`**（`Get-ChildItem src -File | Remove-Item`），于是从第一
+   个用例起就没有包可检查，`moon check` 什么都不输出。再加上 PowerShell 会把 native 命令写
+   stderr 变成 `NativeCommandError`，合并后的字符串是空的——**两次独立的失败叠在一起，
+   让一个 settle 对编译器拒绝的程序开出健康证明。**
+
+修好之后加了**两个负控制**：`fn f() -> Int { "a" }` 报 4014，`fn f() { 1 }` 报 4074。**只有
+负控制会红，settle 才算在测量东西。**
+
+它顺带查出两件关于**语言**的事实：
+- `while s == "a" { "b" }` 是 **4139**——循环体的尾表达式被丢弃，而只有 Unit 可以静默丢弃。
+  我第一版的循环夹具就是这么写的，**一个编译器拒绝的夹具不是夹具**。
+- **尾表达式必须有声明的返回类型**（4074）。这正好说明潜在面为什么正好是 305：受影响的函数
+  集合，就是编译器已经逼你标注的那个集合。
+
+### 自找的回归，而且是靠六语料逐字节 diff 抓到的
+
+类型透镜里我也把 `()` 教成 Unit 去配行为透镜。`TNone` 是**具体类型**，于是空元组和任何东西
+比较都会报——moui `backend/macos/macos_backend.mbt:204` 多出一条
+`unsupported operand types for '>': 'int' and 'None'`。那个文件的解析停止行、notice 数、
+actionable 数在那一刻全都和前一版一模一样，**只有六语料 diff 看见了它**。
+
+类型透镜那一步已经回退（行为透镜那一步保留——签名行里的值来自那里）。**M5 和 M6 现在是
+这道门禁里的一对永久对照**：M5 复现我犯的那个错，M6 是它的反面（「所有元组都是 Unit」）。
+
+### 突变门禁：7 道，第一轮全绿
+
+七道，覆盖四个文件里的四个决定：解析器的 `fn_body`（M3）、位置（M4）、标志是否传到函数体
+（M7）、行为透镜是否记录（M1）、记录的是什么（M2）、`()` 是不是 Unit（M5）、真元组是不是
+还是元组（M6）。**7 杀 0 存活**，每个 restore 都用 SHA256 证明逐字节一致。
+
+0.4.25 加的 pre-flight 立刻就回本了：本门禁第一版有两个模式串写的是 `moon fmt` 会折成
+**一行的三行臂**，pre-flight 在毫秒级中止并打出它要找的那行——**而不是浪费一整轮
+`moon test`**。
+
+测试 js 412 / wasm 484 / wasm-gc 412（此前 398 / 470 / 398）。自检 63 文件、**actionable 0**。
+
 ## 0.4.25 —— 行为透镜的 if 分支 flow 泄漏，和一个测不出来的东西
 
 **这一版没有语料 delta，而这是量出来的，不是推出来的。** 六个语料、12,428 个文件，
@@ -1436,7 +1527,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.25
+moon add riantr/moonbit_static_analysis@0.4.26
 ```
 
 ```moonbit
@@ -1768,7 +1859,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.25` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.26` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

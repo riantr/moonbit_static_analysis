@@ -618,6 +618,11 @@ fn Walker::walk_target(self : Walker, target : @ast.Expr) -> Unit {
 fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
   match s.kind {
     SExpr(e) => self.walk_expr(e)
+    // The tail expression is walked exactly like the expression statement it
+    // used to be. Nothing about BINDINGS changes -- only what the other two
+    // lenses do with the value afterwards, which is the whole reason it is its
+    // own node rather than a flag on `SExpr`.
+    STail(e) => self.walk_expr(e)
     SLet(_, _, init) => self.walk_expr(init)
     SAssign(target, rhs) => {
       self.walk_target(target)

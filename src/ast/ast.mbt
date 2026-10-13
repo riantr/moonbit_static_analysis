@@ -215,6 +215,27 @@ pub(all) enum SKind {
   SRaise(Expr?)
   SBreak
   SContinue
+  /// The body's OWN trailing expression — MoonBit's tail value.
+  /// `fn f() -> Int { 1 }` is a function that RETURNS 1; before this node it
+  /// was an `SExpr`, and `SExpr` discards its value (`Interp::exec_stmt`
+  /// evaluates it and drops the result into `let _`). So `ret_vals` stayed
+  /// empty, `join_vals([])` returned `None`, and the function reported itself
+  /// as `f() -> None` — a claim about understanding that was simply false.
+  ///
+  /// Its own node rather than a flag on `SExpr`, for the `SRaise` reason: the
+  /// two statements are read by different lenses in different ways. Walking is
+  /// identical, but the type lens must JOIN a tail expression into the
+  /// inferred return type and the behaviour lens must RECORD its value, while
+  /// neither may do either for a non-final expression statement. A flag would
+  /// have to be threaded through all three anyway, and the moment one of them
+  /// forgets to check it, the failure is silent: `None` is a perfectly
+  /// well-formed return type.
+  ///
+  /// Only a FUNCTION body has one. `parse_block` takes `fn_body` for exactly
+  /// that reason: the same block parser reads loop bodies, `if` arms and bare
+  /// blocks, and a trailing expression in any of those is an ordinary
+  /// expression statement whose value goes nowhere.
+  STail(Expr)
   /// top-level only: fn name(params) -> T { body }
   SFunc(String, Array[Param], String, Array[Stmt], @core.Span)
   /// `let (a, b) = expr` — a tuple destructuring let. FLAT only: a nested

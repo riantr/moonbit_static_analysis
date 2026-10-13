@@ -948,8 +948,12 @@ test "parenthesized grouping keeps precedence and never becomes a tuple" {
   assert_eq(r.reports.length(), 0)
   match r.tree.body[0].kind {
     @ast.SFunc(_, _, _, body, _) =>
+      // `STail`, not `SExpr`: the body is nothing but the expression, so it is
+      // the function's tail value (0.4.26). The subject of this test is the
+      // EXPRESSION -- precedence, and that the outer parens did not become a
+      // tuple -- and the expression is asserted below exactly as before.
       match body[0].kind {
-        @ast.SExpr(e) => {
+        @ast.STail(e) => {
           assert_eq(bin_op(e), "*")
           match e.kind {
             @ast.EBin(_, lhs, rhs) => {
@@ -1079,8 +1083,11 @@ test "a named function inside a block is its own statement kind" {
         }
         _ => assert_true(false)
       }
+      // `go(1)` is the LAST statement of `outer`'s body, so it is `outer`'s
+      // tail value (0.4.26). The subject here is still the call -- callee and
+      // arity -- asserted below exactly as before.
       match body[1].kind {
-        @ast.SExpr(e) =>
+        @ast.STail(e) =>
           match e.kind {
             @ast.ECall(callee, args, _) => {
               assert_eq(callee, "go")

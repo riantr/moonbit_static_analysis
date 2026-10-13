@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.25 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.26 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -528,6 +528,32 @@ modelled as an `SIf` with an empty `then`, which is the honest mapping for a fra
 model that is not flow-scoped: the condition is walked FIRST, so an `is` pattern in
 it binds in the current frame exactly where a guard binding belongs. The `else`
 block is analyzed like any other block.
+
+**A TAIL EXPRESSION IS THE FUNCTION'S RETURN VALUE (since 0.4.26).** MoonBit's
+tail-value style is not a stylistic extra: `fn f() -> Int { 1 }` returns 1. Before
+0.4.26 a tail expression was an ordinary `SExpr`, and the behaviour lens evaluates an
+`SExpr` and throws the value away (`let _ = self.eval(e, env)`), so nothing was
+recorded, `join_vals([])` answered `None`, and that `None` went into the CALL CACHE.
+A caller doing arithmetic on the result then got
+
+    no method matching +(None, int)
+
+for a program `moon check` accepts with zero errors. The analyzer's own signature line
+claimed `f() -> None` as well.
+
+A tail expression exists only in a FUNCTION body. In a loop body, an `if` arm or a
+bare block the same trailing expression is a discarded statement whose value goes
+nowhere — `fn f() -> Int { while c { 1 } }` returns nothing. `Parser::parse_block`
+takes `fn_body` for exactly that reason, and produces the `STail` node only there.
+
+Two facts about the language, both settled rather than assumed: a tail expression
+REQUIRES a declared return type (`fn f() { 1 }` is 4074), and a loop body's trailing
+expression may only be silently discarded if it is Unit (`while c { "b" }` is 4139).
+
+MEASURED across six corpora and 12,428 files: every scan byte-identical before and
+after. **A correctness fix with a reproducer, not a cleanup** — 305 corpus functions
+have a tail-expression body, and the reason none of them produced a finding is that the
+lens only analyses a body REACHED from a top-level statement.
 
 **An `if`'s branches are JOINED, not chained (since 0.4.25).** This is the other
 half of the `guard` mapping above, and it is where `guard` was paying for it. An

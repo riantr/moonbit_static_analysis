@@ -598,6 +598,26 @@ fn Interp::exec_stmt(
       self.ret_vals.push(v)
       self.flow = FReturn
     }
+    // The body's trailing expression is what the function RETURNS, so its value
+    // is recorded exactly like an explicit `return` of the same expression --
+    // and the flow is left ALONE, because a tail expression is the last thing
+    // in the block either way: there is nothing after it that could be
+    // unreachable. Setting FReturn here would be harmless inside a function
+    // body and wrong everywhere else, which is why the node exists only in one.
+    //
+    // The measured consequence of getting this wrong, and it is not cosmetic:
+    // `ret_vals` stayed empty, `join_vals([])` answered `None`, that `None` went
+    // into the call cache, and a caller doing arithmetic on the result got
+    //
+    //     no method matching +(None, int)
+    //
+    // for a program `moon check` accepts with zero errors. It also made the
+    // analyzer's own signature output claim `f() -> None` for
+    // `fn f() -> Int { 1 }` -- a false statement about what it understood.
+    //
+    // Unlike a raise, the expression IS evaluated: it is the return value, not
+    // an operand after the end of the frame.
+    STail(e) => self.ret_vals.push(self.eval(e, env))
     // A raise terminates the frame exactly as a return does, so the flow is
     // `FReturn` -- there is deliberately no separate `FRaise`, because from
     // inside this frame the two are indistinguishable and a third state would
@@ -849,7 +869,17 @@ fn Interp::eval(
     // A tuple literal; `(e)` grouping is folded at parse time, so every
     // ETuple is a real tuple. Elements are evaluated; there is no tuple
     // value in the lattice, so the result is the type name.
+    //
+    // `()` IS NOT A ZERO-ELEMENT TUPLE: it is the unit value, type `Unit`, and
+    // this branch said `Tuple` for it. That was invisible until 0.4.26 made the
+    // tail expression a real return value, at which point `fn f() -> Unit { () }`
+    // started reporting `f() -> Tuple` -- trading a wrong-but-harmless `None`
+    // for a wrong-and-contradictory `Tuple`. The empty case is therefore Unit,
+    // spelled `None` the way `join_vals` already spells it.
     ETuple(elems) => {
+      if elems.length() == 0 {
+        return AType("None")
+      }
       for x in elems {
         let _ = self.eval(x, env)
       }

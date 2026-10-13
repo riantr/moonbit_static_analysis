@@ -416,6 +416,18 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // A tuple literal; `(e)` grouping is folded away at parse time, so every
     // ETuple is a real tuple. Elements are typed; there is no tuple Ty to
     // name, so the result is unknown.
+    //
+    // `()` IS NOT TREATED AS UNIT HERE, and that is measured, not forgotten.
+    // An earlier version of this branch answered `TNone` for the empty tuple,
+    // to match the interpreter. Across wzzc-dev/moui 0.1.12 it cost more than
+    // it bought: `TNone` is a CONCRETE type, so an empty tuple compared against
+    // anything else became a report -- one new false positive on
+    // `backend/macos/macos_backend.mbt:204` (`) => (),`, an arrow function's
+    // body read by a path that should never have type-checked it at all).
+    // `TUnknown` is silent in exactly those comparisons and costs nothing here,
+    // because the declared return type, not this, is what anything downstream
+    // reads. The interpreter's arm still answers `None` for `()`, which is where
+    // the value the signature line prints actually comes from.
     ETuple(elems) => {
       for x in elems {
         let _ = self.ty_of(x, TUnknown)
@@ -525,6 +537,14 @@ fn Infer::assign_check(
 fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
   match s.kind {
     SExpr(e) => {
+      let _ = self.ty_of(e, TUnknown)
+    }
+    // The tail expression is type-checked exactly like the expression statement
+    // it used to be -- and its type is JOINED into the inferred return type by
+    // `scan_returns` below, which is the part `SExpr` could never do. The
+    // declared annotation still wins wherever one exists; this only makes the
+    // inferred answer agree with it instead of contradicting it.
+    STail(e) => {
       let _ = self.ty_of(e, TUnknown)
     }
     SLet(n, ann, init) => {
@@ -762,6 +782,11 @@ fn Infer::scan_returns(self : Infer, stmts : Array[@ast.Stmt]) -> Ty {
   for s in stmts {
     match s.kind {
       SReturn(Some(e)) => acc = ty_join(acc, self.ty_of(e, TUnknown))
+      // The body's trailing expression IS what the function returns, so it
+      // joins the return type exactly like an explicit `return` of the same
+      // expression would. Without this arm a tail-expression body contributed
+      // nothing at all and `Sig.ret` stayed `TUnknown`.
+      STail(e) => acc = ty_join(acc, self.ty_of(e, TUnknown))
       SIf(_, then, elseifs, els) => {
         acc = ty_join(acc, self.scan_returns(then))
         for ei in elseifs {

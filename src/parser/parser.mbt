@@ -1263,7 +1263,7 @@ fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // fn
   let (name, params, retann) = self.parse_fn_signature()
-  let (body, endsp) = self.parse_block()
+  let (body, endsp) = self.parse_block(true)
   // The statement span stays the header (it is what `FUnreachable` and the
   // binding decl_spans localize against), while the SFunc's 5th field is now
   // the WHOLE function: header start to closing brace. See `parse_block`.
@@ -1489,6 +1489,15 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
 /// Parse a `{ ... }` block and return its statements TOGETHER WITH the span of
 /// the closing brace.
 ///
+/// `fn_body` marks the block that carries a function's VALUE, and it is the only
+/// thing that distinguishes a tail expression from an ordinary one. Only in a
+/// function body is a trailing expression what the function returns;
+/// `fn f() -> Int { 1 }` returns 1, while `fn g() -> Int { while c { 1 } }`
+/// returns nothing at all. The same block parser reads loop bodies, `if` arms
+/// and bare blocks, so without the flag it cannot tell those apart -- and
+/// guessing wrong is silent, because a discarded value looks exactly like a
+/// returned one until a caller tries to use it.
+///
 /// The span is why the return is a tuple. `SFunc` / `SLocalFunc` used to carry
 /// the header span only, so a function's extent was unknown to everything
 /// downstream — and a body the reader did not analyse (a `match`, a `try`, a
@@ -1500,7 +1509,10 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
 /// claiming a span it does not have would invent coverage.
 
 ///|
-fn Parser::parse_block(self : Parser) -> (Array[@ast.Stmt], @core.Span) {
+fn Parser::parse_block(
+  self : Parser,
+  fn_body : Bool,
+) -> (Array[@ast.Stmt], @core.Span) {
   self.expect(TLBrace, "'{'")
   let body : Array[@ast.Stmt] = []
   while !self.at(TRBrace) && !self.at(TEOF) {
@@ -1517,7 +1529,7 @@ fn Parser::parse_block(self : Parser) -> (Array[@ast.Stmt], @core.Span) {
       let fsp = self.span()
       let _ = self.bump()
       let (fname, fparams, fret) = self.parse_fn_signature()
-      let (fbody, fendsp) = self.parse_block()
+      let (fbody, fendsp) = self.parse_block(true)
       body.push({
         span: fsp,
         kind: @ast.SLocalFunc(fname, fparams, fret, fbody, {
@@ -1528,7 +1540,22 @@ fn Parser::parse_block(self : Parser) -> (Array[@ast.Stmt], @core.Span) {
       self.skip_seps()
       continue
     }
-    body.push(self.parse_stmt())
+    let st = self.parse_stmt()
+    // The body's own trailing expression is its value. Tested BEFORE
+    // `skip_seps`, because that is what consumes the newline or `;` in front of
+    // `}` — after it, every final statement looks like the last one, including
+    // one followed by several blank lines or a stray separator.
+    if fn_body && self.at(TRBrace) {
+      match st.kind {
+        SExpr(e) => {
+          body.push({ span: st.span, kind: @ast.STail(e), })
+          self.skip_seps()
+          continue
+        }
+        _ => ()
+      }
+    }
+    body.push(st)
     self.skip_seps()
   }
   let endsp = self.span()
@@ -1699,7 +1726,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   if self.at_name("while") {
     let _ = self.bump()
     let cond = self.parse_expr()
-    let (body, _) = self.parse_block()
+    let (body, _) = self.parse_block(false)
     return { span: sp, kind: @ast.SWhile(cond, body), }
   }
   if self.at_name("for") {
@@ -1735,7 +1762,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
       let _ = self.bump()
     }
     let seq = self.parse_expr()
-    let (body, _) = self.parse_block()
+    let (body, _) = self.parse_block(false)
     if names.length() == 1 {
       return { span: sp, kind: @ast.SFor(names[0], vsp, seq, body), }
     }
@@ -1772,7 +1799,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     // literal, fall through to the expression path below: parse_atom's
     // TLBrace arm produces EStruct there. Measured deaths: core/walk/
     // parser/jsoncli/mermaid_test all blocked on exactly this brace.
-    let (body, _) = self.parse_block()
+    let (body, _) = self.parse_block(false)
     return { span: sp, kind: @ast.SBlock(body), }
   }
   // expression or assignment
@@ -1900,7 +1927,7 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   }
   self.expect(TSemi, "';'")
   let update = if self.at(TLBrace) { None } else { Some(self.parse_stmt()) }
-  let (body, _) = self.parse_block()
+  let (body, _) = self.parse_block(false)
   let loop_body : Array[@ast.Stmt] = []
   for st in body {
     loop_body.push(st)
@@ -1918,7 +1945,7 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // if
   let cond = self.parse_expr()
-  let (then, _) = self.parse_block()
+  let (then, _) = self.parse_block(false)
   let elseifs : Array[@ast.ElseIf] = []
   let mut els : Array[@ast.Stmt]? = None
   let mut going = true
@@ -1930,11 +1957,11 @@ fn Parser::parse_if(self : Parser) -> @ast.Stmt {
       if self.at_name("if") {
         let _ = self.bump()
         let c2 = self.parse_expr()
-        let (b2, _) = self.parse_block()
+        let (b2, _) = self.parse_block(false)
         elseifs.push({ cond: c2, body: b2, })
         going = true
       } else {
-        let (eb, _) = self.parse_block()
+        let (eb, _) = self.parse_block(false)
         els = Some(eb)
       }
     }
@@ -2018,7 +2045,7 @@ fn Parser::parse_guard(self : Parser) -> @ast.Stmt {
   let mut els : Array[@ast.Stmt]? = None
   if self.at_name("else") {
     let _ = self.bump()
-    let (eb, _) = self.parse_block()
+    let (eb, _) = self.parse_block(false)
     els = Some(eb)
   }
   { span: sp, kind: @ast.SIf(cond, [], [], els), }
@@ -3055,7 +3082,7 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
       //
       // The block yields statements, not an expression. The last one, when it
       // is an expression, is the value.
-      let (stmts, _) = self.parse_block()
+      let (stmts, _) = self.parse_block(false)
       let exprs : Array[@ast.Expr] = []
       for st in stmts {
         match st.kind {
@@ -3174,7 +3201,7 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     // every TName including "if".
     TName("if") => {
       let _ = self.parse_expr()
-      let (_, _) = self.parse_block()
+      let (_, _) = self.parse_block(false)
       // The chain is LOOPED, not read once: `if a { x } else if b { y }`
       // arrives here as `else` then `if`, and a single `else { block }` read
       // stops at the `if` and cascades.
@@ -3187,10 +3214,10 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
           if self.at_name("if") {
             let _ = self.bump()
             let _ = self.parse_expr()
-            let (_, _) = self.parse_block()
+            let (_, _) = self.parse_block(false)
             going = true
           } else {
-            let (_, _) = self.parse_block()
+            let (_, _) = self.parse_block(false)
           }
         }
       }
@@ -3228,7 +3255,7 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
         self.skip_indexed()
       }
       let _ = self.parse_param_list()
-      let (_, _) = self.parse_block()
+      let (_, _) = self.parse_block(false)
       self.note_skip(
         "anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed",
         sp,
