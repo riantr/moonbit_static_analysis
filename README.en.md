@@ -245,6 +245,46 @@ obtained by not looking"* — pointed at the project's own test suite.
 Tests: 442 js (12 new) / 514 wasm / 442 wasm-gc. Five mutations, four killed, one expected survivor,
 every restore byte-identical by SHA256.
 
+### What the behavior lens actually contributes on real code
+
+`src/interp` is the largest module in the project: an abstract interpreter with a lattice, a call cache
+and virtual stacks. Whether it earns its place is not a README's call, so it was measured.
+
+`_verify/lens_audit.ps1` does two things. **Phase 1** counts — every rendered finding carries its lens
+tag (`report.mbt:50`), so the share is readable straight out of a scan. **Phase 2** is the differential,
+and it is the step that decides: `analyze_module` is made to return nothing, the analyzer is rebuilt,
+and every report is diffed **over the same unchanged corpus tree**.
+
+| corpus | `.mbt` | actionable on | off | delta |
+|---|---:|---:|---:|---:|
+| moui | 551 | 0 | 0 | **0 (byte-identical)** |
+| moonbit_labeler | 35 | 0 | 0 | 0 |
+| moonbit_image | 17 | 0 | 0 | 0 |
+| async | 362 | 19 | 18 | **1** |
+| proton | 114 | 68 | 66 | **2** |
+| proton_contract | 2 | 2 | 2 | 0 |
+| **all six** | **1081** | **89** | **86** | **3** |
+
+**The behavior lens is not dead code — but its entire readable contribution is 3 actionable findings
+across six corpora and 1081 `.mbt` files, 3.4% of the 89.** All three are `undefined function`, and all
+three sit on **qualified** cross-package constructor calls: `Set::from_array` in async,
+`@async.CondVar::Cond` twice in proton. On the largest corpus, moui — 551 files, 3288 printed
+findings — silencing it changes the output **not at all**.
+
+The sharper number is about the lens's **own** families. `interp` is the only emitter of `Unreachable`,
+`NonBooleanCond` and `MethodError`, and those three count **0 / 0 / 0** of the 89 actionable findings.
+Not "few" — zero. A lens built to notice that code after a `return` is unreachable has not once
+reported unreachable code in 1081 real files. The README has explained the mechanism since 0.4.16:
+the interpreter analyses a body only when a **top-level statement reaches it**, and in real code very
+few functions are called from the top level.
+
+**This does not claim those three families are dead.** I built synthetic probes
+(`_verify/lens_matrix.ps1`, seven shapes) and **none of them fired** — not even the shape known to
+fire, which meant scanning proton's own `facade_notification.mbt` as a single file, because the probes
+have no package context and `@async` does not resolve. That is the same probe defect 0.4.16 already
+documented: **a probe measures the probe, not the lens.** The zeros support no claim; the differential
+is the evidence.
+
 ### The survivor, and the gate bug it exposed
 
 **M4** (interp stops evaluating the cast operand) survives, and it took three fixtures and a
