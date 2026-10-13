@@ -66,6 +66,33 @@ function Invoke-MutationGate {
   $nl = [string][char]10
   $enc = New-Object System.Text.UTF8Encoding($false)
 
+  # ---- validate the table before touching anything ------------------------------
+  # mutate_0425's table carries no `File` key at all -- its original runner had a
+  # single-file convention ($F = 'src\interp\interp.mbt') and applied it to every
+  # mutation. Converted as-is, the harness died with "Index operation failed; the
+  # array index evaluated to null" from inside the file-collection line, which names
+  # neither the mutation nor the field. A malformed table is a fact about the gate
+  # and has to be reported as one.
+  $shapeErrors = @()
+  foreach ($m in $Mutations) {
+    foreach ($k in @('Name', 'File', 'Find')) {
+      if (-not $m.ContainsKey($k) -or $null -eq $m[$k]) {
+        $shapeErrors += ("'" + $m.Name + "' has no " + $k)
+      }
+    }
+    if (-not $m.ContainsKey('Repl')) {
+      $shapeErrors += ("'" + $m.Name + "' has no Repl")
+    }
+  }
+  if ($shapeErrors.Count -gt 0) {
+    Write-Output 'ABORT: the mutation table is malformed. Nothing was run.'
+    foreach ($e in $shapeErrors) { Write-Output ('  ' + $e) }
+    Write-Output '  The harness needs Name/File/Find/Repl per mutation. A gate that used a'
+    Write-Output '  single-file convention must say so on each entry.'
+    $script:MutationGateFailures += ($Name + ' (malformed table)')
+    return
+  }
+
   # ---- read every file the mutations touch, once ------------------------------
   $files = @($Mutations | ForEach-Object { $_.File } | Sort-Object -Unique)
   $texts = @{}

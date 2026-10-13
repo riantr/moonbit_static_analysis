@@ -152,85 +152,35 @@ $muts = @(
   }
 )
 
-# ---------------------------------------------------------------------------
-# PRE-FLIGHT
-# ---------------------------------------------------------------------------
-$nl = [string][char]10
-$texts = @{}
-foreach ($f in @($INTERP, $PARSER)) {
-  $texts[$f] = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes((Join-Path $root $f)))
-}
+# -----------------------------------------------------------------------------
+# CONVERTED to ``_verify/mutate_lib.ps1``. Everything above this line -- the prose
+# rationale and the mutation table -- is VERBATIM from the original file; only the
+# runner that followed it was replaced. What the harness adds over that runner:
+#
+#   - a green BASELINE is asserted, not printed. This gate used to print its
+#     baseline lines and then score mutations regardless of what they said, so a
+#     suite that was already red produced a full table of verdicts and exit 0.
+#   - a kill is judged by the ``Total tests:`` line, so a mutant that fails to BUILD
+#     is COMPILE-ERR instead of being indistinguishable from a caught one.
+#   - restores are proven by SHA256 rather than moved back from a .bakmut file.
+#   - a NO-OP is a failure. An anchor that stopped matching is reported and the gate
+#     stops; it is never counted as neither-a-kill-nor-a-failure.
+#   - ``Expect`` may declare a non-KILLED outcome (``SURVIVED`` / ``COMPILE-ERR``),
+#     and a ``Prove`` string is printed with it. A declared verdict still has to be
+#     argued rather than asserted.
+#   - ``Retired = '<reason>'`` excludes a mutation whose target code no longer
+#     exists, printing the reason. It is never re-anchored to something that merely
+#     happens to match.
+#
+# The ``--target`` below is the one the original used. It is not cosmetic:
+# ``src/sa`` needs the async runtime, so on the js backend that package degrades and
+# ITS TESTS DO NOT RUN -- running a gate on the wrong target silently deletes the
+# guards and then reports their absence as a pass.
 
-$absent = @()
-foreach ($m in $muts) {
-  $findText = $m.Find.Replace("`r`n", $nl)
-  if ($texts[$m.File].IndexOf($findText, [System.StringComparison]::Ordinal) -lt 0) {
-    $absent += $m.Name
-    Write-Output ("PREFLIGHT MISS: " + $m.Name + "  (" + $m.File + ")")
-    Write-Output ("  looking for: |" + (($findText -split "`n")[0]) + "|")
-  }
-}
-if ($absent.Count -gt 0) {
-  Write-Output ("ABORT: " + $absent.Count + " pattern(s) absent. No suite was run.")
-  exit 1
-}
-Write-Output ('Pre-flight: all ' + $muts.Count + ' patterns present.')
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
-# ---------------------------------------------------------------------------
-# RUN
-# ---------------------------------------------------------------------------
-$results = @()
-$failed  = @()
-
-foreach ($m in $muts) {
-  $path = Join-Path $root $m.File
-  $bytes0 = [System.IO.File]::ReadAllBytes($path)
-  $sha0  = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  $text  = [System.Text.Encoding]::UTF8.GetString($bytes0)
-  $eol = if ($text.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { [string][char]10 }
-  $norm  = $text.Replace($eol, $nl)
-  $findN = $m.Find.Replace("`r`n", $nl)
-  $replN = $m.Repl.Replace("`r`n", $nl)
-
-  if ($norm.IndexOf($findN, [System.StringComparison]::Ordinal) -lt 0) {
-    $results += [pscustomobject]@{ Mutation=$m.Name; Outcome='NO-OP'; Killed=0; Detail='pattern absent' }
-    $failed += $m.Name
-    continue
-  }
-  [System.IO.File]::WriteAllText($path, $norm.Replace($findN, $replN).Replace($nl, $eol), (New-Object System.Text.UTF8Encoding($false)))
-
-  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  $out = & C:\Users\31379\.moon\bin\moon.exe test --target js 2>&1 | Out-String
-  $ErrorActionPreference = $prev
-
-  $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
-  $killed = 0; $detail = ''
-  if ($ran.Count -ge 1) {
-    $m2 = $ran[$ran.Count - 1]
-    $total = [int]$m2.Groups[1].Value
-    $passed = [int]$m2.Groups[2].Value
-    if ($total -le 0) { $outcome='NO-RUN'; $detail='Total tests: 0'; $failed += $m.Name }
-    else {
-      $killed = $total - $passed
-      if ($killed -gt 0) { $outcome='KILLED'; $detail="$killed of $total red" }
-      else { $outcome='SURVIVED'; $detail="$total/$total still green" }
-    }
-  } else { $outcome='COMPILE-ERR'; $detail='no Total tests line; the suite did not run' }
-
-  [System.IO.File]::WriteAllBytes($path, $bytes0)
-  if ($sha0 -ne (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash) {
-    $detail += ' RESTORE-MISMATCH'; $failed += ($m.Name + ' (restore)')
-  }
-  $results += [pscustomobject]@{ Mutation=$m.Name; Outcome=$outcome; Killed=$killed; Detail=$detail }
-  if ($outcome -ne 'KILLED') { $failed += $m.Name }
-  Write-Output ('  ' + $outcome.PadRight(11) + ' ' + $m.Name + '  -- ' + $detail)
-}
-
-Write-Output ''
-Write-Output '=== 0.4.26 mutation results ==='
-$results | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
-$killedCount = @($results | Where-Object { $_.Outcome -eq 'KILLED' }).Count
-$survived = @($results | Where-Object { $_.Outcome -eq 'SURVIVED' }).Count
-Write-Output ("{0} killed, {1} survived; every restore verified byte-identical" -f $killedCount, $survived)
-if ($failed.Count -gt 0) { Write-Output ("FAILED: {0}" -f ($failed -join ', ')); exit 1 }
+Invoke-MutationGate -Name '0.4.26' -Target 'js' -Mutations $muts
+Write-MutationGateVerdict -Name '0.4.26 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
 exit 0
