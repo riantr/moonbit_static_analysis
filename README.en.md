@@ -236,11 +236,34 @@ Self-scan 68/68 parsed (100%), **actionable = 0**.
 
 **Read that number with its coverage attached.** Of the 823 notices, **429 are `test declaration is
 outside the analyzed subset`** — `test` is routed to the same braced skipper as `impl` and `trait`,
-so 429 test bodies are never walked. That is the single largest exclusion in the self-scan, larger
-than match (155), struct (36), derive (31) and enum (14) combined. `actionable = 0` is a claim about
-the declaration bodies that *are* analyzed, not about all 823 excluded bodies; the 0 is partly earned
-by not looking at the largest group of them. This is the 0.4.10 shape — *"a clean 0 can be partly
-obtained by not looking"* — pointed at the project's own test suite.
+so 429 test bodies are never walked. That is the single largest exclusion in the self-scan.
+
+The full list is measured by `_verify/backlog.ps1` — and **it was previously hand-assembled and
+incomplete**:
+
+| # | notice | count |
+|---:|---|---:|
+| 1 | `test` declaration | **429** |
+| 2 | `match` expression | **155** |
+| 3 | **`if` expression** | **45** |
+| 4 | `struct` declaration | 36 |
+| 5 | `derive` declaration | 31 |
+| 6 | `enum` declaration | 14 |
+| 7 | anonymous function literal | 10 |
+| 8 | `const` declaration | 6 |
+| 9 | short lambda | 2 |
+| 10 | `try` expression | 1 |
+
+That is 729 **printed** notices, with **94** more behind the per-file display cap (823 − 729), so the
+table is a lower bound rather than the whole. **Every row is a span the frontend read past and did
+not analyse**, which means what lives inside it is invisible to all three lenses: reads are lost and
+so are bindings. Removing a row means adding an AST node for that form, so these are **features**, not
+notices to be reworded.
+
+`actionable = 0` is a claim about the declaration bodies that *are* analyzed, not about all 823
+excluded bodies; the 0 is partly earned by not looking at the largest group of them. This is the
+0.4.10 shape — *"a clean 0 can be partly obtained by not looking"* — pointed at the project's own
+test suite.
 
 Tests: 442 js (12 new) / 514 wasm / 442 wasm-gc. Five mutations, four killed, one expected survivor,
 every restore byte-identical by SHA256.
