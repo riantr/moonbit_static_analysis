@@ -35,164 +35,138 @@
 # a failure so that a pattern that stops matching cannot pass silently.
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify/mutate_0424.ps1
+
+# -----------------------------------------------------------------------------
+# CONVERTED to ``_verify/mutate_lib.ps1``. Like 0.4.23's, this gate was already
+# close -- its runner had the SHA256 restore, the ``Total tests:`` COMPILE-ERR
+# judgement, NO-OP-as-failure and ``Expect`` support -- and was written as
+# function-per-mutation rather than a table. The prose above is VERBATIM; the seven
+# calls were transposed into a table, arguments unchanged.
+#
+# What it was missing, and what the harness adds:
+#
+#   - a green BASELINE, ASSERTED. The old runner went straight to the first
+#     mutation. With no baseline, a suite that was already red produced seven
+#     verdicts and -- because every mutation would then also be red -- seven
+#     apparent kills. The same false-green shape 0.4.29 hit in the other direction.
+#   - PRE-FLIGHT, so a pattern that no longer matches stops the gate before any
+#     mutation is applied rather than being discovered one at a time.
+#
+# The original runner's line-ending handling is kept by the harness for the reason
+# its comment gave: ``moon fmt`` rewrote the tree from LF to CRLF once, a literal
+# multi-line pattern then matched NOTHING, and every mutation reported NO-OP. The
+# harness normalises to LF and writes back in whatever style the file already used.
+
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
-Set-Location $root
+. (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
-$results = @()
-$failed  = @()
+$PARSER = 'src\parser\parser.mbt'
+$WALK   = 'src\walk\walk.mbt'
+$INFER  = 'src\types\infer.mbt'
+$INTERP = 'src\interp\interp.mbt'
 
-function Invoke-Mutation {
-  param(
-    [string]$Name, [string]$File, [string]$Find, [string]$Replace,
-    [string]$Expect = 'KILLED'
-  )
-  $path = Join-Path $root $File
-  if (-not (Test-Path $path)) {
-    $script:results += [pscustomobject]@{ Mutation=$Name; Outcome='NO-FILE'; Killed=0; Detail="missing $File" }
-    $script:failed += $Name; return
-  }
-  $bytes = [System.IO.File]::ReadAllBytes($path)
-  $sha0  = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  $text0 = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-  # Match and write back in ONE line-ending style, whichever the file already
-  # uses, and normalise before matching. `moon fmt` rewrites the tree between
-  # releases and a literal multi-line pattern would then match NOTHING -- every
-  # mutation reporting NO-OP, which the gate treats as a failure precisely so
-  # that a silently non-matching pattern cannot pass. `Replace` is ordinal and
-  # every pattern below is unique.
-  $eol = if ($text0.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { [string][char]10 }
-  $nl  = [string][char]10
-  $norm   = $text0.Replace($eol, $nl)
-  $findN  = $Find.Replace($eol, $nl)
-  $replN  = $Replace.Replace($eol, $nl)
-  if ($norm.IndexOf($findN, [System.StringComparison]::Ordinal) -lt 0) {
-    $script:results += [pscustomobject]@{ Mutation=$Name; Outcome='NO-OP'; Killed=0; Detail='pattern absent' }
-    $script:failed += $Name; return
-  }
-  $mutated = $norm.Replace($findN, $replN)
-  [System.IO.File]::WriteAllText($path, $mutated.Replace($nl, $eol), (New-Object System.Text.UTF8Encoding($false)))
-
-  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  $out = & C:\Users\31379\.moon\bin\moon.exe test --target js 2>&1 | Out-String
-  $ErrorActionPreference = $prev
-
-  $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
-  $killed = 0; $detail = ''
-  if ($ran.Count -ge 1) {
-    $m = $ran[$ran.Count - 1]
-    $total = [int]$m.Groups[1].Value
-    $passed = [int]$m.Groups[2].Value
-    if ($total -le 0) { $outcome='NO-RUN'; $detail='Total tests: 0'; $script:failed += $Name }
-    else {
-      $killed = $total - $passed
-      if ($killed -gt 0) { $outcome='KILLED'; $detail="$killed of $total red" }
-      else { $outcome='SURVIVED'; $detail="$total/$total still green" }
-    }
-  } else { $outcome='COMPILE-ERR'; $detail='no Total tests line; the suite did not run' }
-
-  [System.IO.File]::WriteAllBytes($path, $bytes)
-  if ($sha0 -ne (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash) {
-    $detail += ' RESTORE-MISMATCH'; $script:failed += "$Name (restore)"
-  }
-  $script:results += [pscustomobject]@{ Mutation=$Name; Outcome=$outcome; Killed=$killed; Detail=$detail }
-  if ($outcome -ne $Expect) { $script:failed += $Name }
-}
-
-# --- M1: the `raise` statement dispatch removed ------------------------------
-# The whole pre-0.4.24 behaviour, and the reason this release exists: `raise`
-# went back to being an ordinary identifier, and `moonbit-community/proton`
-# 0.3.4 `facade_app_metadata.mbt:82` went back to reporting
-# `undefined name 'raise'` at 82:5. Measured across the six corpora this one
-# dispatch is worth 65 findings -- 56 of them proton's.
-Invoke-Mutation 'M1 raise statement dispatch removed' 'src\parser\parser.mbt' `
-  'if self.at_name("raise") {
+$mutations = @(
+  # M1 -- the statement dispatch. Without it `raise` falls through to the expression
+  # reader; 65 findings across the corpora, 56 of them proton's.
+  @{
+    Name = 'M1 raise statement dispatch removed'
+    File = $PARSER
+    Find = 'if self.at_name("raise") {
     return self.parse_raise_stmt()
   }
-' `
-  '' 'KILLED'
+'
+    Repl = ''
+  }
 
-# --- M2: the payload never parsed --------------------------------------------
-# `SRaise(None)` unconditionally. The error value is left at the cursor and the
-# next statement gets read as if it were the payload.
-Invoke-Mutation 'M2 the raise payload never parsed' 'src\parser\parser.mbt' `
-  '{ span: sp, kind: @ast.SRaise(Some(self.parse_expr())), }
-}' `
-  '{ span: sp, kind: @ast.SRaise(None), }
-}' 'KILLED'
+  # M2 -- `SRaise(None)` unconditionally. The error value is left at the cursor and
+  # the next statement gets read as if it were the payload.
+  @{
+    Name = 'M2 the raise payload never parsed'
+    File = $PARSER
+    Find = '{ span: sp, kind: @ast.SRaise(Some(self.parse_expr())), }
+}'
+    Repl = '{ span: sp, kind: @ast.SRaise(None), }
+}'
+  }
 
-# --- M3: walk stops walking the payload -------------------------------------
-# THE QUIET FAILURE. `raise` must not become the one place in the language where
-# a real defect goes unnoticed, so `raise E(nosuchfunction())` still has to find
-# `nosuchfunction`. A mutation that merely stops looking is the failure mode a
-# coverage number cannot see, which is why this is its own gate rather than
-# folded into M2.
-Invoke-Mutation 'M3 walk stops walking the raise payload' 'src\walk\walk.mbt' `
-  'SRaise(e) =>
+  # M3 -- THE QUIET FAILURE. `raise` must not become the one place in the language
+  # where a real defect goes unnoticed, so `raise E(nosuchfunction())` still has to
+  # find `nosuchfunction`. A mutation that merely stops looking is the failure mode
+  # a coverage number cannot see, which is why this is its own gate rather than
+  # folded into M2.
+  @{
+    Name = 'M3 walk stops walking the raise payload'
+    File = $WALK
+    Find = 'SRaise(e) =>
       match e {
         Some(x) => self.walk_expr(x)
         None => ()
-      }' `
-  'SRaise(_) => ()' 'KILLED'
+      }'
+    Repl = 'SRaise(_) => ()'
+  }
 
-# --- M4: the type lens stops type-checking the payload ----------------------
-# The same quiet failure one lens down. M3 and M4 are separate because a change
-# could plausibly fix one and not the other, and only one of them would fail a
-# test that looked at findings from a single lens.
-Invoke-Mutation 'M4 type lens stops checking the payload' 'src\types\infer.mbt' `
-  'SRaise(e) =>
+  # M4 -- the same quiet failure one lens down. M3 and M4 are separate because a
+  # change could plausibly fix one and not the other, and only one of them would
+  # fail a test that looked at findings from a single lens.
+  @{
+    Name = 'M4 type lens stops checking the payload'
+    File = $INFER
+    Find = 'SRaise(e) =>
       match e {
         Some(x) => {
           let _ = self.ty_of(x, TUnknown)
         }
         None => ()
-      }' `
-  'SRaise(_) => ()' 'KILLED'
+      }'
+    Repl = 'SRaise(_) => ()'
+  }
 
-# --- M5: a raise does not terminate the frame -------------------------------
-# THE LOUD FAILURE, and the one with real corpus consequences. `SRaise` exists
-# precisely because `SReturn` would be wrong here, and the observable difference
-# is the terminator: with this arm gutted the statements after a `raise` look
-# reachable and every dead-code report after a raise disappears.
-Invoke-Mutation 'M5 a raise does not terminate the frame' 'src\interp\interp.mbt' `
-  'SRaise(_) => {
+  # M5 -- THE LOUD FAILURE, and the one with real corpus consequences. `SRaise`
+  # exists precisely because `SReturn` would be wrong here, and the observable
+  # difference is the terminator: with this arm gutted the statements after a
+  # `raise` look reachable and every dead-code report after a raise disappears.
+  @{
+    Name = 'M5 a raise does not terminate the frame'
+    File = $INTERP
+    Find = 'SRaise(_) => {
       self.ret_vals.push(ABottom)
       self.flow = FReturn
-    }' `
-  'SRaise(_) => ()' 'KILLED'
+    }'
+    Repl = 'SRaise(_) => ()'
+  }
 
-# --- M6: a raise pushes a value ----------------------------------------------
-# A raise produces NO value. Pushing anything else invents a return value that
-# the source never had, and it lands in `ret_vals`, which is where the rendered
-# signature's return type comes from.
-Invoke-Mutation 'M6 a raise pushes a value' 'src\interp\interp.mbt' `
-  'SRaise(_) => {
+  # M6 -- a raise produces NO value. Pushing anything else invents a return value
+  # the source never had, and it lands in `ret_vals`, which is where the rendered
+  # signature's return type comes from.
+  @{
+    Name = 'M6 a raise pushes a value'
+    File = $INTERP
+    Find = 'SRaise(_) => {
       self.ret_vals.push(ABottom)
       self.flow = FReturn
-    }' `
-  'SRaise(_) => {
+    }'
+    Repl = 'SRaise(_) => {
       self.ret_vals.push(AAny)
       self.flow = FReturn
-    }' 'KILLED'
+    }'
+  }
 
-# --- M7: the termination-set guard removed -----------------------------------
-# A bare `raise` with nothing after it -- on its own line, or closing a block
-# with no semicolon -- must produce `SRaise(None)`. Without the guard the reader
-# goes on to parse whatever follows as the error value, which in the corpus is
-# the next real statement.
-Invoke-Mutation 'M7 the bare-raise termination guard removed' 'src\parser\parser.mbt' `
-  'if self.at(TNewline) || self.at(TSemi) || self.at(TRBrace) || self.at(TEOF) {
+  # M7 -- the termination-set guard. A bare `raise` with nothing after it -- on its
+  # own line, or closing a block with no semicolon -- must produce `SRaise(None)`.
+  # Without the guard the reader goes on to parse whatever follows as the error
+  # value, which in the corpus is the next real statement.
+  @{
+    Name = 'M7 the bare-raise termination guard removed'
+    File = $PARSER
+    Find = 'if self.at(TNewline) || self.at(TSemi) || self.at(TRBrace) || self.at(TEOF) {
     return { span: sp, kind: @ast.SRaise(None), }
   }
-' `
-  '' 'KILLED'
+'
+    Repl = ''
+  }
+)
 
-Write-Output ''
-Write-Output '=== 0.4.24 mutation results ==='
-$results | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
-$killedCount = @($results | Where-Object { $_.Outcome -eq 'KILLED' }).Count
-$survived = @($results | Where-Object { $_.Outcome -eq 'SURVIVED' }).Count
-Write-Output ("{0} killed, {1} survived; every restore verified byte-identical" -f $killedCount, $survived)
-if ($failed.Count -gt 0) { Write-Output ("FAILED: {0}" -f ($failed -join ', ')); exit 1 }
+Invoke-MutationGate -Name '0.4.24' -Target 'js' -Mutations $mutations
+Write-MutationGateVerdict -Name '0.4.24 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
 exit 0
