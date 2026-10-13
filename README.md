@@ -1341,7 +1341,22 @@ labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，action
   `core/view_node_test.mbt` 一带。
 - `impl ... with fn layout(self, context)` 里未标注类型的 `self` 报未定义，
   1 条。
-- 三处 parser 补完之后 219 个文件仍读不到全文，主因还是 `unexpected token`。
+- ~~三处 parser 补完之后 219 个文件仍读不到全文，主因还是 `unexpected token`。~~
+  **已被实测取代（0.4.30）。** 这条一直没法落地，因为 `unexpected token` 什么
+  都没说：它是 `parse_atom` 的兜底分支，消息里没有 token；而扫描器是**按原因
+  消息**给读不动的文件分类的，于是 wzzc-dev/moui 0.1.12 的 122 个读不动的文件
+  里有 110 个挤在同一个匿名行里。现在 `tok_desc` 会报出 token 本身（46 个 `Tok`
+  变体全覆盖），同一次扫描变成 13 行分布，其余 SUMMARY 数字逐字节不变。
+- 分布出来后修了最大的两类：调用处的 `?` 可选参数简写 `f(x?)`，以及把 lambda
+  当作参数默认值。moui **486/608（79.9%）→ 522/608（85.8%）**，`unreliable`
+  1696 → 1016，`withheld` 238 → 102，六个语料的 **`actionable` 全部保持不变**。
+- moui 剩下的 86 个，按原因排序：`if` 当**值**用（`variant=if c { A } else { B }`，
+  约 27 个文件）、`match` 的被匹配表达式起自下一行（约 20 个）、调用实参写
+  `name?=value`（约 8 个）、`extern "js" fn f() -> T = "sym"` 声明式（约 3 个）、
+  调用里的匿名 `async fn`（约 2 个）、`1..<=n` 区间（约 2 个）。
+- `_verify/blockers.ps1` 排的是**读不动的文件**，`_verify/backlog.ps1` 排的是
+  **子集排除 notice**。两者回答的不是同一个问题，混为一谈正是这条在十四个版本
+  里一直没法处理的原因：只有前者会推动 `parsed=` 这个数字。
 
 ## 0.4.17 —— 11 → 9：一条的根因是「上一版把探针写坏了」，另一条是「读到了却丢掉」
 

@@ -63,12 +63,25 @@ FOUND	.mbt	defects=0	notices=3	D:\src\...\CI/scm/dag.mbt
 PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	D:\src\...\CI/pof/aggregator.mbt
 12:3 - error: ... (UndefinedName) [behavior]
 PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
-NOTPARSE	0 files, 6769 finding(s) withheld — they measure what this analyzer
+NOTPARSE	75 files, 6769 finding(s) withheld — they measure what this analyzer
   does not understand, not what your code does
-  66x  unexpected token
+  34x  unexpected token `,`
       e.g. D:\src\...\CI/scm/dag.mbt
+  28x  expected `)`
+      e.g. D:\src\...\CI/pof/aggregator.mbt
+  13x  unexpected token `:`
+      e.g. D:\src\...\CI/pof/queue.mbt
 SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
 ```
+
+- **The reason under `NOTPARSE` names the token.** `parse_atom`'s catch-all used to
+  emit a bare `unexpected token`, which is true and useless: on wzzc-dev/moui
+  0.1.12 that one message was the recorded reason for 110 of the 122 files the
+  frontend could not read at all. Since the tally groups by reason *message*, the
+  message IS the ranking key — an anonymous one collapses every distinct blocker
+  into a single row. `tok_desc` (parser.mbt) is exhaustive over all 46 `Tok`
+  variants with no `_` arm, so a new variant must break the build rather than
+  land in a fallback that names nothing.
 
 - `CLEAN` / `FOUND` cover files the frontend read completely. `PARTIAL` covers
   files it read **up to the first line it genuinely failed on**; the findings

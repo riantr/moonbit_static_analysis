@@ -84,18 +84,28 @@ let amp = if self.at(TQuestion) {
   }
 
   # --- M4: value~ no longer accepted at a call site --------------------------
-  # RE-ANCHORED, and the reason recorded rather than glossed. The original pattern
-  # was the `TTilde` arm plus the `TComma` arm after it; that text no longer exists
-  # because the arm GREW. `f(x~)` used to consume the `~` and stop; it now also
-  # records the argument's LABEL, added when `~` was settled as the shorthand for
-  # `f(x = x)`. The mutation is unchanged in MEANING -- value~ no longer accepted at
-  # a call site -- and now removes the whole arm, label assignment included.
+  # RE-ANCHORED TWICE, and both reasons recorded rather than glossed.
   #
-  # This is a re-anchor, not a fresh anchor. The guard is still at
-  # src/parser/parser.mbt:2770, in the same role, and the new pattern occurs exactly
-  # once in the file (checked before the edit). Retiring it instead would have
-  # dropped a LIVE guard from the gate because the code around it grew, which is not
-  # what a rotted anchor means.
+  # Re-anchor 1 (0.4.30 audit). The original pattern was the `TTilde` arm plus
+  # the `TComma` arm after it; that text no longer existed because the arm GREW.
+  # `f(x~)` used to consume the `~` and stop; it now also records the argument's
+  # LABEL, added when `~` was settled as the shorthand for `f(x = x)`. The
+  # mutation is unchanged in MEANING -- value~ no longer accepted at a call site
+  # -- and removes the whole arm, label assignment included.
+  #
+  # Re-anchor 2 (0.4.30, after 0430). The `?` optional-argument shorthand was
+  # added as a SIBLING branch immediately after this one, so the trailing
+  # `if self.at(TComma) {` line no longer follows the `TTilde` arm directly and
+  # the re-anchored pattern stopped matching. The full release gate caught it:
+  # `ABORT: 1 pattern(s) absent` on 0418, which is the harness doing exactly what
+  # it was built to do rather than reporting a pass for a mutation it never
+  # applied.
+  #
+  # Both times the fix was to NARROW the pattern to the arm itself and drop the
+  # trailing context, because the context was never the point -- the arm was.
+  # The new pattern occurs EXACTLY ONCE in the file (verified before this edit).
+  # Retiring instead would have dropped a LIVE guard because the code beside it
+  # grew, which is not what a rotted anchor means.
   @{
     Name = 'M4 TTilde in call args'
     File = 'src\parser\parser.mbt'
@@ -106,11 +116,8 @@ let amp = if self.at(TQuestion) {
         labels[labels.length() - 1] = self.name_at(arg_start)
       }
     }
-    if self.at(TComma) {
 '@
-    Repl = @'
-    if self.at(TComma) {
-'@
+    Repl = ''
   }
 
   # --- M5: fn[T] type parameters no longer skipped --------------------------

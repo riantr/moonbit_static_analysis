@@ -1570,8 +1570,28 @@ returns to 0.)
   total, around `core/view_node_test.mbt`.
 - The untyped `self` in `impl ... with fn layout(self, context)` is reported
   undefined — one finding.
-- After the three parser fixes 219 files are still not read whole; the dominant
-  cause remains `unexpected token`.
+- ~~After the three parser fixes 219 files are still not read whole; the dominant
+  cause remains `unexpected token`.~~ **Superseded — measured, 0.4.30.** That
+  bullet could not be acted on, because `unexpected token` named nothing: it was
+  the catch-all arm of `parse_atom` with no token in the message, and the scanner
+  tallies unreadable files *by reason message*, so 110 of wzzc-dev/moui 0.1.12's
+  122 unreadable files were one anonymous row. `tok_desc` now names the token
+  (exhaustively, all 46 `Tok` variants) and the same run became a 13-row
+  distribution with every other SUMMARY number byte-identical.
+- On moui 0.1.12 the two largest classes behind that distribution were then fixed
+  — the `?` optional-argument shorthand `f(x?)`, and a lambda used as a
+  parameter's default value. **486/608 (79.9%) → 522/608 (85.8%)**, `unreliable`
+  1696 → 1016, `withheld` 238 → 102, and **`actionable` unchanged at 0** across
+  all six corpora.
+- The remaining 86 on moui, ranked by reason: `if` used as a *value*
+  (`variant=if c { A } else { B }`, ~27 files), a `match` whose subject starts on
+  the following line (~20), `name?=value` as a call argument (~8), the
+  `extern "js" fn f() -> T = "sym"` declaration form (~3), an anonymous
+  `async fn` inside a call (~2), and `1..<=n` ranges (~2).
+- `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
+  ranks *subset-exclusion notices*. They answer different questions and the
+  conflation was the reason this bullet sat unfixed for fourteen releases: only
+  the first moves the `parsed=` number.
 
 ## 0.4.17 — 11 → 9: one root cause was "0.4.16 wrote the probe wrong", the other "it read the answer and threw it away"
 
