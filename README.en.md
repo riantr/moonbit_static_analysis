@@ -265,6 +265,44 @@ excluded bodies; the 0 is partly earned by not looking at the largest group of t
 0.4.10 shape — *"a clean 0 can be partly obtained by not looking"* — pointed at the project's own
 test suite.
 
+### There is a **second** route by which the 0 is earned, and it is function-granular
+
+The paragraph above is about which **declaration bodies** are never walked. There is another route
+it does not mention, and it is quieter.
+
+`Walker::audit_suppressed` (`walk.mbt:354`) treats **any subset-exclusion region overlapping a
+function's line range** as "I cannot conclude anything about this function", and then switches that
+function's `UnusedLocal` / `UnusedParam` / `ParamChanged` off **entirely** (`walk.mbt:707`,
+`walk.mbt:1011`).
+
+Measured by `_verify/match_read_discriminator.ps1`, positive control included:
+
+| case | local never read | result |
+|---|---|---|
+| function contains **no** unanalysed region | yes | **reported unused** |
+| function contains **one** `match` | yes | **not reported** |
+
+Same local, same function; adding a `match` to the function is enough to silence the unused check
+for all of it. So *"a local read only inside a match arm is not reported unused"* does **not** mean
+"the read inside the arm was recorded" — the first version of that probe asserted exactly that, and
+it was wrong. The truth is suppression.
+
+Two consequences, both real:
+
+1. **Expression-level** exclusions that land inside a function body — `match` (155), `if`
+   expression (45), anonymous fn (10), short lambda (2), `try` (1) — switch off the unused check
+   for the **whole function**. **Declaration-level** exclusions sit outside every function's extent
+   and do **not** trigger this: `test` (429), `struct` (36), `derive` (31), `enum` (14),
+   `const` (6). The source says so at `walk.mbt:349-351`.
+2. Therefore **part of `actionable = 0` is green because it is not looking** — the same shape as
+   the test-body exclusion above, on an axis nobody had written down.
+
+**What was NOT measured**: how many functions in this project are switched off this way. The
+expression-level exclusions total 213 (155 + 45 + 10 + 2 + 1), which is an **upper bound**; the
+exact count needs each function's line range and the analyzer does not export it. An upper bound
+that is labelled is worth more than a precise number from a hand-rolled brace scanner that could be
+wrong.
+
 Tests: 442 js (12 new) / 514 wasm / 442 wasm-gc. Five mutations, four killed, one expected survivor,
 every restore byte-identical by SHA256.
 
