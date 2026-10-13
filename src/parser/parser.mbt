@@ -1549,7 +1549,47 @@ fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
     }
     if self.at(TAssign) {
       let _ = self.bump()
-      ignore(self.parse_expr())
+      // `= <lambda>` — a function-typed parameter whose default is a lambda.
+      // `parse_expr` reads `(` as a parenthesised expression and then dies on the
+      // `=>`, so the whole file stopped with `expected ')'`.
+      //
+      // Settled with the toolchain, not inferred — `_verify/grammar_probe.ps1`,
+      // one form per package with a broken canary alongside:
+      //   fn maker(sync? : (Int, Int) -> Unit = (_w, _m,) => (),) -> Int { 1 }
+      //   fn maker2(sync? : (Int) -> Unit = (_w) => ()) -> Int { 1 }
+      // both 0 errors from `moon check`. The control beside them —
+      // `fn taker(cb : (Int) -> Unit) -> Int` with NO default — already parsed,
+      // which is what makes this specific: a function-typed parameter is fine,
+      // and only the `= <lambda>` default broke.
+      //
+      // The head/body split and the "do not PARSE the parameters" rule are the
+      // call-argument path's (`at_lambda_head`, `skip_lambda_head`,
+      // `skip_braces`, `skip_to_arg_boundary`) rather than a second
+      // implementation: a parsed lambda parameter would bind in the ENCLOSING
+      // scope and report a phantom unused, and the two sites drifting apart is
+      // the failure mode worth spending the shared helper on.
+      //
+      // Measured cost on wzzc-dev/moui 0.1.12: this one shape is the blocker
+      // behind the `expected ')'`, `unexpected token ':'`,
+      // `expected a struct literal field here`, `expected '{'` and
+      // `unexpected token ')'` rows of the NOTPARSE tally — the blocker reasons
+      // differ per file because the cascade lands somewhere different, which is
+      // precisely why the tally alone understates the class.
+      if self.at_lambda_head() {
+        let lsp = self.span()
+        self.skip_lambda_head()
+        if self.at(TLBrace) {
+          self.skip_braces()
+        } else {
+          self.skip_to_arg_boundary()
+        }
+        self.note_skip(
+          "short lambda is outside the analyzed subset; it was read but not analysed",
+          lsp,
+        )
+      } else {
+        ignore(self.parse_expr())
+      }
     }
     params.push({ name: pname, tyann: ann, span: psp, })
     if self.at(TComma) {

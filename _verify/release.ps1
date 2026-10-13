@@ -206,7 +206,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -263,11 +263,11 @@ if ($SkipMutations) {
 # numbers is in circulation that was taken WITHOUT that flag and is not
 # comparable: proton reads 2142 that way and 2107 with it.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=504 actionable=0 notices=3389 unreliable=1507 withheld=138 total=4896'
+  'moui'            = 'files=608 parsed=522 actionable=0 notices=3582 unreliable=1016 withheld=102 total=4598'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=218 actionable=19 notices=930 unreliable=2493 withheld=684 total=3442'
-  'proton'          = 'files=137 parsed=95 actionable=68 notices=927 unreliable=1102 withheld=458 total=2097'
+  'async'           = 'files=419 parsed=218 actionable=19 notices=931 unreliable=2490 withheld=684 total=3440'
+  'proton'          = 'files=137 parsed=95 actionable=68 notices=927 unreliable=1103 withheld=459 total=2098'
   'proton_contract' = 'files=4 parsed=4 actionable=2 notices=34 unreliable=0 withheld=0 total=36'
 }
 $TARGETS = [ordered]@{
