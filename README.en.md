@@ -153,6 +153,118 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.27 — a parenthesised function type in return position is no longer read as a tuple
+
+A function type in return position has two spellings, and only one of them was recognised:
+
+```moonbit
+-> (Int) -> String     the `->` is AFTER the matching `)`
+-> (() -> Int)         the `->` is INSIDE the parens
+```
+
+The second fell into the tuple arm of `return_annotation`. That arm consumes to the first `)`
+that is not preceded by a comma — and in `(() -> Int)` that is the paren closing the EMPTY
+parameter list, so the annotation ended at `()` and `-> Int)` was left in the token stream.
+`parse_block` then went looking for `{`, found `->`, and reported `expected '{'`; after that the
+file was dead. One annotation took the whole file with it, and the message named a brace that
+was never the problem.
+
+The test is now "is there a `->` *associated* with these parens", and there are exactly two
+places it can be — inside them, or immediately after the matching `)`. One nesting-tracking scan
+answers both; the condition becomes `arrow_inside || is_fn`.
+
+Every affected spelling is settled first, zero errors from `moon check`: the parenthesised form,
+the parameterised form, the nested one whose result is a tuple, the optional `-> (() -> Unit)?`,
+the `raise`-bearing one, and the multi-line signature with a generic and a qualified name.
+
+### Corpus effect, measured as a two-build A/B on one tree
+
+**First, a number that nearly went down as a win.** proton's actionable count reads **68** on this
+tree against a recorded **100**. A gap of 32 looks like a large win and it is not: the corpus
+TREE changed. The old baseline was taken against a TEMP sibling tree, and `--extern-iface-dir`
+feeds sibling interface tables into the run. **Comparing a number across two trees measures the
+trees, not the change.** Only two builds on one tree can attribute anything.
+
+The A/B says: only moui moves, and **three files go from PARTIAL to fully parsed** —
+`services/service_task.mbt`, `core/program_subscription.mbt` and
+`backend/common/services/service_async_queue.mbt`. `unexpected token` drops from 113 files to
+110. The other five corpora are **byte-identical**.
+
+### My measurement script reported a false zero twice
+
+That is the real result of this release, and it is worth more than the fix.
+
+**The first is the A/B above.**
+
+**The second is "how many sites does this shape have".** The measurement script reported "0
+across all six corpora" twice. The first matcher, `\([^()]*\)`, cannot match a nested paren at
+all — it reported "not found" for a shape that contains one by construction. After switching to a
+balanced scan it **still** reported 0. The paren logic was right that time; the prefix was wrong:
+
+```regex
+\bfn\s+[A-Za-z_]\w*\s*\([^()]*\)\s*->\s*\(
+```
+
+Every clause is wrong for ordinary MoonBit: `fn` immediately followed by `[` (`fn[T]`) never
+matches; `[A-Za-z_]\w*` does not match `ServiceTask::start`, because of the `::`; and
+`\([^()]*\)` cannot span a multi-line parameter list or one whose parameters are themselves
+parenthesised. What it missed is the single most common spelling in the corpus:
+
+```moonbit
+pub fn[T] ServiceTask::start(
+  self : ServiceTask[T],
+  complete : (ServiceTaskResult[T]) -> Unit,
+) -> (() -> Unit)? {          ← `-> (`, and an arrow inside
+```
+
+**The real count is 24 sites across 9 moui files**, not 0.
+
+**The rule: a matcher that is too narrow does not report "none found", it reports "I did not
+look" — and on screen the two are the same shape.** Matching a real signature is a *parsing*
+problem; doing it with a regex is a bet. So the current version does not try to recognise a
+signature at all. It finds every `->` token and asks whether the group that follows it contains an
+arrow, which cannot fail to look at a signature because it never needs to know what one looks like.
+And its control is not a synthetic file but the A/B: it **must** find the three files the A/B says
+changed, or the gate aborts.
+
+### A settle has to prove it is measuring before anything it says counts
+
+While writing this release's fixtures, the settle script reported **fifteen cases "clean" and
+checked nothing**, because the case keys had **no `.mbt` extension**: the cleanup filter
+`-Filter '*.mbt'` matched no files, so every case ran on the accumulated pile, and `moon check`
+does not compile extensionless files. It printed 44 bytes of
+`Finished. moon: ran 2 tasks, now up to date`.
+
+Fifteen green rows. **The only evidence was the negative control, which also read "clean".**
+
+Three guards now each close one half of that failure: G1 asserts exactly one `.mbt` in `src`; G2
+asserts `moon check` actually did work (non-empty capture, and not the do-nothing banner); G3
+asserts the negative control **goes red**, and voids the whole run otherwise.
+
+Two MoonBit facts came out the same way: **lambdas use braces** (`fn() { 1 }`; `fn() => 1` is
+`unexpected token '=>'`), and **an uppercase top-level name is a type** (`fn G() -> Int` is
+`unexpected token '(', you may expect '::'`).
+
+### Mutation gate: four killed, one proved equivalent
+
+Five mutations, four killed. **M4 survives, and it is an equivalent mutant — proved, not assumed**:
+
+- the tuple arm returns `""` (`parser.mbt:1272`)
+- the function-type arm returns `"(Int)"` (`fn_type_annotation:1016` — no `->` follows, so `out`
+  stays the parenthesised group)
+- `ann_to_ty("")` == `TUnknown` (`types.mbt:140`)
+- `ann_to_ty("(Int)")` is **also** `TUnknown` — no arm of `ann_to_ty` strips the parentheses
+
+The annotation string has exactly one consumer, `declared_ret`, and every input M4 redirects
+feeds it `TUnknown`. So over the **whole input space** M4 cannot change an observable.
+Fabricating a fixture to kill it would be theatre: the mutant has no behaviour to kill.
+
+My first attempt asserted that `ann_to_ty("(Int)")` was `TInt` — **wrong**, which is why that
+fixture changed no verdict. It stays (the declared-return path deserves a fixture), but its
+comment now says what it does and does not establish.
+
+Tests: 425 js (13 new). Every fixture is checked by BOTH `moon check` and the analyzer.
+
 ## 0.4.26 — a tail expression is the return value, and a fix found by reading code instead of by a corpus delta
 
 **Correcting myself first.** The note this release started from said the declared return
@@ -1764,7 +1876,7 @@ that gets repeated as a rule:
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.26
+moon add riantr/moonbit_static_analysis@0.4.27
 ```
 
 ```moonbit
@@ -2146,7 +2258,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.26` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.27` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)

@@ -129,6 +129,106 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.27 —— 返回位置带括号的函数类型，不再被当成元组
+
+返回位置上的函数类型有两种写法，原来只认一种：
+
+```moonbit
+-> (Int) -> String     箭头在右括号之后
+-> (() -> Int)         箭头在括号之内
+```
+
+第二种掉进了 `return_annotation` 的元组分支。那个分支一路吃到**第一个前面没有逗号的
+`)`**，而在 `(() -> Int)` 里，这个 `)` 正是**空参数列表**的右括号——于是标注在 `()` 处就结束
+了，`-> Int)` 留在 token 流里。`parse_block` 接着去找 `{`，看到 `->`，报 `expected '{'`；
+之后整个文件就死了。**一处标注带走整个文件，而且报错指的那个大括号根本不是问题所在。**
+
+修法：判据是「这些括号**关联**的箭头在哪」，而它只可能在两个地方——括号**之内**，或者紧跟
+匹配到的 `)` **之后**。一次带嵌套计数的扫描同时回答两者，条件变成 `arrow_inside || is_fn`。
+
+所有受影响的写法都先 settle 过，`moon check` 零错误：带括号式、带参数式、结果本身是元组的
+嵌套式、可选式 `-> (() -> Unit)?`、带 `raise` 的式子、以及**多行签名 + 泛型 + 限定名**的式子。
+
+### 语料效果：同一棵树上两个 build 的 A/B
+
+**先说一个差点上当的数字。** proton 的 actionable 在这棵树上读作 **68**，而旧笔记记的是
+**100**。差 32 条看着像大胜，但那是**语料树换了**：旧基线取自 TEMP 兄弟树，而
+`--extern-iface-dir` 会把兄弟树的接口表喂进这一轮运行。**跨两棵树比数字，量的是树，不是改动。**
+同一棵树、两个 build 的 A/B 才是能归因的证据。
+
+A/B 的结论：只有 moui 动，**三个文件从 PARTIAL 变成完整解析**——
+`services/service_task.mbt`、`core/program_subscription.mbt`、
+`backend/common/services/service_async_queue.mbt`；`unexpected token` 从 113 个文件降到 110。
+另外五个语料**逐字节一致**。
+
+### 我的度量脚本两次报了假零
+
+这是这一版真正的收获，比修复本身更值得记。
+
+**其一，是上面那个 A/B。**
+
+**其二，是「这个构型在语料里出现多少次」。** 度量脚本先后两次报「六个语料 0 处」。
+第一次的匹配式 `\([^()]*\)` 根本匹配不了嵌套括号——它对一个**按构造就含嵌套括号**的形状报
+「未找到」。换成平衡括号扫描之后，**还是 0**。这次括号逻辑是对的，错在前缀：
+
+```regex
+\bfn\s+[A-Za-z_]\w*\s*\([^()]*\)\s*->\s*\(
+```
+
+每一个子句对普通 MoonBit 都是错的：`fn` 后面紧跟 `[`（`fn[T]`）就匹配不上；`[A-Za-z_]\w*`
+匹配不了 `ServiceTask::start`；`\([^()]*\)` 既跨不了多行参数列表，也容不下参数里自带的括号。
+而它漏掉的正是语料里**最常见**的那个形状：
+
+```moonbit
+pub fn[T] ServiceTask::start(
+  self : ServiceTask[T],
+  complete : (ServiceTaskResult[T]) -> Unit,
+) -> (() -> Unit)? {          ← `-> (`，而且箭头在里面
+```
+
+**真实数量是 24 处、9 个 moui 文件**，而不是 0。
+
+**判据：匹配器太窄不会报「未找到」，它报「我没看」。而这两件事在屏幕上长得一模一样。**
+匹配一个真实签名是**解析**问题，用正则做是**赌**。所以现在的版本根本不去认签名——它找每一个
+`->` token，问紧跟其后的括号组里有没有箭头；这样它不会因为「不认识签名长什么样」而漏看。
+而且它的对照不是合成文件，是 A/B：它**必须**找出 A/B 说改动的那三个文件，否则门禁直接中止。
+
+### settle 必须先证明自己在测量
+
+写这一版的夹具时，`settle` 脚本报了**十五个「clean」，而它什么都没查**。因为用例的 key
+**没有 `.mbt` 后缀**：清理用的 `-Filter '*.mbt'` 匹配不到任何文件（旧用例全部堆积），而
+`moon check` 根本不编译无扩展名的文件，它拿到的是 44 字节的
+`Finished. moon: ran 2 tasks, now up to date`。
+
+十五个全绿。**唯一的证据是那个本该变红的负控制，它也读了「clean」。**
+
+现在三道闸各自封死上面那种失效的一半：G1 断言 `src` 里恰好一个 `.mbt`；G2 断言
+`moon check` 真的干了活（输出非空、且不是「无事可做」横幅）；G3 断言负控制**必须变红**，
+否则整轮结果作废。
+
+另外两处 MoonBit 事实也是这么查出来的：**lambda 用花括号**（`fn() { 1 }`；`fn() => 1` 是
+`unexpected token '=>'` 报错），以及**顶层大写名是类型**（`fn G() -> Int` 报
+`unexpected token '(', you may expect '::'`）。
+
+### 突变门禁：四杀一等价
+
+五道突变，四道被杀。**M4 存活，而它是等价突变——这一点是证明出来的，不是假设的**：
+
+- 元组分支返回 `""`（`parser.mbt:1272`）
+- 函数类型分支返回 `"(Int)"`（`fn_type_annotation:1016`，其后没有 `->`，`out` 保持括号组）
+- `ann_to_ty("")` == `TUnknown`（`types.mbt:140`）
+- `ann_to_ty("(Int)")` **也是** `TUnknown`——没有任何分支会剥掉那对括号
+
+标注字符串**只有一个消费者** `declared_ret`，而 M4 改道的每一种输入喂给它的都是
+`TUnknown`。所以在**整个输入空间上** M4 不可能改变任何可观测量。**硬造一个夹具去杀它
+是表演**：这个突变没有行为可杀。
+
+我第一次尝试杀它时断言的是 `ann_to_ty("(Int)")` 会得到 `TInt`——**错的**，所以那道夹具没有
+改变任何结论。夹具留下了（那条声明返回路径本来就该有夹具），但注释现在写的是它**建立了
+什么、没有建立什么**。
+
+测试 js 425（新增 13）。每一个夹具都同时过 `moon check` **和**分析器两边。
+
 ## 0.4.26 —— 尾表达式就是返回值：一次由读代码而不是由语料 delta 找到的修复
 
 **先更正我自己。** 这条待办上一版写的是「声明返回类型在尾表达式函数体上渲染成 `None`
@@ -1527,7 +1627,7 @@ MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
 ## 安装 / 快速上手
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.26
+moon add riantr/moonbit_static_analysis@0.4.27
 ```
 
 ```moonbit
@@ -1859,7 +1959,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 | GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.26` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
+- **mooncakes.io**：`moon publish`（发布后 `riantr/moonbit_static_analysis@0.4.27` 可被任何 MoonBit 模块以 `import` 依赖；`src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)）。
 - **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
 
 ## 分析其他项目（不引入本项目）

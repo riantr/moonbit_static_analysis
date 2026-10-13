@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.26 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.27 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -528,6 +528,31 @@ modelled as an `SIf` with an empty `then`, which is the honest mapping for a fra
 model that is not flow-scoped: the condition is walked FIRST, so an `is` pattern in
 it binds in the current frame exactly where a guard binding belongs. The `else`
 block is analyzed like any other block.
+
+**A PARENTHESISED FUNCTION TYPE IN RETURN POSITION IS NOT A TUPLE (since 0.4.27).**
+There are two spellings and the analyzer now reads both:
+
+    -> (Int) -> String     the `->` is AFTER the matching `)`
+    -> (() -> Int)         the `->` is INSIDE the parens
+
+The second used to fall into the tuple arm, which consumes to the first `)` with no comma
+preceding it — in `(() -> Int)` that is the paren closing the empty parameter list. The
+annotation ended at `()` and `-> Int)` stayed in the token stream, so the next thing the parser
+looked for was `{`, found `->`, and reported
+
+    expected '{'
+
+and the rest of the file died. The message named a brace that was never the problem.
+
+The test is whether a `->` is *associated* with the parens, which has two answers — inside them,
+or right after the matching `)` — and one nesting-tracking scan covers both. Real code writes
+this constantly: all 24 sites in the moui corpus are `-> (() -> Unit)?` at the end of a
+multi-line parameter list.
+
+**A RETURN ANNOTATION IS NEVER OPTIONAL.** `-> {` with no annotation is a real syntax error
+(`unexpected token '{', you may expect return type annotation`, plus 4041) and is still
+reported. If a parse of a signature fails, that is the finding — not evidence that the function
+has no declared type.
 
 **A TAIL EXPRESSION IS THE FUNCTION'S RETURN VALUE (since 0.4.26).** MoonBit's
 tail-value style is not a stylistic extra: `fn f() -> Int { 1 }` returns 1. Before

@@ -1195,19 +1195,33 @@ fn Parser::skip_indexed(self : Parser) -> Unit {
 /// the honest answer rather than pretending the first component is the whole
 /// return type.
 fn Parser::return_annotation(self : Parser) -> String {
-  // `(A) -> B` in return position is a FUNCTION TYPE, not a one-element tuple:
-  // `fn f() -> (Int) -> String` returns a function. The tuple arm below accepts
-  // any `(`, so this shape needs to be told apart first.
+  // A FUNCTION TYPE, in either of the two spellings MoonBit accepts. Both are
+  // settled valid with zero real errors from `moon check` (settle_0427_retfn):
   //
-  // The test is "the matching `)` is followed by `->`", found by SCANNING to the
-  // matching close and counting nesting. The first attempt looked only at the
-  // three tokens `(`, `)`, `->`, which is the shape of `() -> T` and nothing
-  // else: `(Int) -> String` has `Int` between the brackets, so it missed and
-  // the fixture failed with 4 parse errors. Real annotations have a parameter.
+  //   UNPARENTHESISED   `-> (Int) -> String`    the `->` is AFTER the parens
+  //   PARENTHESISED     `-> (() -> Int)`        the `->` is INSIDE them
+  //
+  // The original test only looked for the first, so the second fell into the
+  // tuple arm below. That arm consumes to the first `)` with no comma, which
+  // here is the one closing the EMPTY parameter list — so the annotation ended
+  // at `()`, and `-> Int)` was left in the token stream. `parse_block` then
+  // looked for `{`, found `->`, and reported `expected '{'`; after that the file
+  // died. A false positive about code the compiler accepts, and a misleading
+  // one: the message names a brace that was never the problem.
+  //
+  // So the test is "is there a `->` associated with these parens", and there are
+  // exactly two places it can be — inside them, or immediately after the
+  // matching `)`. One nesting-tracking scan answers both.
+  //
+  // (An earlier version of this test looked only at the three tokens `(`, `)`,
+  // `->`, which is the shape of `() -> T` and nothing else: `(Int) -> String`
+  // has `Int` between the brackets, so it missed and its own fixture failed
+  // with 4 parse errors. Real annotations have a parameter.)
   let fn_type = if self.at(TLParen) {
     let mut depth = 0
     let mut j = self.p
     let mut is_fn = false
+    let mut arrow_inside = false
     while j < self.toks.length() {
       match self.toks[j] {
         TLParen => depth += 1
@@ -1218,12 +1232,23 @@ fn Parser::return_annotation(self : Parser) -> String {
             break
           }
         }
+        // `depth` is already 1 here -- the scan starts ON the opening paren --
+        // so a `->` reaching this arm is inside the parentheses, which is the
+        // parenthesised spelling. It must NOT fire on `(Int, String)` or
+        // `(Int)`: measure_0427_retfn.ps1 counts 179 comma-bearing `-> (...)`
+        // groups and 6 with neither a comma nor an arrow across the six corpora,
+        // and every one of them has to keep parsing as what it is.
+        //
+        // (That measurement reported 0 sites of the shape ABOVE, twice, before it
+        // was corrected -- see the script's header. The count of the look-alikes
+        // came from the same corrected run.)
+        TArrow => arrow_inside = true
         TEOF => break
         _ => ()
       }
       j += 1
     }
-    is_fn
+    arrow_inside || is_fn
   } else {
     false
   }
