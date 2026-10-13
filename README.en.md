@@ -234,6 +234,14 @@ One site is small. It was also **moui's entire actionable count**.
 
 Self-scan 68/68 parsed (100%), **actionable = 0**.
 
+**Read that number with its coverage attached.** Of the 823 notices, **429 are `test declaration is
+outside the analyzed subset`** — `test` is routed to the same braced skipper as `impl` and `trait`,
+so 429 test bodies are never walked. That is the single largest exclusion in the self-scan, larger
+than match (155), struct (36), derive (31) and enum (14) combined. `actionable = 0` is a claim about
+the declaration bodies that *are* analyzed, not about all 823 excluded bodies; the 0 is partly earned
+by not looking at the largest group of them. This is the 0.4.10 shape — *"a clean 0 can be partly
+obtained by not looking"* — pointed at the project's own test suite.
+
 Tests: 442 js (12 new) / 514 wasm / 442 wasm-gc. Five mutations, four killed, one expected survivor,
 every restore byte-identical by SHA256.
 
