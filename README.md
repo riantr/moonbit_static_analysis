@@ -1347,13 +1347,38 @@ labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，action
   消息**给读不动的文件分类的，于是 wzzc-dev/moui 0.1.12 的 122 个读不动的文件
   里有 110 个挤在同一个匿名行里。现在 `tok_desc` 会报出 token 本身（46 个 `Tok`
   变体全覆盖），同一次扫描变成 13 行分布，其余 SUMMARY 数字逐字节不变。
-- 分布出来后修了最大的两类：调用处的 `?` 可选参数简写 `f(x?)`，以及把 lambda
-  当作参数默认值。moui **486/608（79.9%）→ 522/608（85.8%）**，`unreliable`
-  1696 → 1016，`withheld` 238 → 102，六个语料的 **`actionable` 全部保持不变**。
-- moui 剩下的 86 个，按原因排序：`if` 当**值**用（`variant=if c { A } else { B }`，
-  约 27 个文件）、`match` 的被匹配表达式起自下一行（约 20 个）、调用实参写
-  `name?=value`（约 8 个）、`extern "js" fn f() -> T = "sym"` 声明式（约 3 个）、
-  调用里的匿名 `async fn`（约 2 个）、`1..<=n` 区间（约 2 个）。
+- 分布出来后按顺序修了最大的四类：调用处的 `?` 可选参数简写 `f(x?)`、把 lambda
+  当作参数默认值、跨行的方法链、以及 `match` 的被匹配表达式起自下一行。
+  moui **486/608（79.9%）→ 547/608（89.9%）**，`unreliable` 1696 → 805，
+  `withheld` 238 → 62，六个语料的 **`actionable` 没有一个因为读入更多文件而上升**。
+- `defer` 另修了一类**假阳性**而不是读不动的文件：没有这个 arm 时 `defer` 被当成
+  普通标识符，报 `undefined name 'defer'`——这是**关于分析器的**错报，代码
+  `moon check` 零错误。async 0.22.4 **18 → 13**、proton 0.3.4 **55 → 54**。
+  这个数字是 A/B 实测的，不是推的：把 arm 关掉（门禁 0433 的 M3）重扫同样两个
+  语料，差集是 **7 条 `undefined name 'defer'` 全部消失**（async 5 条、proton 2 条，
+  其中一条正是 `command/command.mbt:145`），且**没有新增任何一条**发现。
+- proton 中途经过 55 → 56 → 54：`match` 那一步让一个本来读不动的文件变得可读，
+  于是暴露出**更多**这类假阳性，随后被 `defer` 的 arm 一并消掉。**读入更多文件
+  先让假阳性上升再下降，是这个指标正常的形状。**
+- moui 剩下的 61 个，**按 scanner 自己的措辞**排序（不是按我猜的语法类）：
+
+  | 条数 | 原因 | 挡在后面的源码（`blockers.ps1` 抽的样本） |
+  |---|---|---|
+  | 13 | `unexpected token ':` | `(_point) => on_drop(paths)` 的箭头、表达式位置的 `is` 模式 `self.state is GpuRenderWorkerState::Shutdown` |
+  | 12 | `expected ')'` | 显式参数类型的 lambda `(_node : Flow) => children`、`async (A, B) -> Unit` 函数类型 |
+  | 8 | `unexpected token '='` | `(ListLayout) -> Array[...]` 返回类型标注、`1..<=n` 区间 |
+  | 7 | `expected type name` | `budget? : T = T::default()` |
+  | 6 | `expected a struct literal field here` | |
+  | 4 | `unexpected token ','` | |
+  | 3 | `unexpected token ')'` | |
+  | 3 | `expected '{'` | |
+  | 2 | `invalid assignment target` | |
+  | 1 ×3 | `unexpected end of line` / `expected function name` / 未闭合块字符串 | |
+
+  这份表是 `_verify/blockers.ps1` 的输出，**不是估的**——上一版这里写的是按语法类
+  估的约数，两条都留在文档里的这段时间里它一直是错的。61 个里只有 55 个能定位到
+  具体源码行：另外 6 个在边界之前没有任何发现，所以 scanner 不打 `PARTIAL` 行，
+  它们在这张表里缺席。**这是一份下界，不是全集。**
 - `_verify/blockers.ps1` 排的是**读不动的文件**，`_verify/backlog.ps1` 排的是
   **子集排除 notice**。两者回答的不是同一个问题，混为一谈正是这条在十四个版本
   里一直没法处理的原因：只有前者会推动 `parsed=` 这个数字。

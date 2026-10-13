@@ -1897,6 +1897,48 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     let _ = self.bump()
     return { span: sp, kind: @ast.SContinue, }
   }
+  // `defer { ... }` and `defer <expr>` — a statement deferred to scope exit.
+  //
+  // BOTH bodies occur, and an arm that assumed only the block form was wrong on
+  // the first try: it produced 8x `expected '{'` across proton 0.3.4. Counted
+  // across the six corpora rather than sampled -- 1950 `defer` lines, of which
+  // 1534 are a method call, 268 another expression, 130 a block, and 18 an
+  // expression with a trailing `catch`:
+  //
+  //   command/command.mbt:145         defer {            (block)
+  //   facade_logging_wbtest.mbt:169   defer ignore(...)  (expression)
+  //   facade_bridge.mbt:584           defer (window.cancel_dialog(dialog) catch { _ => () })
+  //
+  // So the arm has to take an ordinary EXPRESSION, not a block, to get the
+  // common case right. Settled with the toolchain: `_verify/grammar_probe.ps1`
+  // cases `defer_block_stmt`, `defer_expr_stmt`, `defer_paren_expr_stmt`,
+  // `defer_method_call_stmt` and `defer_expr_catch_stmt`, each 0 errors from
+  // `moon check` in its own package beside a broken canary.
+  //
+  // The keyword plus a block is exactly what the bare-brace statement arm below
+  // already turns into an `SBlock`, and `SBlock` was already modelled through
+  // walk / types / infer / interp -- so nothing downstream needed teaching. The
+  // expression form becomes a `STail`, which is how the same block's trailing
+  // expression is represented.
+  //
+  // Without the arm the keyword was read as an ordinary identifier and reported
+  // `undefined name 'defer'` — a false positive about the analyzer, on code
+  // `moon check` accepts. Measured on moonbit-community/proton 0.3.4
+  // `command/command.mbt:145`, newly visible only because the 0433 `match`
+  // fix made that file readable.
+  //
+  // WHAT IS NOT MODELLED: the body is walked as an ordinary one, so a `return`
+  // inside a `defer` reads as a return from the enclosing function where it
+  // would run later at scope exit. That is the same flattening `if` bodies get,
+  // and no lens has a use for the difference yet.
+  if self.at_name("defer") {
+    let _ = self.bump()
+    if self.at(TLBrace) {
+      let (body, _) = self.parse_block(false)
+      return { span: sp, kind: @ast.SBlock(body), }
+    }
+    return { span: sp, kind: @ast.STail(self.parse_expr()), }
+  }
   if self.at_name("if") {
     return self.parse_if()
   }
@@ -3514,6 +3556,25 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       // is read and yielded: it is an ordinary expression, and dropping it
       // would drop its reads — the same trade the comprehension's `sources`
       // made.
+      //
+      // The SUBJECT may start on the NEXT LINE. `match` alone at the end of a
+      // line, with the scrutinee and its arms following, is the shape wzzc-dev/
+      // moui 0.1.12 writes throughout -- `views/form/form_field.mbt:42`,
+      // `runtime/scroll_to_key.mbt:30`, `runtime/runtime_events.mbt:358` -- and
+      // it was the largest single blocker left at 0.4.30.
+      //
+      // Settled with the toolchain, not inferred (`_verify/grammar_probe.ps1`,
+      // one form per package with a broken canary alongside):
+      //
+      //   match\n    <subject> {   -- 0 errors, in BOTH statement and `let` position
+      //   match\n    <subject>\n  { -- REJECTED: "missing `{` at the end of this line"
+      //
+      // So the newline before the SUBJECT is allowed, and the `{` must still sit
+      // on the subject's last line -- which is what the existing `skip_braces`
+      // already assumes. Implementing the rejected spelling as well would accept
+      // something `moon check` refuses, and the `_` that second form fails on is
+      // the whole point of recording both.
+      self.skip_seps()
       let scrutinee = self.parse_expr()
       self.skip_braces()
       self.note_skip(

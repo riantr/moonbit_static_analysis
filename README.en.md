@@ -1578,16 +1578,46 @@ returns to 0.)
   122 unreadable files were one anonymous row. `tok_desc` now names the token
   (exhaustively, all 46 `Tok` variants) and the same run became a 13-row
   distribution with every other SUMMARY number byte-identical.
-- On moui 0.1.12 the two largest classes behind that distribution were then fixed
-  — the `?` optional-argument shorthand `f(x?)`, and a lambda used as a
-  parameter's default value. **486/608 (79.9%) → 522/608 (85.8%)**, `unreliable`
-  1696 → 1016, `withheld` 238 → 102, and **`actionable` unchanged at 0** across
-  all six corpora.
-- The remaining 86 on moui, ranked by reason: `if` used as a *value*
-  (`variant=if c { A } else { B }`, ~27 files), a `match` whose subject starts on
-  the following line (~20), `name?=value` as a call argument (~8), the
-  `extern "js" fn f() -> T = "sym"` declaration form (~3), an anonymous
-  `async fn` inside a call (~2), and `1..<=n` ranges (~2).
+- The four largest classes behind that distribution were then fixed, in order — the
+  `?` optional-argument shorthand `f(x?)`, a lambda used as a parameter's default
+  value, a method chain continuing on the next line, and a `match` whose subject
+  starts on the following line. **486/608 (79.9%) → 547/608 (89.9%)**, `unreliable`
+  1696 → 805, `withheld` 238 → 62, and **no corpus's `actionable` rose** as a result
+  of reading more files.
+- `defer` fixed a class of FALSE POSITIVE rather than an unreadable file. Without the
+  arm, `defer` was read as an ordinary identifier and reported
+  `undefined name 'defer'` — a claim about the *analyzer*, on code `moon check`
+  accepts with zero errors. async 0.22.4 **18 → 13**, proton 0.3.4 **55 → 54**. That
+  number was measured by A/B, not inferred: the same two corpora were rescanned with
+  the arm switched off (gate 0433's M3), and the difference was **7 rows of
+  `undefined name 'defer'` disappearing** — 5 in async, 2 in proton, one of them
+  `command/command.mbt:145` — with **zero** new findings introduced.
+- proton went 55 → 56 → 54 across the two changes. The `match` fix made one more
+  file readable, which *exposed* one more instance of this false positive, and the
+  `defer` arm then removed it along with the rest. **Reading more files raising the
+  false-positive count before lowering it is the normal shape of this metric.**
+- The remaining 61 on moui, ranked **by the scanner's own wording** rather than by
+  syntax class I guessed at:
+
+  | count | reason | the source line behind it (sampled by `blockers.ps1`) |
+  |---|---|---|
+  | 13 | `unexpected token ':'` | arrow lambdas `(_point) => on_drop(paths)`; `is` patterns in expression position, `self.state is GpuRenderWorkerState::Shutdown` |
+  | 12 | `expected ')'` | a lambda with an explicit parameter type, `(_node : Flow) => children`; `async (A, B) -> Unit` function types |
+  | 8 | `unexpected token '='` | `(ListLayout) -> Array[...]` return-type annotations; `1..<=n` ranges |
+  | 7 | `expected type name` | `budget? : T = T::default()` |
+  | 6 | `expected a struct literal field here` | |
+  | 4 | `unexpected token ','` | |
+  | 3 | `unexpected token ')'` | |
+  | 3 | `expected '{'` | |
+  | 2 | `invalid assignment target` | |
+  | 1 ×3 | `unexpected end of line` / `expected function name` / unterminated block string | |
+
+  This table is `_verify/blockers.ps1`'s output, not an estimate. The previous
+  revision of this bullet carried per-syntax-class estimates, and they were wrong
+  for as long as they sat in the document. Only 55 of the 61 resolve to a specific
+  source line: the other 6 have no findings before their boundary, so the scanner
+  prints no `PARTIAL` row and they are absent from the table. **That is a lower
+  bound on the blocked set, not the whole of it.**
 - `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
   ranks *subset-exclusion notices*. They answer different questions and the
   conflation was the reason this bullet sat unfixed for fourteen releases: only

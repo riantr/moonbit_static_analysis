@@ -53,6 +53,11 @@ if (-not [string]::IsNullOrEmpty($Cases)) {
     'match_subject_next_line_stmt' = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  let acc : Array[Int] = []`n  match`n    sub(c) {`n    1 => acc.push(2)`n    _ => acc.push(3)`n  }`n  acc.length()`n}"
     'match_subject_next_line_let'  = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  let v = match`n    sub(c) {`n    1 => 2`n    _ => 3`n  }`n  v`n}"
     'match_one_line_control'       = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  match sub(c) {`n    1 => 2`n    _ => 3`n  }`n}"
+    # The spelling the parser comment says the TOOLCHAIN rejects. Recorded
+    # because the comment asserts it: an assertion in prose that no case
+    # exercises is the same defect the 0.4.30 doc audit found. MOON-BAD here is
+    # the point; SELF-OK would mean this frontend is too permissive about it.
+    'match_brace_on_its_own_line'  = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  match`n    sub(c)`n  {`n    1 => 2`n    _ => 3`n  }`n}"
     # --- the `?` optional-argument shorthand -----------------------------
     'optarg_question'              = "fn sink(theme? : Int = 0) -> Int { theme }`nfn pass(theme? : Int) -> Int { sink(theme?) }`n"
     'optarg_tilde_control'         = "fn sink(theme~ : Int = 0) -> Int { theme }`nfn pass(theme~ : Int) -> Int { sink(theme~) }`n"
@@ -80,6 +85,33 @@ if (-not [string]::IsNullOrEmpty($Cases)) {
     'chain_dot_next_line'          = "fn wrap(x : Array[Int]) -> Array[Int] { x }`nfn take(n : Int) -> Int { n }`nfn f(a : Array[Int]) -> Int {`n  take(`n    wrap(a)`n      .length(),`n  )`n}`n"
     'chain_dot_same_line_control'  = "fn wrap(x : Array[Int]) -> Array[Int] { x }`nfn take(n : Int) -> Int { n }`nfn f(a : Array[Int]) -> Int {`n  take(wrap(a).length())`n}`n"
     'chain_dot_next_line_plain'    = "fn f(a : Array[Int]) -> Int {`n  let v = a`n    .length()`n  v`n}`n"
+    # --- `defer { ... }` and `defer <expr>` as a statement --------------------
+    # BOTH bodies occur. proton 0.3.4 writes `defer {` in command.mbt:145 and
+    # `defer host.close()` in typed_registrar_wbtest.mbt, so an arm that assumed
+    # a block produced 8x `expected '{'` across that corpus on the first try.
+    'defer_block_stmt'             = "fn f() -> Unit {`n  defer {`n    g()`n  }`n  g()`n}`nfn g() -> Unit { () }`n"
+    'defer_expr_stmt'              = "fn g() -> Unit { () }`nfn f() -> Unit {`n  defer g()`n  g()`n}`n"
+    # A first draft of the paren case deferred a non-Unit call and came back
+    # MOON-BAD -- a TYPE error wearing a syntax verdict. `defer` takes Unit, so
+    # the body must produce it. Fixed rather than reported: a probe source that
+    # does not type-check answers nothing about the grammar.
+    'defer_paren_expr_stmt'        = "fn g(x : Int) -> Unit { ignore(x) }`nfn f() -> Unit {`n  defer (g(1))`n  g(2)`n}`n"
+    'defer_block_expr_control'     = "fn g() -> Unit { () }`nfn f() -> Unit {`n  g()`n  defer {`n    g()`n  }`n}`n"
+    # The two forms that DOMINATE the six corpora, measured rather than assumed:
+    # 1950 `defer` lines, of which 1534 are a method call, 18 an expression
+    # with a trailing `catch`, 130 a block, 268 another expression. So the
+    # method-call body is the shape this arm mostly has to get right.
+    #
+    # The type is spelled `struct`, not `class` -- this toolchain REJECTS
+    # `class Box { ... }` ("unexpected token id (lowercase start)"), and the
+    # method is `fn Box::bump(self : Box, ..)`, not `fn meth(self, ..)`
+    # (deprecated_syntax). The first draft used both obsolete spellings, so it
+    # came back MOON-BAD for a reason that had nothing to do with `defer`, and
+    # SELF-FAIL because this frontend read the one-line `class` as a struct
+    # literal. Both halves of the verdict were about my probe source.
+    # Settled on this toolchain: 0 errors, 3 warnings, beside the canary.
+    'defer_method_call_stmt'       = "struct Box {`n  n : Int`n}`nfn Box::bump(self : Box) -> Unit { ignore(self.n) }`nfn f(b : Box) -> Unit {`n  defer b.bump()`n  b.bump()`n}`n"
+    'defer_expr_catch_stmt'        = "suberror E { Boom(Int) }`nfn boom(x : Int) -> Unit raise E { raise Boom(x) }`nfn f(p : String) -> Unit raise E {`n  defer (boom(p.length()) catch { _ => () })`n  boom(0)`n}`n"
     # --- the canary. MUST be rejected; if it is not, the probe is a no-op ---
     'zz_canary_must_be_rejected'   = "fn canary( { let = 1 }`n"
   }
@@ -96,7 +128,14 @@ Write-Output ('  {0,-30} {1,-9} {2,-10} {3}' -f ('-' * 30), ('-' * 9), ('-' * 10
 
 $rows = @()
 foreach ($k in $PROBE_CASES.Keys) {
-  if (-not [string]::IsNullOrEmpty($Only) -and $k -notlike "*$Only*") { continue }
+  # The CANARY is exempt from -Only. Filtering it out was a defect found the
+  # hard way: `-Only 'defer'` printed "[NO CANARY] ... Treat every SELF-OK above
+  # as unverified", i.e. the flag that makes the tool convenient silently
+  # removed the one thing that makes its answer mean anything -- and every
+  # filtered run before that one was unverified too. A safety net that a
+  # routine flag disarms is not a safety net.
+  $isCanary = $k -like 'zz_canary*'
+  if (-not $isCanary -and -not [string]::IsNullOrEmpty($Only) -and $k -notlike "*$Only*") { continue }
   $d = Join-Path $base $k
   New-Item -ItemType Directory -Force -Path $d | Out-Null
   Set-Content -LiteralPath (Join-Path $d 'moon.mod') -Value "name = `"mbprobe/$k`"`n`nversion = `"0.1.0`"`n" -NoNewline
@@ -133,7 +172,27 @@ if ($null -eq $canary) {
   Write-Output '  Treat every MOON-OK above as unverified.'
 }
 
-$gaps = $rows | Where-Object { $_.Moon -eq 'MOON-OK' -and $_.Self -eq 'SELF-FAIL' }
+# Both tallies below are wrapped in @() ON PURPOSE, and this is the second
+# defect found in this file while adding a case to it.
+#
+# `$x | Where-Object {...}` returns a BARE PSCustomObject when exactly one row
+# matches. On Windows PowerShell 5.1 a scalar PSCustomObject has NO `.Count`
+# property -- `$loose.Count` is $null, `$null -gt 0` is False, and the whole
+# section is skipped. Measured: a run whose table showed
+#
+#   match_brace_on_its_own_line    MOON-BAD  SELF-OK
+#
+# printed `no gaps: every form moon accepts is a form this frontend reads` and
+# then NOTHING for the too-permissive tally, which is the finding.
+#
+# The same line guards the REAL GAP tally, so the damage is worse than a missing
+# section: with exactly ONE real gap the probe announced "no gaps" -- inverting
+# its headline verdict in precisely the run that had something to report. A
+# guard that cannot fire is worse than no guard, because its absence reads as
+# evidence. Both are now arrays, and `_verify/grammar_probe_control.ps1` proves
+# each section FIRES by feeding the probe one known MOON-BAD/SELF-OK row and
+# one known MOON-OK/SELF-FAIL row and asserting both tallies appear.
+$gaps = @($rows | Where-Object { $_.Moon -eq 'MOON-OK' -and $_.Self -eq 'SELF-FAIL' })
 Write-Output ''
 if ($gaps.Count -gt 0) {
   Write-Output ("  {0} REAL GAP(S) -- legal MoonBit this frontend cannot read:" -f $gaps.Count)
@@ -142,7 +201,7 @@ if ($gaps.Count -gt 0) {
   Write-Output '  no gaps: every form moon accepts is a form this frontend reads.'
 }
 
-$loose = $rows | Where-Object { $_.Moon -eq 'MOON-BAD' -and $_.Self -eq 'SELF-OK' }
+$loose = @($rows | Where-Object { $_.Moon -eq 'MOON-BAD' -and $_.Self -eq 'SELF-OK' })
 if ($loose.Count -gt 0) {
   Write-Output ''
   Write-Output ("  {0} TOO-PERMISSIVE -- this frontend reads MoonBit the toolchain rejects:" -f $loose.Count)

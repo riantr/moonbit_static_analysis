@@ -188,6 +188,31 @@ if (-not (Test-Path $wasm)) {
   $failed += 'build:wasm'
 }
 
+# --- 3b  the grammar probe's own verdicts can go red ---------------------------
+# Placed after the wasm build because the control reads the scanner through it,
+# and before the mutation gates because a probe that reports "no gaps" when it
+# found one would make every parser comment that cites it worthless -- which is
+# what 0.4.30 found, twice, in one file: a filtered run that dropped the canary,
+# and a `.Count` on a scalar that silently suppressed both tallies.
+$GP = Join-Path $root '_verify\grammar_probe_control.ps1'
+if (-not (Test-Path $GP)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\grammar_probe_control.ps1'
+  $failed += 'grammar-probe-control'
+} else {
+  Stage 'grammar probe control (its verdicts can go red)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GP 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(PASS|FAIL|  - )') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'grammar-probe-control' }
+}
+
 # --- 4  self-scan ------------------------------------------------------------
 if ($failed.Count -eq 0) {
   Stage 'self-scan (own source)' {
@@ -206,7 +231,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -259,15 +284,29 @@ if ($SkipMutations) {
 }
 
 # --- 6  corpus comparison ----------------------------------------------------
-# Measured WITH --extern-iface-dir .repos on this tree at 0.4.29. Another set of
+# Measured WITH --extern-iface-dir .repos on this tree. Another set of
 # numbers is in circulation that was taken WITHOUT that flag and is not
 # comparable: proton reads 2142 that way and 2107 with it.
+#
+# The 0.4.30 move, and it is worth stating what each change did rather than only
+# where it landed:
+#   moui   parsed 534 -> 547. The `match` subject may now start on the next
+#          line, which was the largest single blocker left.
+#   async  actionable 18 -> 13, proton 55 -> 54. The `defer` arm. VERIFIED by
+#          A/B rather than assumed: the same two corpora were rescanned with the
+#          arm switched off (gate 0433's M3), and the diff was 7 rows of
+#          `undefined name 'defer'` removed -- 5 in async, 2 in proton, one of
+#          them proton `command/command.mbt:145` -- and 0 new findings. The two
+#          differing SUMMARY lines are the pins themselves, not findings.
+#          proton went 55 -> 56 -> 54 across the two changes: the `match` fix
+#          made one more file readable and therefore exposed one more of these,
+#          which the `defer` arm then removed along with the rest.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=534 actionable=0 notices=3591 unreliable=953 withheld=86 total=4544'
+  'moui'            = 'files=608 parsed=547 actionable=0 notices=3680 unreliable=805 withheld=62 total=4485'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=218 actionable=18 notices=931 unreliable=2490 withheld=684 total=3439'
-  'proton'          = 'files=137 parsed=96 actionable=55 notices=941 unreliable=1076 withheld=459 total=2072'
+  'async'           = 'files=419 parsed=218 actionable=13 notices=931 unreliable=2490 withheld=684 total=3434'
+  'proton'          = 'files=137 parsed=97 actionable=54 notices=946 unreliable=1053 withheld=451 total=2053'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{
