@@ -550,7 +550,24 @@ fn Parser::skip_decl_braced(
       }
       let _ = self.bump()
     }
-    if what == "enum" {
+    // `enum` and `suberror` bodies both declare CONSTRUCTORS, and the harvest
+    // is the same scan for both: a member is a NAME at depth 0 followed by an
+    // optional `(...)` payload, and every token of a payload is nested at least
+    // one level deep. `suberror` was missing here until 0.4.30, which made
+    // every `raise Variant(...)` a false positive:
+    //
+    //   no visible binding for 'InvalidPathOverride'   x5
+    //   no visible binding for 'InvalidIdentifier'
+    //   no visible binding for 'MissingEnvironmentPath'
+    //   undefined name 'MissingExecutablePath'
+    //
+    // measured on moonbit-community/proton 0.3.4 `facade_paths.mbt`, where the
+    // suberror `AppPathError` is declared in the SAME FILE that raises it — so
+    // this was not a cross-file resolution problem at all, only a missing
+    // harvest. `raise` produces a value, so these are constructors exactly as
+    // `enum` variants are, and they resolve to the same unknown-typed value an
+    // enum variant does.
+    if what == "enum" || what == "suberror" {
       self.harvest_ctors(open_p, self.p)
     }
   }
@@ -2768,6 +2785,49 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       let _ = self.type_annotation()
       e = { span: asp, kind: @ast.ECast(e), }
       continue
+    }
+    // A chain CONTINUING on the next line: `expr` newline `.method(...)`.
+    //
+    // Until now this only worked in STATEMENT position, where `parse_stmt` has
+    // its own leading-dot continuation (the block at its `if self.at(TDot)`).
+    // Everywhere else the postfix loop simply broke at the newline, which is
+    // SILENT in the two positions that matter most:
+    //
+    //   let v = wrap(a)
+    //     .length()
+    //
+    // parses, and `v` is typed `[int]` — the `.length()` is discarded and the
+    // type lens then reports a mismatch on correct code. Measured with a
+    // positive control: `let v = wrap(a).length()` gives `int`, the two-line
+    // form gives `[int]`.
+    //
+    // In ARGUMENT position the same drop leaves the chain's tokens unconsumed
+    // and the file dies on the call's own `)`. That was 17 of wzzc-dev/moui
+    // 0.1.12's 86 unreadable files at 0.4.30 — the whole shape being
+    //
+    //   rows.push(
+    //     @button.button(...)
+    //     .disabled(disabled=!item.enabled)
+    //     .semantics_selected(...),
+    //   )
+    //
+    // Settled with the toolchain: `_verify/grammar_probe.ps1` case
+    // `chain_dot_next_line` is 0 errors from `moon check`, with
+    // `chain_dot_same_line_control` beside it already parsing.
+    //
+    // The separators are consumed SPECULATIVELY and rewound when the
+    // continuation does not follow -- the same trade `parse_stmt` documents,
+    // for the same reason: swallowing them unconditionally would fuse the next
+    // real statement into this one. Here it can also keep the REAL receiver,
+    // because the loop still holds it; the statement-level path can only offer
+    // an `EBigInt` placeholder there, which is a stated limit of that block.
+    if self.at(TNewline) {
+      let save = self.p
+      self.skip_seps()
+      if self.at(TDot) {
+        continue
+      }
+      self.p = save
     }
     break
   }

@@ -186,8 +186,31 @@ if false {
   }
 
   # --- M10: leading-dot chain branch removed --------------------------------
+  # NO LONGER KILLED, and the reason is that the WORK MOVED rather than that the
+  # guard stopped mattering. Declared SURVIVED with its argument (harness rule 5).
+  #
+  # Until 0.4.30 the statement-level `if self.at(TDot)` block in `parse_stmt` was
+  # the ONLY code that read a chain whose `.` starts the next line, and M10 was
+  # its guard. 0432 added the same handling to `parse_postfix_from`, which runs
+  # during the expression parse -- so the chain is consumed there and the
+  # statement-level block is never reached for that shape.
+  #
+  # MEASURED, not inferred: M10 was applied to parser.mbt by hand and these two
+  # parses re-run against the mutated file. Both were still clean.
+  #   fn g(x : Array[Int]) -> Int { x.length() }
+  #   fn f(a : Array[Int]) -> Int { g(a)\n  .to_string() }
+  #   fn f(a : Array[Int]) -> Int { let v = a\n  .length()\n  v }
+  # They are pinned as `0432: a leading-dot chain in STATEMENT position still
+  # parses` and `0432 control: a leading-dot chain after a plain receiver still
+  # parses`, so the claim below is checkable rather than remembered.
+  #
+  # WHAT IS NOT CLAIMED: that the statement-level block is dead in every case.
+  # It is unobservable on every shape tested; removing it is a separate change
+  # that would want its own corpus A/B, and it is kept meanwhile for the same
+  # reason M11's rewind is kept -- correct on its own terms rather than correct
+  # only because something else happens to handle the case.
   @{
-    Name = 'M10 leading-dot chain'
+    Name = 'M10 leading-dot chain (subsumed by the 0432 postfix block)'
     File = 'src\parser\parser.mbt'
     Find = @'
 if self.at(TDot) {
@@ -197,6 +220,18 @@ if self.at(TDot) {
 if false {
     let sp0 = sp
 '@
+    Expect = 'SURVIVED'
+    Prove = @'
+Measured by applying this mutation by hand and re-running the two parses that
+use the shape; both stayed clean. The 0432 change moved the work from
+`parse_stmt`'s leading-dot block into `parse_postfix_from`, which runs during the
+expression parse and therefore consumes the continuation first.
+
+This is a MOVED guard, not a rotten one, and the distinction matters: the code
+still exists and is still reachable in principle, so retiring the row would be
+wrong. Declared with its argument instead of quietly dropped or re-anchored to
+something that merely matches.
+'@.Replace("`r`n", "`n")
   }
 
   # --- M11: the rewind removed — EXPECTED TO SURVIVE -------------------------

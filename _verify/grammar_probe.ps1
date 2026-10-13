@@ -63,6 +63,23 @@ if (-not [string]::IsNullOrEmpty($Cases)) {
     # --- generic index type ----------------------------------------------
     'paren_scalar_return'          = "fn f() -> (Int) { 1 }`n"
     'generic_indexed_param'        = "fn g(a : FixedArray[Int]) -> Int { a[0] }`n"
+    # --- `if` as a VALUE ---------------------------------------------------
+    # moui writes this as a call argument, which is the shape that blocks.
+    'ifexpr_let_value'             = "fn f(c : Bool) -> Int {`n  let d = if c { 1 } else { 2 }`n  d`n}`n"
+    'ifexpr_call_arg_named'        = "fn g(variant? : Int = 0, other? : Int = 0) -> Int { variant + other }`nfn f(c : Bool) -> Int {`n  g(`n    variant=if c {`n      1`n    } else {`n      2`n    },`n    other=3,`n  )`n}`n"
+    'ifexpr_call_arg_positional'   = "fn g(a : Int, b : Int) -> Int { a + b }`nfn f(c : Bool) -> Int {`n  g(if c { 1 } else { 2 }, 3)`n}`n"
+    'ifexpr_elseif_chain'          = "fn f(c : Bool, d : Bool) -> Int {`n  let x = if c { 1 } else if d { 2 } else { 3 }`n  x`n}`n"
+    'ifexpr_ternary_like_nested'   = "fn f(c : Bool) -> Int {`n  let x = if c { if c { 1 } else { 2 } } else { 3 }`n  x`n}`n"
+    # --- a method chain whose `.` starts the NEXT line after the receiver ---
+    # moui writes `rows.push(\n  @button.button(...)\n  .disabled(...)\n  .other(...),\n)`.
+    #
+    # Typed on ARRAYS, not on a made-up `.disabled` method: an unknown method is
+    # a moon check ERROR, so the first draft of these three cases came back
+    # MOON-BAD for a reason that had nothing to do with the chain, and the
+    # verdict would have been about type checking rather than parsing.
+    'chain_dot_next_line'          = "fn wrap(x : Array[Int]) -> Array[Int] { x }`nfn take(n : Int) -> Int { n }`nfn f(a : Array[Int]) -> Int {`n  take(`n    wrap(a)`n      .length(),`n  )`n}`n"
+    'chain_dot_same_line_control'  = "fn wrap(x : Array[Int]) -> Array[Int] { x }`nfn take(n : Int) -> Int { n }`nfn f(a : Array[Int]) -> Int {`n  take(wrap(a).length())`n}`n"
+    'chain_dot_next_line_plain'    = "fn f(a : Array[Int]) -> Int {`n  let v = a`n    .length()`n  v`n}`n"
     # --- the canary. MUST be rejected; if it is not, the probe is a no-op ---
     'zz_canary_must_be_rejected'   = "fn canary( { let = 1 }`n"
   }
