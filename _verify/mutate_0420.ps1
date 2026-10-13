@@ -60,6 +60,10 @@ if self.at_name("fn") && !saw_with {
     Repl = @'
 if self.at_name("fn") && !saw_with && self.at_name("zzz_never") {
 '@
+    # Enforced, not asserted in prose. Measured by `_verify/named_claims.ps1`: it
+    # fires. One other test fires alongside it ("top level: a body-less impl does
+    # not swallow the rest of the file"), so the check is by NAME.
+    MustRed = '0420: a bodiless impl still stops at the next top-level fn'
   }
 
   # --- M3: the HARVEST stops skipping method holders -----------------------

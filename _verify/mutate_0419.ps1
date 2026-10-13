@@ -88,6 +88,14 @@ $mutations = @(
     Repl = @'
             is_fn = j + 1 < self.toks.length() && self.toks[j - 1] == TArrow
 '@
+    # The comment above says "the fixture that caught it is ...". Until now that
+    # sentence was prose. `MustRed` makes the harness check it: this test must be
+    # among the red ones, or the gate fails even though `KILLED` is true.
+    #
+    # Measured by `_verify/named_claims.ps1`, not assumed. It fires; one other test
+    # fires too ("0427: control -- an unparenthesised function type still parses"),
+    # which is why the assertion is by NAME rather than by count.
+    MustRed = '0419: a function-type return annotation parses'
   }
 
   # --- M4: every paren return treated as a function type --------------------

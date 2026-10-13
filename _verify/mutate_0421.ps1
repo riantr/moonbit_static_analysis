@@ -72,14 +72,40 @@ if self.at_name("guard") && self.at_name("zzz_never") {
   # while the else body is never analyzed. Only
   # "0421: a guard's else body is still analyzed" can catch this.
   #
-  # RE-ANCHORED, and this one is PURE SIGNATURE DRIFT: the guard is character-for-
-  # character the same code, except that `parse_block` grew a Boolean parameter and
-  # the call now passes `false` explicitly (src/parser/parser.mbt:2095). Nothing
-  # about the mutation changed, so the drift is mechanical and the anchor moves with
-  # it. Checked before the edit: this 4-line pattern occurs exactly once in the file,
-  # which matters because `at_name("else")` also appears at the if/else-chain reader
-  # and the method-holder reader -- a shorter pattern would have mutated the wrong
-  # one of the three.
+  # *** CORRECTED 2026-10-14: the sentence above was FALSE. ***
+  #
+  # Measured by `_verify/named_claims.ps1` against the real `moon test` failure
+  # output: that test EXISTS (src/pipeline/pipeline_0421_test.mbt:76) and it does
+  # NOT go red. This mutation is killed by six other tests:
+  #
+  #   0425: a guard whose else returns does not make the code after it dead
+  #   0425: a guard whose else raises does not make the code after it dead
+  #   0421: guard binds its condition's is-pattern (control)
+  #   0421: a guard with a braced else body parses and binds
+  #   0421: is continues an expression across a newline
+  #   0421: the corpus guard + newline + tuple shape is clean
+  #
+  # WHY THE NAMED TEST STAYS GREEN -- the part worth keeping. The mutation stops
+  # the parser CONSUMING `else`; it does not make the else body vanish. The `else`
+  # token is left at the cursor and is then read as an ordinary statement, so
+  # `{ zzz_else(decoder) }` is still walked and `zzz_else` is still reported. The
+  # test asserts exactly one UndefinedName and still sees one, so it passes. It
+  # pins M1 -- where the whole guard statement is misread -- and never pinned M2.
+  #
+  # CONSEQUENCE, stated rather than smoothed over: this mutation is killed by tests
+  # from a LATER release (0.4.25), so the kill is INCIDENTAL. Reword either of
+  # those tests, or break their incidental overlap with this mutation, and M2 would
+  # report SURVIVED while still looking pinned. That is precisely what
+  # `mutate_lib.ps1`'s `MustRed` rule makes visible -- see the 0.4.19 and 0.4.20
+  # entries, where the named test IS among the red and the claim holds.
+  #
+  # RE-ANCHORED earlier, and that part still stands: pure signature drift, the guard
+  # is character-for-character the same except that `parse_block` grew a Boolean
+  # parameter and the call now passes `false` (src/parser/parser.mbt:2095). Checked
+  # before the edit: this 4-line pattern occurs exactly once in the file, which
+  # matters because `at_name("else")` also appears at the if/else-chain reader and
+  # the method-holder reader -- a shorter pattern would have mutated the wrong one
+  # of the three.
   @{
     Name = 'M2 guard else dropped'
     File = 'src\parser\parser.mbt'
@@ -97,6 +123,19 @@ if self.at_name("guard") && self.at_name("zzz_never") {
     els = Some(eb)
   }
 '@
+    # NO `MustRed` HERE, DELIBERATELY, and the reason is the falsified claim above.
+    # Wiring the test the comment used to name makes this gate go RED:
+    #
+    #   MUST-RED MISS: "0421: a guard's else body is still analyzed" did not go red
+    #   GATE FAILED: 0421 mutation gate
+    #     - M2 guard else dropped (named test did not go red)
+    #
+    # That was run, and it was the negative control for the new harness rule -- a
+    # rule nobody has watched fail is not a rule. It is not kept, because the
+    # mutation genuinely IS killed: six tests catch it. Leaving a known-false
+    # assertion in place would keep the gate red for a claim nobody believes, and
+    # removing the claim is the honest move. The coverage gap is stated above
+    # instead of being enforced as something untrue.
   }
 
   # --- M3: a named argument's lambda is not a head ---------------------------

@@ -35,6 +35,9 @@
 #      are unobservable; those are declared, not quietly dropped. The harness
 #      cannot tell whether a survivor is legitimate -- only the comment can, and
 #      that is the point of requiring the field.
+#   6. `MustRed = '<test-name substring>'` SAYS WHICH TEST, not just that one went
+#      red. See the long note on it below; it is the newest rule and the only one
+#      the other five cannot imply.
 #
 # Usage from a release gate:
 #
@@ -51,6 +54,30 @@
 # with the result.
 
 $script:MutationGateFailures = @()
+
+# RULE 6, in its own place because it needs the failure format and that format was
+# captured, not assumed.
+#
+# `KILLED` says SOMETHING went red. Every rule above is compatible with the wrong
+# test going red -- which is exactly what 0.4.18's runner gestured at and never did:
+# its `[string[]]$ExpectRed` parameter carried the comment "test-name substrings
+# that MUST go red", was passed the literal 'expectRed' at all twelve call sites,
+# and was never read by the judgement. The capability was documented and absent.
+#
+# Measured with `_verify/named_claims.ps1` on the three gates that name a test:
+# two claims hold, and one is false. 0.4.21 M2 says only `0421: a guard's else body
+# is still analyzed` can catch it; that test exists, and it does NOT go red. The
+# mutation is killed by six other tests, three of them belonging to the LATER
+# 0.4.25 gate -- so the kill is incidental, and would have disappeared if those
+# tests were ever reworded.
+#
+# The red line `moon test` prints is one per failing test:
+#   [<pkg>] test <file>:<line> ("<test name>") failed: ...
+# which is why this reads the name out of the quotes.
+function Get-RedTestNames {
+  param([string]$Out)
+  return @([regex]::Matches($Out, '\("([^"]+)"\) failed:') | ForEach-Object { $_.Groups[1].Value })
+}
 
 function Invoke-MutationGate {
   param(
@@ -225,6 +252,27 @@ function Invoke-MutationGate {
     if ($sha0 -ne (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash) {
       $detail += ' RESTORE-MISMATCH'
       $script:MutationGateFailures += ($m.Name + ' (restore)')
+    }
+
+    # Rule 6. WHICH test went red, when the mutation says which one must.
+    #
+    # Only applied when the mutation actually wants to be KILLED: a declared
+    # SURVIVED or a COMPILE-ERR has no red test to match, and failing there would
+    # be checking something the caller did not ask for.
+    $proved = $null
+    if ($m.ContainsKey('MustRed') -and $want -eq 'KILLED') {
+      $names = Get-RedTestNames $out
+      $needle = [string]$m.MustRed
+      $proved = @($names | Where-Object { $_ -like "*$needle*" }).Count -gt 0
+      if (-not $proved) {
+        # Loud, and names what DID go red. "KILLED" next to a false claim reads as
+        # pinned, which is the whole failure this rule exists to prevent.
+        Write-Output ('      MUST-RED MISS: "' + $needle + '" did not go red; these did:')
+        foreach ($n in $names) { Write-Output ('        - ' + $n) }
+        $script:MutationGateFailures += ($m.Name + ' (named test did not go red)')
+      } else {
+        $detail += ' [named test confirmed]'
+      }
     }
 
     if ($outcome -ne $want) { $script:MutationGateFailures += ($m.Name + ' (wanted ' + $want + ')') }
