@@ -290,18 +290,22 @@ it was wrong. The truth is suppression.
 Two consequences, both real:
 
 1. **Expression-level** exclusions that land inside a function body — `match` (155), `if`
-   expression (45), anonymous fn (10), short lambda (2), `try` (1) — switch off the unused check
-   for the **whole function**. **Declaration-level** exclusions sit outside every function's extent
-   and do **not** trigger this: `test` (429), `struct` (36), `derive` (31), `enum` (14),
-   `const` (6). The source says so at `walk.mbt:349-351`.
+   expression (45), anonymous fn (10), short lambda (2), `try` (1) — **213 in total** — switch off
+   the unused check for the **whole function**. **Declaration-level** exclusions sit outside every
+   function's extent and do **not** trigger this: `test` (429), `struct` (36), `derive` (31),
+   `enum` (14), `const` (6) — **516** in total. The source says so at `walk.mbt:349-351`, and
+   `backlog.ps1` prints the two classes separately rather than leaving the split to be asserted.
 2. Therefore **part of `actionable = 0` is green because it is not looking** — the same shape as
    the test-body exclusion above, on an axis nobody had written down.
 
-**What was NOT measured**: how many functions in this project are switched off this way. The
-expression-level exclusions total 213 (155 + 45 + 10 + 2 + 1), which is an **upper bound**; the
-exact count needs each function's line range and the analyzer does not export it. An upper bound
-that is labelled is worth more than a precise number from a hand-rolled brace scanner that could be
-wrong.
+There are **two** suppression sites, not one: top-level functions at `walk.mbt:1010`, and **local
+functions** (`SLocalFunc`) at `walk.mbt:710`. The reason is in the comment at the latter — *"`sp`
+here is the local function's whole extent, so a `match` inside ITS body suppresses its frame audit
+the same way."*
+
+**What was NOT measured**: how many functions in this project are switched off this way. 213 is an
+**upper bound**; the exact count needs each function's line range and the analyzer does not export
+it. A labelled bound beats a precise number from a hand-rolled brace scanner that could be wrong.
 
 Tests: 442 js (12 new) / 514 wasm / 442 wasm-gc. Five mutations, four killed, one expected survivor,
 every restore byte-identical by SHA256.

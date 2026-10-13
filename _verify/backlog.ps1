@@ -54,10 +54,33 @@ Write-Output ('  ' + ($sum -replace '\s+', ' '))
 Write-Output ''
 Write-Output '  printed notices by message (descending)'
 $i = 0
+# Two classes, and the split is not cosmetic. `audit_suppressed` (walk.mbt:354)
+# is a LINE-RANGE overlap against a function's whole extent, so only exclusions
+# that can land INSIDE a function body suppress that function's frame audit
+# (UnusedLocal / UnusedParam / ParamChanged, gated at walk.mbt:707 and :1010).
+# A top-level `test` block or struct declaration is outside every function's
+# extent and suppresses nothing -- the source says so at walk.mbt:349-351.
+# An expression-level exclusion almost always sits inside a function, so it is the
+# class that costs coverage; a declaration-level one is not.
+$IN_FUNCTION = @(
+  'match expression',
+  'if expression',
+  'try expression',
+  'short lambda',
+  'anonymous function literal'
+)
+$sumIn = 0
+$sumOut = 0
 foreach ($e in ($groups.GetEnumerator() | Sort-Object -Property Value -Descending)) {
   $i++
-  Write-Output ("  {0,2}. {1,5}  {2}" -f $i, $e.Value, $e.Key)
+  $cls = 'decl'
+  foreach ($k in $IN_FUNCTION) { if ($e.Key -like "$k*") { $cls = 'expr' } }
+  if ($cls -eq 'expr') { $sumIn += $e.Value } else { $sumOut += $e.Value }
+  Write-Output ("  {0,2}. {1,5}  [{2}]  {3}" -f $i, $e.Value, $cls, $e.Key)
 }
+Write-Output ''
+Write-Output ("  expression-level (can suppress a frame audit) : {0}" -f $sumIn)
+Write-Output ("  declaration-level (cannot)                   : {0}" -f $sumOut)
 Write-Output ''
 Write-Output ("  printed {0} of {1} notices; {2} sit behind the per-file display cap." -f $lines.Count, $notices, $cappedTotal)
 Write-Output ''
@@ -66,6 +89,11 @@ Write-Output '  what lives inside it is invisible to all three lenses. Removing 
 Write-Output '  needs an AST node for that form, which is why these are features and not'
 Write-Output '  notices to be reworded.'
 Write-Output ''
-Write-Output '  The `test` row is different in kind: `test` shares `skip_decl_braced` with'
-Write-Output '  `impl` and `trait`, so every test body is excluded. That is the largest'
-Write-Output '  single group and it is the project excluding its own suite.'
+Write-Output '  The `test` row is the largest single group, and it is the project excluding'
+Write-Output '  its own suite. It is ALSO the clearest case of a row that does NOT suppress'
+Write-Output '  anything, because a top-level test block lies outside every function extent.'
+Write-Output ''
+Write-Output '  What is NOT computed here: how many functions each expression-level row'
+Write-Output '  actually switches off. That needs every fn line range, and the analyzer does'
+Write-Output '  not export it. The expression-level total above is an UPPER BOUND and is'
+Write-Output '  labelled as one.'
