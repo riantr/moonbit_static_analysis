@@ -105,6 +105,35 @@ function Run-Gate {
   if ($code -ne 0) { $script:stageOk = $false }
 }
 
+function Read-TextWhenFree {
+  # `Start-Process -Wait` waits for the PROCESS. It does not promise the
+  # redirected output file's handle is already closed, and on this machine it is
+  # not: the corpus stage died with
+  #
+  #   Exception calling "ReadAllText" with "1" argument(s): The process cannot
+  #   access the file '...\rel_eebe873b\o.txt' because it is being used by another
+  #   process.
+  #
+  # which reads as a corpus mismatch and is not one -- the comparison never ran.
+  # A gate that reports a lock as a verdict is worse than a gate that fails loudly,
+  # so this retries, and if it still cannot read the file it SAYS SO and names the
+  # file instead of surfacing a bare .NET exception that says nothing about which
+  # stage failed.
+  param([string]$Path, [int]$Tries = 20)
+  for ($i = 1; $i -le $Tries; $i++) {
+    try {
+      return [System.IO.File]::ReadAllText($Path)
+    } catch [System.IO.IOException] {
+      if ($i -eq $Tries) {
+        throw ("could not read the redirected output after " + $Tries +
+               " attempts: " + $Path + " -- the scanner's stdout was still locked." +
+               " This is a harness failure, not a corpus result.")
+      }
+      Start-Sleep -Milliseconds (100 * $i)
+    }
+  }
+}
+
 function Scan-Tree {
   param([string]$Wasm, [string]$Path)
   $dir = Join-Path $env:TEMP ('rel_' + [guid]::NewGuid().ToString('N').Substring(0,8))
@@ -113,7 +142,7 @@ function Scan-Tree {
   Start-Process -FilePath $moonrun `
     -ArgumentList @($Wasm, $Path, '--extern-iface-dir', $repos) `
     -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait | Out-Null
-  return [System.IO.File]::ReadAllText($out)
+  return Read-TextWhenFree -Path $out
 }
 
 function Get-Summary {
@@ -231,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -321,12 +350,43 @@ if ($SkipMutations) {
 #          14. Two `..<=` uses were already inside files that parsed, and each
 #          now emits the inclusive-end subset notice instead of counting as
 #          unreadable. Nothing else moved.
+#
+# The `is Type::Ctor` move, and the ranking it corrects:
+#   moui   parsed 576 -> 581, exactly the 5 files the re-rank named, and NOT one
+#          more. unreliable 475 -> 406, notices 3955 -> 3999: 69 findings that had
+#          been withheld past an unreadable boundary are now read.
+#   proton parsed UNCHANGED at 101, actionable UNCHANGED at 61, unreliable
+#          950 -> 927. proton has `is` patterns already inside files that parsed,
+#          so this removes 23 unreadable findings and adds no defect.
+#   The other four corpora are byte-identical to the previous pin. A change that
+#          moves one corpus and leaves five alone is the expected shape here, and
+#          is why the pin is per-corpus rather than one total.
+#
+# AND THE RANKING WAS WRONG AGAIN, in a new way. The backlog called this "`is`
+# pattern in EXPRESSION position". `parse_is` has existed at the right precedence
+# tier for several releases; what was missing is that `parse_is_pattern` never
+# consumed the `::` of a QUALIFIED head, because the lexer has no `TColonColon`
+# and `::` is two `TColon` tokens. The scanner's reason string therefore read
+# "unexpected token `:`" on a line whose only `:` is a path marker -- which is the
+# fourth time a reason string has been the wrong thing to rank by, and the fourth
+# time `blockers.ps1` (which joins each reason back to its blocking SOURCE LINE)
+# gave the opposite answer.
+#
+# The same re-rank turned up a gap with 48 sites and ONE blocked file.
+# `is @pkg.Type::Ctor` does not parse at all -- the head token is `@`, not a name.
+# Scanning each of moui's 16 such files ALONE (`_verify/pkg_head_impact.ps1`):
+# 15 come back parsed, because their site sits inside a skipped `test` block, and
+# exactly one -- `backend/macos/macos_services.mbt` -- is blocked. That file is
+# also one of the four that print no `PARTIAL` line, so cross-referencing it
+# against `blockers.ps1` gives OVERLAP 0 and the gap reads as free. ⇒ 判据: a
+# lower bound that agrees with "no problem" is not evidence of no problem. Pinned
+# as a KNOWN LIMIT in `parser_0436_test.mbt`, not fixed here.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=576 actionable=0 notices=3955 unreliable=475 withheld=51 total=4430'
+  'moui'            = 'files=608 parsed=581 actionable=0 notices=3999 unreliable=406 withheld=51 total=4405'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
   'async'           = 'files=419 parsed=226 actionable=14 notices=964 unreliable=2266 withheld=517 total=3244'
-  'proton'          = 'files=137 parsed=101 actionable=61 notices=1121 unreliable=950 withheld=325 total=2132'
+  'proton'          = 'files=137 parsed=101 actionable=61 notices=1121 unreliable=927 withheld=325 total=2109'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

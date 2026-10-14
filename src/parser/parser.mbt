@@ -2573,6 +2573,59 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
   }
   if self.peek_name() != "" {
     let _ = self.bump()
+    // A QUALIFIED constructor: `is St::Shutdown`. There is no `TColonColon` in
+    // the lexer -- `::` is two `TColon` tokens -- so the path tail has to be
+    // consumed HERE or the second `:` survives the pattern, walks back up
+    // through parse_cmp and lands in `parse_atom`'s catch-all.
+    //
+    // Settled with the toolchain, not inferred -- `_verify/probe_sweep_0434.ps1`
+    // case `is_expr_if_cond`, one form per package with a broken canary
+    // alongside: `if self is St::Shutdown { 1 } else { 2 }` is 0 errors from
+    // `moon check`. The unqualified `is Shutdown` beside it already parsed, which
+    // is what makes this specific to the QUALIFIED form.
+    //
+    // Consuming the tail BEFORE the payload test is also what makes
+    // `is St::Some(x)` bind `x` for free: the two `::` tokens are gone by the
+    // time the `TLParen` branch below runs, so a qualified constructor with a
+    // payload takes the same path as an unqualified one.
+    //
+    // `while`, not `if` -- and the honest reason is NOT the one first written
+    // here, which was wrong. It said "the head may be `@pkg.Type::Ctor`, which is
+    // three segments". That is false for this loop: such a head begins with `@`,
+    // so `peek_name()` is "" and the branch below never reaches this code at all.
+    // `@pkg.Type::Ctor` is a SEPARATE gap: 48 corpus SITES, 32 of them in
+    // wzzc-dev/moui across 16 files -- but only ONE file is actually blocked by
+    // it today (`backend/macos/macos_services.mbt`, measured file-by-file by
+    // `_verify/pkg_head_impact.ps1`), because the other 15 keep the site inside a
+    // skipped `test` block. Pinned as a KNOWN LIMIT in `parser_0436_test.mbt`.
+    //
+    // `while` and `if` actually differ on is a head with TWO or more `::`
+    // after the first segment, and there are ZERO such sites in any corpus here:
+    // `Select-String '\bis\s+(?!@)\w+(\w*::\w*){2,}'` over every `.mbt`/`.mbti`
+    // in `.repos` returns nothing. So the loop is unobservable on everything
+    // measured, which makes `while` defensiveness rather than a measured
+    // requirement -- and gate 0436's M3 declares exactly that rather than
+    // inventing a test to make a stylistic branch look load-bearing.
+    //
+    // It is kept anyway, and the reason is the cheap direction: narrowing to `if`
+    // would be a change justified by NO measurement, while the cost of keeping a
+    // loop that iterates once is one comparison. When a multi-`::` pattern head
+    // does show up, M3 turns red and the question gets answered by evidence.
+    //
+    // NOT shared with the other two qualified-path readers
+    // (`parse_fn_signature`, `parse_postfix_from`) on purpose: those need the
+    // NAME and fold it into what they return, while a pattern's text is
+    // discarded and only its bindings survive. A shared helper would have to
+    // return the tail for the other two and ignore it here, which is a worse
+    // shape than three short loops that do visibly different things.
+    while self.at(TColon) && self.at_next(TColon) {
+      let _ = self.bump()
+      let _ = self.bump()
+      if self.peek_name() == "" {
+        break
+      }
+      let _ = self.bump()
+    }
   } else {
     return []
   }

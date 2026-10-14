@@ -1595,13 +1595,26 @@ returns to 0.)
   therefore read and NOT analysed, and says so — otherwise `a..<=b` and `a..<b`
   are the same tree, and iterating n times versus n+1 times is not a difference
   to drop without saying it out loud.
-- The six largest classes behind that distribution were then fixed, in order — the
+- The seven largest classes behind that distribution were then fixed, in order — the
   `?` optional-argument shorthand `f(x?)`, a lambda used as a parameter's default
   value, a method chain continuing on the next line, a `match` whose subject starts
-  on the following line, an **arrow lambda in expression position**, and the
-  **inclusive range**.
-  **486/608 (79.9%) → 576/608 (94.7%)**, `unreliable` 1696 → 475, `withheld` 238 → 51,
+  on the following line, an **arrow lambda in expression position**, the
+  **inclusive range**, and the **qualified `is Type::Ctor` constructor**.
+  **486/608 (79.9%) → 581/608 (95.6%)**, `unreliable` 1696 → 406, `withheld` 238 → 51,
   and **no corpus's `actionable` rose** as a result of reading more files.
+- **`is Type::Ctor`: the ranking was wrong again, and in a new way.** The backlog
+  called it "`is` patterns in *expression position*", which reads as "`parse_is` is
+  never reached". It is reached, and has been at the right precedence tier for
+  several releases. What is missing is *inside* `parse_is_pattern`: the lexer has
+  **no** `TColonColon`, `::` is **two** `TColon` tokens, and the pattern reader
+  bumped the constructor name and returned without consuming them. The surviving
+  `:` walked back through `parse_cmp` into `parse_atom`'s catch-all — which is why
+  the scanner's reason string reads ``unexpected token `:` `` on a line whose only
+  `:` is a path marker. **That is the fourth time a reason string has been the wrong
+  thing to rank by**, and the fourth time `blockers.ps1` — which joins each reason
+  back to its blocking *source line* — gave the opposite answer. moui gained
+  exactly the 5 files the re-rank named, no more; proton's `parsed` and `actionable`
+  did not move, and its `unreliable` went 950 → 927.
 - **This round overturned my own ranking twice, which is worth recording.** The first
   four classes were ranked by the scanner's *reason wording* (`unexpected token ':'`,
   `expected ')'`), and I read those rows as `is` patterns and function types. Joining
@@ -1644,19 +1657,34 @@ returns to 0.)
   readable, which *exposed* more instances of this false positive. **Reading more
   files raising the false-positive count before lowering it is the normal shape of
   this metric.**
-- **32** remain on moui. After twelve candidate constructs were put to `moon check`
-  one at a time (`_verify/probe_sweep_0434.ps1`, each in its own package with a
-  deliberately broken canary alongside), six **confirmed** gaps are left: `is`
-  patterns in expression position (4 files), `value[:]` empty slice bounds (4),
-  `(expr : Type)` ascription in parens (3), `async fn(…)` in argument position (3),
-  the `fn f() -> T = "js" "sym"` FFI declaration form (2), and
-  `fn f() -> T noraise { … }` (4 proton false positives, not coverage).
-  Those six account for roughly 20 files, so there is still a distance to zero and
-  **the rest are probably not any of these** — the next round should re-run
-  `blockers.ps1` and re-rank rather than work down this list. The `name?=value`
-  call-argument form is **still undecided**: both `?=` and `~=` came back MOON-BAD
-  in the sweep, so until there is a type-correct probe source it can be called
-  neither a gap nor a non-gap.
+- **27** remain on moui. After `is Type::Ctor` landed, `blockers.ps1` was re-run and
+  the order came out: `(expr : Type)` ascription in parens **6 files** (first),
+  `value[:]` empty slice bounds **4**, `async fn(…)` in argument position **3**, the
+  `fn f() -> T = "js" "sym"` FFI declaration form **2**, plus 5 singletons. The entry
+  I had ranked first last round (`is`, then recorded as 4 files) was really 5, and
+  the one I had third (`(expr : Type)`, recorded as 3) was really 6 — **the list had
+  been ranked by the old reading all along.**
+- `name?=value` is **settled: not a gap.** Both `?=` and `~=` come back MOON-BAD, so
+  the toolchain itself rejects that call-argument form. Adding support for a spelling
+  `moon check` will not accept would be the wrong move; it is recorded as a non-gap.
+- **The same round produced a gap with 48 sites that blocks exactly ONE file, and
+  that is the part worth keeping.** `is @pkg.Type::Ctor` — a package-qualified
+  constructor — does not parse at all: the pattern head begins with `@`, `peek_name()`
+  only accepts `TName`, so the reader returns having consumed nothing. 48 sites across
+  the corpora, 32 of them in moui across 16 files. Scanning each of those 16 files
+  **alone** (`_verify/pkg_head_impact.ps1`) gives `parsed=1/1` for fifteen of them and
+  `parsed=0/1` for exactly one, `backend/macos/macos_services.mbt` — the other fifteen
+  keep the site inside a `test` block, which is skipped whole. **Sites are not
+  files**; ranking this at 32 would have put a one-file fix ahead of a six-file one.
+  More worth recording: it is **invisible to the ranking tool too**. Cross-referencing
+  "files containing an `@pkg` is-head" against `blockers.ps1`'s blocked list gives
+  OVERLAP **0**, so the gap looks free — because `macos_services.mbt` is one of the
+  four blocked files that print **no `PARTIAL` line at all**, having zero findings
+  before its boundary. `blockers.ps1` says in its own header that its list is a
+  lower bound, and this landed precisely outside it. ⇒ **A lower bound that agrees
+  with "no problem" is not evidence of no problem**; cross-referencing two lists only
+  tells you about the part both of them can see. Pinned as a KNOWN LIMIT with a
+  control that drops the `@sqlite3.` prefix, in `parser_0436_test.mbt`.
 - `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
   ranks *subset-exclusion notices*. They answer different questions and the
   conflation was the reason this bullet sat unfixed for fourteen releases: only
