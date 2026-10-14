@@ -3871,6 +3871,47 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
           self.expect(TRParen, "')'")
           { span: sp, kind: @ast.ETuple(elems), }
         } else {
+          // `(e : T)` -- an ASCRIPTION inside the parentheses. The grouping
+          // branch parsed `e` and then demanded `)`, which is where every one of
+          // the six blocked files died: `expected ')'` on a line whose `:` is a
+          // type marker, not a typo.
+          //
+          // ONLY THE GROUPING FORM IS HANDLED, and the two shapes it is easy to
+          // mistake for it are both REJECTED by the toolchain. Settled one form
+          // per package with a broken canary beside each
+          // (`_verify/probe_sweep_0434.ps1`, canary firing):
+          //   `('0' : Int)`   MOON-OK   <- the only legal form, the one here
+          //   `let y = 1 : Int`   MOON-BAD  (no parentheses: rejected)
+          //   `(1 : Int, 2)`      MOON-BAD  (ascription on a tuple element)
+          // So there is deliberately NO branch for the bare form and NO branch
+          // in the tuple branch above. Both would be unmeasured code guarding
+          // syntax that does not exist.
+          //
+          // The type is read and DISCARDED, the same trade as a `raise` effect
+          // and a parameter default: the AST has no ascription node, and adding
+          // one would ripple through walk / types / infer / interp for a check
+          // none of them performs. Consuming it is what makes the file readable.
+          //
+          // NO SUBSET-EXCLUSION NOTICE, and that is a settled decision rather
+          // than an omission. `..<=` gets one for the same-looking reason -- a
+          // value is read and dropped -- because inclusive end genuinely CHANGES
+          // what the code does, n iterations instead of n+1. An ascription does
+          // not. Settled in the same probe run:
+          //
+          //   `(s : Int)` where `s` is a String   MOON-BAD
+          //
+          // so `e : T` is an ASSERTION of a type the compiler has already
+          // checked, not a coercion: it is a no-op at runtime. Discarding the
+          // type therefore loses no behaviour, and announcing a subset
+          // exclusion would be reporting a loss that does not happen.
+          //
+          // (The SELF column reads SELF-FAIL on all four probe rows because that
+          // run used the wasm built before this edit. The MOON column is what
+          // the run settled, and MOON does not depend on this change.)
+          if self.at(TColon) {
+            let _ = self.bump()
+            let _ = self.type_annotation()
+          }
           self.expect(TRParen, "')'")
           e
         }

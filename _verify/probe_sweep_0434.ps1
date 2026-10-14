@@ -84,6 +84,26 @@ $PROBE_CASES = [ordered]@{
   # `(code - ('0' : Int)).to_uint64()`
   'ascription_in_parens'       = "fn f(code : Int) -> UInt64 {`n  (code - ('0' : Int)).to_uint64()`n}`n"
 
+  # ---- 9b. the SAME ascription with NO parentheses -------------------------
+  # If this is also MOON-OK then scoping the fix to the parenthesised form
+  # leaves a live gap on the table, and the question is how many corpus sites
+  # carry it. Decided by measurement, not by which branch is easier to write.
+  'ascription_bare_let'        = "fn f() -> Int {`n  let y = 1 : Int`n  y`n}`n"
+
+  # ---- 9c. ascription on a TUPLE element, still parenthesised --------------
+  # `(a : T, b)` -- the grouping branch and the tuple branch are different code,
+  # and covering one does not cover the other.
+  'ascription_tuple_elem'      = "fn f() -> Int {`n  let p = (1 : Int, 2)`n  p.0 + p.1`n}`n"
+
+  # ---- 9d. is an ascription a COERCION or an ASSERTION? -------------------
+  # Decides whether the type may be discarded without a subset-exclusion
+  # notice. If `s : Int` on a String is accepted, the ascription CHANGES the
+  # value and dropping its type is a silent loss of meaning; if it is rejected,
+  # the ascription only states what the compiler already checked, and there is
+  # nothing to announce. Guessing this wrong is how a notice either becomes
+  # noise or goes missing.
+  'ascription_is_coercion'     = "fn f() -> Int {`n  let s = `"a`"`n  let n = (s : Int)`n  n`n}`n"
+
   # ---- 10. anonymous `fn` as a CALL ARGUMENT value ----------------------
   # moui backend/windows/windows_backend.mbt:155
   # `launch_async=Some(async fn(request, frame_interval_ms) {`

@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -381,8 +381,45 @@ if ($SkipMutations) {
 # against `blockers.ps1` gives OVERLAP 0 and the gap reads as free. ⇒ 判据: a
 # lower bound that agrees with "no problem" is not evidence of no problem. Pinned
 # as a KNOWN LIMIT in `parser_0436_test.mbt`, not fixed here.
+#
+# The `(expr : Type)` move, and the first UNDER-delivery of the round:
+#   moui   parsed 581 -> 583. The blocker list named SIX files behind this
+#          construct and only TWO came free. The other four fail EARLIER, on
+#          something else, and were never reachable by fixing the ascription --
+#          which is what "the blocker list ranks by FIRST error" means, and it
+#          is now the third increment in a row where the list's count and the
+#          delivered count disagree (the `is` one delivered +5 against +5, the
+#          `..<=` one +5 against +4, this one +2 against +6).
+#
+#          So a row count in `blockers.ps1` is NOT a forecast, and ranking by it
+#          is a heuristic rather than a measurement. Delivered so far: `is` +5,
+#          `..<=` +5, ascription +2 -- which does not preserve the order the
+#          lists gave.
+#          unreliable 406 -> 335 and withheld 51 -> 34: 71 findings that were
+#          withheld past an unreadable boundary are now read. notices rose
+#          3999 -> 4050, which is the expected direction -- a file that parses
+#          produces subset-exclusion notices a file that stops early cannot.
+#   The other FIVE corpora are byte-identical to the previous pin, proton
+#   included. A change that moves one corpus and leaves five alone is the shape
+#   to expect from a construct no other corpus uses.
+#
+# The scope of that fix is narrower than the six lines suggested, and the
+# toolchain settled it rather than convenience. Four forms, one package each,
+# canary beside every one:
+#   `('0' : Int)`                  MOON-OK  <- the only legal form, implemented
+#   `let y = 1 : Int`              MOON-BAD (no parentheses: rejected)
+#   `(1 : Int, 2)`                 MOON-BAD (ascription on a tuple element)
+#   `(s : Int)` where `s : String` MOON-BAD (so: an ASSERTION, not a coercion)
+#
+# The last one is why there is NO subset-exclusion notice, and it is the mirror
+# of gate 0435's `..<=`. That one discards a value too and DOES get a notice,
+# because an inclusive end changes n iterations into n+1. An ascription changes
+# nothing at runtime -- the compiler has already checked the type -- so
+# announcing a subset exclusion there would report a loss that does not happen.
+# Gate 0437's M3 invents exactly that notice and is killed by a CONTROL that
+# compares the two spellings' report counts, not by a positive test.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=581 actionable=0 notices=3999 unreliable=406 withheld=51 total=4405'
+  'moui'            = 'files=608 parsed=583 actionable=0 notices=4050 unreliable=335 withheld=34 total=4385'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
   'async'           = 'files=419 parsed=226 actionable=14 notices=964 unreliable=2266 withheld=517 total=3244'

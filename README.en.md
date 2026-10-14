@@ -1595,12 +1595,13 @@ returns to 0.)
   therefore read and NOT analysed, and says so — otherwise `a..<=b` and `a..<b`
   are the same tree, and iterating n times versus n+1 times is not a difference
   to drop without saying it out loud.
-- The seven largest classes behind that distribution were then fixed, in order — the
+- The eight largest classes behind that distribution were then fixed, in order — the
   `?` optional-argument shorthand `f(x?)`, a lambda used as a parameter's default
   value, a method chain continuing on the next line, a `match` whose subject starts
   on the following line, an **arrow lambda in expression position**, the
-  **inclusive range**, and the **qualified `is Type::Ctor` constructor**.
-  **486/608 (79.9%) → 581/608 (95.6%)**, `unreliable` 1696 → 406, `withheld` 238 → 51,
+  **inclusive range**, the **qualified `is Type::Ctor` constructor**, and
+  **`(expr : Type)` ascription inside parentheses**.
+  **486/608 (79.9%) → 583/608 (95.9%)**, `unreliable` 1696 → 335, `withheld` 238 → 34,
   and **no corpus's `actionable` rose** as a result of reading more files.
 - **`is Type::Ctor`: the ranking was wrong again, and in a new way.** The backlog
   called it "`is` patterns in *expression position*", which reads as "`parse_is` is
@@ -1685,6 +1686,37 @@ returns to 0.)
   with "no problem" is not evidence of no problem**; cross-referencing two lists only
   tells you about the part both of them can see. Pinned as a KNOWN LIMIT with a
   control that drops the `@sqlite3.` prefix, in `parser_0436_test.mbt`.
+- **`(expr : Type)` ascription in parentheses.** The grouping branch of `parse_atom`'s
+  `TLParen` arm parsed the inner expression and then demanded `)`, which is where all
+  six blocked files died — `expected ')'`, on a line whose `:` is a type marker and not
+  a typo. The scope was settled by the toolchain rather than by convenience: four
+  forms, one package each, canary beside every one.
+
+  | form | moon | |
+  |---|---|---|
+  | `('0' : Int)` | **MOON-OK** | the only legal form, the one implemented |
+  | `let y = 1 : Int` | MOON-BAD | no parentheses: rejected |
+  | `(1 : Int, 2)` | MOON-BAD | ascription on a tuple element: rejected |
+  | `(s : Int)` where `s : String` | MOON-BAD | so: an **assertion**, not a coercion |
+
+  The last row is why there is **no subset-exclusion notice**, and it is the mirror of
+  0.4.30's `..<=`. That one discards a value too and does get a notice, because an
+  inclusive end turns n iterations into n+1. An ascription changes nothing at runtime
+  — the compiler has already checked the type — so announcing a subset exclusion there
+  would report a loss that does not happen. Gate 0437's M3 invents exactly that
+  notice, and it is killed by a **control** (comparing the two spellings' report
+  counts) rather than by a positive test.
+- **The first UNDER-delivery of the round, worth its own line.** Ascription held
+  **6 files** in the blocked list and delivered **+2**. The other four fail **earlier**,
+  on something else, so fixing the ascription was never going to reach them — which is
+  what "`blockers.ps1` ranks by *first* error" means. Three increments running, three
+  times the list count and the delivered count disagree (`is` +5 against +5, `..<=`
+  +5 against +4, ascription +2 against +6). ⇒ **A row count in `blockers.ps1` is not a
+  forecast**; ranking by it is a heuristic, not a measurement. Delivered: `is` +5,
+  `..<=` +5, ascription +2 — which does *not* preserve the order the lists gave.
+  moui's `unreliable` 406 → 335, `withheld` 51 → 34, `notices` 3999 → 4050 (the right
+  direction: a file that parses produces subset-exclusion notices, one that stops early
+  cannot). The other five corpora are **byte-identical**. **25** blocked files remain.
 - `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
   ranks *subset-exclusion notices*. They answer different questions and the
   conflation was the reason this bullet sat unfixed for fourteen releases: only
