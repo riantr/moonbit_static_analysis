@@ -231,7 +231,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -313,11 +313,19 @@ if ($SkipMutations) {
 #          known per-file `enum_ctors` limitation, both recorded rather than
 #          re-hidden: a lookahead wide enough to eat a `=>` sixty lines away is
 #          not a reading worth keeping.
+#
+#   moui   parsed 571 -> 576, and +5 rather than the +4 the blocker list
+#          predicted: `..<=` also unblocks one file whose first error was
+#          something else entirely and was only reachable afterwards.
+#   async  notices 962 -> 964, unreliable 2269 -> 2266, actionable UNCHANGED at
+#          14. Two `..<=` uses were already inside files that parsed, and each
+#          now emits the inclusive-end subset notice instead of counting as
+#          unreadable. Nothing else moved.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=571 actionable=0 notices=3929 unreliable=506 withheld=54 total=4435'
+  'moui'            = 'files=608 parsed=576 actionable=0 notices=3955 unreliable=475 withheld=51 total=4430'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=226 actionable=14 notices=962 unreliable=2269 withheld=517 total=3245'
+  'async'           = 'files=419 parsed=226 actionable=14 notices=964 unreliable=2266 withheld=517 total=3244'
   'proton'          = 'files=137 parsed=101 actionable=61 notices=1121 unreliable=950 withheld=325 total=2132'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

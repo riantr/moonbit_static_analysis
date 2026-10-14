@@ -92,10 +92,21 @@ pub(all) enum Tok {
   /// NOT in the expression-terminator list above: `~` never ends a line, since
   /// it is written tight against the name it qualifies.
   TTilde
-  /// `..<` — the exclusive range operator, one token. A bare `..` stays two
-  /// TDots, and `..=` is not modelled: it was not measured in the blocked
-  /// corpus this token was added for (`1..<chars.length()`).
+  /// `..<` — the EXCLUSIVE range operator, one token. A bare `..` stays two
+  /// TDots, which is what the toolchain wants: `moon check` REJECTS `a..b` with
+  /// "Missing `=` after `..` in range expression" and names both real forms in
+  /// its hint.
   TRange
+  /// `..<=` — the INCLUSIVE range operator, four characters. Settled the same
+  /// way, one form per package beside a broken canary: `0..<=n` is 0 errors and
+  /// `0..=<n` is rejected, so this is the spelling and not `..=`.
+  ///
+  /// A separate token rather than another `TRange` because the parser turns it
+  /// into the same `ERange` node but says out loud that the INCLUSIVE end is
+  /// not analysed. Reusing `TRange` would make the two indistinguishable in the
+  /// tree, and the difference between iterating `n` and `n+1` times is not
+  /// something to lose silently.
+  TRangeIncl
   TLParen
   TRParen
   TLBrace
@@ -1104,9 +1115,37 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
   } else {
     None
   }
+  // FOUR-CHAR OPERATOR FIRST, and `..<=` has to be tested before `..<`.
+  //
+  // The comment that stood here until 0.4.30 said "`..=` is not modelled: it was
+  // not measured in the blocked corpus this token was added for". That was true
+  // when written and is now stale in a way that cost four files. Settled against
+  // the toolchain, one form per package with a broken canary beside each:
+  //
+  //   `0..n`    REJECTED -- "Missing `=` after `..` in range expression. Hint:
+  //              use `a..<=b` for inclusive range or `a..<b` for exclusive"
+  //   `0..<n`   accepted -- exclusive, already one TRange token
+  //   `0..<=n`  accepted -- INCLUSIVE. This is the form, not `..=`.
+  //   `0..=<n`  REJECTED
+  //
+  // So the inclusive operator is four characters, and `..<` is a PREFIX of it.
+  // Testing the three-char rule first would lex `0..<=n` as `0..<` followed by
+  // `=n`, which is the bare-`..`-then-`=` shape the toolchain explicitly
+  // rejects -- so the order here is load-bearing, not tidiness.
+  if c == '.' &&
+    next == Some('.') &&
+    self.pos + 3 < self.chars.length() &&
+    self.chars[self.pos + 2] == '<' &&
+    self.chars[self.pos + 3] == '=' {
+    self.pos += 4
+    self.col += 4
+    self.emit(TRangeIncl, l, c0, 4)
+    return TRangeIncl
+  }
   // three-char operators: `..<` is ONE token (an exclusive range). Without
   // this, `.` and `<` lex separately and `1..<chars.length()` dies in the
-  // parser's postfix chain. A bare `..` stays two TDots; `..=` is not modelled.
+  // parser's postfix chain. A bare `..` stays two TDots, which is correct:
+  // the toolchain REJECTS a bare `..` and says so in its own hint.
   if c == '.' &&
     next == Some('.') &&
     self.pos + 2 < self.chars.length() &&

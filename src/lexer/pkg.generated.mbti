@@ -48,6 +48,7 @@ pub(all) enum Tok {
   TQuestion
   TTilde
   TRange
+  TRangeIncl
   TLParen
   TRParen
   TLBrace

@@ -1068,6 +1068,7 @@ fn tok_desc(t : @lexer.Tok) -> String {
     TQuestion => "`?`"
     TTilde => "`~`"
     TRange => "`..`"
+    TRangeIncl => "`..<=`"
     TLParen => "`(`"
     TRParen => "`)`"
     TLBrace => "`{`"
@@ -2681,17 +2682,33 @@ fn Parser::parse_cmp(self : Parser) -> @ast.Expr {
 ///|
 fn Parser::parse_add(self : Parser) -> @ast.Expr {
   let mut l = self.parse_mul()
-  while self.at(TPlus) || self.at(TMinus) || self.at(TRange) {
-    if self.at(TRange) {
-      // `a..<b` — the exclusive range, one token since the lexer learned it.
-      // The right side is read at UNARY precedence on purpose: ranges occur
-      // almost only in `for i in a..<b` heads, where both this reading and
-      // the strict reading parse and walk identically, and `1..<n*2` reading
-      // as `(1..<n)*2` costs nothing — the walk visits every operand either
-      // way. A whole precedence tier for one operator would be the dearer
-      // mistake.
+  while self.at(TPlus) ||
+        self.at(TMinus) ||
+        self.at(TRange) ||
+        self.at(TRangeIncl) {
+    if self.at(TRange) || self.at(TRangeIncl) {
+      // `a..<b` exclusive, `a..<=b` INCLUSIVE. The right side is read at UNARY
+      // precedence on purpose: ranges occur almost only in `for i in a..<b`
+      // heads, where both this reading and the strict reading parse and walk
+      // identically, and `1..<n*2` reading as `(1..<n)*2` costs nothing — the
+      // walk visits every operand either way. A whole precedence tier for one
+      // operator would be the dearer mistake.
+      let incl = self.at(TRangeIncl)
+      let sp = self.span()
       let _ = self.bump()
       let r = self.parse_unary()
+      // No lens models inclusivity: `walk`, `types::infer` and `interp` all
+      // treat `ERange(a, b)` the same, reading both operands and nothing else.
+      // So the inclusive end is READ and NOT ANALYSED, and says so. Folding
+      // `a..<=b` into `ERange` without a notice would make it indistinguishable
+      // from `a..<b` in the tree -- and iterating n times versus n+1 times is
+      // not a difference to lose silently.
+      if incl {
+        self.note_skip(
+          "inclusive range end is outside the analyzed subset; it was read but the bound was not analysed",
+          sp,
+        )
+      }
       l = { span: l.span, kind: @ast.ERange(l, r), }
     } else {
       let op = if self.at(TPlus) { @ast.OpAdd } else { @ast.OpSub }

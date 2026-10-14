@@ -1578,11 +1578,29 @@ returns to 0.)
   122 unreadable files were one anonymous row. `tok_desc` now names the token
   (exhaustively, all 46 `Tok` variants) and the same run became a 13-row
   distribution with every other SUMMARY number byte-identical.
-- The five largest classes behind that distribution were then fixed, in order — the
+- **`a..<=b`, the INCLUSIVE range.** The lexer carried a comment saying "`..=` is
+  not modelled: it was not measured in the blocked corpus this token was added
+  for". True when written; stale by the time anyone read it again, and it cost 4
+  files of moui. Measured against the toolchain, one form per package with a
+  broken canary beside each: `0..n` is **REJECTED** — "Missing `=` after `..` in
+  range expression. Hint: use `a..<=b` for inclusive range or `a..<b` for
+  exclusive" — `0..<=n` is accepted and `0..=<n` is rejected. So the inclusive
+  form is `..<=`, and a bare `..` staying two TDots is **correct** rather than an
+  omission. The four-character test has to run **before** the three-character one:
+  the other order lexes `0..<=n` as `..<` followed by `=n`, which is exactly the
+  bare-`..`-then-`=` shape the toolchain rejects.
+  It is a **separate token** rather than another `TRange`: `walk`, `types::infer`
+  and `interp` all treat `ERange(a, b)` the same, reading both operands and
+  nothing else, so **none of them models inclusivity**. The inclusive end is
+  therefore read and NOT analysed, and says so — otherwise `a..<=b` and `a..<b`
+  are the same tree, and iterating n times versus n+1 times is not a difference
+  to drop without saying it out loud.
+- The six largest classes behind that distribution were then fixed, in order — the
   `?` optional-argument shorthand `f(x?)`, a lambda used as a parameter's default
   value, a method chain continuing on the next line, a `match` whose subject starts
-  on the following line, and an **arrow lambda in expression position**.
-  **486/608 (79.9%) → 571/608 (93.9%)**, `unreliable` 1696 → 506, `withheld` 238 → 54,
+  on the following line, an **arrow lambda in expression position**, and the
+  **inclusive range**.
+  **486/608 (79.9%) → 576/608 (94.7%)**, `unreliable` 1696 → 475, `withheld` 238 → 51,
   and **no corpus's `actionable` rose** as a result of reading more files.
 - **This round overturned my own ranking twice, which is worth recording.** The first
   four classes were ranked by the scanner's *reason wording* (`unexpected token ':'`,
@@ -1626,15 +1644,19 @@ returns to 0.)
   readable, which *exposed* more instances of this false positive. **Reading more
   files raising the false-positive count before lowering it is the normal shape of
   this metric.**
-- **37** remain on moui. After twelve candidate constructs were put to `moon check`
+- **32** remain on moui. After twelve candidate constructs were put to `moon check`
   one at a time (`_verify/probe_sweep_0434.ps1`, each in its own package with a
-  deliberately broken canary alongside), seven **confirmed** gaps are left: `is`
-  patterns in expression position (4 files), `1..<=n` inclusive ranges (4),
-  `value[:]` empty slice bounds (4), `(expr : Type)` ascription in parens (3),
-  `async fn(…)` in argument position (3), and the `fn f() -> T = "js" "sym"` FFI
-  declaration form (2). The `name?=value` call-argument form is **still undecided**:
-  both `?=` and `~=` came back MOON-BAD in the sweep, so until there is a
-  type-correct probe source it can be called neither a gap nor a non-gap.
+  deliberately broken canary alongside), six **confirmed** gaps are left: `is`
+  patterns in expression position (4 files), `value[:]` empty slice bounds (4),
+  `(expr : Type)` ascription in parens (3), `async fn(…)` in argument position (3),
+  the `fn f() -> T = "js" "sym"` FFI declaration form (2), and
+  `fn f() -> T noraise { … }` (4 proton false positives, not coverage).
+  Those six account for roughly 20 files, so there is still a distance to zero and
+  **the rest are probably not any of these** — the next round should re-run
+  `blockers.ps1` and re-rank rather than work down this list. The `name?=value`
+  call-argument form is **still undecided**: both `?=` and `~=` came back MOON-BAD
+  in the sweep, so until there is a type-correct probe source it can be called
+  neither a gap nor a non-gap.
 - `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
   ranks *subset-exclusion notices*. They answer different questions and the
   conflation was the reason this bullet sat unfixed for fourteen releases: only

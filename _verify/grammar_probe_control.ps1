@@ -30,25 +30,28 @@
 #   ctrl_too_permissive -- `match` with its subject and its `{` on separate
 #     lines. `moon check` rejects it ("missing `{` at the end of this line"),
 #     this frontend reads it. Measured MOON-BAD / SELF-OK.
-#   ctrl_real_gap -- `1..<=n`, the inclusive range. `moon check` accepts it;
-#     this frontend reports ``unexpected token `=` ``, because the lexer has a
-#     token for `..` and `..<` but none for `..<=`. Measured MOON-OK /
+#   ctrl_real_gap -- `value[:]`, an EMPTY slice. `moon check` accepts it; this
+#     frontend reports ``unexpected token `:` ``, because the slice parser
+#     expects two bounds and the colon is what it dies on. Measured MOON-OK /
 #     SELF-FAIL, and 4 files of wzzc-dev/moui 0.1.12 sit on it
-#     (`views/form/date_picker_control.mbt:411`,
-#     `core/text_layout.mbt:411`, `render/common/advanced_execution.mbt:320`,
-#     `views/data/data_grid_viewport_state.mbt:95`).
+#     (`core/semantics.mbt:71`, `core/declaration.mbt:102`,
+#     `backend/macos/macos_native_ime.mbt:148`, and one more at
+#     `core/unicode/grapheme_cluster.mbt:248`).
 #
-# ctrl_real_gap HAS ALREADY BEEN MOVED ONCE, which is why the rule is written
-# here rather than left tacit. It was originally a lambda with an explicit
-# parameter type, `let g = (_node : Flow) => children(_node)`. The 0.4.30
-# lambda fix made that parse, and on the very next release run this control
-# went RED -- correctly, and with the right symptom ("announced `no gaps` while
-# reporting a real gap"). That is the control doing its job: a row that stops
-# being a gap stops proving anything, and the release gate is what notices.
+# ctrl_real_gap HAS NOW BEEN MOVED TWICE, which is why the rule is written here
+# rather than left tacit:
 #
-# **When this control fails because its row has become SELF-OK, move the row to
-# a still-live gap. Do not delete the control, and do not weaken the
-# assertion.**
+#   1. It was a lambda with an explicit parameter type,
+#      `let g = (_node : Flow) => children(_node)`. The 0.4.30 lambda fix made
+#      that parse and the control went RED on the next release run.
+#   2. It was `1..<=n`, the inclusive range. The 0.4.30 inclusive-range fix made
+#      that parse, and the control went RED again on this one -- with the right
+#      symptom, "announced `no gaps` while reporting a real gap".
+#
+# Both times it did its job: a row that stops being a gap stops proving anything,
+# and the release gate is what notices. **When this control fails because its row
+# has become SELF-OK, move the row to a still-live gap. Do not delete the control,
+# and do not weaken the assertion.**
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify\grammar_probe_control.ps1
 $ErrorActionPreference = 'Stop'
@@ -60,7 +63,7 @@ $cases = Join-Path $env:TEMP ('grammar_control_' + [guid]::NewGuid().ToString('N
 $body = @'
 $PROBE_CASES = [ordered]@{
   'ctrl_too_permissive' = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  match`n    sub(c)`n  {`n    1 => 2`n    _ => 3`n  }`n}"
-  'ctrl_real_gap'       = "fn f(n : Int) -> Unit {`n  for day in 1..<=n {`n    ignore(day)`n  }`n}`n"
+  'ctrl_real_gap'       = "fn f(value : String) -> Int {`n  let s = value[:]`n  s.length()`n}`n"
   'zz_canary_must_be_rejected' = "fn canary( { let = 1 }`n"
 }
 '@
