@@ -231,7 +231,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -290,23 +290,35 @@ if ($SkipMutations) {
 #
 # The 0.4.30 move, and it is worth stating what each change did rather than only
 # where it landed:
-#   moui   parsed 534 -> 547. The `match` subject may now start on the next
-#          line, which was the largest single blocker left.
-#   async  actionable 18 -> 13, proton 55 -> 54. The `defer` arm. VERIFIED by
-#          A/B rather than assumed: the same two corpora were rescanned with the
-#          arm switched off (gate 0433's M3), and the diff was 7 rows of
-#          `undefined name 'defer'` removed -- 5 in async, 2 in proton, one of
-#          them proton `command/command.mbt:145` -- and 0 new findings. The two
-#          differing SUMMARY lines are the pins themselves, not findings.
-#          proton went 55 -> 56 -> 54 across the two changes: the `match` fix
-#          made one more file readable and therefore exposed one more of these,
-#          which the `defer` arm then removed along with the rest.
+#   moui   parsed 534 -> 547 -> 571. The `match` subject on the next line, then
+#          an arrow lambda in EXPRESSION position -- which turned out to be the
+#          largest single cause all along, and which I had ranked wrong for
+#          several increments because the scanner's reason strings for it are
+#          "unexpected token `:`" and "expected `)`".
+#   async  actionable 13 -> 14, proton 54 -> 61. NOT new defects: these are
+#          findings that an over-permissive lookahead in `at_lambda_head` was
+#          HIDING. Bounding that scan made it precise, and eight latent false
+#          positives became visible:
+#            4x `undefined name 'noraise'`   proton, `fn f() -> T noraise {`
+#            3x `no visible binding for 'InvalidSetting'`  proton, a suberror
+#                variant used in a DIFFERENT file from its declaration
+#            1x `undefined name 'Waiting'`    async, same cross-file shape
+#          Verified by A/B, not assumed: the same two corpora were rescanned
+#          with the guard removed (gate 0434's M4) and with the bounds removed
+#          (M3). Both hardenings present -> the 8 rows appear. Guard removed
+#          alone -> they do NOT, because the bounds stop the scan first. Bounds
+#          removed alone -> they do NOT, because the guard stops the scan first.
+#          Both removed -> the original failure, `PARSED 0/1`.
+#          So `noraise` is a real missing production and the other four are the
+#          known per-file `enum_ctors` limitation, both recorded rather than
+#          re-hidden: a lookahead wide enough to eat a `=>` sixty lines away is
+#          not a reading worth keeping.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=547 actionable=0 notices=3680 unreliable=805 withheld=62 total=4485'
+  'moui'            = 'files=608 parsed=571 actionable=0 notices=3929 unreliable=506 withheld=54 total=4435'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=218 actionable=13 notices=931 unreliable=2490 withheld=684 total=3434'
-  'proton'          = 'files=137 parsed=97 actionable=54 notices=946 unreliable=1053 withheld=451 total=2053'
+  'async'           = 'files=419 parsed=226 actionable=14 notices=962 unreliable=2269 withheld=517 total=3245'
+  'proton'          = 'files=137 parsed=101 actionable=61 notices=1121 unreliable=950 withheld=325 total=2132'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

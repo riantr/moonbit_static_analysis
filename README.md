@@ -1347,38 +1347,51 @@ labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，action
   消息**给读不动的文件分类的，于是 wzzc-dev/moui 0.1.12 的 122 个读不动的文件
   里有 110 个挤在同一个匿名行里。现在 `tok_desc` 会报出 token 本身（46 个 `Tok`
   变体全覆盖），同一次扫描变成 13 行分布，其余 SUMMARY 数字逐字节不变。
-- 分布出来后按顺序修了最大的四类：调用处的 `?` 可选参数简写 `f(x?)`、把 lambda
-  当作参数默认值、跨行的方法链、以及 `match` 的被匹配表达式起自下一行。
-  moui **486/608（79.9%）→ 547/608（89.9%）**，`unreliable` 1696 → 805，
-  `withheld` 238 → 62，六个语料的 **`actionable` 没有一个因为读入更多文件而上升**。
+- 分布出来后按顺序修了最大的五类：调用处的 `?` 可选参数简写 `f(x?)`、把 lambda
+  当作参数默认值、跨行的方法链、`match` 的被匹配表达式起自下一行，以及
+  **`(a, b) => …` 这样的箭头 lambda 出现在表达式位置**。
+  moui **486/608（79.9%）→ 571/608（93.9%）**，`unreliable` 1696 → 506，
+  `withheld` 238 → 54，六个语料的 **`actionable` 没有一个因为读入更多文件而上升**。
+- **这一轮把我自己的排名推翻了两次，值得单独记一笔。** 前四个类别是按
+  scanner 的**原因措辞**排的（`unexpected token ':'`、`expected ')'`），我把它
+  读成了 `is` 模式和函数类型；实际把这些行一一对回源码之后，最大的一类根本不是
+  它们，而是**箭头 lambda**：`(a, b) => …`、`(_n : T) => …` 在 `let` 右侧和
+  **位置实参**上都读不出来。
+  原因是三处 lambda 处理各管一段：`at_arrow_lambda`（只认裸 `x =>`）在位置实参
+  分支上，`at_lambda_head`（认全部写法）只在 `name =` 之后，而 `parse_expr`
+  一处都没有。于是 `g(a => a)` 能读、`g((a) => a)` 和 `let h = (a, b) => a + b`
+  不能。**一个"原因字符串"不是原因。**
+- 同一个 lambda 分支还带出两件事，都不是它自己造成的：
+  1. **comprehension 自己的 `=>` 和 lambda 的拼写一模一样。** 三处调用点
+     （iterable、guard、body）因此改走 `parse_or`；第一版忘了 iterable，
+     五个 comprehension 测试当场变红。
+  2. **`at_lambda_head` 里有一个能跨文件的盲扫。** 它把 `::` 当成参数类型标注
+     的冒号，然后一路找下一个 `=`——而 `=>` 就是 `TAssign` + `TGt`。于是
+     `T::{}` 后面只要隔几十行有任何一个 `=>`，整段就被当成一个巨大的 lambda
+     头吃掉。**这个 bug 是自检发现的，不是测试**：`src/core/core.mbt` 和
+     `src/lexer/lexer.mbt` 从 71/71 掉到 69/71，而 551 个测试全绿——因为没有任何
+     一个测试让 `::` 表达式和 `=>` 同处一个文件。回归测试因此**成对**写。
+- 修好盲扫之后，async 的 `actionable` 13 → 14、proton 54 → 61。**这 8 条不是
+  新缺陷，是那个盲扫一直在藏的**：4 条 `undefined name 'noraise'`
+  （proton 的 `fn f() -> T noraise {`）、3 条 `no visible binding for
+  'InvalidSetting'` 和 1 条 `'Waiting'`（后 4 条是 suberror 变体跨文件，已列为
+  长期项）。A/B 实测：护栏单独去掉**不会**出现（边界先停），边界单独去掉
+  **也不会**出现（护栏先停），两个一起去掉才复现原来的 `PARSED 0/1`。
+  **一个宽到能吞掉六十行外 `=>` 的前瞻不值得留着换这份安静。**
 - `defer` 另修了一类**假阳性**而不是读不动的文件：没有这个 arm 时 `defer` 被当成
   普通标识符，报 `undefined name 'defer'`——这是**关于分析器的**错报，代码
-  `moon check` 零错误。async 0.22.4 **18 → 13**、proton 0.3.4 **55 → 54**。
-  这个数字是 A/B 实测的，不是推的：把 arm 关掉（门禁 0433 的 M3）重扫同样两个
-  语料，差集是 **7 条 `undefined name 'defer'` 全部消失**（async 5 条、proton 2 条，
-  其中一条正是 `command/command.mbt:145`），且**没有新增任何一条**发现。
-- proton 中途经过 55 → 56 → 54：`match` 那一步让一个本来读不动的文件变得可读，
-  于是暴露出**更多**这类假阳性，随后被 `defer` 的 arm 一并消掉。**读入更多文件
-  先让假阳性上升再下降，是这个指标正常的形状。**
-- moui 剩下的 61 个，**按 scanner 自己的措辞**排序（不是按我猜的语法类）：
-
-  | 条数 | 原因 | 挡在后面的源码（`blockers.ps1` 抽的样本） |
-  |---|---|---|
-  | 13 | `unexpected token ':` | `(_point) => on_drop(paths)` 的箭头、表达式位置的 `is` 模式 `self.state is GpuRenderWorkerState::Shutdown` |
-  | 12 | `expected ')'` | 显式参数类型的 lambda `(_node : Flow) => children`、`async (A, B) -> Unit` 函数类型 |
-  | 8 | `unexpected token '='` | `(ListLayout) -> Array[...]` 返回类型标注、`1..<=n` 区间 |
-  | 7 | `expected type name` | `budget? : T = T::default()` |
-  | 6 | `expected a struct literal field here` | |
-  | 4 | `unexpected token ','` | |
-  | 3 | `unexpected token ')'` | |
-  | 3 | `expected '{'` | |
-  | 2 | `invalid assignment target` | |
-  | 1 ×3 | `unexpected end of line` / `expected function name` / 未闭合块字符串 | |
-
-  这份表是 `_verify/blockers.ps1` 的输出，**不是估的**——上一版这里写的是按语法类
-  估的约数，两条都留在文档里的这段时间里它一直是错的。61 个里只有 55 个能定位到
-  具体源码行：另外 6 个在边界之前没有任何发现，所以 scanner 不打 `PARTIAL` 行，
-  它们在这张表里缺席。**这是一份下界，不是全集。**
+  `moon check` 零错误。async **18 → 13**、proton **55 → 54**，同样是 A/B 实测
+  （关掉 arm 重扫，7 条 `undefined name 'defer'` 全部消失，0 条新增）。
+- proton 中途经过 55 → 56 → 54 → 61：`match` 那一步让一个本来读不动的文件变得
+  可读，于是暴露出**更多**这类假阳性。**读入更多文件先让假阳性上升再下降，
+  是这个指标正常的形状。**
+- moui 剩下的 **37** 个。本轮十二个候选构造逐个对 `moon check` 问过之后
+  （`_verify/probe_sweep_0434.ps1`，每个一个独立 package，旁边放一个故意写坏的
+  canary），还剩七个**确认的缺口**：`is` 模式出现在表达式位置（4 个文件）、
+  `1..<=n` 闭区间（4）、`value[:]` 空下标（4）、`(expr : Type)` 括号内类型标注（3）、
+  实参位置上的 `async fn(…)`（3）、`fn f() -> T = "js" "sym"` FFI 声明式（2）。
+  另有 `name?=value` 实参写法**尚未判定**：探针里 `?=` 和 `~=` 都返回 MOON-BAD，
+  所以在拿到类型正确的探针源码之前，既不能说它是缺口，也不能说它不是。
 - `_verify/blockers.ps1` 排的是**读不动的文件**，`_verify/backlog.ps1` 排的是
   **子集排除 notice**。两者回答的不是同一个问题，混为一谈正是这条在十四个版本
   里一直没法处理的原因：只有前者会推动 `parsed=` 这个数字。

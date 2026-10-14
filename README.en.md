@@ -1578,46 +1578,63 @@ returns to 0.)
   122 unreadable files were one anonymous row. `tok_desc` now names the token
   (exhaustively, all 46 `Tok` variants) and the same run became a 13-row
   distribution with every other SUMMARY number byte-identical.
-- The four largest classes behind that distribution were then fixed, in order — the
+- The five largest classes behind that distribution were then fixed, in order — the
   `?` optional-argument shorthand `f(x?)`, a lambda used as a parameter's default
-  value, a method chain continuing on the next line, and a `match` whose subject
-  starts on the following line. **486/608 (79.9%) → 547/608 (89.9%)**, `unreliable`
-  1696 → 805, `withheld` 238 → 62, and **no corpus's `actionable` rose** as a result
-  of reading more files.
+  value, a method chain continuing on the next line, a `match` whose subject starts
+  on the following line, and an **arrow lambda in expression position**.
+  **486/608 (79.9%) → 571/608 (93.9%)**, `unreliable` 1696 → 506, `withheld` 238 → 54,
+  and **no corpus's `actionable` rose** as a result of reading more files.
+- **This round overturned my own ranking twice, which is worth recording.** The first
+  four classes were ranked by the scanner's *reason wording* (`unexpected token ':'`,
+  `expected ')'`), and I read those rows as `is` patterns and function types. Joining
+  them back to the actual source lines showed the largest class was neither: it was
+  **arrow lambdas** — `(a, b) => …`, `(_n : T) => …` — unreadable in a `let`
+  right-hand side and as a **positional** call argument.
+  The cause is that three sites each handled part of it: `at_arrow_lambda` (bare
+  `x =>` only) on the positional path, `at_lambda_head` (every spelling) only after a
+  named `name =`, and nothing at all in `parse_expr`. So `g(a => a)` parsed and
+  `g((a) => a)` and `let h = (a, b) => a + b` did not. **A reason string is not a
+  reason.**
+- The same branch surfaced two things that were not its own doing:
+  1. **A comprehension's `=>` is spelled exactly like a lambda's.** Three call sites
+     (the iterable, the guard, the body) now use `parse_or`; the first version missed
+     the iterable and five comprehension tests went red immediately.
+  2. **`at_lambda_head` had a lookahead that could cross the file.** It treats `::`
+     as the colon of a parameter's type annotation, then scans to the next `=` — and
+     `=>` is `TAssign` + `TGt`. So a `T::{}` followed, tens of lines later, by any
+     `=>` was read as one enormous lambda head. **The self-scan found this, not the
+     tests**: `src/core/core.mbt` and `src/lexer/lexer.mbt` dropped from 71/71 to
+     69/71 while all 551 tests stayed green, because no test had a `::` expression
+     and a `=>` in the same file. The regression test is therefore written as a PAIR.
+- With the lookahead bounded, async's `actionable` goes 13 → 14 and proton's 54 → 61.
+  **These 8 are not new defects — they are what the blind scan was hiding**: 4x
+  `undefined name 'noraise'` (proton's `fn f() -> T noraise {`), 3x
+  `no visible binding for 'InvalidSetting'` and 1x `'Waiting'` (the latter four are
+  the standing cross-file suberror limitation). A/B measured: removing the
+  doubled-colon guard alone does NOT bring them back (the bounds stop the scan
+  first), removing the bounds alone does NOT either (the guard stops it first), and
+  removing both reproduces the original `PARSED 0/1`. **A lookahead wide enough to
+  eat a `=>` sixty lines away is not a reading worth keeping to buy that quiet.**
 - `defer` fixed a class of FALSE POSITIVE rather than an unreadable file. Without the
   arm, `defer` was read as an ordinary identifier and reported
   `undefined name 'defer'` — a claim about the *analyzer*, on code `moon check`
-  accepts with zero errors. async 0.22.4 **18 → 13**, proton 0.3.4 **55 → 54**. That
-  number was measured by A/B, not inferred: the same two corpora were rescanned with
-  the arm switched off (gate 0433's M3), and the difference was **7 rows of
-  `undefined name 'defer'` disappearing** — 5 in async, 2 in proton, one of them
-  `command/command.mbt:145` — with **zero** new findings introduced.
-- proton went 55 → 56 → 54 across the two changes. The `match` fix made one more
-  file readable, which *exposed* one more instance of this false positive, and the
-  `defer` arm then removed it along with the rest. **Reading more files raising the
-  false-positive count before lowering it is the normal shape of this metric.**
-- The remaining 61 on moui, ranked **by the scanner's own wording** rather than by
-  syntax class I guessed at:
-
-  | count | reason | the source line behind it (sampled by `blockers.ps1`) |
-  |---|---|---|
-  | 13 | `unexpected token ':'` | arrow lambdas `(_point) => on_drop(paths)`; `is` patterns in expression position, `self.state is GpuRenderWorkerState::Shutdown` |
-  | 12 | `expected ')'` | a lambda with an explicit parameter type, `(_node : Flow) => children`; `async (A, B) -> Unit` function types |
-  | 8 | `unexpected token '='` | `(ListLayout) -> Array[...]` return-type annotations; `1..<=n` ranges |
-  | 7 | `expected type name` | `budget? : T = T::default()` |
-  | 6 | `expected a struct literal field here` | |
-  | 4 | `unexpected token ','` | |
-  | 3 | `unexpected token ')'` | |
-  | 3 | `expected '{'` | |
-  | 2 | `invalid assignment target` | |
-  | 1 ×3 | `unexpected end of line` / `expected function name` / unterminated block string | |
-
-  This table is `_verify/blockers.ps1`'s output, not an estimate. The previous
-  revision of this bullet carried per-syntax-class estimates, and they were wrong
-  for as long as they sat in the document. Only 55 of the 61 resolve to a specific
-  source line: the other 6 have no findings before their boundary, so the scanner
-  prints no `PARTIAL` row and they are absent from the table. **That is a lower
-  bound on the blocked set, not the whole of it.**
+  accepts with zero errors. async 0.22.4 **18 → 13**, proton 0.3.4 **55 → 54**, also
+  A/B measured (arm switched off, same two corpora rescanned: **7 rows of
+  `undefined name 'defer'` disappeared**, 5 in async and 2 in proton including
+  `command/command.mbt:145`, with **zero** new findings introduced).
+- proton went 55 → 56 → 54 → 61 across the changes. The `match` fix made one more file
+  readable, which *exposed* more instances of this false positive. **Reading more
+  files raising the false-positive count before lowering it is the normal shape of
+  this metric.**
+- **37** remain on moui. After twelve candidate constructs were put to `moon check`
+  one at a time (`_verify/probe_sweep_0434.ps1`, each in its own package with a
+  deliberately broken canary alongside), seven **confirmed** gaps are left: `is`
+  patterns in expression position (4 files), `1..<=n` inclusive ranges (4),
+  `value[:]` empty slice bounds (4), `(expr : Type)` ascription in parens (3),
+  `async fn(…)` in argument position (3), and the `fn f() -> T = "js" "sym"` FFI
+  declaration form (2). The `name?=value` call-argument form is **still undecided**:
+  both `?=` and `~=` came back MOON-BAD in the sweep, so until there is a
+  type-correct probe source it can be called neither a gap nor a non-gap.
 - `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
   ranks *subset-exclusion notices*. They answer different questions and the
   conflation was the reason this bullet sat unfixed for fourteen releases: only

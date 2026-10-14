@@ -30,12 +30,25 @@
 #   ctrl_too_permissive -- `match` with its subject and its `{` on separate
 #     lines. `moon check` rejects it ("missing `{` at the end of this line"),
 #     this frontend reads it. Measured MOON-BAD / SELF-OK.
-#   ctrl_real_gap -- `let g = (_node : Flow) => children(_node)`, a lambda with
-#     an EXPLICIT PARAM TYPE. `moon check` accepts it; this frontend reports
-#     `expected ')'`. Measured MOON-OK / SELF-FAIL. This is not a synthetic
-#     defect: it is the real next blocker on wzzc-dev/moui 0.1.12, so if it is
-#     ever fixed this control must be moved to a still-live gap rather than
-#     deleted -- a control that goes stale would stop proving anything.
+#   ctrl_real_gap -- `1..<=n`, the inclusive range. `moon check` accepts it;
+#     this frontend reports ``unexpected token `=` ``, because the lexer has a
+#     token for `..` and `..<` but none for `..<=`. Measured MOON-OK /
+#     SELF-FAIL, and 4 files of wzzc-dev/moui 0.1.12 sit on it
+#     (`views/form/date_picker_control.mbt:411`,
+#     `core/text_layout.mbt:411`, `render/common/advanced_execution.mbt:320`,
+#     `views/data/data_grid_viewport_state.mbt:95`).
+#
+# ctrl_real_gap HAS ALREADY BEEN MOVED ONCE, which is why the rule is written
+# here rather than left tacit. It was originally a lambda with an explicit
+# parameter type, `let g = (_node : Flow) => children(_node)`. The 0.4.30
+# lambda fix made that parse, and on the very next release run this control
+# went RED -- correctly, and with the right symptom ("announced `no gaps` while
+# reporting a real gap"). That is the control doing its job: a row that stops
+# being a gap stops proving anything, and the release gate is what notices.
+#
+# **When this control fails because its row has become SELF-OK, move the row to
+# a still-live gap. Do not delete the control, and do not weaken the
+# assertion.**
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify\grammar_probe_control.ps1
 $ErrorActionPreference = 'Stop'
@@ -47,7 +60,7 @@ $cases = Join-Path $env:TEMP ('grammar_control_' + [guid]::NewGuid().ToString('N
 $body = @'
 $PROBE_CASES = [ordered]@{
   'ctrl_too_permissive' = "fn sub(x : Int) -> Int { x }`nfn caller(c : Int) -> Int {`n  match`n    sub(c)`n  {`n    1 => 2`n    _ => 3`n  }`n}"
-  'ctrl_real_gap'       = "enum Flow { Leaf(Int) }`nfn children(n : Flow) -> Int { 0 }`nfn f() -> Int {`n  let g = (_node : Flow) => children(_node)`n  g(Leaf(1))`n}`n"
+  'ctrl_real_gap'       = "fn f(n : Int) -> Unit {`n  for day in 1..<=n {`n    ignore(day)`n  }`n}`n"
   'zz_canary_must_be_rejected' = "fn canary( { let = 1 }`n"
 }
 '@

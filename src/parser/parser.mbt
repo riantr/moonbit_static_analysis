@@ -2274,8 +2274,92 @@ fn Parser::parse_guard(self : Parser) -> @ast.Stmt {
 }
 
 ///|
+
+///|
+/// An expression. The entry for every position an expression can appear, and
+/// therefore the place a lambda has to be recognised: the three sites that
+/// already knew about lambdas were `parse_call_args`' POSITIONAL branch (bare
+/// `x => body` only), `parse_call_args`' NAMED branch, and a parameter's
+/// default. Everything else fell through to `parse_or`, which read the
+/// parameter list as an expression and then stopped dead on `=>`.
+///
+/// The parenthesised and typed spellings were the expensive part, and the
+/// parser's own comment recorded the cause without noticing it was a gap: "The
+/// arrow check below only runs on the positional path". `at_arrow_lambda`
+/// matches `name =>`; `at_lambda_head` matches `(a, b) =>`, `(_n : T) =>` and
+/// the bare spelling, and was reachable only AFTER a `name =`. So
+///
+///   g((a, b) => a + b)          -- positional, parenthesised -> dead on `)`
+///   let h = (a, b) => a + b     -- `let` right-hand side   -> dead on `=`
+///
+/// both failed, while `g(a => a)` and `children=_node => [child]` worked. All
+/// four spellings are legal MoonBit (`moon check` 0 errors, with a broken canary
+/// beside them, in `_verify/probe_sweep_0434.ps1`).
+///
+/// The body is SKIPPED, never parsed, for the reason every other lambda site
+/// gives: the parameters are not bound, so parsing the body would resolve names
+/// that only the lambda's own parameters can bind, and report each as undefined
+/// -- trading one blocker for a stream of false positives. The lambda yields an
+/// opaque `EBigInt` plus a notice, and the parse stays in step so everything
+/// after it is analysed.
 fn Parser::parse_expr(self : Parser) -> @ast.Expr {
+  if self.at_lambda_head() {
+    let lsp = self.span()
+    self.skip_lambda_head()
+    if self.at(TLBrace) {
+      self.skip_braces()
+    } else {
+      self.skip_lambda_body()
+    }
+    self.note_skip(
+      "short lambda is outside the analyzed subset; it was read but not analysed",
+      lsp,
+    )
+    return { span: lsp, kind: @ast.EBigInt, }
+  }
   self.parse_or()
+}
+
+///|
+/// Skip a short lambda's NON-BRACE body up to, but not consuming, whatever ends
+/// it in the position the lambda was found.
+///
+/// `skip_to_arg_boundary` cannot be reused here: it stops only at a depth-0 `,`
+/// or `)`, so in a `let` right-hand side it would run on to the next unmatched
+/// `)` anywhere in the file and swallow the rest of the function. This stops
+/// also at a newline, the enclosing `}`, and `;` -- the other three ways an
+/// expression ends in this grammar.
+///
+/// NO TRUNCATION FOUND, and that is a measurement rather than an assumption.
+/// A depth-0 newline looks like the obvious hole -- it stops a body that
+/// continues onto the next line -- and three drafts of a KNOWN LIMIT test were
+/// written and deleted for it before the shapes were actually run. All of them
+/// measure `PARSED 1/1`: the lexer already suppresses a newline that follows an
+/// infix operator (`=> a +\n  b`), bracket depth covers a call or chain that
+/// opens on one line and closes on the next, and a body that starts on the line
+/// after the arrow has no newline between the arrow and the body to stop at.
+/// If a shape ever does truncate, it belongs here as a test rather than as a
+/// comment.
+fn Parser::skip_lambda_body(self : Parser) -> Unit {
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if depth == 0 &&
+      (
+        self.at(TComma) ||
+        self.at(TRParen) ||
+        self.at(TNewline) ||
+        self.at(TRBrace) ||
+        self.at(TSemi)
+      ) {
+      return
+    }
+    if self.at(TLParen) || self.at(TLBrace) || self.at(TLBracket) {
+      depth += 1
+    } else if self.at(TRParen) || self.at(TRBrace) || self.at(TRBracket) {
+      depth -= 1
+    }
+    let _ = self.bump()
+  }
 }
 
 ///|
@@ -3066,13 +3150,58 @@ fn Parser::at_lambda_head(self : Parser) -> Bool {
   }
   // One bare parameter, optionally modified and optionally typed: `x?`, `x~`,
   // `x : T`, `x? : T`. The `:` arm scans to the `=` at depth 0.
+  //
+  // TWO BOUNDS ON THAT SCAN, both added in 0.4.30 because without them the arm
+  // matched things that are not lambdas AT ALL. It was only reachable from a
+  // named argument's value and a parameter's default, where a `:` really is an
+  // annotation; putting it in `parse_expr` put it in front of every expression,
+  // and two shapes it had never been asked about turned up:
+  //
+  //   * `::` IS a path separator and starts with the same `:` token, so
+  //     `T::{}` -- a struct literal, a very ordinary expression -- read as "the
+  //     bare parameter `T`, annotated". Rejected below by refusing to treat a
+  //     doubled colon as an annotation.
+  //   * The scan then ran to the NEXT `=` in the file with no stopping
+  //     condition, and `=>` is `TAssign` + `TGt`. So `T::{}` followed anywhere
+  //     later by a `match` arm was read as one enormous lambda head: the parser
+  //     ate the struct literal, the function that followed, and the match, and
+  //     the file died reporting `expected type name`. Measured on this repo's own
+  //     `src/core/core.mbt`, where `T::{}` in `IfaceSymTab::empty()` sat 60 lines
+  //     before `match self.values.get(name) { Some(v) => v ... }`.
+  //
+  //     The self-scan is what found it, and it is worth recording WHY it could:
+  //     the suite was green, because no test had a `::` expression and a `=>`
+  //     in the same file. A regression test that only exercises the fix in
+  //     isolation would have missed it again, so the test pairs them.
+  //
+  // So the scan stops at the first `=` AND refuses to leave the construct: a
+  // doubled colon, or a depth-0 `,` `)` or newline, ends the search.
   let mut j = self.p + 1
   while j < self.toks.length() &&
         (self.toks[j] == TQuestion || self.toks[j] == TTilde) {
     j += 1
   }
-  if j < self.toks.length() && self.toks[j] == TColon {
+  let annotated = j < self.toks.length() &&
+    self.toks[j] == TColon &&
+    !(j + 1 < self.toks.length() && self.toks[j + 1] == TColon)
+  if annotated {
+    let mut d = 0
     while j < self.toks.length() && self.toks[j] != TAssign {
+      if d == 0 &&
+        (
+          self.toks[j] == TComma ||
+          self.toks[j] == TRParen ||
+          self.toks[j] == TNewline ||
+          self.toks[j] == TRBrace ||
+          self.toks[j] == TEOF
+        ) {
+        return false
+      }
+      if self.toks[j] == TLParen || self.toks[j] == TLBracket {
+        d += 1
+      } else if self.toks[j] == TRParen || self.toks[j] == TRBracket {
+        d -= 1
+      }
       j += 1
     }
   }
@@ -3356,7 +3485,14 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
   } else {
     self.err("expected 'in' in comprehension", self.span())
   }
-  sources.push(self.parse_expr())
+  // `parse_or`, NOT `parse_expr`: a comprehension's own `=>` is spelled exactly
+  // like a lambda's -- `=` then `>` -- so with the lambda branch in `parse_expr`
+  // the SOURCE is read as a bare-parameter lambda (`for x in a => ...`) and the
+  // comprehension dies on its own arrow. The three call sites in this function
+  // that can be followed by that `=>` -- the source here, the guard below, and
+  // the body further down -- are the only places in the grammar where a `=>` is
+  // not a lambda's.
+  sources.push(self.parse_or())
   // The guard belongs HERE — between the iterable and `=>`.
   //
   // This was written backwards first, on the strength of a probe whose
@@ -3373,7 +3509,8 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
   // 5 files, so reading it the other way left all of them unparsed.
   if self.at_name("if") {
     let _ = self.bump()
-    ignore(self.parse_expr())
+    // `parse_or` again: the guard is also followed by the comprehension's `=>`.
+    ignore(self.parse_or())
   }
   // NO comma continuation: a comprehension has exactly ONE generator.
   // Both candidate spellings are rejected by the toolchain —
@@ -3389,7 +3526,6 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
       self.span(),
     )
     let _ = self.bump()
-    ignore(self.parse_expr())
   }
   if self.at(TAssign) && self.peek2() == TGt {
     // `=>` is lexed as `=` then `>`
@@ -3422,7 +3558,8 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
         }
       }
     } else {
-      body = self.parse_expr()
+      // `parse_or`, for the reason the generator's source gives above.
+      body = self.parse_or()
     }
     seen = true
   } else {
