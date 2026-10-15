@@ -103,20 +103,29 @@ function Classify([string]$t) {
   if ($t -match '^\w+\??=') { return 'labeled argument continuation' }
   # These two were ONE bucket until 0450 measured them apart, and keeping them
   # together was wrong in the worst direction: it implied the `{` files fail
-  # because of the brace, and they do not.
+  # because of the brace.
   #
-  #   - `foo.mbt` cut@288 on `{` is a parenthesised struct literal with a type
-  #     ascription. Settled ACCEPT by `_verify/settle_0450_shapes.ps1`, AND this
-  #     parser READS it -- nine fixture variants, all clean, pinned in
-  #     `src/pipeline/pipeline_0450_diagnosis_test.mbt`. A shape that parses
-  #     cannot be what stops a file containing it, so those three files are
-  #     caused by EARLIER CONTEXT that is not isolated yet. Label says so rather
-  #     than naming a cause nobody has measured.
-  #   - `foo.mbt` cut@55 on `fn(_ctx) {` IS a real, reproduced defect: a lambda in
-  #     an `if` branch. Same settle, ACCEPT by `moon check`, and this parser says
-  #     `expected function name` at a `fn` that is neither unexpected nor unnamed.
-  if ($t -eq '{') { return 'bare `{` cut line: shape parses, cause UNISOLATED' }
-  if ($t -match '^fn\(.*\)\s*\{$') { return 'lambda in a branch: NOT parsed' }
+  #   - `foo.mbt` cut@N on `{` -- THE CAUSE IS THE QUOTED KEYS, settled in
+  #     `_verify/settle_0452_quoted_key_map.ps1`. It is a MAP literal,
+  #     `{"schemaVersion": .. }`, and the toolchain ACCEPTs it against a Map while
+  #     REFUSING the unquoted spelling there -- so the two are different language
+  #     forms, not a typo for one another.
+  #
+  #     This label previously read "shape parses, cause UNISOLATED", on the
+  #     evidence of nine fixtures that all read cleanly. Those fixtures used
+  #     `key: value`. The SAME increment's settle had already shown a quoted key
+  #     REJECT(4014) against a struct -- that was the warning, and every fixture
+  #     after it quietly changed the subject. Nine green results about a struct
+  #     literal said nothing about a map literal.
+  #
+  #     Measured, for the record:
+  #       bare tail `{"a": 1}`   -> `unexpected token ':'`
+  #       let value `{"a": e}`   -> `expected a struct literal field here`
+  #       control `{ a: e }`     -> clean
+  #   - `foo.mbt` cut@N on `fn(_ctx) {` is a lambda in an `if` BRANCH, fixed in
+  #     0450.
+  if ($t -eq '{') { return 'quoted-key MAP literal: the keys are the cause' }
+  if ($t -match '^fn\(.*\)\s*\{$') { return 'lambda in a branch (fixed in 0450)' }
   if ($t -match '^\(if\s') { return 'parenthesised if as an operand' }
   if ($t -match '^\s*is\s+@') { return '`is` pattern continuation line' }
   if ($t -match '^\w+\?\s*:') { return 'optional parameter with a type annotation' }
