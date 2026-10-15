@@ -3632,7 +3632,42 @@ fn Parser::parse_call_args(self : Parser) -> (Array[@ast.Expr], Array[String]) {
       let saved_p = self.p
       let arg_label = self.peek_name()
       let _ = self.bump()
-      if self.at(TAssign) {
+      // `name?=value` -- the OPTIONAL-NAMED argument, the member this family was
+      // missing. moui 0.1.12 `views/popover/sheet.mbt:25` writes
+      // `background?=background_brush,` and three files died on it, all reported as
+      // `unexpected token `,``.
+      //
+      // THE DIAGNOSIS, which is about the loop and not about brackets. `f(x?)` and
+      // `f(x~)` are both handled AFTER the argument has been parsed, by the
+      // `TTilde` and `TQuestion` tests further down. For `border?=normal_border`
+      // the sequence was: the `TAssign` test below is FALSE (the next token is
+      // `?`), so `p` is restored and `border` is read as a positional name; the
+      // `TQuestion` shorthand then consumes the `?` as if the argument ENDED; the
+      // loop tests for a comma, finds the `=` that the first test skipped over, and
+      // BREAKS. The `= value` behind the `?` was orphaned.
+      //
+      // THE `?` IS NOT DECORATION, so this cannot be desugared into `name=value`.
+      // Settled in `_verify/settle_0454_label_qmark_eq.ps1`, 9/9 with a positive
+      // control: `border?=v` against a parameter declared `border? : Int` ACCEPTS,
+      // and against `border~ : Int` is REJECT(4141) "this form of application is
+      // invalid for argument border~, because it is not declared with border? : _".
+      // A `name? : T` parameter has type `T?` -- that is what the settle's bare
+      // `border?=7` measured, as REJECT(4014) "wanted Int?". So the `?` names the
+      // optionality of the TARGET and a fix that drops it reads illegal code as
+      // legal.
+      //
+      // The label recorded is the BARE name, without the `?`. The type lens
+      // maps arguments to parameters by label, and both spellings name the
+      // same parameter; the `?` lives in the PARAMETER's declaration
+      // (`border? : Int`), which is why the settle above has to reject
+      // `border?=v` against `border~ : Int` for that rejection to mean
+      // anything at all.
+      if self.at(TQuestion) && self.toks[self.p + 1] == TAssign {
+        let _ = self.bump()
+        let _ = self.bump()
+        args.push(self.parse_expr())
+        labels.push(arg_label)
+      } else if self.at(TAssign) {
         let _ = self.bump()
         if self.at_lambda_head() {
           // A lambda as a NAMED argument's VALUE. The arrow check below only

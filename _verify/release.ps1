@@ -1,4 +1,4 @@
-# ONE local release entry point.
+﻿# ONE local release entry point.
 #
 # WHY THIS FILE EXISTS. `.github/workflows/gate.yml` runs four commands -- fmt,
 # check, one test target, one build. That is the floor CI enforces, and it is not
@@ -95,14 +95,34 @@ function Run-Gate {
   $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $Path 2>&1 | Out-String
   $code = $LASTEXITCODE
   $ErrorActionPreference = $prev
-  # Only the verdict lines; the per-mutation tables are 30 lines each and fourteen
-  # of them bury the one line that says whether the gate passed.
+  # KEEP THE WHOLE TRANSCRIPT. The filter below is for READING, not for evidence.
+  #
+  # Measured: a release run reported four gates FAILED (0433, 0434, 0441, 0442), and
+  # every one of them passes standalone on the same tree with the same 626/626
+  # baseline. Six gates have now flaked this way across two runs. The detail that
+  # would have said WHY was thrown away twice: first by this filter, which kept the
+  # verdict lines and dropped the per-mutation table behind them, and then by
+  # `Select-Object -Last 70` over the run's own output. A failure that cannot be
+  # diagnosed after the fact is not a measurement, so every gate's full text now
+  # lands in _verify\_gatelogs\ and the run's transcript names the file on failure.
+  $logDir = Join-Path $root '_verify\_gatelogs'
+  if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
+  $logName = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+  [System.IO.File]::WriteAllText((Join-Path $logDir ($logName + '.log')), $o, (New-Object System.Text.UTF8Encoding($false)))
+  # The verdict lines, PLUS the per-mutation outcome. A gate that fails on a
+  # COMPILE-ERR or on a survivor has to say WHICH mutation and what it got -- the
+  # old filter printed the failure list naming mutations whose outcome it hid.
   foreach ($ln in ($o -split "`r?`n")) {
-    if ($ln -match '^(GATE OK|GATE FAILED|ABORT|RELEASE GATE|  Baseline:|Pre-flight|=== mutation gate)' -or $ln -match '^\s+- ') {
+    if ($ln -match '^(GATE OK|GATE FAILED|ABORT|RELEASE GATE|  Baseline:|Pre-flight|=== mutation gate)' -or
+        $ln -match '^\s+- ' -or
+        $ln -match '^\s+(KILLED|SURVIVED|NO-OP|COMPILE-ERR|NO-RUN)\s') {
       Write-Output $ln
     }
   }
-  if ($code -ne 0) { $script:stageOk = $false }
+  if ($code -ne 0) {
+    $script:stageOk = $false
+    Write-Output ('  [child exit ' + $code + '; full transcript: _verify\_gatelogs\' + $logName + '.log]')
+  }
 }
 
 function Read-TextWhenFree {
@@ -260,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -378,7 +398,7 @@ if ($SkipMutations) {
 # 15 come back parsed, because their site sits inside a skipped `test` block, and
 # exactly one -- `backend/macos/macos_services.mbt` -- is blocked. That file is
 # also one of the four that print no `PARTIAL` line, so cross-referencing it
-# against `blockers.ps1` gives OVERLAP 0 and the gap reads as free. ⇒ 判据: a
+# against `blockers.ps1` gives OVERLAP 0 and the gap reads as free. 鈬?鍒ゆ嵁: a
 # lower bound that agrees with "no problem" is not evidence of no problem. Pinned
 # as a KNOWN LIMIT in `parser_0436_test.mbt`, not fixed here.
 #
@@ -470,7 +490,7 @@ if ($SkipMutations) {
 # FIXED, in 0439: the postfix `catch` arm parses its handler arms instead of
 # consuming them with `skip_braces`, so a parameter read ONLY inside a handler is
 # seen. The finding named above is gone, and the same fix removed proton's
-# `facade_paths.mbt:473` `parameter 'label' may not be used` — the second
+# `facade_paths.mbt:473` `parameter 'label' may not be used` 鈥?the second
 # measured instance of the identical defect, recorded since 0432.
 #
 #   moui     actionable  1 -> 0    parsed 590 UNCHANGED
@@ -486,7 +506,7 @@ if ($SkipMutations) {
 #     }
 #
 # That is the per-file `enum_ctors` harvest limitation already recorded in the
-# hex.mbt rows above — a suberror variant used in a DIFFERENT file from its
+# hex.mbt rows above 鈥?a suberror variant used in a DIFFERENT file from its
 # declaration. Reading the body makes the `raise` visible to the resolver, and
 # the resolver does not have the variant. It is the same trade the README
 # describes, in the same direction it has gone before, paid in false positives
@@ -991,7 +1011,7 @@ if ($SkipMutations) {
 # GATE 0447: 4 KILLED + 1 declared SURVIVED (M5, the redundant bare form: both
 # callers apply `unqualified` to every candidate and `unqualified("@cond_var.Cond::Cond")`
 # IS `Cond::Cond`, so the extra entry cannot be reached). wasm 662/662, js and
-# wasm-gc 590/590 (up 5 on each — the five 0447 tests live in `moonfiles`, which is
+# wasm-gc 590/590 (up 5 on each 鈥?the five 0447 tests live in `moonfiles`, which is
 # not a `src/sa` package, so they run on every target). Self-scan 88/88 actionable 0,
 # up one file and six notices over 0.4.36: the new test file.
 # --- 0.4.38, 0449: an EXTERNAL fn binding, and a TUPLE STRUCT that read the next
@@ -1219,12 +1239,74 @@ if ($SkipMutations) {
 # returns statements that are thrown away, so nothing inside a function literal
 # reaches a lens -- for a plain `fn` exactly as much as for an async one). What
 # works is what reading the body DISCOVERS: a `match` inside it is announced.
+# GATE 0454: `label?=value` in a call argument -- the member the shorthand family
+# was missing. After 0453 moui could not finish reading 6 files and the largest
+# by-reason bucket was `unexpected token `,``:
+#
+#     let normal = @views.new_control_state_style(
+#       foreground=@core.Color::black(),
+#       border?=normal_border,
+#       radius=0.0,
+#     )
+#
+# The complaint named a COMMA, three tokens from the cause. `parse_call_args`
+# handles two shorthands, both AFTER the argument is parsed -- `f(x~)` at the
+# `TTilde` test and `f(x?)` at the `TQuestion` test -- and neither is followed by
+# an `=`. So for `border?=normal_border` the `TAssign` test was FALSE (the next
+# token is `?`), `p` was restored, `border` was read as a positional name, the
+# `TQuestion` shorthand consumed the `?` as if the argument ENDED, the comma test
+# found the `=` that the first test skipped over, and the loop broke.
+#
+# The `?` CARRIES MEANING, so this is not sugar for `=`. Settled in
+# `_verify/settle_0454_label_qmark_eq.ps1`, 9/9 with a positive control:
+#
+#     border?=v   against  border? : Int   ACCEPT
+#     border?=v   against  border~ : Int   REJECT(4141) "not declared with border? : _"
+#     border?=                      REJECT(3002)
+#     border?v                      REJECT(3002)
+#
+# A `name? : T` parameter has type `T?` -- measured as REJECT(4014) "wanted Int?"
+# with a bare `7` -- so dropping the `?` would read illegal code as legal. The last
+# row is what licenses the two-token lookahead: `?` either ends an argument or starts
+# `?=`, and never prefixes an expression.
+#
+#   moui     parsed 602 -> 605 (+3)   unreliable 46 -> 23   notices 4203 -> 4209
+#   proton   parsed 108 -> 109 (+1)   unreliable 1112 -> 1032   notices 1344 -> 1374
+#   the other four byte-identical. actionable 0 on all six.
+#
+# proton moved too, and it was CHECKED rather than waved at: it uses `label?=value`
+# 17 times across four files (`facade_builders.mbt` 5, `facade_native_types.mbt` 7,
+# `facade_runtime.mbt` 4, `facade_event_loop.mbt` 1). `facade_builders.mbt` is also
+# the file that held the `async fn(context) {` literal 0453 fixed, so it had two
+# stacked defects and only now resolves. The -80 unreliable is that file's.
+#
+# The `unexpected token `,`` bucket is GONE from moui and the three files that
+# resolved are exactly the three `?=` ones. What remains is three files and three
+# DIFFERENT causes, one each -- the shape a tail of this kind is supposed to have:
+#
+#     1x  expected ')'             runtime/app_builder.mbt:47
+#     1x  unexpected end of line   runtime/input_dispatch_result.mbt:13
+#     1x  unexpected token `:`     backend/macos/macos_services.mbt:406
+#
+# GATE 0454: 5/5 KILLED (M1 the branch removed, M2 the `=` not required, M3 the
+# value consumed but not analysed, M4 the `?` dropped from the label, M5 the
+# lookahead widened to any `?`).
+#
+# M4's MustRed MOVED FILES and that is the finding. It SURVIVED the first version of
+# this gate: every 0454 test was written through `@pipeline.run`, asserting findings,
+# and nothing on the pipeline path READS the label -- `parse_call_args` returns
+# `(args, labels)`, the labels go into `ECall`, and neither lens consults them for any
+# finding these fixtures trigger. A blank label changed no count; 623/623 stayed
+# green. That is a property of the ANALYZER, not of the parser, so the assertion
+# moved to `src/parser/parser_0454_test.mbt` and reads `ECall`'s third field directly,
+# the way `parser_0430_test.mbt` already does for `x~` and `x?`. Asserting "the call
+# parses" passes; asserting a finding count passes; neither is evidence about a label.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=602 actionable=0 notices=4203 unreliable=46 withheld=0 total=4249'
+  'moui'            = 'files=608 parsed=605 actionable=0 notices=4209 unreliable=23 withheld=0 total=4232'
   'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=311 withheld=136 total=879'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1190 withheld=309 total=2431'
-  'proton'          = 'files=137 parsed=108 actionable=0 notices=1344 unreliable=1112 withheld=321 total=2456'
+  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1188 withheld=309 total=2429'
+  'proton'          = 'files=137 parsed=109 actionable=0 notices=1374 unreliable=1032 withheld=321 total=2406'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

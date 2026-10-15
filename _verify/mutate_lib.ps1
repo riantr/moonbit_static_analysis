@@ -204,6 +204,15 @@ function Invoke-MutationGate {
   $bRan = [regex]::Matches($base, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
   if ($bRan.Count -lt 1) {
     Write-Output 'ABORT: baseline did not run (no `Total tests:` line). The suite does not compile.'
+    # Rule 2 reads the ABSENCE of a line, which is correct -- but an absence with no
+    # evidence attached is exactly what makes a transient failure unrootable, and a
+    # transient failure here is indistinguishable from a broken tree until you can
+    # see what `moon` actually said. A lock on _build, a half-finished rebuild and a
+    # genuinely broken module all produce the same absent line. Print the tail.
+    Write-Output '  what moon test actually printed:'
+    foreach ($t in ($base -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 15)) {
+      Write-Output ('    | ' + $t.TrimEnd())
+    }
     $script:MutationGateFailures += ($Name + ' (baseline did not run)')
     return
   }
@@ -248,10 +257,50 @@ function Invoke-MutationGate {
 
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $out = & $MoonExe test --target $Target 2>&1 | Out-String
+    $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
 
-    # Rule 2. Absence of the line, not a grep for an error string.
     $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
+
+    # AN EMPTY RUN IS THE HARNESS'S FAULT, NOT THE MUTANT'S.
+    #
+    # Rule 2 says COMPILE-ERR is not a kill, and that is right: a mutant that does not
+    # build is a mutant nobody measured. What rule 2 did NOT say is that an empty run
+    # is a property OF THE MUTATION -- and treating it as one is how a release run
+    # reported four gates FAILED that each pass standalone, twice, across six gates.
+    #
+    # The discriminator is not a guess. A compiler that rejects a mutant ALWAYS says
+    # why, and a build that fails ALWAYS leaves a line behind. Gate 0430 M4 is the
+    # control: it is declared COMPILE-ERR, and it does so with real diagnostics every
+    # time. Gate 0425 M7 is the failure: `moon test` was asked once, and its output
+    # was the empty string, so the harness recorded COMPILE-ERR and blamed a mutation
+    # that had built and been killed correctly every other time.
+    #
+    # So: no summary line AND nothing at all printed == the run never started, and one
+    # retry decides it. The retry CANNOT manufacture a pass. If the retry also yields
+    # no run, the verdict still fails; and a non-empty COMPILE-ERR -- an actual
+    # compiler rejection -- is never retried, so declared non-buildable mutants keep
+    # the verdict they declare.
+    $retried = $false
+    if ($ran.Count -eq 0 -and [string]::IsNullOrWhiteSpace($out)) {
+      Write-Output ('      EMPTY RUN: moon exited ' + $code + ' and printed nothing at all.')
+      Write-Output '      No summary line and no output is not a mutant that failed to build;'
+      Write-Output '      it is a run that never happened. Retrying once.'
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $out = & $MoonExe test --target $Target 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
+      $retried = $true
+      if ($ran.Count -ge 1) {
+        Write-Output '      RETRY GOT A REAL RUN -- the empty run was transient, not a verdict.'
+      } else {
+        Write-Output ('      RETRY ALSO GOT NO RUN (moon exited ' + $code +
+                      ', ' + $out.Length + ' chars). Still a failure, reported as such below.')
+      }
+    }
+
+    # Rule 2. Absence of the line, not a grep for an error string.
     $killed = 0; $detail = ''
     if ($ran.Count -ge 1) {
       $m2 = $ran[$ran.Count - 1]
@@ -263,7 +312,26 @@ function Invoke-MutationGate {
         if ($killed -gt 0) { $outcome = 'KILLED'; $detail = "$killed of $total red" }
         else { $outcome = 'SURVIVED'; $detail = "$total/$total still green" }
       }
-    } else { $outcome = 'COMPILE-ERR'; $detail = 'no Total tests line; the suite did not run' }
+      # A run that only exists because the first attempt came back empty is a real
+      # measurement, but it is also the only evidence that the machine misbehaved.
+      # Say so on the line rather than letting the retry pass for a clean kill.
+      if ($retried) { $detail += ' [after an empty first run]' }
+    } else {
+      $outcome = 'COMPILE-ERR'
+      $detail = 'no Total tests line; moon exited ' + $code + ' after printing ' + $out.Length + ' chars'
+      # Rule 2's verdict is right and must not be softened -- a mutant that does not
+      # build is NOT a kill. But the verdict used to be the LAST thing said about it:
+      # `$out` was captured, tested for one regex, and dropped. That is the single
+      # reason a gate can report COMPILE-ERR with nothing to act on, and it is why a
+      # suite-wide run produced four gate failures whose cause was unrecoverable.
+      # COMPILE-ERR is also the shape a TRANSIENT `moon test` failure wears -- a
+      # contended _build, a killed compiler, a full disk all look like this -- so the
+      # transcript is the difference between a flake and a cause.
+      Write-Output '      the suite did not run. What moon test printed:'
+      foreach ($t in ($out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 20)) {
+        Write-Output ('        | ' + $t.TrimEnd())
+      }
+    }
 
     # Rule 4. Prove the restore byte-for-byte.
     [System.IO.File]::WriteAllBytes($path, $bytes0)

@@ -33,6 +33,14 @@ _verify/_*.json
 # `_verify`, not a subdirectory of it -- so `git add _verify` swept six
 # megabyte dumps in before anyone noticed.
 _verify/remeasure_out/
+# Per-gate transcripts written by `Run-Gate` (release.ps1). One file per mutation
+# gate, rewritten on every release run. Evidence, not source -- and it only exists
+# BECAUSE the summary filter was hiding gate failures: a run that reports a gate
+# FAILED now prints the path so the full text survives. Not covered by the
+# `_verify/_*.txt` rule above for the same reason `remeasure_out` is not: `*` does
+# not cross `/`, so a rule for files directly in `_verify` never matches a
+# subdirectory of it. These are `.log` as well as nested, so both facts apply.
+_verify/_gatelogs/
 
 # The mooncakes credential. `git add -A` staged it once before .moonignore
 # existed; the token inside is live. The copy CI needs is a GitHub Actions
