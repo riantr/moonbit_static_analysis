@@ -3212,6 +3212,27 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       // survives as a child and stays reachable through it, while the position
       // of `catch` itself is recorded nowhere else.
       e = { span: csp, kind: @ast.ECatch(e, arms), }
+      // `noraise { ... }` -- a SECOND handler block on the completed catch.
+      //
+      // IT IS NESTED HERE RATHER THAN MATCHED AS A BARE KEYWORD, and that is
+      // the settled grammar doing the work: `try expr noraise { .. }` with no
+      // catch is REJECTED by the compiler
+      // (`_verify/settle_0441_noraise.ps1`, case `nr_without_catch`). A parser
+      // that matched `noraise` anywhere would accept a program the compiler
+      // rejects, and would swallow a user's own function named `noraise`.
+      //
+      // `parse_catch_arms` is reused unchanged, and that carries two things
+      // rather than one: the arm grammar is the same (settled: several arms,
+      // block or expression bodies), and so is the `<?` log-payload guard. A
+      // `noraise` group containing an `@xlog` payload goes back to
+      // `skip_braces` exactly as a `catch` group does, rather than becoming a
+      // new way for `facade_locale.mbt` to fall out of `parsed`.
+      if self.at_name("noraise") {
+        let nsp = self.span()
+        let _ = self.bump()
+        let narms = self.parse_catch_arms()
+        e = { span: nsp, kind: @ast.ENoRaise(e, narms), }
+      }
       continue
     }
     // `expr as &Trait` — a trait-object cast, and the postfix keyword that
@@ -4095,6 +4116,32 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
         while self.at_name("catch") {
           let _ = self.bump()
           self.skip_pattern()
+          self.skip_braces()
+        }
+        // `noraise { ... }` after a statement-level `try`'s catch. This is the
+        // SHAPE THE CORPUS ACTUALLY WRITES -- proton `facade_identity.mbt:95`
+        // and `:134`, `protocol_wbtest.mbt:5`, async `network.mbt:68` -- and it
+        // is a different path from the postfix production in
+        // `parse_postfix_from`. Both are real: the settle probe accepted
+        // `expr catch { .. } noraise { .. }` with no `try` keyword, and proton
+        // writes the `try` form.
+        //
+        // WITHOUT THIS LOOP the token survived the `catch` loop and was resolved
+        // as an ordinary identifier: `undefined name 'noraise'`, four sites, the
+        // largest single named finding left. That is a FALSE POSITIVE -- it is
+        // MoonBit, and the compiler accepts all four programs.
+        //
+        // IT IS SKIPPED, NOT PARSED, and that is deliberate and consistent with
+        // the lines above rather than a half-measure. This whole branch is the
+        // un-analysed `try`: the body was skipped by `skip_to_catch` and
+        // `note_skip` below already put a hole in the frame for the enclosing
+        // function. Reading the `noraise` arms here would find reads in a block
+        // whose sibling catch block is deliberately unread, which is the
+        // arrangement that produces new findings rather than removing any. The
+        // claim this line makes is narrow and true: the token is part of the
+        // grammar, and it is not a name.
+        while self.at_name("noraise") {
+          let _ = self.bump()
           self.skip_braces()
         }
         while self.at_name("finally") {

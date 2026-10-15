@@ -232,6 +232,43 @@ pub(all) enum EKind {
   /// rather than joining the arms' types in — the join would be a claim about
   /// a value the language does not produce.
   ECatch(Expr, Array[CatchArm])
+  ///
+  /// `try expr catch { .. } noraise { pattern => body, .. }` — a SECOND handler
+  /// block attached to a completed `try ... catch`.
+  ///
+  /// This is not a function, a macro or a decorator, and reading it as a name was
+  /// producing `undefined name 'noraise'` on four sites: proton
+  /// `facade_identity.mbt:99` and `:136`, `protocol_wbtest.mbt:5`, and async
+  /// `network.mbt:68`. The measured corpus shape is
+  ///
+  ///     try validate_application_identifier(identifier) catch {
+  ///       InvalidField(expectation~, ..) =>
+  ///         Err(InvalidSetting(name="identifier", message=expectation))
+  ///       error => Err(InvalidSetting(name="identifier", message=error.message()))
+  ///     } noraise {
+  ///       identifier => Ok(identifier)
+  ///     }
+  ///
+  /// The grammar is SETTLED by the compiler rather than assumed --
+  /// `_verify/settle_0441_noraise.ps1`, 8/8 as predicted with the positive
+  /// control green:
+  ///
+  ///   - `noraise` REQUIRES a preceding `catch`. `try expr noraise { .. }` is
+  ///     REJECTED. So the parser nests this inside its `catch` arm rather than
+  ///     matching a bare keyword anywhere, which is both faithful and safe: a
+  ///     user function named `noraise` cannot be swallowed by it.
+  ///   - the arm list is the SAME grammar as `catch`: several arms, block or
+  ///     expression bodies, optional `=>`.
+  ///   - an empty `noraise { }` is REJECTED.
+  ///   - `noraise`'s pattern binds the BASE'S RESULT VALUE, not the error --
+  ///     `fallible(n) catch { _ => 0 } noraise { x => x + 1 }` type-checks, so
+  ///     `x` is the `Int` the base produced on the no-raise path.
+  ///
+  /// The base is the `ECatch` node, not the original try expression, so this
+  /// composes with the catch reading rather than re-walking it. It has the
+  /// BASE's type for the same reason `ECatch` does -- the arms are alternative
+  /// control paths, not extra operands.
+  ENoRaise(Expr, Array[CatchArm])
 } derive(Eq)
 
 ///|

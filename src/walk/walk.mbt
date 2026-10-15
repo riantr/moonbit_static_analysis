@@ -641,6 +641,33 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
         }
       }
     }
+    // `noraise { ... }` — the same frame trade as `ECatch`, and for the same
+    // reason: the arm's pattern names are used only inside that arm's own body,
+    // so a flat frame can only make a name visible EARLIER than it should be.
+    //
+    // The pattern binds the BASE'S RESULT VALUE (settled by the compiler), not
+    // the error, so `bind_pattern` is the right call and not a special case —
+    // the mechanism does not care which value arrived, only that the name is
+    // visible in the body that uses it.
+    //
+    // What this fixes is measured, not assumed: `identifier => Ok(identifier)` is
+    // the ONLY mention of `identifier` in proton `facade_identity.mbt:100`, and
+    // before this arm the block was consumed by `skip_braces`, so the name in its
+    // body was invisible AND the bare token `noraise` beside it resolved as an
+    // undefined name.
+    ENoRaise(base, arms) => {
+      self.walk_expr(base)
+      for arm in arms {
+        for b in arm.bindings {
+          if b != "" {
+            self.bind_pattern(b, arm.span)
+          }
+        }
+        for st in arm.body {
+          self.walk_stmt(st)
+        }
+      }
+    }
     // A string's INTERPOLATED names are real reads, and they are resolved here
     // rather than ignored. `println("k=\{k}")` is the only mention of `k` in
     // the function, and treating the literal as opaque made every such name

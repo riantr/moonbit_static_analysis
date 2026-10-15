@@ -490,6 +490,18 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       let _ = self.ty_of(base, TUnknown)
       TUnknown
     }
+    // `expr catch { .. } noraise { .. }` has the type of the catch expression,
+    // for the same reason that one has the type of its base: the arms are
+    // alternative control paths, not extra operands, so joining their types in
+    // would claim the expression can produce values it cannot. The base is
+    // still walked, and the walk covers the `ECatch` node and its arms, so the
+    // reads inside a `noraise` body are resolved exactly as a `catch` body's
+    // are -- this arm only has to keep the node from becoming a hole in the
+    // tree.
+    ENoRaise(base, _) => {
+      let _ = self.ty_of(base, TUnknown)
+      TUnknown
+    }
   }
 }
 

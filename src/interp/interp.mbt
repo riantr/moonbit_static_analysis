@@ -940,6 +940,14 @@ fn Interp::eval(
       let _ = self.eval(base, env)
       AAny
     }
+    // `noraise { .. }` prunes for the same reason and on the same grounds as the
+    // `catch` it is attached to: the base here is the `ECatch` node, so evaluating
+    // it already evaluates the try expression, and a `noraise` block whose arms
+    // are not modelled must not let a folded value decide a later branch either.
+    ENoRaise(base, _) => {
+      let _ = self.eval(base, env)
+      AAny
+    }
   }
 }
 

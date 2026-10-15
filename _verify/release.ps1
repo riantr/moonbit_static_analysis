@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -578,12 +578,70 @@ if ($SkipMutations) {
 # and the rewrite was proved green on clean code AND red under both mutations
 # before the gate was re-run. The four kills are the SECOND run. The whole account
 # is in `mutate_0441.ps1`.
+#
+# --- 0.4.32, 0442: `noraise { .. }` is a handler block, not a name -------------
+#
+# FOUR FALSE POSITIVES ON CODE `moon check` ACCEPTS, and the shape of the fix was
+# not the one the findings suggested. proton `facade_identity.mbt:99` and `:136`,
+# `protocol_wbtest.mbt:5`, and async `network.mbt:68` all reported
+# `undefined name 'noraise'`.
+#
+# THE GRAMMAR IS SETTLED BY THE COMPILER, `_verify/settle_0441_noraise.ps1`, 8/8
+# as predicted with the positive control green: `noraise { pattern => body }` is
+# a postfix handler block on a COMPLETED `try ... catch`. A `try expr noraise {..}`
+# with no catch is REJECTED, the arm list is `catch`'s grammar, an empty block is
+# rejected, and the pattern binds the base's RESULT value. Nesting the production
+# inside the existing `catch` arm is therefore faithful grammar rather than a
+# convenient placement, and it cannot swallow a user's own `noraise` function.
+#
+# THERE ARE TWO PARSER PATHS AND THE FINDINGS LIVE IN THE SECOND ONE, which cost
+# most of the increment. `parse_postfix_from` reads the postfix `catch`; the
+# statement-level `try` is read by the PREFIX reader and its catch loop ends in
+# `skip_braces`. The first change taught the postfix path `noraise`, and the
+# result was a fully GREEN suite with a COMPLETELY UNCHANGED corpus -- all four
+# findings still present. A green suite is not evidence that a corpus finding
+# moved; the two are separate measurements and only the second is the claim.
+#
+#   moui             actionable  0 -> 0    parsed 590 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable  7 ->  6   parsed 227 UNCHANGED
+#   proton           actionable 10 ->  7   parsed 103 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# 17 actionable across the six corpora became 13, with `parsed=` unmoved
+# everywhere. The statement-level block is CONSUMED but not analysed, deliberately
+# and consistently with the lines above it: that branch is the un-analysed `try`,
+# its body is already skipped and `note_skip` already put a hole in the frame, and
+# reading the `noraise` arms alone would find reads in a block whose sibling
+# catch block is deliberately unread.
+#
+# --- A HARNESS DEFECT THIS GATE FOUND, WHICH AFFECTS EVERY GATE ----------------
+#
+# Gate 0442 reported five of five KILLED and still reported MUST-RED MISS on all
+# five, naming as evidence the very tests that had gone red. The needle and the
+# captured name were BYTE-IDENTICAL (65 bytes each, same hex).
+#
+# The cause: `mutate_lib.ps1` matched with `-like`, and PowerShell's `-like` runs
+# the PATTERN through escape processing, where the backtick is the escape
+# character. A needle containing a backtick therefore cannot match a name
+# containing the same backtick -- and this suite's test names are full of them,
+# because the doc comments are markdown. Bisected on the failing needle: a
+# 30-character prefix with no backtick matched, 40 characters with one did not.
+# `-like` also treats `[` `]` as a wildcard set and throws on an unbalanced one,
+# so a bracketed test name could crash the harness rather than merely miss.
+#
+# Rule 6 asks a SUBSTRING question and was being answered with a PATTERN matcher.
+# It is now an ordinal `IndexOf`, which is that question. All 27 gates were
+# re-checked: no gate relied on wildcard behaviour, and the one `MustRed`
+# containing a `?` (0430's `f(x?)`) is a literal in that test's name, so it
+# matches exactly.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=227 actionable=7 notices=981 unreliable=2199 withheld=510 total=3187'
-  'proton'          = 'files=137 parsed=103 actionable=10 notices=1123 unreliable=906 withheld=317 total=2039'
+  'async'           = 'files=419 parsed=227 actionable=6 notices=979 unreliable=2176 withheld=499 total=3161'
+  'proton'          = 'files=137 parsed=103 actionable=7 notices=1116 unreliable=900 withheld=316 total=2023'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

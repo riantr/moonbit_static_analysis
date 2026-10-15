@@ -256,6 +256,31 @@ function Invoke-MutationGate {
 
     # Rule 6. WHICH test went red, when the mutation says which one must.
     #
+    # ORDINAL `IndexOf`, NOT `-like`. Measured on gate 0442: every one of its five
+    # mutations was KILLED, every named test WAS visibly in the list of tests that
+    # went red, and all five still reported MUST-RED MISS -- against strings that
+    # were byte-identical (65 bytes each, same hex).
+    #
+    # The cause is that PowerShell's `-like` runs the PATTERN through escape
+    # processing, and the backtick is the escape character. A test name with a
+    # backtick in it -- which is most of this suite's, because MoonBit doc
+    # comments and prose use markdown backticks -- therefore cannot match a
+    # needle containing the same backtick. Bisected on the failing needle:
+    #
+    #     prefix 30 chars ("...inside a ")       -like -> True   (no backtick)
+    #     prefix 40 chars ("...inside a `nor")   -like -> False  (one backtick)
+    #     literal pattern '*noraise*'            -like -> True
+    #     variable  pattern "*noraise*"          -like -> True
+    #     variable  pattern "*<full needle>*"    -like -> False
+    #
+    # `-like` also treats `[` `]` as a wildcard SET and throws
+    # `WildcardPatternException` on an unbalanced one, so a test name with a
+    # bracket could crash the harness rather than merely miss.
+    #
+    # BOTH are the same defect seen from two sides: the check is a SUBSTRING
+    # question and it was being answered with a PATTERN matcher. `IndexOf` with
+    # Ordinal is that question, with no escapes and no wildcards.
+    #
     # Only applied when the mutation actually wants to be KILLED: a declared
     # SURVIVED or a COMPILE-ERR has no red test to match, and failing there would
     # be checking something the caller did not ask for.
@@ -263,7 +288,7 @@ function Invoke-MutationGate {
     if ($m.ContainsKey('MustRed') -and $want -eq 'KILLED') {
       $names = Get-RedTestNames $out
       $needle = [string]$m.MustRed
-      $proved = @($names | Where-Object { $_ -like "*$needle*" }).Count -gt 0
+      $proved = @($names | Where-Object { $_.IndexOf($needle, [System.StringComparison]::Ordinal) -ge 0 }).Count -gt 0
       if (-not $proved) {
         # Loud, and names what DID go red. "KILLED" next to a false claim reads as
         # pinned, which is the whole failure this rule exists to prevent.
