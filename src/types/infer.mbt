@@ -4,7 +4,6 @@
 
 ///|
 priv struct Infer {
-  fn_bindings : Map[String, Array[@walk.Binding]]
   /// per-frame symbol types; frame 0 = module
   frames : Array[Map[String, Ty]]
   annos : Array[Map[String, Bool]]
@@ -24,11 +23,13 @@ priv struct Infer {
 }
 
 ///|
-fn new_infer(
-  fn_bindings : Map[String, Array[@walk.Binding]],
-  extern_iface : @core.IfaceSymTab,
-  partial : Bool,
-) -> Infer {
+/// The structural lens's per-function declaration table is NOT carried here.
+/// It was a `Map` keyed by function name, so two `#cfg` variants of one
+/// function shared one table and the second overwrote the first — the same
+/// defect `walk.WalkResult.fn_bindings` had, in the type lens. It is now
+/// indexed by position and passed to `run_fn` by its caller, which is the only
+/// place that knows the index.
+fn new_infer(extern_iface : @core.IfaceSymTab, partial : Bool) -> Infer {
   // Every ambient name seeds the table as TUnknown. The three that follow are
   // then overwritten with their real signatures so `len(x)` still infers Int
   // and a bad call to `abs` is still caught. Before this, the table held only
@@ -44,7 +45,6 @@ fn new_infer(
   builtins.set("len", TFunc("len", [], [TUnknown], TInt))
   builtins.set("abs", TFunc("abs", [], [TInt], TInt))
   Infer::{
-    fn_bindings,
     frames: [Map([])],
     annos: [Map([])],
     builtins,
@@ -721,15 +721,18 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
 ///|
 /// Analyze one function body; returns the joined return type of all
 /// `return` expressions (Unknown when none).
-fn Infer::run_fn(self : Infer, f : @walk.FnInfo) -> Ty {
+///
+/// `bs` is passed in rather than looked up, because the table is indexed by
+/// position and the position is the caller's: `run_fn` has an `f` and no `i`.
+fn Infer::run_fn(
+  self : Infer,
+  f : @walk.FnInfo,
+  bs : Array[@walk.Binding],
+) -> Ty {
   self.frames.push(Map([]))
   self.annos.push(Map([]))
   self.vst.push({ func: f.name, file: "ml", line: f.span.start.line, })
   // declarations come from the structural lens's table
-  let bs = match self.fn_bindings.get(f.name) {
-    Some(v) => v
-    None => []
-  }
   for b in bs {
     if b.param {
       self.declare_sym(b, ann_to_ty(b.tyann), !(b.tyann == ""))
@@ -851,7 +854,7 @@ pub fn infer_full(
   extern_iface : @core.IfaceSymTab,
   enum_ctors : Array[String],
 ) -> TypeResult {
-  let inf = new_infer(wr.fn_bindings, extern_iface, wr.partial)
+  let inf = new_infer(extern_iface, wr.partial)
   for c in enum_ctors {
     if !inf.frames[0].contains(c) {
       inf.frames[0].set(c, TUnknown)
@@ -905,8 +908,9 @@ pub fn infer_full(
       _ => inf.walk_stmt(s)
     }
   }
-  for f in wr.fns {
-    let _ = inf.run_fn(f)
+  for i, f in wr.fns {
+    let bs = if i < wr.fn_bindings.length() { wr.fn_bindings[i] } else { [] }
+    let _ = inf.run_fn(f, bs)
   }
   let syms : Array[TypedSym] = []
   for n, t in inf.frames[0] {

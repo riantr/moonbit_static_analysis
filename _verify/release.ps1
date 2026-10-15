@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -536,12 +536,54 @@ if ($SkipMutations) {
 # CROSS-FILE path was broken, which is why the symptom was false positives on
 # correct code rather than unreadable files -- and why reading more files, the
 # move that has fixed every blocker so far, could never have fixed this one.
+#
+# --- 0.4.31, 0441: two top-level functions of ONE NAME shared one table --------
+#
+# A TABLE KEYED BY A NAME THAT IS NOT UNIQUE. `WalkResult.fn_bindings` was a
+# `Map[String, Array[Binding]]` keyed by `f.name`, and BOTH consumers looked a
+# function's declarations up by that name -- the walk at pass 3 and, separately,
+# `Infer::run_fn` in the type lens. Two top-level functions of one name therefore
+# shared ONE table and the second `set` overwrote the first, so every function of
+# that name was analysed against the LAST one's parameters.
+#
+# It is now an `Array` parallel to `fns`, indexed by position, and `run_fn` takes
+# its bindings as an argument because the position is the caller's to know. There
+# is no longer any by-name lookup to get wrong.
+#
+# `#cfg` IS HOW REAL CODE REACHES THIS, AND IT IS NOT THE CAUSE. MoonBit allows
+# two top-level functions of one name when `#cfg` gates them per platform, and
+# `Lexer::lex_attribute` deliberately emits NO token for an attribute, so both
+# variants are analysed together -- a stated fidelity cost, not an accident. The
+# regression test has NO `#cfg` in it at all, because the defect is the key and
+# not the attribute. `#cfg` appears 689 times across 99 async files: that is how
+# real code reaches the defect, not what causes it.
+#
+#   moui             actionable  0 -> 0    parsed 590 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable 12 ->  7   parsed 227 UNCHANGED
+#   proton           actionable 12 -> 10   parsed 103 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# 24 actionable across the six corpora became 17, and `parsed=` did not move on any
+# of them -- which is the acceptance criterion here, because this was a change to
+# how findings are ATTRIBUTED, and a change that lowered one corpus while raising
+# another would be a regression wearing a fix's clothes.
+#
+# WORTH KEEPING: this gate failed its FIRST run with all four mutations KILLED.
+# M2 and M4 named the test that was supposed to pin `run_fn`'s own by-name lookup,
+# and that test did not go red -- a guard claiming coverage it did not have,
+# written with a source in which mistyping a parameter could not show up. The test
+# was rewritten rather than the claim re-anchored onto something that did go red,
+# and the rewrite was proved green on clean code AND red under both mutations
+# before the gate was re-run. The four kills are the SECOND run. The whole account
+# is in `mutate_0441.ps1`.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=227 actionable=12 notices=981 unreliable=2199 withheld=510 total=3192'
-  'proton'          = 'files=137 parsed=103 actionable=12 notices=1123 unreliable=906 withheld=317 total=2041'
+  'async'           = 'files=419 parsed=227 actionable=7 notices=981 unreliable=2199 withheld=510 total=3187'
+  'proton'          = 'files=137 parsed=103 actionable=10 notices=1123 unreliable=906 withheld=317 total=2039'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

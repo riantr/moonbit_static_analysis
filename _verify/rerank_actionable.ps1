@@ -49,10 +49,19 @@ foreach ($f in (Get-ChildItem $dir -Filter '*.txt' -File | Sort-Object Name)) {
       if ($fam -eq 'ParseError') { continue }
       # Normalise so one rule reads as one row: strip quotes and identifiers.
       $k = [regex]::Replace($msg, "'[^']*'", "'X'")
+      # The RAW message is kept alongside. `Shape` is what groups a grammar
+      # rule together, but the first identifier in it is often a separate
+      # construct with its own fix -- `undefined name 'noraise'` and
+      # `undefined name 'CookieWaiting'` are the same SHAPE and nothing else.
+      # Extracting the name from `Shape` returns the literal `X`, which is the
+      # first draft's second mistake after folding them together in the first
+      # place.
+      $nm = [regex]::Match($msg, "'([^']*)'")
       $rows += [pscustomobject]@{
         Corpus = $corpus
         Family = $fam
         Shape = $k
+        Name = $(if ($nm.Success) { $nm.Groups[1].Value } else { '' })
         File = (Split-Path $cur -Leaf)
       }
     }
@@ -66,9 +75,29 @@ $rows | Group-Object Shape | Sort-Object Count -Descending |
   Select-Object -First 14 @{n='N';e={$_.Count}}, @{n='Shape';e={$_.Name}} |
   Format-Table -AutoSize -Wrap | Out-String -Width 150 | Write-Output
 
+# THE SHAPE TABLE ALONE IS NOT ENOUGH, and its first draft got that wrong in the
+# most expensive way available. Normalising `'[^']*'` -> `'X'` folds
+# `undefined name 'noraise'` and `undefined name 'CookieWaiting'` into one row,
+# and `noraise` -- 4 real findings across two corpora -- vanished behind the
+# others. A shape is a grammar rule; a NAME is often a whole separate
+# construct with its own fix. `noraise` had been at the top of the todo list on
+# a stale note, the re-rank "cleared" it as part of an unrelated 9-row bucket,
+# and only reading the raw sites brought it back.
+#
+# => whenever a shape bucket is more than a few rows, ask what the NAMES are.
 Write-Output '=== by family x corpus ==='
 $rows | Group-Object Family, Corpus | Sort-Object Count -Descending |
   Select-Object -First 14 @{n='N';e={$_.Count}}, Name |
+  Format-Table -AutoSize | Out-String -Width 150 | Write-Output
+
+Write-Output '=== by NAME, for the families whose message carries one ==='
+$named = $rows | Where-Object { $_.Shape -match "name|function|binding for" } | ForEach-Object {
+  $m = [regex]::Match($_.Shape, "'([^']*)'")
+  [pscustomobject]@{ Name = $(if ($m.Success) { $m.Groups[1].Value } else { '?' }); Corpus = $_.Corpus }
+}
+$named | Group-Object Name | Sort-Object Count -Descending |
+  Select-Object -First 16 @{n='N';e={$_.Count}}, @{n='Name';e={$_.Name}},
+    @{n='Corpora';e={ (($_.Group | Select-Object -ExpandProperty Corpus -Unique) -join ',') }} |
   Format-Table -AutoSize | Out-String -Width 150 | Write-Output
 
 Write-Output '=== distinct FILES behind the top shapes ==='

@@ -31,8 +31,25 @@ pub(all) struct WalkResult {
   fns : Array[FnInfo]
   /// top-level `let`/assignments, in source order
   module_bindings : Array[Binding]
-  /// per function: params + all body bindings (params first)
-  fn_bindings : Map[String, Array[Binding]]
+  /// per function: params + all body bindings (params first), PARALLEL to
+  /// `fns` — indexed by position, NOT keyed by name.
+  ///
+  /// KEYED BY NAME WAS THE BUG, and it cost a corpus. MoonBit allows two
+  /// top-level functions of the same name when `#cfg` gates them for different
+  /// platforms, and `Lexer::lex_attribute` emits no token for an attribute, so
+  /// both variants are analysed together by design. A `Map` keyed by `f.name`
+  /// let the SECOND overwrite the FIRST, and pass 3 then bound every function
+  /// of that name to the last one's parameters:
+  ///
+  ///     pub fn g(w : Int, s : Int) -> Int { w + s }
+  ///     pub fn g(w : Int) -> Int { w }
+  ///
+  /// reported `undefined name 's'` in the first body and
+  /// `parameter 't' may not be used` in the second. Measured on proton 0.3.4
+  /// `window_geometry.mbt:12` and `:13` (`scale_factor_percent`, two `#cfg`
+  /// variants of `window_size_in_screen_coordinates`), and reproducible with
+  /// no `#cfg` at all — the attribute is only how real code reaches it.
+  fn_bindings : Array[Array[Binding]]
   /// structural findings (lens = LStructural)
   findings : Array[@report.Report]
   /// True when the frontend gave up partway through the file. The module
@@ -947,7 +964,7 @@ pub fn walk_module(
   let w = new_walker(extern_iface, trusted_line > 0, file, unread)
   let fns : Array[FnInfo] = []
   let module_bindings : Array[Binding] = []
-  let fn_bindings : Map[String, Array[Binding]] = Map([])
+  let fn_bindings : Array[Array[Binding]] = []
   // pass 1: module bindings + function registration (forward references OK)
   fn collect_top(stmts : Array[@ast.Stmt]) -> Unit {
     for s in stmts {
@@ -1034,8 +1051,7 @@ pub fn walk_module(
     }
   }
   for f in fns {
-    let bs = collect_fn_bindings(f)
-    fn_bindings.set(f.name, bs)
+    fn_bindings.push(collect_fn_bindings(f))
   }
   // pass 2: module-level uses (function definitions are tables, not flow)
   for s in m.body {
@@ -1055,7 +1071,11 @@ pub fn walk_module(
   for i in 0..<fns.length() {
     let f = fns[i]
     w.push_frame()
-    let bs = or_empty(fn_bindings.get(f.name))
+    // Indexed by position, not by name — see `WalkResult.fn_bindings`. The
+    // bound is a defensive `i < ...` rather than a trust: the two arrays are
+    // built in lockstep in this function, and a walk result assembled anywhere
+    // else must not index past its own table.
+    let bs = if i < fn_bindings.length() { fn_bindings[i] } else { [] }
     for b in bs {
       w.bind(b)
     }
@@ -1129,12 +1149,4 @@ fn truncated_fn(fns : Array[FnInfo], trusted_line : Int32) -> Int32 {
 ///|
 fn name_binding(n : String) -> Binding {
   { name: n, tyann: "", param: false, decl_span: @core.zero_span(), }
-}
-
-///|
-fn or_empty(a : Array[Binding]?) -> Array[Binding] {
-  match a {
-    Some(bs) => bs
-    None => []
-  }
 }
