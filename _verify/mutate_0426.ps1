@@ -138,15 +138,29 @@ $muts = @(
   # function ever produces a tail. Reads like M1 from the outside, and that is
   # the point -- it is the only mutation that can tell "the node is never built"
   # apart from "the node is built and dropped".
+  #
+  # RE-ANCHORED, not retired, and the reason is 0449. This pattern used to be two
+  # adjacent lines:
+  #
+  #     let (name, params, retann) = self.parse_fn_signature()
+  #     let (body, endsp) = self.parse_block(true)
+  #
+  # and 0449 inserted the external-binding check BETWEEN them, because a `fn` whose
+  # body is `= "module" "symbol"` has to return before `parse_block` is reached.
+  # The mutation is unchanged -- only the `true` at the `parse_block` call is the
+  # subject -- so it is re-anchored to that call alone rather than retired, which
+  # is the standing rule: surrounding text grew, the code under test did not.
+  #
+  # The single line is unique. The other `parse_block(true)` in this file is
+  # `let (fbody, fendsp) = self.parse_block(true)` in `parse_extern_fn`, which
+  # binds different names.
   @{
     Name = 'M7 the flag never reaches a function body'
     File = $PARSER
     Find = @'
-  let (name, params, retann) = self.parse_fn_signature()
   let (body, endsp) = self.parse_block(true)
 '@
     Repl = @'
-  let (name, params, retann) = self.parse_fn_signature()
   let (body, endsp) = self.parse_block(false)
 '@
   }

@@ -179,6 +179,15 @@ pub fn parse(src : String) -> ParseResult {
       body.push(p.parse_fn())
     } else if kw == "extern" {
       body.push(p.parse_extern_fn(sp))
+    } else if kw == "struct" && p.at_tuple_struct() {
+      // A TUPLE struct has no body to skip, so the braced skipper would invent
+      // one out of the next declaration's `{`. See `at_tuple_struct` for the
+      // two false positives that produced.
+      //
+      // The notice is the UNBRACED wording, and that is the same correction the
+      // `derive` branch below already carries: "its body was not analyzed"
+      // claims a body this declaration does not have.
+      p.skip_decl_line(kw, sp)
     } else if kw == "struct" ||
       kw == "enum" ||
       kw == "trait" ||
@@ -694,6 +703,61 @@ fn Parser::next_is_lbrace(self : Parser) -> Bool {
     }
     i += 1
     scanned += 1
+  }
+  false
+}
+
+///|
+/// Whether the declaration at the cursor is a TUPLE struct -- `struct Name(T)`,
+/// `struct Name { .. } derive(Eq)` is not one -- which has a parenthesised field
+/// list and NO body.
+///
+/// `skip_decl_braced` scans forward for the `{` that opens a body and stops only
+/// at a `fn` or at EOF. A tuple struct has no brace to find, so it swallows
+/// everything up to the NEXT declaration's brace. Measured, in moonbitlang/async
+/// 0.22.4 `src/process/cancellation.mbt`:
+///
+///     pub(all) struct CancellationHandler(async (Int) -> Unit)
+///
+///     ///|
+///     let default_signal : @signal.Signal = if @event_loop.platform is Windows {
+///       SIGBREAK
+///     } else {
+///       SIGTERM
+///     }
+///
+/// The brace it finds belongs to the `if`. The `let` and the `if` go with it, and
+/// what is left reads as a block containing the words `else` and `SIGTERM` --
+/// reported as `undefined variable 'else'` and `undefined variable 'SIGTERM'`.
+/// Two false positives on correct code, blamed on a declaration that is not the
+/// one being complained about.
+///
+/// FALSIFIED EN route, because each of these looked like the cause and was not:
+/// the `is` pattern (`if Windows is Windows { .. } else { .. }` is clean), a
+/// qualified receiver (`if h.platform is Windows { .. } else { .. }` is clean),
+/// and the cross-package `@event_loop.platform` receiver (also clean). It is
+/// neither the `if` nor the `is` nor the package: it is that the thing BEFORE the
+/// `if` had no `{` for the skipper to stop at.
+///
+/// The scan stops at the first `(` or at anything else, and that "anything else"
+/// is a plain-name rule rather than a token list. It USED to walk through `::`
+/// to reach the `(`, on the reasoning that a qualified name should still be
+/// reached. Measured, and the reasoning is wrong in both directions: neither
+/// `pub struct Outer::Inner(Int)` nor `pub struct Outer::Inner { .. }` is
+/// MoonBit, both are `[3002]` at the declaration
+/// (`_verify/settle_0449b_tuple_struct.ps1`). So walking through `::` reached a
+/// form that does not exist, and a bounded token count would have reached the
+/// same nothing while ALSO misreading a long ordinary header. A plain-name rule
+/// answers `false` for both unbuildable forms, which is the only thing they can
+/// be, and needs no bound at all.
+fn Parser::at_tuple_struct(self : Parser) -> Bool {
+  let mut i = self.p + 1 // past `struct`
+  while i < self.toks.length() {
+    match self.toks[i] {
+      TName(_) => i += 1
+      TLParen => return true
+      _ => return false
+    }
   }
   false
 }
@@ -1606,10 +1670,86 @@ fn Parser::expect(self : Parser, t : @lexer.Tok, what : String) -> Unit {
 }
 
 ///|
+/// The external BINDING tail of a `fn` declaration: `= "module" "symbol"`.
+///
+/// A `fn` whose body lives in another language is declared, not defined:
+///
+///     fn web_begin_create_string() -> Int = "window_web" "begin_create_string"
+///     fn web_sync_semantics_host(
+///       raw_id : Int,
+///       canvas_id : WebHostString,
+///       json : WebHostString,
+///     ) -> Unit = "window_web" "sync_semantics"
+///
+/// Settled against `moon check` on 0.1.20261012 in
+/// `_verify/settle_0449_ffi_decl.ps1`, 7/7 with BOTH negative controls firing.
+/// All three shapes are ACCEPTed -- no parameters, a single-line parameter list,
+/// and the multi-line one -- so the fourth site, which is the only multi-line
+/// one, is settled by the same measurement as the other three rather than by
+/// analogy with them.
+///
+/// WHY IT COST FOUR FILES. Without this the parser finished the signature, found
+/// `=` where it wanted `{`, and reported `expected '{'` -- which is the parser
+/// naming a token that was never the problem. Measured on the settled shapes, it
+/// reports `2x expected '{'` and marks both files NOTPARSE. No FALSE POSITIVE
+/// comes with it: the findings land in `unreliable`/`withheld`, because a file
+/// the reader could not parse is reported as unread rather than as wrong, and
+/// that is the honest classification.
+///
+/// Measured cost, on wzzc-dev/moui 0.1.12: FOUR of the seventeen files the
+/// truncation ranking reports
+/// (`_verify/diagnose_moui_truncations.ps1`), the largest single shape there.
+/// `backend/web/accessibility.mbt` cut at line 370 hides 7 further lines,
+/// `web_host.mbt` at 382 hides 80.
+///
+/// ONE OR TWO STRINGS, COUNTED RATHER THAN ASSUMED. `= "exit"` names a bare
+/// symbol; `= "window_web" "sync_semantics"` names a MODULE and a symbol inside
+/// it. `parse_extern_fn` already consumed exactly one string, which is right for
+/// its `extern "c"` shape and leaves the second dangling on this one -- so this
+/// helper consumes up to two and both call sites share it. Two sites implementing
+/// one rule is the drift this repository has been bitten by before, and the fix
+/// is the shared helper rather than a second careful inline block.
+///
+/// The `=` is consumed unconditionally once seen, because in signature position
+/// nothing else can follow the return annotation before the body's `{`. That is
+/// a claim about the grammar, so it is worth stating rather than leaving
+/// implicit: there is no `fn` form where an `=` appears here and means anything
+/// else. A `=` followed by NO string is not a binding and this returns false, but
+/// the `=` is already gone -- `parse_block` will report `expected '{'` there,
+/// which is the right complaint about a malformed declaration.
+fn Parser::parse_external_binding(self : Parser, name : String) -> Bool {
+  if !self.at(TAssign) {
+    return false
+  }
+  let _ = self.bump()
+  let mut seen = 0
+  while seen < 2 && self.at_str() {
+    let _ = self.bump()
+    seen += 1
+  }
+  if seen == 0 {
+    return false
+  }
+  // The name BINDS. A call to it must not read as an undefined function, and the
+  // registration `parse_extern_fn` already does is what makes that true.
+  if !self.extern_fns.contains(name) {
+    self.extern_fns.push(name)
+  }
+  true
+}
+
+///|
 fn Parser::parse_fn(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // fn
   let (name, params, retann) = self.parse_fn_signature()
+  // Header-only, and not an inconsistency: this body lives in another language
+  // and was never read, so there is nothing inside it that could carry an
+  // unanalysed region, and `sp` is the whole extent there is. Same shape, same
+  // reason, as the `extern` form in `parse_extern_fn`.
+  if self.parse_external_binding(name) {
+    return { span: sp, kind: @ast.SFunc(name, params, retann, [], sp), }
+  }
   let (body, endsp) = self.parse_block(true)
   // The statement span stays the header (it is what `FUnreachable` and the
   // binding decl_spans localize against), while the SFunc's 5th field is now
@@ -1858,13 +1998,12 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
   if !self.extern_fns.contains(name) {
     self.extern_fns.push(name)
   }
-  // `= "exit"` — the raw symbol in the target language. Nothing to model.
-  if self.at(TAssign) {
-    let _ = self.bump()
-    if self.at_str() {
-      let _ = self.bump()
-    }
-  }
+  // `= "exit"` — the raw symbol in the target language, or `= "mod" "sym"` for a
+  // two-part one. Nothing to model either way, and the SHARED helper is what
+  // keeps this from becoming a third spelling of one rule: it used to be an
+  // inline block here consuming exactly one string, which left the second
+  // dangling on the JS form `parse_fn` now also accepts.
+  let _ = self.parse_external_binding(name)
   // Header-only on purpose, and it is not an inconsistency: this body lives in
   // another language and was never read, so there is nothing inside it that
   // could carry an unanalysed region. `sp` is therefore already the whole

@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -994,11 +994,78 @@ if ($SkipMutations) {
 # wasm-gc 590/590 (up 5 on each — the five 0447 tests live in `moonfiles`, which is
 # not a `src/sa` package, so they run on every target). Self-scan 88/88 actionable 0,
 # up one file and six notices over 0.4.36: the new test file.
+# --- 0.4.38, 0449: an EXTERNAL fn binding, and a TUPLE STRUCT that read the next
+#     declaration's brace -------------------------------------------------------
+#
+# TWO DEFECTS IN ONE INCREMENT, because fixing the first one found the second.
+#
+# DEFECT A. `fn f() -> T = "module" "symbol"` -- a `fn` whose body lives in another
+# language is DECLARED, not defined. The parser finished the signature, found `=`
+# where it wanted `{`, and reported `expected '{'`: the parser naming a token that
+# was never the problem. That report is the file's `first_error`, so the file went
+# NOTPARSE and everything after the declaration went unread. Settled with the
+# toolchain in `_verify/settle_0449_ffi_decl.ps1`, 7/7 with BOTH negative controls
+# firing; all three shapes (no parameters, single-line list, multi-line list) are
+# ACCEPTed by `moon check`. Cost on moui 0.1.12: FOUR of the seventeen files
+# `_verify/diagnose_moui_truncations.ps1` reports, the largest single shape there.
+#
+# DEFECT B. `struct Name(T)` -- a tuple struct has no body, so the braced skipper
+# scanned forward for the `{` that opens one and took the NEXT declaration's brace.
+# On async 0.22.4 `src/process/cancellation.mbt` that brace belongs to an `if`, so
+# the `let` and the `if` went with it and `else` / `SIGTERM` were reported as
+# undefined variables -- two false positives on correct code. Settled in
+# `_verify/settle_0449b_tuple_struct.ps1`, 8/8 with three negative controls.
+#
+# THREE HYPOTHESES WERE FALSIFIED before that one, and the record is worth more
+# than the fix: the `is` pattern, a qualified receiver, and a cross-package
+# `@pkg.field` receiver each looked like the cause, and each probe varied the `if`.
+# The cause was never in the `if`. It was that what came BEFORE the `if` had no
+# `{` to stop at.
+#
+# TWO CLAIMS IN THE OLD GATE PROSE WERE FALSIFIED BY MEASUREMENT, and both are
+# corrected in place in `_verify/mutate_0449.ps1` rather than quietly dropped.
+#
+#   1. `extern_fns` does NOT suppress `undefined function`. It is consumed at
+#      exactly one place, `walk.mbt:1170`, guarding `audit_frame` -- so what the
+#      registration buys is `UnusedParam = 0` on a header-only fn whose body was
+#      never read. Dropping it leaves undefined-function findings untouched and
+#      takes a clean external fn from no findings to `UnusedParam = 1`. That is
+#      the whole trade the fix refuses: without it, four unread files would have
+#      become four files with a false positive each.
+#   2. Consuming only the FIRST of the two strings is unobservable. Nine fixtures
+#      -- an external binding followed by a `fn`, a `let`, a braced struct, a tuple
+#      struct, a second external binding, with no blank line, plus two controls --
+#      give byte-identical findings, because a leftover string literal is a
+#      well-formed top-level expression statement. M2 is now a declared SURVIVED.
+#
+# AND ONE FIXTURE WAS WRONG IN A WAY WORTH KEEPING. The M4 fixture had a struct
+# with ONE field, which absorbs the leftover line without ever reporting a name, so
+# the named test stayed green while the suite was red. Two fields is what makes it
+# discriminating. Separately, a fixture putting a `fn` after the tuple struct was
+# rejected by rule 6 and named the test that had actually gone red: `skip_decl_braced`
+# breaks at a top-level `fn` (`parser.mbt:802`), so a following FUNCTION is never
+# swallowed. The damage needs a `let ... = if` between the struct and the brace --
+# which is what the corpus writes.
+#
+#   moui             actionable  0 -> 0    parsed 591 -> 595 (+4, exactly the FFI files)
+#                          unreliable 244 -> 144, notices 4120 -> 4123, total 4364 -> 4267
+#   async            actionable  0 -> 0    parsed 253 -> 274 (+21)
+#                          unreliable 2208 -> 1193, notices 1081 -> 1234, total 3289 -> 2427
+#   the other FOUR corpora byte-identical.
+#
+# The async actionable=0 is the load-bearing line and it was NOT free. The FFI fix
+# alone took it 0 -> 2, both false positives revealed by 21 newly-readable files
+# rather than introduced by the change. "Pre-existing defect merely revealed" is a
+# real distinction and still not a shippable one, so the tuple-struct defect went in
+# the same increment instead of leaving actionable above zero.
+#
+# GATE 0449: 5 KILLED + 1 declared SURVIVED (M2, above), every named test confirmed
+# red, every restore byte-identical, baseline 600/600.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=591 actionable=0 notices=4120 unreliable=244 withheld=0 total=4364'
+  'moui'            = 'files=608 parsed=595 actionable=0 notices=4123 unreliable=144 withheld=0 total=4267'
   'moonbit_labeler' = 'files=37 parsed=26 actionable=0 notices=566 unreliable=319 withheld=140 total=885'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=253 actionable=0 notices=1081 unreliable=2208 withheld=501 total=3289'
+  'async'           = 'files=419 parsed=274 actionable=0 notices=1234 unreliable=1193 withheld=297 total=2427'
   'proton'          = 'files=137 parsed=106 actionable=0 notices=1334 unreliable=1077 withheld=316 total=2411'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
