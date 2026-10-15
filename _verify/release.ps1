@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1123,12 +1123,49 @@ if ($SkipMutations) {
 # deleted outright), every named test confirmed red, every restore byte-identical.
 # M2 and M3 turn the same test red for different reasons, and only M3 tells "I
 # flipped it" from "I removed it".
+#
+# GATE 0452: the three remaining `{`-cut moui files. The cause was NOT a brace.
+# `parse_struct_fields` reads a braced list and keys every entry by the identifier
+# before the colon; a map literal with a QUOTED key has no identifier there, so
+# `peek_name()` returned "" and the whole literal was abandoned. The fix reads a
+# string key in that position and requires the colon that follows it, because
+# `{ "a" }` is rejected by the toolchain and must not parse.
+#
+# THE TWO FORMS CANNOT BE MERGED, and `_verify/settle_0452_quoted_key_map.ps1`
+# (5/5, with a positive control) is what establishes it. `{ "a": 1 }` as
+# `Map[String,Int]` ACCEPTS; `{ a: 1 }` as Map REJECTS (4033, 4028); `{ a: 1 }`
+# as a struct literal ACCEPTS; the corpus declaration verbatim ACCEPTS. So the
+# quoted form is a map, the unquoted form is a struct, and a fix that let a
+# string key pass WITHOUT a colon would have silently taught the parser to accept
+# a program the toolchain rejects.
+#
+#   moui     parsed 596 -> 599 (+3, exactly the three `{`-cut files)  unreliable 131 -> 105
+#   labeler  parsed  26 ->  28 (+2)                                  unreliable 319 -> 309
+#   proton   parsed 106 -> 108 (+2)                                  unreliable 1103 -> 1082
+#   async    parsed 274 UNCHANGED                                    unreliable 1201 -> 1189
+#   moonbit_image and proton_contract byte-identical.  actionable 0 on all six.
+#
+# async is the interesting row: `parsed` did not move, yet 12 findings left the
+# unreliable bucket and 7 joined notices. Both are expected of this fix and both
+# are reported here so that neither can later be mistaken for corpus noise -- a
+# map literal previously read as a struct literal contributed a bogus control
+# line, and reading it correctly replaces that with real findings on a now-parsed
+# file. Across all six corpora: parsed +7, unreliable -69, total findings -30.
+#
+# GATE 0452: 4/4 KILLED (M1 the branch removed, M2 no colon demanded, M3 the value
+# expression discarded, M4 the string-vs-name discrimination dropped), every named
+# test confirmed red, every restore byte-identical. Two of the four had to be
+# re-aimed before they could distinguish anything: M2 was asserted on a failure
+# COUNT, and under the mutation the fixture still produced two failures, only the
+# second one different -- so it now asserts the MESSAGE `expected ':'`. M4's
+# MustRed points at an existing test in another file, because the mutation
+# destroys the field KEY while `{ a: a }` still parses as a value.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=596 actionable=0 notices=4130 unreliable=131 withheld=0 total=4261'
-  'moonbit_labeler' = 'files=37 parsed=26 actionable=0 notices=566 unreliable=319 withheld=140 total=885'
+  'moui'            = 'files=608 parsed=599 actionable=0 notices=4150 unreliable=105 withheld=0 total=4255'
+  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=309 withheld=134 total=877'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=274 actionable=0 notices=1234 unreliable=1201 withheld=309 total=2435'
-  'proton'          = 'files=137 parsed=106 actionable=0 notices=1334 unreliable=1103 withheld=313 total=2437'
+  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1189 withheld=308 total=2430'
+  'proton'          = 'files=137 parsed=108 actionable=0 notices=1344 unreliable=1082 withheld=309 total=2426'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

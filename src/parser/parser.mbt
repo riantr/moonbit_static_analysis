@@ -3934,6 +3934,38 @@ fn Parser::parse_struct_fields(
       }
       continue
     }
+    // A QUOTED key -- `{ "a": 1 }`. This is a MAP literal, not a struct literal,
+    // and the two are different language forms rather than two spellings of one:
+    // `moon check` ACCEPTs the quoted form against `Map[String, Int]` and REFUSES
+    // the unquoted one there with `[4033, 4028]`, while the unquoted form IS
+    // accepted against a struct. Settled in
+    // `_verify/settle_0452_quoted_key_map.ps1`, 5/5 with a positive control.
+    //
+    // SO THIS IS NOT A COSMETIC ACCEPT. It is read into the SAME field list with
+    // the key as the name, because every consumer (`walk`, `types::infer`,
+    // `interp`) already destructures `let (_, v) = f` and only ever traverses the
+    // value -- so a map literal reached through the struct path costs nothing and
+    // keeps the token stream in step with what follows the braces.
+    //
+    // A quoted key REQUIRES a `:`. The shorthand form has no meaning here: there
+    // is no field named by a string, and accepting one would let `{ "a" }` parse
+    // as something the toolchain rejects. `expect(TColon)` is therefore load
+    // bearing rather than defensive, and the recovery below it is what keeps a
+    // genuinely malformed literal from costing the rest of the file.
+    if self.at_str() {
+      let key = match self.peek() {
+        TStr(s, _) => s
+        _ => ""
+      }
+      let _ = self.bump()
+      self.expect(TColon, "':'")
+      let v = self.parse_expr()
+      fields.push((key, v))
+      if self.at(TComma) {
+        let _ = self.bump()
+      }
+      continue
+    }
     // A field starts with a name. Anything else here — a number (`{ 1 }`),
     // a punctuation token — is not a struct literal at all.
     if self.peek_name() == "" {
