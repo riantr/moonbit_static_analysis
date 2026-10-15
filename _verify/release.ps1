@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -781,11 +781,76 @@ if ($SkipMutations) {
 # the payload test" in its title is not what its Find/Repl pair expresses -- a real
 # ordering mutation would MOVE the loop below the `TLParen` branch. Both still KILL,
 # so nothing is unprotected today; the duplication is a genuine weakness.
+#
+# --- 0.4.35, 0445: the builtin-method table could not see GENERIC methods -------
+#
+# The defect was in the GENERATOR, not in the analyzer. `tools/gen_builtin_methods.ps1`
+# extracted methods with a pattern demanding the name come straight after `fn`:
+#
+#     (?m)^\s*(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)
+#
+# MoonBit's generated interfaces put type parameters there --
+# `pub fn[K : Eq] Set::add(Self[K], K) -> Unit` -- so every generic method of every
+# builtin type was invisible. Measured against the toolchain in hand the old pattern
+# produced ZERO hits on `<core>/set/pkg.generated.mbti`, which alone declares 32 of
+# them, and missed 445 names across the tree.
+#
+# WHY IT STAYED INVISIBLE. `Array::add` was never reported on any corpus only
+# because real MoonBit writes the METHOD form `a.add(x)`; the qualified form
+# `Array::add(a, x)` is mostly used for constructors. That is the shape the one
+# finding had: `Set::from_array`, async 0.22.4 `src/http/send.mbt:37`, reported
+# `undefined function` on code `moon check` accepts.
+#
+# AND IT IS NOT A DECLARED `fn` AT ALL. `#alias(from_array)` sits above
+# `type Set[K]`, so the DIRECTIVE is where the name is written. The generator now
+# carries pending aliases to whatever declaration follows, and keeps only
+# identifier-shaped ones -- `#alias("_[_:_]")` is a quoted operator and is not a
+# qualified name this table can hold. 140 such names; 1265 in the table against 656
+# before, VERIFIED A STRICT SUPERSET with none lost.
+#
+#   moui             actionable  0 -> 0    parsed 590 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable  1 -> 0    parsed 227 UNCHANGED
+#   proton           actionable  5 -> 5    parsed 103 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# Six actionable across the six corpora became five. proton is UNCHANGED and that is
+# the expected result, not a disappointment: its remaining five are `undefined name`
+# and `undefined function` on names that are not builtin methods at all
+# (`CookieWaiting`, `@async.CondVar::Cond`), so no amount of table can move them.
+#
+# THE 18 `T::to_json` NAMES, AND A HYPOTHESIS THAT WAS WRONG. Those names appear in
+# NO `pkg.generated.mbti` in the tree, and the table had been generated at
+# moon 0.1.20260920 against a toolchain that is no longer installed, so the reading
+# was "stale, drop it". They are not stale: `Bool::to_json(true)` COMPILES today.
+# They are intrinsic members, the same category as `Array::make`, which is why the
+# generator carries a hand-settled intrinsic list. They are listed there now, and
+# gate 0445's M3 exists so that dropping them again is a red suite.
+#
+# The sweep that "confirmed" it was worse. Calling `T::to_json(1)` for all 45 bare
+# types reported 35 as nonexistent, and every one of those was a TYPE mismatch,
+# because `1` is not a `Bool`. A probe wrong about its own prelude produces a
+# clean, confident, entirely false answer; the settle survived it only because a
+# correctly-typed case sat beside the malformed one. Second time this repository
+# has been caught by it, and both times the fix was the PRELUDE.
+#
+# NOT ESTABLISHED, and deliberately claimed nowhere: whether the `.mbti` fn-head
+# FORMAT changed between those two toolchains, or whether the generator was always
+# blind to generic heads. The old toolchain is not installed. The claim here is the
+# gap against the toolchain in hand, and nothing earlier.
+#
+# GATE 0445: 4/4 KILLED, every named test confirmed, every restore byte-identical.
+# M1 generic head, M2 alias of a type constructor, M3 name no interface declares,
+# M4 alias of a METHOD. M4 is pinned on table MEMBERSHIP rather than behaviourally,
+# because `Array::clone` is a deprecated alias of a deprecated spelling that no
+# corpus writes -- a behavioural test for it would have meant inventing a call site
+# no measurement produced.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=227 actionable=1 notices=979 unreliable=2174 withheld=499 total=3154'
+  'async'           = 'files=419 parsed=227 actionable=0 notices=979 unreliable=2174 withheld=499 total=3153'
   'proton'          = 'files=137 parsed=103 actionable=5 notices=1116 unreliable=900 withheld=316 total=2021'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

@@ -61,26 +61,108 @@ foreach ($line in ($bt -split "`n")) {
 }
 
 # --- 2. methods declared in the ambient packages ------------------------
+# TWO HEAD SHAPES, and the second is why this file was stale for so long:
+#
+#     pub fn Set::x(..)          non-generic
+#     pub fn[K : Eq] Set::x(..)  GENERIC -- type parameters sit between `fn`
+#                                 and the name
+#
+# The old pattern demanded that `fn` be followed by the name, so every generic
+# method of every builtin type was invisible. Measured against the toolchain in
+# hand it produced ZERO hits on `<core>/set/pkg.generated.mbti`, which alone
+# declares 32 of them, and it missed 445 names in total -- `Array::add`,
+# `Set::add`, `Map::insert` among them. `Array::add` had never been reported on
+# the corpora only because real code writes the METHOD form `a.add(x)`; the
+# qualified form is mostly used for constructors, which is exactly the shape the
+# one remaining async finding had (`Set::from_array`).
+#
+# ALIASES ARE NOT DECLARATIONS. `#alias(from_array)` above `type Set[K]` makes
+# `Set::from_array` a real, callable name, and the directive -- not a `fn` line --
+# is where it is written. So the scan is line-based and carries pending aliases
+# to whatever declaration comes next. Two filters, both measured:
+#
+#   - Only IDENTIFIER-shaped alias names are kept. `#alias("_[_:_]")` is a
+#     quoted operator and is not a qualified name this table can hold.
+#   - Any declaration clears the pending list, because an alias binds to the
+#     NEXT declaration, not to the next one of a kind.
 $set = @{}
+$aliasesKept = 0
+$declRx = '^(?:pub\s+|priv\s+|extern\s+|unsafe\s+)*(?:fn|type|let|const|struct|enum|class|effect|exception)\b'
 foreach ($f in Get-ChildItem $core -Recurse -Include *.mbti -File) {
-  $t = [IO.File]::ReadAllText($f.FullName, $enc)
-  foreach ($x in [regex]::Matches(
-      $t, '(?m)^\s*(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)')) {
-    if ($bare.ContainsKey($x.Groups[1].Value)) {
-      $set[$x.Groups[1].Value + '::' + $x.Groups[2].Value] = 1
+  $pending = @()
+  foreach ($line in [IO.File]::ReadAllLines($f.FullName, $enc)) {
+    $s = $line.Trim()
+    if ($s.StartsWith('#alias(')) {
+      $a = [regex]::Match($s, '^#alias\(\s*([A-Za-z_][A-Za-z0-9_]*)')
+      if ($a.Success) { $pending += $a.Groups[1].Value }
+      continue
     }
+    if ($s -notmatch $declRx) { continue }
+    $t = ''; $m = ''
+    $x = [regex]::Match($s, '^(?:pub\s+)?fn\s*(?:\[[^\]]*\])?\s*([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)')
+    if ($x.Success) {
+      $t = $x.Groups[1].Value; $m = $x.Groups[2].Value
+    } else {
+      $y = [regex]::Match($s, '^(?:pub\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)')
+      if ($y.Success) { $t = $y.Groups[1].Value; $m = $t }
+    }
+    if ($t -ne '' -and $bare.ContainsKey($t)) {
+      $set[$t + '::' + $m] = 1
+      foreach ($a in $pending) {
+        $set[$t + '::' + $a] = 1
+        $aliasesKept += 1
+      }
+    }
+    $pending = @()
   }
 }
 $declared = $set.Count
 
 # --- 3. compiler intrinsics, settled with `moon check` ------------------
+# `to_json` IS one of these, and getting that wrong is the whole reason this
+# section is commented at length. `Bool::to_json` appears in NO `pkg.generated.mbti`
+# in the tree, so a generator that reads only the interfaces concludes it does not
+# exist and drops it -- and the corpus call sites of `T::to_json` turn straight back
+# into `undefined function` false positives on code `moon check` accepts.
+#
+# It was assumed the 17 such names were STALE, left over from when the table was
+# generated at 0.1.20260920 against a toolchain that is no longer installed. That
+# was wrong, and `_verify/settle_0445_alias.ps1` is what proved it: `Bool::to_json(true)`
+# compiles today. They are intrinsic members that no interface declares -- the same
+# category as `Array::make` below, which is why this list exists at all.
+#
+# NOTE FOR THE NEXT PERSON TO WRITE A PROBE HERE. The obvious sweep is to call
+# `T::to_json(1)` for every type. That reports 35 of 45 as "does not exist" and is
+# entirely an artefact of passing an Int to Bool::to_json. The error is a TYPE
+# mismatch. A probe that is wrong about its own prelude produces a clean, confident,
+# completely false answer, and the settle caught this one only because it had a
+# type-correct case next to it.
 $intrinsic = @(
   'Array::copy', 'Array::from_iter', 'Array::make', 'Array::makei',
   'Array::sort', 'Float::NaN', 'Int::unsafe_to_char', 'Map::each',
   'Map::from_array', 'Map::new', 'Option::None', 'Ref::new',
-  'String::starts_with', 'StringBuilder::new'
+  'String::starts_with', 'StringBuilder::new',
+  # T::to_json -- declared by no interface, present on the builtin types.
+  # Preserved from the pre-0.4.35 table rather than re-derived, because the
+  # failure direction of keeping a name the toolchain has since dropped is a
+  # MISSED report, which this table already accepts, while the direction of
+  # dropping one it still has is a FALSE POSITIVE, which it does not.
+  # The list is transcribed, not composed: the first version of it guessed
+  # `UInt32::to_json` into existence and dropped `Unit::to_json`, which the
+  # superset check caught immediately. Read it out of the old table instead.
+  'ArgsLoc::to_json', 'Bool::to_json', 'Byte::to_json', 'Bytes::to_json',
+  'BytesView::to_json', 'Char::to_json', 'Double::to_json', 'Error::to_json',
+  'Failure::to_json', 'Float::to_json', 'Int::to_json', 'Int64::to_json',
+  'String::to_json', 'StringView::to_json', 'UInt::to_json', 'UInt16::to_json',
+  'UInt64::to_json', 'Unit::to_json'
 )
 foreach ($n in $intrinsic) { $set[$n] = 1 }
+
+# DERIVED, not copied. The provenance line written into the generated file used to
+# carry a version typed in by hand, so it went stale the moment the toolchain moved
+# and nobody could tell a stale table from a current one. The whole point of
+# recording provenance is that it is checkable.
+$verdict = (& $moon version 2>&1 | Select-Object -First 1) -replace '\s+', ' '
 
 # --- emit ---------------------------------------------------------------
 $groups = @{}
@@ -120,10 +202,19 @@ $sb = [Text.StringBuilder]::new()
 [void]$sb.AppendLine('// is to name the methods rather than to forgive every spelling.')
 [void]$sb.AppendLine('//')
 [void]$sb.AppendLine('// Provenance. Read out of the toolchain''s own generated interfaces,')
-[void]$sb.AppendLine('// <toolchain>/lib/core/**/pkg.generated.mbti, at moon 0.1.20260920')
-[void]$sb.AppendLine('// (914d7da 2026-09-20). $declared of the $(( $declared + $intrinsic.Count )) names')
-[void]$sb.AppendLine('// below are declared in one of those files; the last $intrinsic.Count are')
-[void]$sb.AppendLine('// compiler builtins that no interface declares, settled with `moon check`.')
+[void]$sb.AppendLine("// <toolchain>/lib/core/**/pkg.generated.mbti, at the toolchain this was")
+[void]$sb.AppendLine("// last run against -- the version below is WRITTEN BY THE GENERATOR and")
+[void]$sb.AppendLine("// was typed in by hand until 0.4.35, which is how a stale table could")
+[void]$sb.AppendLine("// not be told apart from a current one.        toolchain: $verdict")
+[void]$sb.AppendLine("//")
+[void]$sb.AppendLine("// Of the $(($declared + $intrinsic.Count)) names below, $aliasesKept come from an")
+[void]$sb.AppendLine("// #alias DIRECTIVE rather than from a declaration: #alias(from_array)")
+[void]$sb.AppendLine("// above [type Set[K]] is what makes Set::from_array a real callable")
+[void]$sb.AppendLine("// name. The rest are plain declarations, of which every GENERIC one")
+[void]$sb.AppendLine("// ([pub fn[K : Eq] Set::add]) was invisible to this generator until")
+[void]$sb.AppendLine("// 0.4.35, because its pattern demanded the name come straight after")
+[void]$sb.AppendLine("// fn. The last $($intrinsic.Count) are compiler builtins that no")
+[void]$sb.AppendLine("// interface declares, settled with [moon check].")
 [void]$sb.AppendLine('//')
 [void]$sb.AppendLine('// The bare TYPE names themselves live in builtins.mbt. This file is sliced to')
 [void]$sb.AppendLine('// those heads, so the two cannot drift: adding a type to the bare list without')
@@ -161,13 +252,13 @@ foreach ($h in ($groups.Keys | Sort-Object)) {
 # file `moon fmt --check` rejects. Formatting the tree is therefore part of the
 # recipe rather than a follow-up somebody has to remember.
 Push-Location $repo
-& 'C:\Users\31379\.moon\bin\moon.exe' fmt | Out-Null
+& $moon fmt | Out-Null
 Pop-Location
 
 # --- report -------------------------------------------------------------
-$verdict = & 'C:\Users\31379\.moon\bin\moon.exe' version --all 2>&1 | Select-Object -First 1
 Write-Host "wrote src/core/builtin_methods.mbt"
 Write-Host "  declared in .mbti : $declared"
+Write-Host "  via #alias        : $aliasesKept"
 Write-Host "  intrinsics        : $($intrinsic.Count)"
 Write-Host "  total             : $($set.Count)"
 Write-Host "  heads             : $($groups.Count)"
