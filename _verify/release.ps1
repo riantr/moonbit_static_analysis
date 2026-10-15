@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1061,12 +1061,74 @@ if ($SkipMutations) {
 #
 # GATE 0449: 5 KILLED + 1 declared SURVIVED (M2, above), every named test confirmed
 # red, every restore byte-identical, baseline 600/600.
+# --- 0.4.39, 0450: a `fn` in STATEMENT position is two different things ---------
+#
+# A lambda whose value is a branch:
+#
+#     paint: if disabled {
+#       fn(_ctx) { { commands: 1 } }
+#     } else {
+#       fn(_ctx) { plan0() }
+#     }
+#
+# `parse_block` routed EVERY `fn` to the declaration path, so the lambda fell into
+# `parse_fn_signature`, which asks for a name, found `(`, and reported
+# `expected function name` -- at a token that is neither unexpected nor unnamed, so
+# the message sent a reader hunting a malformed function header that does not
+# exist. That is moui 0.1.12 `modifier_env.mbt` cut at `fn(_ctx) {`.
+#
+# ONE CONDITION, and the token after `fn` is the whole discriminator: a NAME means a
+# local function declaration, `(` means a lambda expression. It only ever surfaced
+# in a BRANCH because expression position always worked -- `let f = fn(x) { .. }`
+# reaches `parse_primary`'s lambda branch -- and a lambda that is the tail of an
+# `if` branch is a block STATEMENT, the one place the two forms share a token and a
+# cursor.
+#
+# Settled in `_verify/settle_0450_shapes.ps1`, 10/10 with THREE positive controls,
+# two of which exist because malformed preludes built first: a wrong field type made
+# nine agreeing REJECT(4014) rows, and the corpus's QUOTED keys reject against a
+# struct too. Fix the prelude, never the expectation.
+#
+#   moui     parsed 595 -> 596 (+1, exactly modifier_env.mbt)  unreliable 144 -> 131
+#   async    parsed 274 UNCHANGED                              unreliable 1193 -> 1201
+#   proton   parsed 106 UNCHANGED                              unreliable 1077 -> 1103
+#   the other three corpora byte-identical.  actionable 0 on all six.
+#
+# THE UNRELIABLE RISE IS NOT NEW FINDINGS, and saying so required a measurement
+# rather than an argument. `_verify/measure_0450_unreliable.ps1` diffs the scan of
+# both corpora before and after the fix. Every differing line is a CONTROL line:
+#
+#     async  task_group.mbt      read up to line 50, 35 after -> 47 after
+#     async  process/redirect.mbt                     57 after -> 32 after
+#     async  io/data.mbt                              6 after ->  4 after
+#     proton six files, +2 to +9 lines each
+#
+# Six files per corpus now read FURTHER, so more of an already-unread tail is seen,
+# and the extra findings land in NOTPARSE files where they are already unreliable or
+# withheld. NOT ONE new finding message appears anywhere. The defect's own
+# signature is gone: `1x expected function name` leaves async's withheld tally, and
+# proton's `2x unexpected token ')'` with it.
+#
+# THAT DIFF HAD TO BE REWRITTEN ONCE, because the first version compared only the
+# printed `LINE:COL - error:` lines and reported added=0 removed=0 on both corpora
+# -- while the SUMMARY beside it said `unreliable` had moved 1193 -> 1201 and
+# 1077 -> 1103. Byte-identical lists and a moving count cannot both be true. The
+# findings that moved are printed as control lines (PARTIAL read-depth, the withheld
+# tally), not one line per finding. A probe that engages its instrument and prints a
+# confident zero is worse than one that prints nothing, and that is the whole
+# hazard: `actionable = 0` on its own would have "confirmed" this change while
+# measuring nothing about it.
+#
+# GATE 0450: 3/3 KILLED (M1 the original, M2 the inversion, M3 the condition
+# deleted outright), every named test confirmed red, every restore byte-identical.
+# M2 and M3 turn the same test red for different reasons, and only M3 tells "I
+# flipped it" from "I removed it".
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=595 actionable=0 notices=4123 unreliable=144 withheld=0 total=4267'
+  'moui'            = 'files=608 parsed=596 actionable=0 notices=4130 unreliable=131 withheld=0 total=4261'
   'moonbit_labeler' = 'files=37 parsed=26 actionable=0 notices=566 unreliable=319 withheld=140 total=885'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=274 actionable=0 notices=1234 unreliable=1193 withheld=297 total=2427'
-  'proton'          = 'files=137 parsed=106 actionable=0 notices=1334 unreliable=1077 withheld=316 total=2411'
+  'async'           = 'files=419 parsed=274 actionable=0 notices=1234 unreliable=1201 withheld=309 total=2435'
+  'proton'          = 'files=137 parsed=106 actionable=0 notices=1334 unreliable=1103 withheld=313 total=2437'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

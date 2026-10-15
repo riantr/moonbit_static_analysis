@@ -2046,7 +2046,25 @@ fn Parser::parse_block(
     if self.at(TRBrace) {
       break
     }
-    if self.at_name("fn") {
+    // A `fn` in statement position is one of TWO things, and the token right
+    // after `fn` is the whole discriminator:
+    //
+    //     fn name(t : T) { .. }   a NAMED function declared inside this block
+    //     fn(t) { .. }            an ANONYMOUS function literal -- a LAMBDA,
+    //                              which is an EXPRESSION, not a declaration
+    //
+    // Routing both to the declaration path is what made a lambda fail wherever
+    // it sat in statement position. `parse_fn_signature` asks for a name, finds
+    // `(`, and reports `expected function name` at a `fn` that is neither
+    // unexpected nor unnamed -- so the complaint names the wrong thing, and
+    // `parse_block` goes on from a cursor that never moved.
+    //
+    // It only showed up in a BRANCH, and that is not an accident of the corpus.
+    // In expression position (`let f = fn(x) { .. }`) `parse_primary` has always
+    // had a lambda branch, so those always worked. A block statement is the one
+    // place the two forms share a token and a cursor, and moui's `modifier_env`
+    // is written with a lambda as the tail of an `if` branch.
+    if self.at_name("fn") && self.name_at(self.p + 1) != "" {
       // A named function INSIDE a block: `fn add(t : Ty) { ... }`. Ordinary
       // MoonBit — this analyzer's own types.mbt defines one — so it is parsed
       // as its own statement kind instead of being rejected. Rejection used

@@ -15,8 +15,10 @@
 //|     not been isolated. Do not read "the read stops here" as "the parser cannot
 //|     read this": that script already warns about the two being different claims,
 //|     and here they demonstrably are.
-//|   - `modifier_env.mbt` is a real, reproduced defect, and a different one: a
-//|     lambda in an `if` BRANCH is not parsed. See the last test.
+//|   - `modifier_env.mbt` was a real, reproduced defect, and is FIXED here: a
+//|     lambda in an `if` BRANCH is not parsed. One condition in `parse_block`.
+//|     Its tests asserted the failure for one commit and flipped in the same
+//|     commit that fixed it, which is the evidence -- see below.
 //
 //| WHAT IS *NOT* CLAIMED. Nothing here asserts what breaks those three files.
 //| Nine fixtures were tried against the cut-line shape -- with and without a
@@ -25,16 +27,29 @@
 //| next move is to bisect one real file, not to guess at the construct again.
 
 ///|
-fn any_parse_error_contains(
-  r : @pipeline.PipelineResult,
-  needle : String,
-) -> Bool {
+/// Parse FAILURES, excluding the DECLARED SCOPE LIMITS.
+///
+/// The subset has no closure node and does not analyse `if` expressions, so both
+/// are read and then reported -- and those notices share the `ParseError` family
+/// with real read failures. So `count_family(r, "ParseError") == 0` is the wrong
+/// assertion for these fixtures: it counts a deliberate, correct notice as if it
+/// were a defect, and an assertion that cannot tell the two apart is an assertion
+/// about the family rather than about the code.
+///
+/// The exclusion is the pipeline's OWN rule, not one invented here:
+/// `pipeline.mbt:143` filters on `"outside the analyzed subset"` and documents
+/// why that is exact -- all seven parser skip messages carry it and no read
+/// failure does. Reusing the substring is the point; a hand-rolled list of the
+/// two notices this file happened to meet would pass today and miss the other five.
+fn parse_failures(r : @pipeline.PipelineResult) -> Int32 {
+  let mut n = 0
   for rep in r.reports {
-    if rep.family.name() == "ParseError" && rep.message.contains(needle) {
-      return true
+    if rep.family.name() == "ParseError" &&
+      !rep.message.contains("outside the analyzed subset") {
+      n += 1
     }
   }
-  false
+  n
 }
 
 ///|
@@ -50,7 +65,7 @@ test "0450: a parenthesised ascribed struct literal reads cleanly" {
     "s1.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 0)
+  assert_eq(parse_failures(r), 0)
 }
 
 ///|
@@ -69,49 +84,72 @@ test "0450: the let-then-parenthesised-literal shape reads cleanly" {
     "s1e.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 0)
+  assert_eq(parse_failures(r), 0)
 }
 
 ///|
-/// WHAT *IS* REPRODUCED: a lambda in an `if` branch.
+/// THE DEFECT, NOW FIXED. This test asserted the failure for one commit and its
+/// own comment said what would happen when the defect went away: the assertion
+/// flips in the SAME commit, and that flip is the evidence it is gone rather than
+/// suppressed.
 ///
-///     if disabled {
-///       fn(_ctx) { .. }
-///     } else {
-///       fn(_ctx) { .. }
-///     }
+/// The change is one condition in `Parser::parse_block`. A `fn` in statement
+/// position was routed unconditionally to the declaration path, so a lambda fell
+/// into `parse_fn_signature`, which asks for a name, found `(`, and reported
+/// `expected function name` at a token that is neither unexpected nor unnamed.
+/// The token after `fn` is the whole discriminator -- a NAME means a local
+/// function declaration, `(` means a lambda expression.
 ///
-/// is valid MoonBit -- `_verify/settle_0450_shapes.ps1`, ACCEPT -- and this
-/// parser reports `expected function name` at each `fn`. That is `modifier_env.mbt`
-/// cut at `fn(_ctx) {`.
-///
-/// The name is wrong in a way worth stating: the token is not unexpected and
-/// there IS a name. `parse_stmt` is being asked for a declaration and is handing
-/// back a complaint about a function name it never wanted. A reader trusting the
-/// message would look for a malformed function header and find none.
-///
-/// THIS TEST ASSERTS A DEFECT, deliberately. It pins today's behaviour so that
-/// fixing it cannot land unnoticed: whoever fixes it must update this test in the
-/// same commit, and the update is the evidence the defect is gone. The surrounding
-/// tests assert the opposite direction -- that legal code keeps reading -- and a
-/// suite that silently flipped all of them would be the real problem.
-test "0450: a lambda in an if branch is not parsed (known defect)" {
+/// It only ever surfaced in a branch because expression position always worked:
+/// `let f = fn(x) { .. }` reaches `parse_primary`'s lambda branch, while a
+/// lambda that is the tail of an `if` branch is a block STATEMENT. moui's
+/// `modifier_env.mbt` is written that way.
+test "0450: a lambda in an if branch is parsed" {
   let r = @pipeline.run(
     "///|\nfn probe(disabled : Bool) -> (Int) -> Plan {\n  if disabled {\n    fn(_ctx) {\n      {\n        commands: 1,\n      }\n    }\n  } else {\n    fn(_ctx) { plan0() }\n  }\n}\n",
     "modifier_env.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(any_parse_error_contains(r, "expected function name"), true)
+  assert_eq(parse_failures(r), 0)
+  // ... and the complementary claim, which is what makes the first one mean
+  // something: TWO lambdas in the fixture, TWO notices. The notice is emitted
+  // after the literal's parameters and body have been read, so counting them is
+  // how the test knows both were reached. `parse_failures == 0` alone would also
+  // be satisfied by skipping the region without looking at it.
+  assert_eq(count_family(r, "ParseError"), 2)
 }
 
 ///|
-/// THE CONTROL FOR THAT ONE, and the reason it is believable: the SAME `if` of
-/// lambdas, with the struct-literal field wrapper the corpus puts around it,
-/// fails the same way. The wrapper is not what breaks it.
-///
-/// And the narrowest control of all: a bare `{ .. }` struct literal as a whole
-/// function body reads fine, so the two are not the same defect wearing one
-/// hat -- which is the split this file exists to record.
+/// THE CONTROL FOR THE FIX, and the reason it can be believed: the two forms
+/// share a token and differ only in what follows it, so a fix that simply stopped
+/// treating `fn` as a declaration would pass the test above while losing every
+/// named local function. This one is that loss, named.
+test "0450: a named function declared inside a block is still a declaration" {
+  let r = @pipeline.run(
+    "///|\nfn probe() -> Int {\n  fn add(a : Int, b : Int) -> Int {\n    a + b\n  }\n  add(1, 2)\n}\n",
+    "local_fn.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(parse_failures(r), 0)
+}
+
+///|
+/// BOTH IN ONE BLOCK, which is the case neither control covers on its own: the
+/// discriminator has to keep working after the first `fn` has been consumed, and
+/// not just at the start of a block.
+test "0450: a named local function and a lambda coexist in one block" {
+  let r = @pipeline.run(
+    "///|\nfn probe() -> Int {\n  fn add(a : Int, b : Int) -> Int {\n    a + b\n  }\n  let f = fn(x) { add(x, 1) }\n  f(1)\n}\n",
+    "mixed.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(parse_failures(r), 0)
+}
+
+///|
+/// AND THE WRAPPER IS STILL NOT THE VARIABLE. With the struct-literal field the
+/// corpus wraps this in, both the bare and the wrapped form read cleanly -- which
+/// is the control that said the wrapper was never what broke it.
 test "0450: the if-of-lambdas shape does not depend on the struct wrapper" {
   let bare = @pipeline.run(
     "///|\nfn probe(disabled : Bool) -> (Int) -> Plan {\n  if disabled {\n    fn(_ctx) {\n      {\n        commands: 1,\n      }\n    }\n  } else {\n    fn(_ctx) { plan0() }\n  }\n}\n",
@@ -123,6 +161,6 @@ test "0450: the if-of-lambdas shape does not depend on the struct wrapper" {
     "wrapped.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(any_parse_error_contains(bare, "expected function name"), true)
-  assert_eq(any_parse_error_contains(wrapped, "expected function name"), true)
+  assert_eq(parse_failures(bare), 0)
+  assert_eq(parse_failures(wrapped), 0)
 }
