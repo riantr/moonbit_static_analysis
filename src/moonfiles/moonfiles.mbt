@@ -1112,6 +1112,15 @@ pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
       tab.values.set(n, true)
     }
   }
+  // Re-exported types carry their MEMBERS under the name they really have, and
+  // `has_value` / `has_type` follow the link. FIRST ONE WINS for a repeated
+  // name -- see the collision note on `IfaceSymTab.aliases`.
+  for pair in result.aliases {
+    let (renamed, target) = pair
+    if !tab.aliases.contains(renamed) {
+      tab.aliases.set(renamed, target)
+    }
+  }
   tab
 }
 
@@ -1138,6 +1147,17 @@ priv struct IfaceScan {
   /// is not callable, and typing one as a function made `3.0F * hz` an operator
   /// mismatch. See the `is_const` note on `IfaceSymTab.values`.
   const_names : Array[String]
+  /// Re-exported TYPES, as `(new name, qualified name it really is)`: async
+  /// 0.22.4 `src/pkg.generated.mbti:111` writes
+  /// `pub using @cond_var {type Cond as CondVar}`, so this collects
+  /// `("CondVar", "@cond_var.Cond")`.
+  ///
+  /// The renamed name alone was already recorded, in `declared` — that is what
+  /// makes `@async.CondVar` resolve as a TYPE. What was missing is the link to
+  /// `@cond_var.Cond`, and without it `@cond_var`'s MEMBERS are unreachable
+  /// through the re-exported name. See the `IfaceSymTab.aliases` note for the
+  /// finding this fixes and the settle that pins the behaviour.
+  aliases : Array[(String, String)]
 }
 
 ///|
@@ -1148,6 +1168,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   let type_params : Array[String] = []
   let sig_names : Array[String] = []
   let const_names : Array[String] = []
+  let aliases : Array[(String, String)] = []
   let referenced : Array[(String, Int32, Int32)] = []
   let lines = split_lines(text)
   let mut decl_depth = 0
@@ -1232,6 +1253,24 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
         Some((head, _)) =>
           for seg in split_top_commas(strip_outer(trim_sp(head), '{', '}')) {
             let mut body_seg = trim_sp(seg)
+            // THE SOURCE MODULE, read BEFORE the `{` is stripped below, because
+            // that strip is what loses it: `@cond_var {type Cond as CondVar`
+            // carries the package in its prefix. Only the FIRST seg of a line
+            // carries one -- `strip_outer` has already taken the braces off the
+            // ends, so later segs arrive as bare `type Foo as Bar`. A re-export
+            // line naming two packages on one line therefore records its first
+            // alias and not its second. That is a limit, not a claim, and the
+            // settle does not exercise it because no corpus here writes it.
+            let mut src_mod = ""
+            match rsplit_at(body_seg, "{") {
+              Some((pre, _)) => {
+                let p = trim_sp(pre)
+                if p.has_prefix("@") {
+                  src_mod = p
+                }
+              }
+              None => ()
+            }
             // A seg keeps its package qualifier and brace opener:
             // `@builtin {type ArgsLoc` — rsplit_at above consumed the
             // closer (non-last segs of a line keep theirs). Strip through
@@ -1256,10 +1295,19 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
               }
             }
             match rsplit_at(body_seg, " as ") {
-              Some((_, renamed)) => {
+              Some((orig, renamed)) => {
                 let a = decl_name(renamed)
                 if a != "" && !declared.contains(a) {
                   declared.push(a)
+                }
+                // THE LINK, and the reason this branch is worth more than the
+                // `declared.push` above it. Recording the renamed name is what
+                // makes `@async.CondVar` resolve as a TYPE; recording what it
+                // re-exports is what makes `@async.CondVar::Cond()` resolve as
+                // a CALL. `o != a` keeps a self-referential `type X as X` out.
+                let o = decl_name(orig)
+                if src_mod != "" && a != "" && o != "" && o != a {
+                  aliases.push((a, src_mod + "." + o))
                 }
               }
               None => {
@@ -1433,7 +1481,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       vst: [],
     })
   }
-  IfaceScan::{ reports, declared, sig_names, ctors, const_names, }
+  IfaceScan::{ reports, declared, sig_names, ctors, const_names, aliases, }
 }
 
 ///|

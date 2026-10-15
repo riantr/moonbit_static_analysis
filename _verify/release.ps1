@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -909,22 +909,97 @@ if ($SkipMutations) {
 # is deprecated in favour of `to_owned`. `--deny-warn` turns those into errors, so the
 # suite stopped before a single mutation gate ran. All four sites now say `to_owned()`.
 #
-# A GREEN TEST TALLY IS NOT `--deny-warn` CLEAN. During development this same code
-# reported `moon test --target wasm` at 655/655; under this suite the same package exits
-# 1 and prints NO tally at all. The cause of that discrepancy is NOT ESTABLISHED and is
-# not claimed here. What IS established, and is why the fix happened at all: one of the
-# two stages ran the tests and one ran the linter, and only the linter said anything.
-# A suite that runs only the first would have shipped four deprecation warnings.
+# A GREEN TEST TALLY IS NOT `--deny-warn` CLEAN, and the reverse is also true.
+# During development this same code reported `moon test --target wasm` at 655/655;
+# under this suite the same package exits 1 and prints NO tally at all. The cause
+# of THAT discrepancy is NOT ESTABLISHED and is not claimed here.
+#
+# 0.4.37 supplied the cleaner half of the same point, in the OPPOSITE direction: a
+# `local` binding in a new test file left `moon test --target wasm` reporting
+# 662/662 PASSED while `moon check --deny-warn` failed it -- `local` is a MoonBit
+# reserved keyword and the test runner does not treat that as fatal. Neither stage
+# is a substitute for the other in either direction, which is the actual reason
+# this suite runs both. A suite running only the tests would have shipped four
+# deprecation warnings; a suite running only the linter would have shipped a
+# reserved-keyword binding inside the test that guards the re-export link.
 #
 # Counted as shipped: wasm 657/657 (the two tests M2 forced into existence are in that
 # 657), js 585/585, wasm-gc 585/585. js and wasm-gc run fewer because `src/sa` needs the
 # async runtime and degrades off wasm. GATE 0446: 5/5 KILLED.
+#
+# --- 0.4.37, 0447: a RE-EXPORTED type carried its name but not its MEMBERS -----
+#
+# These were the last 2 actionable findings in existence across the six corpora.
+# proton 0.3.4 `facade_notification.mbt:12,14` writes
+#
+#     gate: @async.CondVar::Cond(),
+#
+# and was reported `undefined function '@async.CondVar::Cond'` on both lines, on
+# code the toolchain accepts. async 0.22.4 re-exports the type under that name --
+# `pub using @cond_var {type Cond as CondVar}`, `src/pkg.generated.mbti:111` -- and
+# `@cond_var/pkg.generated.mbti` declares `type Cond` with `pub fn Cond::Cond() -> Self`.
+#
+# BOTH HALVES WERE ALREADY IN THE TABLE. The re-exported NAME, because the `using`
+# branch pushed it into `declared`; and `Cond::Cond`, because `@cond_var`'s own
+# interface is read and its signatures are bare. Nothing CONNECTED them.
+# `has_value` tried the exact key and then `unqualified`, so `@async.CondVar::Cond`
+# became `CondVar::Cond`, found nothing, and reported a name written down two files
+# away. It looked like a missing declaration and was a missing LINK.
+#
+# THE RULE, settled WITH THE TOOLCHAIN in `_verify/settle_0447_condvar_alias.ps1`
+# (6/6, three negative controls firing). A constructor IS callable through an
+# aliased type re-export, CROSS-PACKAGE -- and a name that does not exist is STILL
+# rejected through it: `[4029]` for a missing member, `[4032]` for a missing type.
+#
+# THAT SECOND HALF IS THE POINT, and it is why this is a link and not a
+# suppression. An earlier version of this fix -- silence every `@mod.X::m` that
+# reaches a re-exported name -- ALSO takes these two findings to zero, on all six
+# corpora, with a green suite and nothing whatever to tell the two apart. Gate
+# 0447's M2 is that version, and the control test is what kills it. The settle
+# exists because the corpus cannot make that distinction and the test can.
+#
+#   moui             actionable  0 -> 0    parsed 591 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  26 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable  0 -> 0    parsed 253 UNCHANGED
+#   proton           actionable  2 -> 0    parsed 106 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# TOTAL actionable across the six corpora is ZERO, and `parsed=` did not move on
+# any of them -- so this is a false positive removed, not a corpus traded. notices,
+# unreliable and withheld are identical on all six too; only proton's `total`
+# falls, by exactly the 2 findings that were wrong.
+#
+# TWO LIMITS, recorded because they are limits and not because they were reached.
+# The alias key is the BARE re-exported name, since `collect_iface_names` reads
+# interface text and is not told which module it came from -- two modules
+# re-exporting different types under one name would collide, first-one-wins. And
+# only the FIRST alias on a re-export line is recorded, because later segments have
+# already lost their package qualifier to the `{`-strip. The whole table is flat in
+# exactly this way, so neither is a new shape of limit; neither is a claim that the
+# mapping is sound, and no corpus here exercises either.
+#
+# The settle also records two SCAFFOLD facts that cost a wasted run each: `moon.mod`
+# must declare `source = "src"` or the build plan fails and every case reads ACCEPT,
+# and a package cannot import its OWN root package. Its first version reported all
+# three negative controls as ACCEPT for the first reason, and its second did so for
+# the third -- it normalised the toolchain's output with `replace '\s+', ' '` before
+# matching `(?m)^Error:`, which destroys the line boundaries the pattern needs. Four
+# malformed probes in four days now, each of which would have reported the right
+# answer for the wrong reason.
+#
+# GATE 0447: 4 KILLED + 1 declared SURVIVED (M5, the redundant bare form: both
+# callers apply `unqualified` to every candidate and `unqualified("@cond_var.Cond::Cond")`
+# IS `Cond::Cond`, so the extra entry cannot be reached). wasm 662/662, js and
+# wasm-gc 590/590 (up 5 on each — the five 0447 tests live in `moonfiles`, which is
+# not a `src/sa` package, so they run on every target). Self-scan 88/88 actionable 0,
+# up one file and six notices over 0.4.36: the new test file.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=591 actionable=0 notices=4120 unreliable=244 withheld=0 total=4364'
   'moonbit_labeler' = 'files=37 parsed=26 actionable=0 notices=566 unreliable=319 withheld=140 total=885'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
   'async'           = 'files=419 parsed=253 actionable=0 notices=1081 unreliable=2208 withheld=501 total=3289'
-  'proton'          = 'files=137 parsed=106 actionable=2 notices=1334 unreliable=1077 withheld=316 total=2413'
+  'proton'          = 'files=137 parsed=106 actionable=0 notices=1334 unreliable=1077 withheld=316 total=2411'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

@@ -115,11 +115,39 @@ pub struct IfaceSymTab {
   /// A const gets `TUnknown` instead: we do not know its type, but we DO know
   /// it is not callable, and `TUnknown` absorbs without claiming anything.
   values : Map[String, Bool]
+  /// Types a module RE-EXPORTS under a different name, mapped to the qualified
+  /// name they really are: `CondVar` -> `@cond_var.Cond`, written by async
+  /// 0.22.4 `src/pkg.generated.mbti:111` as
+  /// `pub using @cond_var {type Cond as CondVar}`.
+  ///
+  /// Without this the table holds `CondVar` (from the re-export) and
+  /// `Cond::Cond` (from `@cond_var`'s own interface) with nothing connecting
+  /// them, so a caller writing the constructor through the re-exported name --
+  /// `@async.CondVar::Cond()`, proton 0.3.4 `facade_notification.mbt:12,14` --
+  /// resolves to `CondVar::Cond`, finds nothing, and is reported
+  /// `undefined function`.
+  ///
+  /// It is a LINK, not a suppression. Settled with the toolchain in
+  /// `_verify/settle_0447_condvar_alias.ps1`, 6/6, three negative controls
+  /// firing: a constructor is callable through an aliased re-export, and a name
+  /// that does not exist is STILL rejected through it. So the entry has to name
+  /// the real type, and `alias_forms` has to re-ask the table for the member
+  /// under that name. Silencing every `@mod.X::m` that looks re-exported would
+  /// trade this false positive for a false negative.
+  ///
+  /// KNOWN LIMIT, measured rather than assumed: the key is the bare re-exported
+  /// name, because `collect_iface_names` reads interface TEXT and is not told
+  /// which module the text came from. Two modules that re-export different
+  /// types under one name would collide, and the first one read would win. The
+  /// whole table is already flat in exactly this way -- every `.mbti` name is
+  /// merged unqualified -- so this is the existing design's limit and not a new
+  /// one, but it is a limit and not a claim that the mapping is sound.
+  aliases : Map[String, String]
 }
 
 ///|
 pub fn IfaceSymTab::empty() -> IfaceSymTab {
-  IfaceSymTab::{ types: Map([]), values: Map([]), }
+  IfaceSymTab::{ types: Map([]), values: Map([]), aliases: Map([]), }
 }
 
 ///|
@@ -156,6 +184,15 @@ pub fn IfaceSymTab::merge(
   for k, v in other.values {
     if !self.values.contains(k) {
       self.values.set(k, v)
+    }
+  }
+  // FIRST ONE WINS, deliberately: two modules re-exporting the same bare name
+  // under different types is the collision the `aliases` note records, and
+  // overwriting would make the outcome depend on directory-walk order rather
+  // than on the first thing that claimed the name.
+  for k, v in other.aliases {
+    if !self.aliases.contains(k) {
+      self.aliases.set(k, v)
     }
   }
   self
@@ -201,6 +238,9 @@ pub fn IfaceSymTab::union(
   for k, v in self.values {
     out.values.set(k, v)
   }
+  for k, v in self.aliases {
+    out.aliases.set(k, v)
+  }
   for k, _ in other.types {
     if !out.types.contains(k) {
       out.types.set(k, true)
@@ -209,6 +249,11 @@ pub fn IfaceSymTab::union(
   for k, v in other.values {
     if !out.values.contains(k) {
       out.values.set(k, v)
+    }
+  }
+  for k, v in other.aliases {
+    if !out.aliases.contains(k) {
+      out.aliases.set(k, v)
     }
   }
   out
@@ -266,12 +311,74 @@ pub fn unqualified(name : String) -> String {
 
 ///|
 pub fn IfaceSymTab::has_type(self : IfaceSymTab, name : String) -> Bool {
-  self.types.contains(name) || self.types.contains(unqualified(name))
+  if self.types.contains(name) || self.types.contains(unqualified(name)) {
+    return true
+  }
+  for alt in self.alias_forms(name) {
+    if self.types.contains(alt) || self.types.contains(unqualified(alt)) {
+      return true
+    }
+  }
+  false
 }
 
 ///|
 pub fn IfaceSymTab::has_value(self : IfaceSymTab, name : String) -> Bool {
-  self.values.contains(name) || self.values.contains(unqualified(name))
+  if self.values.contains(name) || self.values.contains(unqualified(name)) {
+    return true
+  }
+  for alt in self.alias_forms(name) {
+    if self.values.contains(alt) || self.values.contains(unqualified(alt)) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// The spelling of `name` that reaches the same member THROUGH a re-exported
+/// type alias, and nothing else.
+///
+/// `CondVar::Cond` with `CondVar` an alias for `@cond_var.Cond` yields
+/// `@cond_var.Cond::Cond`.
+///
+/// ONE form is returned, not two, and the reason is worth writing down because
+/// the obvious second entry is dead code: both callers apply `unqualified` to
+/// every candidate (`contains(alt) || contains(unqualified(alt))`), and
+/// `unqualified("@cond_var.Cond::Cond")` IS `Cond::Cond`. A bare form in the
+/// list can therefore never be reached. Gate 0447's M5 re-adds it and is
+/// declared SURVIVED with that measurement, rather than a test being invented
+/// for behaviour the code does not have.
+///
+/// This is deliberately narrow. It fires only when the HEAD of the path is a
+/// recorded alias, and it re-asks the table for a MEMBER of that type, so a
+/// member that does not exist still misses: the settle's three negative controls
+/// are exactly that case. A name with no `::`, or whose head is not an alias,
+/// yields nothing and the lookup is unchanged.
+fn IfaceSymTab::alias_forms(self : IfaceSymTab, name : String) -> Array[String] {
+  let out : Array[String] = []
+  match unqualified(name).split_once("::") {
+    // `split_once` hands back two `StringView`s, and `Map::get` and `+` both
+    // want a `String`. `to_owned` rather than `to_string`, which is deprecated
+    // on a `StringView` and which `moon check --deny-warn` rejects.
+    Some((head_view, tail_view)) => {
+      let head = head_view.to_owned()
+      let tail = tail_view.to_owned()
+      if head != "" && tail != "" {
+        match self.aliases.get(head) {
+          Some(target) => {
+            let full = target + "::" + tail
+            if !out.contains(full) {
+              out.push(full)
+            }
+          }
+          None => ()
+        }
+      }
+    }
+    None => ()
+  }
+  out
 }
 
 ///|
