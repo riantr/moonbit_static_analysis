@@ -657,6 +657,16 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
         self.walk_stmt(x)
       }
     }
+    // `loop nobreak { .. }` contributes nothing to the types of its own: it wraps
+    // a loop, and the loop's own arms already do that work. Both halves are still
+    // walked -- the loop so its condition and body are typed, the block because
+    // its statements are real code and a type error inside one is a real defect.
+    SNoBreak(loop_stmt, block) => {
+      self.walk_stmt(loop_stmt)
+      for st in block {
+        self.walk_stmt(st)
+      }
+    }
     SReturn(e) =>
       match e {
         Some(x) => {

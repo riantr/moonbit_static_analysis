@@ -2156,7 +2156,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     let _ = self.bump()
     let cond = self.parse_expr()
     let (body, _) = self.parse_block(false)
-    return { span: sp, kind: @ast.SWhile(cond, body), }
+    return self.maybe_nobreak({ span: sp, kind: @ast.SWhile(cond, body), })
   }
   if self.at_name("for") {
     // MoonBit has TWO for forms. `for x in xs` reads a binder; the C-style
@@ -2193,7 +2193,10 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     let seq = self.parse_expr()
     let (body, _) = self.parse_block(false)
     if names.length() == 1 {
-      return { span: sp, kind: @ast.SFor(names[0], vsp, seq, body), }
+      return self.maybe_nobreak({
+        span: sp,
+        kind: @ast.SFor(names[0], vsp, seq, body),
+      })
     }
     // Multi-binder desugar. The lenses only know single-binder SFor, so
     // the sugar is expanded here rather than taught to every lens:
@@ -2340,6 +2343,40 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
 /// is where `i` is READ, and a dropped update clause makes every loop counter
 /// look like an unused local. Wrong in the loud direction is not an option
 /// here; this is wrong in the quiet one, and only for a loop's exit value.
+
+///|
+/// `loop nobreak { .. }` -- wrap a loop statement when a `nobreak` block follows.
+///
+/// The grammar is SETTLED by the compiler, `_verify/settle_0443_nobreak.ps1`, 10/10
+/// with the positive control green:
+///
+///   - `nobreak` is a postfix ON A LOOP. The compiler REJECTS `expr nobreak {..}`
+///     with no loop, and rejects it on a `let`. Matching it as a bare keyword
+///     anywhere would therefore accept programs the compiler refuses and would
+///     swallow a user's own function named `nobreak`.
+///   - it is accepted on `while` AND `for`, so this is called from all three loop
+///     forms -- the binder `for`, the C-style `for`, and `while`. Writing it for
+///     `while` alone would have been a silent gap the settle would not have
+///     caught, because the corpus site is a `while`.
+///   - the body is a STATEMENT LIST: `nobreak { 1 }` is rejected with 4139, a
+///     value in statement position cannot be dropped.
+///   - an EMPTY `nobreak { }` is ACCEPTED, unlike `noraise { }` which is rejected.
+///     The two constructs are easy to assume identical and are not.
+///
+/// The empty-block case is why this uses `parse_block` and not a loop that
+/// requires at least one statement: rejecting `nobreak { }` would reject valid
+/// MoonBit, and the probe that says so is above.
+fn Parser::maybe_nobreak(self : Parser, loop_stmt : @ast.Stmt) -> @ast.Stmt {
+  if !self.at_name("nobreak") {
+    return loop_stmt
+  }
+  let nsp = self.span()
+  let _ = self.bump()
+  let (block, _) = self.parse_block(false)
+  { span: nsp, kind: @ast.SNoBreak(loop_stmt, block), }
+}
+
+///|
 fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // for
@@ -2366,7 +2403,7 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
     None => ()
   }
   stmts.push({ span: sp, kind: @ast.SWhile(cond, loop_body), })
-  { span: sp, kind: @ast.SBlock(stmts), }
+  self.maybe_nobreak({ span: sp, kind: @ast.SBlock(stmts), })
 }
 
 ///|

@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -636,12 +636,55 @@ if ($SkipMutations) {
 # re-checked: no gate relied on wildcard behaviour, and the one `MustRed`
 # containing a `?` (0430's `f(x?)`) is a literal in that test's name, so it
 # matches exactly.
+#
+# --- 0.4.33, 0443: `nobreak { .. }` is a postfix block on a LOOP -----------------
+#
+# One false positive, and the smallest increment in a while: proton
+# `internal/bridge_admission_test/main.mbt:20` reported `undefined name
+# 'nobreak'` on code proton 0.3.4 compiles.
+#
+# SETTLED, not assumed -- `_verify/settle_0443_nobreak.ps1`, 10/10 with the
+# positive control green, after three corrections to the probe itself:
+#
+#   - it is a postfix on a LOOP, and the compiler REJECTS `expr nobreak { .. }`
+#     with no loop at all, so matching the keyword loosely would accept programs
+#     the compiler refuses.
+#   - it is accepted on `while` AND `for`, so the wrap is applied to all three
+#     loop forms. The corpus site happens to be a `while`, so a `while`-only
+#     parser would have passed the corpus measurement while being wrong.
+#   - the body is a STATEMENT LIST: `nobreak { 1 }` is rejected 4139, a value in
+#     statement position cannot be dropped. A different shape from `noraise`,
+#     which takes an arm list.
+#   - an EMPTY `nobreak { }` is ACCEPTED, unlike `noraise { }`. The two are easy
+#     to assume identical and are not, and a parser copying `noraise`'s "at least
+#     one arm" rule would reject valid MoonBit.
+#
+#   moui             actionable  0 -> 0    parsed 590 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable  6 -> 6    parsed 227 UNCHANGED
+#   proton           actionable  7 -> 6    parsed 103 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# 13 actionable across the six corpora became 12. async is UNCHANGED and that is
+# the expected result rather than a disappointment: it carries 34 `nobreak` lines
+# and every one of them was already blocked or already excluded. A census number
+# is not a finding count -- the same lesson `noraise` taught at 4x the size.
+#
+# THE NODE NEEDS FOUR ARMS AND THE FIRST DRAFT HAD ONE. `walk_stmt` learned
+# `SNoBreak`, and the suite's two `for` tests then failed with `no visible
+# binding for 'x'` and `no visible binding for 'i'` -- the FOR BINDERS, not
+# `nobreak`. There are two binding collectors, not one: `collect_fn_bindings` for
+# a function's own declarations and `collect_top` for the module frame, and both
+# have a `_ => ()` catch-all, so the compiler said nothing about the missing arms.
+# A top-level `for` executes at module level and so puts its binder there. M4 and
+# M5 pin the two collectors separately.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
   'async'           = 'files=419 parsed=227 actionable=6 notices=979 unreliable=2176 withheld=499 total=3161'
-  'proton'          = 'files=137 parsed=103 actionable=7 notices=1116 unreliable=900 withheld=316 total=2023'
+  'proton'          = 'files=137 parsed=103 actionable=6 notices=1116 unreliable=900 withheld=316 total=2022'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

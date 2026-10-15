@@ -590,6 +590,18 @@ fn Interp::exec_stmt(
         env.set(k, v)
       }
     }
+    // `loop nobreak { .. }` -- execute the loop, then the block, in the SAME
+    // environment the loop merged into. The block runs when the loop finished
+    // without a `break`, and the analyzer does not model which loops do; running
+    // it unconditionally is the sound approximation and matches what the other
+    // two lenses do with the same node. Widening is NOT re-applied: the loop arm
+    // has already widened, and widening twice would lose more than it keeps.
+    SNoBreak(loop_stmt, block) => {
+      self.exec_stmt(loop_stmt, env)
+      if self.flow == FNormal {
+        self.exec_block(block, env)
+      }
+    }
     SReturn(e) => {
       let v = match e {
         Some(x) => self.eval(x, env)

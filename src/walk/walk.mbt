@@ -770,6 +770,22 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
         self.walk_stmt(st)
       }
     }
+    // `loop nobreak { .. }` -- the loop, then the block that runs when it
+    // finishes without a `break`.
+    //
+    // BOTH ARE WALKED, and the block's statements are ordinary reads. That is
+    // the whole reason the node exists rather than the parser consuming the block
+    // and discarding it: `nobreak` bodies contain real code, and a name read only
+    // in one is a read. The block runs AFTER the loop, not per iteration, but for
+    // binding purposes both orders give the same frame contents, and splicing the
+    // statements into the loop body would have modelled an execution order this
+    // analyzer does not make a claim about anywhere else.
+    SNoBreak(loop_stmt, block) => {
+      self.walk_stmt(loop_stmt)
+      for st in block {
+        self.walk_stmt(st)
+      }
+    }
     SReturn(e) =>
       match e {
         Some(x) => self.walk_expr(x)
@@ -917,6 +933,21 @@ fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
           add(bs, { name: v, tyann: "", param: false, decl_span: vsp, })
           scan(bs, body)
         }
+        // `loop nobreak { .. }` -- BOTH halves are descended into, and the loop
+        // half is the one that matters here: its `for` BINDER is collected by the
+        // `SFor` arm above, so wrapping the loop without descending would drop
+        // `for x in xs` on the floor and report its own binder as unbound.
+        //
+        // That is not hypothetical. The first run of the 0443 tests failed with
+        // `no visible binding for 'x'` and `no visible binding for 'i'` -- not
+        // `no visible binding for 'nobreak'`, which is the finding this increment
+        // set out to remove. `walk_stmt` was taught `SNoBreak` and the COLLECTOR
+        // was not, and the compiler is silent about a missing arm in a match that
+        // has a catch-all.
+        SNoBreak(loop_stmt, block) => {
+          scan(bs, [loop_stmt])
+          scan(bs, block)
+        }
         SIf(_, then, elseifs, els) => {
           scan(bs, then)
           for ei in elseifs {
@@ -1058,6 +1089,14 @@ pub fn walk_module(
           collect_top(body)
         }
         SBlock(body) => collect_top(body)
+        // `loop nobreak { .. }` at module level. The SAME omission as the
+        // per-function collector, with the same consequence: this match has a
+        // `_ => ()` catch-all, so a missing arm compiles silently and the
+        // `for` binder inside the wrapped loop never reaches the module frame.
+        SNoBreak(loop_stmt, block) => {
+          collect_top([loop_stmt])
+          collect_top(block)
+        }
         _ => ()
       }
     }

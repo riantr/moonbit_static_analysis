@@ -323,6 +323,41 @@ pub(all) enum SKind {
   SIf(Expr, Array[Stmt], Array[ElseIf], Array[Stmt]?)
   SWhile(Expr, Array[Stmt])
   SFor(String, @core.Span, Expr, Array[Stmt])
+  ///
+  /// `while cond { .. } nobreak { .. }` -- a block that runs when the loop
+  /// finishes WITHOUT taking a `break`.
+  ///
+  /// Measured false positive: proton `internal/bridge_admission_test/main.mbt:20`
+  /// reported `undefined name 'nobreak'`, on code `moon check` accepts.
+  ///
+  ///     while true {
+  ///       while runtime.poll_event() is Some(event) {
+  ///         if event.bridge_request() is Some(request) {
+  ///           assert_eq(request.op, "app:probe")
+  ///           return request
+  ///         }
+  ///       }
+  ///       @async.sleep(5)
+  ///     } nobreak {
+  ///       fail("unreachable")
+  ///     }
+  ///
+  /// The grammar is SETTLED by the compiler, `_verify/settle_0443_nobreak.ps1`,
+  /// 10/10 with the positive control green:
+  ///
+  ///   - it is a postfix on a LOOP -- `while` and `for` both accept it, and the
+  ///     compiler REJECTS `expr nobreak { .. }` with no loop at all.
+  ///   - the body is a STATEMENT LIST, not an expression: `nobreak { 1 }` is
+  ///     rejected with 4139, a value in statement position cannot be dropped.
+  ///     This is a different shape from `noraise`, which takes an arm list.
+  ///   - an EMPTY `nobreak { }` is ACCEPTED -- unlike `noraise { }`, which is
+  ///     rejected. The two constructs are easy to assume identical and are not.
+  ///
+  /// The loop is carried as a CHILD rather than flattened, because the block runs
+  /// once AFTER the loop completes, not on each iteration. Splicing its
+  /// statements into the loop body would model it as per-iteration, which is a
+  /// claim about execution the analyzer does not make anywhere else.
+  SNoBreak(Stmt, Array[Stmt])
   SReturn(Expr?)
   /// `raise E` / `raise E(payload)` / bare `raise` — a statement that
   /// propagates an error and never produces a value.
