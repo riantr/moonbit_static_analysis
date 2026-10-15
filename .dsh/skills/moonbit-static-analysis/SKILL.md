@@ -114,8 +114,8 @@ is the taxonomy and the authority for what each suffix means):
   `Start-Process moon.exe -ArgumentList publish -NoNewWindow -Wait -PassThru -RedirectStandardOutput out.log -RedirectStandardError err.log`.
 - Git remotes: `origin` = Gitee (primary), `github` = mirror; tags stay in lockstep with the
   moon.mod version (v0.1.x). Push master + tag to both.
-- Registry README is the moon.mod `readme` file (Chinese `README.md`; English twin
-  `README.en.md` cross-linked).
+- Registry README is the moon.mod `readme` file (English `README.md`; Chinese twin
+  `README.zh.md` cross-linked).
 - After publishing a new version, bump `pyroduct/moon.mod`'s
   `riantr/moonbit_static_analysis@<ver>` and run `moon update` there, then the pyroduct gates.
 - Version policy: this module is `0.x`. `PipelineResult` gained the public
