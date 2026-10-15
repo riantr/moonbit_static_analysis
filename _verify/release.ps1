@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -418,12 +418,58 @@ if ($SkipMutations) {
 # announcing a subset exclusion there would report a loss that does not happen.
 # Gate 0437's M3 invents exactly that notice and is killed by a CONTROL that
 # compares the two spellings' report counts, not by a positive test.
+#
+# The `value[:]` move -- the largest single jump of the round, and the one that
+# COST something:
+#   moui   parsed 583 -> 590 (+7, the largest of the round). unreliable 335 -> 246
+#          and withheld 34 -> 2: 87 findings that were withheld past an unreadable
+#          boundary are now read. The blocked set falls 25 -> 18.
+#   proton parsed 101 -> 103, unreliable 927 -> 914
+#   async  parsed 226 -> 227, unreliable 2266 -> 2199
+#   labeler and moonbit_image byte-identical in parsed; labeler's unreliable
+#          332 -> 320
+#
+#   *** moui actionable 0 -> 1, proton actionable 61 -> 63. ***
+#   The first time in this release cycle that reading MORE files has raised an
+#   actionable anywhere, and it is not a regression -- but it is not free either,
+#   so here is the whole accounting, file by file, rather than "no new defects":
+#
+#     moui   backend/macos/macos_native_ime.mbt:437  parameter 'prefix' may not
+#            be used (UnusedParam, structural). `prefix` IS used, at line 442,
+#            inside a `catch { }` body. The postfix `catch` arm consumes its
+#            block with `skip_braces`, so a read that happens ONLY there is
+#            invisible. That limitation is PINNED as a KNOWN LIMIT at
+#            `parser_0432_test.mbt:155` and re-pinned for the deferred form at
+#            `pipeline_0433_test.mbt:172`, whose note already records "proton
+#            facade_bridge.mbt:584 and 17 other lines in the six corpora".
+#
+#     proton internal/native/app_control.mbt:5  undefined name 'noraise'
+#            (structural+type). `parse_raise_effect` handles `!` and `raise E`
+#            but not `noraise`, which `moonfiles.mbt`'s own `is_error_modifier`
+#            lists as one of four. A recorded missing production.
+#
+#     proton updater/hex.mbt:22 and :45  no visible binding for
+#            'MalformedSignature' (structural, x2). A suberror variant used in a
+#            DIFFERENT file from its declaration -- the per-file `enum_ctors`
+#            limitation, already recorded, and the same shape as the
+#            'InvalidSetting' x3 rows from the 0.4.30 A/B.
+#
+#   All three are pre-existing limitations of this analyzer on code `moon check`
+#   accepts; none is caused by the slice change, which only made the files
+#   readable. This is the shape README.md already describes: reading more files
+#   raises false positives before lowering them.
+#
+#   It is still the first time moui's actionable has left 0, and that number is
+#   the standing objective's own metric. The pin moves UP with the reason
+#   written here rather than quietly, and fixing the `catch`-body limitation is
+#   the way to move it back -- it is now the cheapest thing on the board, since
+#   the finding is already located and already pinned as a defect.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=583 actionable=0 notices=4050 unreliable=335 withheld=34 total=4385'
-  'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=544 unreliable=332 withheld=140 total=876'
+  'moui'            = 'files=608 parsed=590 actionable=1 notices=4119 unreliable=246 withheld=2 total=4366'
+  'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=226 actionable=14 notices=964 unreliable=2266 withheld=517 total=3244'
-  'proton'          = 'files=137 parsed=101 actionable=61 notices=1121 unreliable=927 withheld=325 total=2109'
+  'async'           = 'files=419 parsed=227 actionable=14 notices=979 unreliable=2199 withheld=510 total=3192'
+  'proton'          = 'files=137 parsed=103 actionable=63 notices=1123 unreliable=914 withheld=319 total=2100'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

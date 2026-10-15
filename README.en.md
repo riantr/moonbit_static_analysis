@@ -1595,14 +1595,14 @@ returns to 0.)
   therefore read and NOT analysed, and says so — otherwise `a..<=b` and `a..<b`
   are the same tree, and iterating n times versus n+1 times is not a difference
   to drop without saying it out loud.
-- The eight largest classes behind that distribution were then fixed, in order — the
+- The nine largest classes behind that distribution were then fixed, in order — the
   `?` optional-argument shorthand `f(x?)`, a lambda used as a parameter's default
   value, a method chain continuing on the next line, a `match` whose subject starts
   on the following line, an **arrow lambda in expression position**, the
-  **inclusive range**, the **qualified `is Type::Ctor` constructor**, and
-  **`(expr : Type)` ascription inside parentheses**.
-  **486/608 (79.9%) → 583/608 (95.9%)**, `unreliable` 1696 → 335, `withheld` 238 → 34,
-  and **no corpus's `actionable` rose** as a result of reading more files.
+  **inclusive range**, the **qualified `is Type::Ctor` constructor**,
+  **`(expr : Type)` ascription inside parentheses**, and **`value[:]` empty slice
+  bounds**.
+  **486/608 (79.9%) → 590/608 (97.0%)**, `unreliable` 1696 → 246, `withheld` 238 → 2.
 - **`is Type::Ctor`: the ranking was wrong again, and in a new way.** The backlog
   called it "`is` patterns in *expression position*", which reads as "`parse_is` is
   never reached". It is reached, and has been at the right precedence tier for
@@ -1717,6 +1717,38 @@ returns to 0.)
   moui's `unreliable` 406 → 335, `withheld` 51 → 34, `notices` 3999 → 4050 (the right
   direction: a file that parses produces subset-exclusion notices, one that stops early
   cannot). The other five corpora are **byte-identical**. **25** blocked files remain.
+- **`value[:]` — the largest jump of the round, and the first one that COST
+  something.** `parse_postfix_from`'s bracket branch called `parse_expr()` for the
+  START bound and only then asked `at(TColon)`, so a `:` sitting directly after `[`
+  went to the expression parser and the file died with ``unexpected token `:` `` —
+  the reason string on 8 of the blocked files, and on every one of those the `:` is a
+  bound separator. The comment there said an open `[:n]` "is not in the corpus and
+  reports honestly"; `chars[:index]` made that stale, and "reports honestly" was
+  disguising a blocker. The missing bound becomes `EBigInt`, the same opaque
+  placeholder the open END already used, because `const_eval` must not fold a bound
+  it never read.
+  moui **583 → 590 (+7, the round's largest)**, `unreliable` 335 → 246,
+  `withheld` 34 → **2**, blocked files 25 → 18; proton 101 → 103, async 226 → 227.
+- **But moui's `actionable` went 0 → 1 and proton's 61 → 63 — the first time this
+  cycle that reading MORE files has raised an actionable anywhere.** Not a
+  regression, and not free either, so the whole accounting is here rather than a
+  claim of "no new defects":
+
+  | corpus | new finding | recorded limitation |
+  |---|---|---|
+  | moui | `macos_native_ime.mbt:437` `parameter 'prefix' may not be used` | `prefix` IS used, at line **442**, inside a `catch { }` body; the `catch` arm consumes its block with `skip_braces`, so a read that happens only there is invisible (KNOWN LIMIT, pinned at `parser_0432_test.mbt:155`) |
+  | proton | `app_control.mbt:5` `undefined name 'noraise'` | `parse_raise_effect` handles `!` and `raise E` but not `noraise` |
+  | proton | `updater/hex.mbt:22,45` `no visible binding for 'MalformedSignature'` ×2 | a suberror variant used in a different file — the per-file `enum_ctors` limitation |
+
+  All three are **pre-existing limitations of this analyzer** on code `moon check`
+  accepts, and none is caused by the slice change, which only made those files
+  readable. It is the shape this README described long ago: reading more files
+  raises false positives before lowering them. Even so, moui's `actionable` has left
+  0 for the first time, and that number IS the standing objective's own metric — so
+  the pin moves up with the reason written down rather than quietly, and fixing the
+  `catch`-body limitation is the way to move it back. That makes it the cheapest
+  thing on the board: the finding is already located and the defect is already
+  pinned as a test.
 - `_verify/blockers.ps1` ranks *files that cannot be read*; `_verify/backlog.ps1`
   ranks *subset-exclusion notices*. They answer different questions and the
   conflation was the reason this bullet sat unfixed for fourteen releases: only

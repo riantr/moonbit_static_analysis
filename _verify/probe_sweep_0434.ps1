@@ -79,6 +79,25 @@ $PROBE_CASES = [ordered]@{
   # moui core/semantics.mbt:71 and 3 more
   'slice_empty_bounds'         = "fn f(value : String) -> Int {`n  let s = value[:]`n  s.length()`n}`n"
 
+  # ---- 8b. OPEN START bound, a real end -----------------------------------
+  # moui core/unicode/grapheme_cluster.mbt:248
+  # `@utf8.encode(String::from_array(chars[:index])[:], bom=false)`
+  # The parser's own comment used to say this shape "is not in the corpus and
+  # reports honestly". It is in the corpus, so the claim was stale -- and the
+  # honest report was a blocker wearing a comment.
+  'slice_open_start'           = "fn f(value : String) -> Int {`n  let s = value[:2]`n  s.length()`n}`n"
+
+  # ---- 8c. CONTROL: an ordinary index with no colon ------------------------
+  # The new branch fires on `at(TColon)` right after `[`. A plain index must
+  # not be diverted by it.
+  #
+  # The first draft of this case was `value[0]` on a String and came back
+  # MOON-BAD -- the toolchain reported "this frontend reads MoonBit the
+  # toolchain rejects", which reads like a parser bug and was my probe: a
+  # String is not indexable in MoonBit. => 判据: a MOON-BAD cell is a question
+  # about the probe source first. An Array is the right base.
+  'slice_plain_index_control'  = "fn f() -> Int {`n  let xs = [1, 2, 3]`n  let c = xs[0]`n  c`n}`n"
+
   # ---- 9. parenthesised type ascription ----------------------------------
   # moui backend/common/embedded/host_transport.mbt:63
   # `(code - ('0' : Int)).to_uint64()`

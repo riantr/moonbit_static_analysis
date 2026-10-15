@@ -1359,12 +1359,12 @@ labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，action
   对 `ERange(a, b)` 一视同仁，都只读两个操作数，**都不建模包含性**。所以包含端
   被**读到但不分析**，并且发出一条 notice——否则 `a..<=b` 和 `a..<b` 在树里
   完全一样，而「循环 n 次」和「n+1 次」不是可以默默丢掉���区别。
-- 分布出来后按顺序修了最大的**八**类：调用处的 `?` 可选参数简写 `f(x?)`、把 lambda
+- 分布出来后按顺序修了最大的**九**类：调用处的 `?` 可选参数简写 `f(x?)`、把 lambda
   当作参数默认值、跨行的方法链、`match` 的被匹配表达式起自下一行、**表达式位置的
   箭头 lambda**、**`a..<=b` 闭区间**、**限定构造器 `is Type::Ctor`**、
-  以及**括号内类型标注 `(expr : Type)`**。
-  moui **486/608（79.9%）→ 583/608（95.9%）**，`unreliable` 1696 → 335，
-  `withheld` 238 → 34，六个语料的 **`actionable` 没有一个因为读入更多文件而上升**。
+  **括号内类型标注 `(expr : Type)`**、以及**空下标 `value[:]`**。
+  moui **486/608（79.9%）→ 590/608（97.0%）**，`unreliable` 1696 → 246，
+  `withheld` 238 → 2。
 - **`is Type::Ctor`：又是一次排名排错，而且错法和前两次不同。**
   待办里写的是「`is` 模式出现在**表达式位置**」——照字面理解是 `parse_is` 没被走到。
   它走到了，而且在好几个版本之前就在正确的优先级层上。真正缺的是
@@ -1459,6 +1459,31 @@ labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，action
   `unreliable` 406 → 335、`withheld` 51 → 34，`notices` 3999 → 4050（方向是对的：
   能解析的文件才会产生子集排除 notice，读不下去的文件产生不了）。其余五个语料
   **逐字节不变**。moui 剩下 **25** 个受阻文件。
+- **空下标 `value[:]`**：本轮最大的一跳，也是**头一次付出代价**的一跳。
+  `parse_postfix_from` 的方括号分支先用 `parse_expr()` 读**起始**下标，之后才问
+  `at(TColon)`；于是紧跟在 `[` 后面的 `:` 被交给了表达式解析器，文件死在
+  ``unexpected token `:` ``——那是受阻清单里 8 个文件的原因措辞，而这 8 处的 `:`
+  全都是下标分隔符。源码里那条注释当时写着开头的 `[:n]`「不在语料里，老实报错」，
+  `chars[:index]` 让它过期了，而「老实报错」其实是在给一个 blocker 化妆。
+  缺失的下标用 `EBigInt` 这个不透明占位（和已有的开尾处理一致），因为
+  `const_eval` 不能折叠一个它从没读到过的界。
+  moui **583 → 590（+7，本轮最大）**，`unreliable` 335 → 246，`withheld` 34 → **2**，
+  受阻文件 25 → 18；proton 101 → 103，async 226 → 227。
+- **但 moui 的 `actionable` 0 → 1、proton 61 → 63——这是本轮第一次「多读文件
+  抬高了 actionable」。** 不是回归，也不是白得的，逐条交代：
+
+  | 语料 | 新发现 | 已记录的局限 |
+  |---|---|---|
+  | moui | `macos_native_ime.mbt:437` `parameter 'prefix' may not be used` | `prefix` 确实在 **442 行**用了，在 `catch { }` 块里；`catch` 分支用 `skip_braces` 整块跳过，所以只在那里的读看不见（KNOWN LIMIT，钉在 `parser_0432_test.mbt:155`） |
+  | proton | `app_control.mbt:5` `undefined name 'noraise'` | `parse_raise_effect` 只处理 `!` 和 `raise E`，不处理 `noraise` |
+  | proton | `updater/hex.mbt:22,45` `no visible binding for 'MalformedSignature'` ×2 | suberror 变体跨文件使用——per-file `enum_ctors` 局限 |
+
+  三条都是**分析器自己的既有局限**、都作用在 `moon check` 接受的代码上，都不是空下标
+  这个改动造成的（改动只是让这些文件读得下去了）。这就是 README 早就写过的形状：
+  **读入更多文件先让假阳性上升再下降**。但 moui 的 `actionable` 毕竟是**头一次离开 0**，
+  而它正是这条长期目标的指标，所以 pin 带着理由上移，而不是悄悄上移——把 `catch`
+  块那条局限修掉是把它放回去的路，也因此成了板上最便宜的一件事：发现已经定位，
+  缺陷已经钉成测试。
 - `_verify/blockers.ps1` 排的是**读不动的文件**，`_verify/backlog.ps1` 排的是
   **子集排除 notice**。两者回答的不是同一个问题，混为一谈正是这条在十四个版本
   里一直没法处理的原因：只有前者会推动 `parsed=` 这个数字。

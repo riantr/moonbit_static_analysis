@@ -2853,11 +2853,40 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       // EIndex(base, ERange(a, b)), the one shape the lenses already walk
       // and type, instead of a new node. An open END (`s[n:]`) yields
       // EBigInt for the missing side — the opaque placeholder, not a
-      // value: const_eval must not fold a bound it never read. An open
-      // START (`[:n]`) is not in the corpus and reports honestly. A list
+      // value: const_eval must not fold a bound it never read. A list
       // literal cannot misfire here: its commas make `at(TColon)` false,
       // and colons inside string elements are inside TStr tokens.
-      let first = self.parse_expr()
+      //
+      // AN EMPTY START BOUND IS CHECKED FIRST, and that ordering is the whole
+      // fix. This used to call `parse_expr()` for the start and only then ask
+      // `at(TColon)`, so a `[` sitting directly on a `:` handed the colon to
+      // the expression parser and the file died with ``unexpected token `:` ``.
+      // That is the reason string on eight of the blocked corpus files, and the
+      // `:` is a bound marker, not a stray token.
+      //
+      // Two shapes, both real and both in the corpus:
+      //   `value[:]`         both bounds empty   -- core/semantics.mbt:71,
+      //                       core/declaration.mbt:102, and `bytes[:]` at
+      //                       backend/windows/windows_accessibility_bridge.mbt:490
+      //   `chars[:index]`    open start, real end -- core/unicode/grapheme_cluster.mbt:248
+      //
+      // The comment here used to say an open START "is not in the corpus and
+      // reports honestly". That was true when written; `chars[:index]` made it
+      // stale, and "reports honestly" was doing a lot of work to disguise a
+      // blocker. EBigInt for the missing side is the same treatment the open END
+      // already got, for the same reason: a bound that was never read must not
+      // be folded as if it had been.
+      //
+      // Settled with the toolchain, one form per package with a broken canary
+      // beside each (`_verify/probe_sweep_0434.ps1`, case `slice_empty_bounds`
+      // and the `slice_open_start` added beside it, canary firing):
+      // `let s = value[:]` and `let s = value[:2]` are both 0 errors.
+      let first : @ast.Expr = if self.at(TColon) {
+        let zsp = self.span()
+        { span: zsp, kind: @ast.EBigInt, }
+      } else {
+        self.parse_expr()
+      }
       if self.at(TColon) {
         let _ = self.bump()
         let end : @ast.Expr = if self.at(TRBracket) {
