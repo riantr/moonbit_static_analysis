@@ -1152,13 +1152,37 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   let lines = split_lines(text)
   let mut decl_depth = 0
   let mut import_depth = 0
-  // Constructor names inside `enum` bodies. An enum body is skipped like every
-  // other declaration body, but its members are VALUES: a `.mbt` in another
-  // file that writes `TFunc(...)` must resolve, or the structural walk reports
-  // `no visible binding for 'TFunc'` on correct code. The names are all a
-  // cross-file lookup needs — no shape, no arity, nothing inferred from them.
+  // Constructor names inside `enum` AND `suberror` bodies. An enum body is
+  // skipped like every other declaration body, but its members are VALUES: a
+  // `.mbt` in another file that writes `TFunc(...)` must resolve, or the
+  // structural walk reports `no visible binding for 'TFunc'` on correct code.
+  // The names are all a cross-file lookup needs — no shape, no arity, nothing
+  // inferred from them.
+  //
+  // `suberror` MATTERS AS MUCH AS `enum`, and was left out until 0.4.30. The
+  // measured cost, over the six corpora, was 58 of the 80 actionable findings
+  // in existence. moonbit-community/proton 0.3.4 `pkg.generated.mbti:68` reads
+  //
+  //     pub(all) suberror AppConfigurationError {
+  //       InvalidSetting(name~ : String, message~ : String)
+  //       ...
+  //     }
+  //
+  // so the name was IN the package's own interface file, which
+  // `collect_iface_symtabs` already reads -- the target's own root is
+  // `iface_dirs[0]` -- and `InvalidSetting` was still reported as having no
+  // visible binding, seven times. One predicate, `matched == "enum "`, stood
+  // between a name that was written down and a name that resolved.
+  //
+  // WHY IT WAS INVISIBLE FOR SO LONG. The MAIN PARSER already harvests
+  // suberror bodies (`Parser::skip_decl`'s `what == "enum" || what ==
+  // "suberror"`), so a suberror variant used in the file that declares it
+  // always resolved. Only the CROSS-FILE path -- the `.mbti` the package
+  // generated for itself -- went missing, which is why the cost shows up as
+  // false positives on correct code rather than as unreadable files, and why
+  // no amount of reading more files would ever have fixed it.
   let ctors : Array[String] = []
-  let mut in_enum = false
+  let mut in_ctor_body = false
   for i, line in lines {
     let lineno = i + 1
     let t = trim_sp(line)
@@ -1176,7 +1200,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       for n in body_type_refs(t) {
         referenced.push((n, lineno, 1))
       }
-      if in_enum {
+      if in_ctor_body {
         // A constructor head is the first identifier of the line, before any
         // payload: `TFunc(String, Array[Ty], Ty)`. Everything after it is a
         // type reference, already collected above.
@@ -1316,7 +1340,20 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
         d = 0
       }
       decl_depth = d
-      in_enum = matched == "enum " && d > 0
+      // BOTH `enum` and `suberror`. A body-less `suberror`
+      // (`pub suberror QueueAlreadyClosed derive(Debug)`, the shape
+      // moonbitlang/async writes) contributes no member names, and its own NAME
+      // is a top-level declaration collected above.
+      //
+      // `&& d > 0` RESTATES `decl_depth = d` on the line above rather than
+      // adding a second condition -- the body branch below is guarded by
+      // `decl_depth > 0`, and the two are the same number. It is kept because
+      // the predicate then says at its own site what it is about, and the
+      // equivalence is measured rather than argued: gate 0440's M2 deletes this
+      // clause, and 546/546 stay green.
+      // => an equivalent mutant is declared SURVIVED with its proof, not
+      //    rescued by inventing a test for behaviour that does not exist.
+      in_ctor_body = (matched == "enum " || matched == "suberror ") && d > 0
       continue
     }
     match iface_signature(t) {

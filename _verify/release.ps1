@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -498,12 +498,50 @@ if ($SkipMutations) {
 # its handler carries an `@xlog` `<?` payload that is not in the subset. M7 in
 # `mutate_0439.ps1` is that regression, and `catch_group_has_log_payload` is the
 # guard that holds `parsed=` at 103.
+#
+# --- 0.4.30, 0440: a `.mbti` `suberror` body declares value constructors -------
+#
+# ONE PREDICATE, and it was the largest single false-positive source in the
+# project. `parse_iface` set `in_ctor_body = matched == "enum " && d > 0`, so a
+# braced `suberror` body was matched and descended into -- its member types were
+# collected -- and its member NAMES were discarded.
+#
+# proton's OWN generated interface says, at `pkg.generated.mbti:68`,
+#
+#     pub(all) suberror AppConfigurationError {
+#       InvalidSetting(name~ : String, message~ : String)
+#     }
+#
+# and `collect_iface_symtabs` already reads the target's own tree, the target's
+# root being `iface_dirs[0]` in `sa/main.mbt`. `InvalidSetting` was written down
+# in the file being scanned and was still reported as having no visible binding.
+#
+#   moui             actionable  0 -> 0    parsed 590 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable 12 -> 12   parsed 227 UNCHANGED
+#   proton           actionable 78 -> 12   parsed 103 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# 80 actionable findings across the six corpora became 24. proton's drop is 66,
+# larger than the 58 the re-rank counted before the change, because 0439's 15
+# catch-body findings were the same shape -- `err => raise MalformedJson(..)` --
+# and were waiting on this same harvest.
+#
+# WHY IT WAS INVISIBLE FOR SO LONG, which is the part worth keeping. The MAIN
+# PARSER already harvested suberror bodies (`Parser::skip_decl`: `what == "enum"
+# || what == "suberror"`), so a variant used in the file that DECLARES it always
+# resolved. proton's `.mbti` files carry 30 braced suberror bodies and 0
+# body-less ones, so no rare spelling ever showed up as a discrepancy. Only the
+# CROSS-FILE path was broken, which is why the symptom was false positives on
+# correct code rather than unreadable files -- and why reading more files, the
+# move that has fixed every blocker so far, could never have fixed this one.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
   'async'           = 'files=419 parsed=227 actionable=12 notices=981 unreliable=2199 withheld=510 total=3192'
-  'proton'          = 'files=137 parsed=103 actionable=78 notices=1123 unreliable=906 withheld=317 total=2107'
+  'proton'          = 'files=137 parsed=103 actionable=12 notices=1123 unreliable=906 withheld=317 total=2041'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{
