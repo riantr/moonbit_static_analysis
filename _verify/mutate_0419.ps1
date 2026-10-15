@@ -60,6 +60,43 @@ $mutations = @(
     return false
   }
 '@
+    Expect = 'SURVIVED'
+    Prove = @'
+DECLARED SURVIVED BY 0.4.34, and the reason is worth more than the mutation.
+
+0.4.34 taught a bare lowercase `is` head to bind, and as part of that moved
+`Walker::EIs` from `bind` to `bind_pattern`. `bind` appends the name to
+`self.orders[fi]`, the audit list `audit_frame` turns into `UnusedLocal`;
+`bind_pattern` never touches it. That move is REQUIRED, not cosmetic:
+`_verify/settle_0444_is_head.ps1` measured 9/9 against the toolchain that an unread
+`is` head binding and an unread `is` payload binding are both legal MoonBit, so
+auditing them would be a false positive on correct code. It also fixed a
+pre-existing one on the payload half (`is Some(v)` with `v` unread).
+
+The cost lands exactly here. Dropping this keyword guard makes `true` a binding in
+`is Some(true)`, and the ONLY lens that ever noticed was the unused-local audit: the
+name is never READ, so it resolves (no `UndefinedName`), and `Infer::EIs` seeds it
+`TUnknown` -- resolved-and-unknown, which can only SUPPRESS a type finding. A
+phantom binding nobody reads is invisible everywhere except the audit list, and 0.4.34
+closed that one channel for `is` bindings. Measured: with the guard removed the suite
+is 646/646 green.
+
+THE ASYMMETRY THAT PINS THIS DOWN, because "the test is weak" and "the channel is
+closed" are different diagnoses. In gate 0421, M5 anchors on the same
+`depth >= 2` expression and still KILLS after the same parser change: it leaves
+`error` unbound in `is Some(Os(error))` where `error + 1` READS it, so its symptom is
+`UndefinedName` -- a different channel, still open. Same file, same change, different
+channel, opposite result.
+
+THE GUARD IS NOT REMOVED. A keyword is genuinely not a variable, and keeping it costs
+one comparison. It is simply not load-bearing against today's lens set and would
+become so the moment a lens reported unread `is` bindings.
+
+STATED AS A COST, because this is the fourth pin 0.4.34 took and it should not be
+discoverable only by reading a gate log: gates 0419 M1 and 0421 M6/M7/M8 were all
+load-bearing from 0.4.19/0.4.21 until 0.4.34, and none of them is any more. The
+0.4.34 commit message and release.ps1 say the same thing.
+'@
   }
 
   # --- M2: function types no longer recognized in an annotation -------------

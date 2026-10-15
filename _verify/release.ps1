@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -679,12 +679,114 @@ if ($SkipMutations) {
 # have a `_ => ()` catch-all, so the compiler said nothing about the missing arms.
 # A top-level `for` executes at module level and so puts its binder there. M4 and
 # M5 pin the two collectors separately.
+#
+# --- 0.4.34, 0444: a bare LOWERCASE `is` pattern head is a BINDING ------------
+#
+# Six actionable findings, async 6 -> 1 and proton 6 -> 5, `parsed=` unchanged on
+# all six. Twelve across the six corpora became six.
+#
+# SETTLED, not assumed -- `_verify/settle_0444_is_head.ps1`, 9/9 with BOTH the
+# positive control and a deliberately-broken canary green:
+#
+#   - `if probe() is err && err != 0 { err }` COMPILES: a lowercase head BINDS,
+#     so it is not a constructor test and must have a binding.
+#   - `if opt() is Some && Some != 0` is REJECTED. Uppercase is a constructor
+#     test, and "a function compared with an integer" is the only reading that
+#     explains the rejection. So case is not a heuristic, it is the grammar.
+#   - an unused head binding AND an unused payload binding are both LEGAL, and `_`
+#     binds nothing. `is St::Shutdown` binds nothing either.
+#
+# THE PROBE'S FIRST DRAFT WAS WRONG IN A WAY THAT WOULD HAVE BEEN MISREAD. It
+# used an `Int` base with `Some`/`Err`, so three cases failed 4014 for a plain
+# Int-vs-Option mismatch and would have read as "uppercase is rejected". The fix
+# was a second `opt() -> Option[Int]`, NOT a revised expectation. A failing
+# positive control means fix the prelude, never the expectation.
+#
+# THE CORPUS SYMPTOM AND THE ISOLATED SYMPTOM WERE TWO BUGS' FINGERPRINTS FOR ONE
+# CAUSE. 0444 reported `unsupported operand types for '!=': 'fn err (signature
+# not read)' and 'int'` in async schannel.mbt -- NOT `undefined name 'err'` --
+# because something else named `err` is in scope in that package and wins. An
+# isolated reproduction reports `undefined name 'err'`. Two symptoms, one cause,
+# and only the isolated form points at the parser. The shape-based re-rank would
+# have filed 0444 under the TYPE lens, and the type lens was already correct.
+#
+# BINDING THE HEAD INTRODUCED A NEW FALSE POSITIVE THAT THE SETTLE CAUGHT.
+# `Walker::bind` puts the name on the audit list, so an unused `is` head binding
+# reported `local variable 'err' assigned but may not be used` -- a false
+# positive, `b_lower_unused` ACCEPTED. `EIs` therefore uses `bind_pattern`, which
+# never touches `self.orders[fi]`. That also fixes the PRE-EXISTING payload half
+# (`is Some(v)` with `v` unread), so the fix is strictly an improvement on both
+# halves rather than a trade between them.
+#
+#   moui             actionable  0 -> 0    parsed 590 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 UNCHANGED
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable  6 -> 1    parsed 227 UNCHANGED
+#   proton           actionable  6 -> 5    parsed 103 UNCHANGED
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# GATE 0444: 2 KILLED (M1 the parse, M3 the walk), 3 declared SURVIVED with a
+# measured argument -- M2/M4/M5 are green because `bind_pattern` never reaches
+# the audit list (so no `UnusedLocal` can appear) and `Infer::EIs` seeds a
+# spurious name as `TUnknown`, i.e. resolved-and-unknown rather than unresolved,
+# which can only SUPPRESS a type finding. Both mutations are quieter; a
+# suppressed finding is not observable in this tool's output. Declared honestly
+# as expressing the settled grammar while NOT being load-bearing against today's
+# lenses -- they would become so the moment a lens began auditing `is` bindings.
+#
+# AND THE SAME ARGUMENT, ONE SCALE UP: 0444 COST FOUR PINS THAT WERE STILL
+# LOAD-BEARING. This is the part that must not be buried in a gate log.
+#
+# Moving `EIs` from `bind` to `bind_pattern` closes the unused-local audit for `is`
+# bindings: `bind` appends to `self.orders[fi]`, `bind_pattern` never touches it.
+# Every guard inside `pattern_binding_at` was observable ONLY through that audit,
+# because the phantom names each one prevents -- `true`, `Os`, `core`/`Role`/
+# `Checkbox`, `Gone`/`PageUnavailable` -- are never READ anywhere. A name that binds
+# but is never read resolves (no `UndefinedName`), and `Infer::EIs` seeds it `TUnknown`,
+# which can only suppress a type finding. So four pins that had been load-bearing
+# since 0.4.19/0.4.21 stopped being load-bearing:
+#
+#     0419 M1  is-pattern keyword test          646/646 green
+#     0421 M6  qualified-path rule removed      646/646 green
+#     0421 M7  nested-constructor rule removed  646/646 green
+#     0421 M8  or-pattern depth rule removed    646/646 green
+#
+# The move itself is REQUIRED, not a trade: the settle measured 9/9 that an unread
+# `is` head or payload binding is legal MoonBit, so auditing them would be a false
+# positive on correct code. All four guards remain in the source and remain
+# semantically right; none of them is load-bearing against today's lenses.
+#
+# WHAT PROVES IT IS THE CHANNEL AND NOT A STALE ANCHOR: gate 0421 M5 anchors on the
+# SAME `depth >= 2` expression, survives the same parser change, and still KILLS,
+# because its symptom is `UndefinedName` -- it leaves `error` unbound in
+# `is Some(Os(error))` where `error + 1` reads it. Same file, same change,
+# different channel, opposite outcome.
+#
+# GATE 0436 ALSO BROKE, for the ordinary reason, and is re-anchored rather than
+# retired. 0444 added `qualified = true` inside the `::` consumption loop and a new
+# block between `let binding` and `if self.at(TLParen)`, so all four Find strings went
+# absent and the preflight aborted before a suite ran. M1 and M4 additionally stopped
+# being VALID mutations: they deleted that loop, and the loop now sets a variable the
+# head-binding decision reads, so deleting it no longer compiled at all (COMPILE-ERR,
+# no `Total tests:` line -- a mutation that cannot build measures the compiler, not
+# the guard). Both now point the loop condition at a token a qualified head never
+# sits on: same broken behaviour, still builds. Anchors shortened to the two lines
+# carrying `qualified = true`, unique to this one of the three qualified-path readers,
+# which is the point -- the previous anchors named surrounding prose and that is what
+# 0444's growth invalidated. 0436 is back to 3 KILLED + 1 declared survivor.
+#
+# GATE 0436 M4 IS DUPLICATE M1 UNDER A SECOND NAME, which predates 0.4.34 and is
+# recorded rather than quietly rewritten: both mutations stop the `::` loop from
+# running, and they differ only in which named test they pin. The "consumed AFTER
+# the payload test" in its title is not what its Find/Repl pair expresses -- a real
+# ordering mutation would MOVE the loop below the `TLParen` branch. Both still KILL,
+# so nothing is unprotected today; the duplication is a genuine weakness.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=227 actionable=6 notices=979 unreliable=2176 withheld=499 total=3161'
-  'proton'          = 'files=137 parsed=103 actionable=6 notices=1116 unreliable=900 withheld=316 total=2022'
+  'async'           = 'files=419 parsed=227 actionable=1 notices=979 unreliable=2174 withheld=499 total=3154'
+  'proton'          = 'files=137 parsed=103 actionable=5 notices=1116 unreliable=900 withheld=316 total=2021'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

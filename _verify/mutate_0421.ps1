@@ -219,6 +219,32 @@ if after < self.toks.length() && self.toks[after] == TLParen {
     return false
   }
 '@
+    Expect = 'SURVIVED'
+    Prove = @'
+DECLARED SURVIVED BY 0.4.34. The full mechanism, and the reason this is a CLOSED
+CHANNEL rather than a weakened test, is written out in gate 0419 M1 -- read that one
+first; this is the same argument applied to a different rule.
+
+In short: 0.4.34 moved `Walker::EIs` from `bind` (which appends to `self.orders[fi]`,
+the audit list `audit_frame` turns into `UnusedLocal`) to `bind_pattern` (which does
+not), because `_verify/settle_0444_is_head.ps1` measured 9/9 against the toolchain
+that an unread `is` head or payload binding is legal MoonBit and must not be reported.
+The names this rule protects against are `core`, `Role` and `Checkbox`, and none of
+them is ever READ in the pinning test -- so the unused-local audit was the only lens
+that could see them, and 0.4.34 closed that channel for `is` bindings. Measured: with
+the rule removed the suite is 646/646 green.
+
+THE CONTRAST INSIDE THIS GATE IS WHAT PINS IT DOWN. M5 anchors on the same
+`depth >= 2` expression, survives the same parser change, and still KILLS -- because
+its symptom is `UndefinedName`: it leaves `error` unbound in `is Some(Os(error))`
+where `error + 1` READS it. Same file, same change, different channel, opposite
+outcome. That asymmetry is what distinguishes "the audit channel is closed for `is`
+bindings" from "the anchor went stale".
+
+The `.` neighbour rule stays: `@core.Role::Checkbox` really is a path and not a
+binding. It is simply not load-bearing against today's lenses, and becomes so the
+moment a lens reports unread `is` bindings.
+'@.Replace("`r`n", "`n")
   }
 
   # --- M7: the nested-constructor rule removed -------------------------------
@@ -240,6 +266,28 @@ if after < self.toks.length() && self.toks[after] == TDot {
     return false
   }
 '@
+    Expect = 'SURVIVED'
+    Prove = @'
+DECLARED SURVIVED BY 0.4.34. Full mechanism in gate 0419 M1; the same argument, a
+different rule.
+
+This one is the sharpest illustration, because the comment directly above it claims
+TWO findings -- "reported unused while `error`, which IS used, is reported undefined"
+-- and 0.4.34 made exactly one of the two unreachable. `Walker::EIs` moved from `bind`
+to `bind_pattern`, so the phantom `Os` no longer reaches the audit list and the unused
+half of that pair is gone. The `error` half was never reachable anyway: at depth 2 the
+name still binds correctly and the read resolves. Measured: 646/646 green.
+
+So this mutation is not merely UNOBSERVED, it is now UNREACHABLE. With the
+nested-constructor rule removed, `Some(Os(error))` binds both `Os` and `error`,
+nothing is undefined and nothing is audited -- the mutated source reads CLEANER than
+the original. That is the honest way to describe a guard the current lenses can no
+longer disagree with.
+
+The comment above this block has been left in place deliberately rather than quietly
+rewritten. It was true when it was written, it is stale now, and a reader who trusts
+it deserves to know it was checked rather than forgotten.
+'@.Replace("`r`n", "`n")
   }
 
   # --- M8: the or-pattern depth rule removed --------------------------------
@@ -257,6 +305,23 @@ if !in_type && depth >= 2 && self.pattern_binding_at(j) {
     Repl = @'
 if !in_type && depth >= 1 && self.pattern_binding_at(j) {
 '@
+    Expect = 'SURVIVED'
+    Prove = @'
+DECLARED SURVIVED BY 0.4.34. Full mechanism in gate 0419 M1; the same argument, a
+different rule.
+
+`Gone` and `PageUnavailable` are CONSTRUCTORS inside a GROUPING paren and are never
+read, so relaxing `depth >= 2` to `>= 1` binds them as phantoms -- and the only lens
+that ever reported that, the unused-local audit, stopped seeing `is` bindings when
+0.4.34 moved `EIs` from `bind` to `bind_pattern`. Measured: 646/646 green.
+
+Worth keeping for a second reason: this is the ONLY mutation in the gate whose Find
+string collides with a live mutation in the SAME FILE. M5 anchors on this very line,
+to add a `break` after `found.push(n)`. They compose cleanly -- the harness applies and
+byte-identically restores each in turn -- but it is the reason to read this gate before
+touching either rule. M5 still KILLS because its symptom is `UndefinedName`, a channel
+0.4.34 did not close, which is also the control that keeps these three honest.
+'@.Replace("`r`n", "`n")
   }
 
 )

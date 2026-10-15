@@ -596,7 +596,23 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(base)
       for b in bindings {
         if b != "" {
-          self.bind({ name: b, tyann: "", param: false, decl_span: e.span, })
+          // `bind_pattern`, NOT `bind`. An `is` binding that is never read is
+          // LEGAL MoonBit -- `_verify/settle_0444_is_head.ps1`, 9/9: both
+          // `if probe() is err { 1 } else { 0 }` and `if opt() is Some(v) { 1 }
+          // else { 0 }` compile. `bind` puts the name on the audit list and
+          // `audit_frame` then reports `assigned but may not be used`, which on
+          // correct code is a false positive.
+          //
+          // This is the same trade `ECatch` makes for its arm patterns, and it is
+          // why the head and the payload can share one `bind_pattern` call: the
+          // settle measures BOTH as exempt, so the AST does not have to
+          // distinguish them.
+          //
+          // It became reachable in 0.4.34 rather than being new: before it, a
+          // BARE head bound nothing at all, so the only names reaching here were
+          // payload names, and this was a pre-existing false positive on
+          // `is Some(v)` with `v` unread.
+          self.bind_pattern(b, e.span)
         }
       }
     }

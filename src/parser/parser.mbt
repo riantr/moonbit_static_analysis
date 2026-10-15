@@ -2770,6 +2770,41 @@ fn Parser::at_pattern_binding(self : Parser) -> Bool {
 }
 
 ///|
+
+///|
+/// Is this pattern HEAD a VARIABLE BINDING rather than a constructor?
+///
+/// MoonBit constructors are Capitalised and variables are not, and that is the
+/// whole rule. It is SETTLED rather than assumed -- `_verify/settle_0444_is_head.ps1`
+/// measures both halves with the same instrument:
+///
+///   - `if probe() is err && err != 0 { err }` COMPILES, so a lowercase head
+///     binds and the name is in scope afterwards.
+///   - `if opt() is Some && Some != 0` is REJECTED by the compiler, and the only
+///     reading that explains a rejection is `Some` being the constructor -- a
+///     function compared with an integer -- rather than a binding of the
+///     element's type.
+///
+/// The probe's own first draft got this backwards by accident and is worth
+/// recording: it asked the same question with `probe() -> Int` as the base, so
+/// every case using `Some`/`Err` failed with 4014, a plain Int/Option type
+/// mismatch. Three "verdicts" about the grammar were really about the prelude.
+/// A positive control that fails means the probe is wrong, and the fix was a
+/// second `opt() -> Option[Int]`, not a revised expectation.
+///
+/// `_` and keywords are refused here as well as by `pattern_binding_at`, because
+/// this predicate is the one deciding whether the head binds at all.
+fn is_binding_head_name(s : String) -> Bool {
+  if s == "" || s == "_" || @lexer.is_moonbit_keyword(s) {
+    return false
+  }
+  for ch in s.iter() {
+    return ch >= 'a' && ch <= 'z'
+  }
+  false
+}
+
+///|
 fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
   // A TUPLE pattern: `is (Some(a), Some(b), None)`. The head is `(`, not a
   // name, so the name-only guard below returned "" without consuming anything
@@ -2814,7 +2849,10 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
     self.p = j
     return found
   }
+  let mut head = ""
+  let mut qualified = false
   if self.peek_name() != "" {
+    head = self.peek_name()
     let _ = self.bump()
     // A QUALIFIED constructor: `is St::Shutdown`. There is no `TColonColon` in
     // the lexer -- `::` is two `TColon` tokens -- so the path tail has to be
@@ -2862,6 +2900,7 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
     // return the tail for the other two and ignore it here, which is a worse
     // shape than three short loops that do visibly different things.
     while self.at(TColon) && self.at_next(TColon) {
+      qualified = true
       let _ = self.bump()
       let _ = self.bump()
       if self.peek_name() == "" {
@@ -2873,6 +2912,27 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
     return []
   }
   let binding : Array[String] = []
+  // A BARE LOWERCASE HEAD IS A VARIABLE BINDING, and the first draft consumed it
+  // as a constructor and discarded it. `expr is err && err != 0` then bound
+  // nothing and every later `err` was an undefined name.
+  //
+  // SETTLED, not inferred -- `_verify/settle_0444_is_head.ps1`, 9/9 with the
+  // positive control AND a canary green:
+  //
+  //   - a lowercase head binds: `if probe() is err && err != 0 { err }` compiles.
+  //   - an uppercase head is a CONSTRUCTOR TEST: `if opt() is Some` is legal, and
+  //     `if opt() is Some && Some != 0` is REJECTED -- a function compared with an
+  //     integer, possible only if `Some` is the constructor and not a binding.
+  //   - `_` still binds nothing.
+  //
+  // The three exclusions are the settled grammar rather than caution: a payload
+  // follows (`Some(x)` -- a constructor taking arguments), a QUALIFIED head
+  // (`is St::Shutdown` -- the constructor is the last segment), and a keyword
+  // (`is true` bound the literal `true` once already). `is @pkg.Type::Ctor` never
+  // reaches here at all, because `peek_name()` is "" for an `@` head.
+  if !qualified && !self.at(TLParen) && is_binding_head_name(head) {
+    binding.push(head)
+  }
   if self.at(TLParen) {
     let _ = self.bump()
     let mut depth = 1

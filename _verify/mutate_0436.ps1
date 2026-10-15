@@ -63,16 +63,29 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     File = 'src\parser\parser.mbt'
     Find = @'
     while self.at(TColon) && self.at_next(TColon) {
-      let _ = self.bump()
-      let _ = self.bump()
-      if self.peek_name() == "" {
-        break
-      }
-      let _ = self.bump()
-    }
+      qualified = true
 '@.Replace("`r`n", "`n")
-    Repl = ''
+    Repl = @'
+    while self.at(TRParen) && self.at_next(TColon) {
+      qualified = true
+'@.Replace("`r`n", "`n")
     MustRed = 'a qualified constructor is read in an if condition'
+    Prove = @'
+RE-EXPRESSED 0.4.34, and the reason is that the old form stopped being a valid
+mutation. M1 used to DELETE the whole `::` consumption loop. 0444 made that loop set
+`qualified`, which the head-binding decision reads, so deleting it no longer compiles
+at all -- the harness reported COMPILE-ERR (no `Total tests:` line) rather than a red
+suite. A mutation that cannot build is not a mutation; it measures the compiler.
+
+The condition is now pointed at a token a qualified pattern head is never sitting on.
+Nothing consumes the tail, the `::` tokens survive into the expression reader, and the
+parse-level tests go red exactly as before -- the property being pinned is unchanged.
+
+The anchor is two lines rather than the whole loop on purpose: `qualified = true`
+exists only in this one of the three qualified-path readers, so these two lines are
+unique without naming any of the surrounding prose. A longer anchor was what made
+this gate abort its preflight in the first place.
+'@.Replace("`r`n", "`n")
   },
 
   @{
@@ -80,6 +93,7 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     File = 'src\parser\parser.mbt'
     Find = @'
     while self.at(TColon) && self.at_next(TColon) {
+      qualified = true
       let _ = self.bump()
       let _ = self.bump()
       if self.peek_name() == "" {
@@ -90,6 +104,7 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
 '@.Replace("`r`n", "`n")
     Repl = @'
     while self.at(TColon) && self.at_next(TColon) {
+      qualified = true
       let _ = self.bump()
       let _ = self.bump()
     }
@@ -102,6 +117,7 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     File = 'src\parser\parser.mbt'
     Find = @'
     while self.at(TColon) && self.at_next(TColon) {
+      qualified = true
       let _ = self.bump()
       let _ = self.bump()
       if self.peek_name() == "" {
@@ -112,6 +128,7 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
 '@.Replace("`r`n", "`n")
     Repl = @'
     if self.at(TColon) && self.at_next(TColon) {
+      qualified = true
       let _ = self.bump()
       let _ = self.bump()
       if self.peek_name() != "" {
@@ -140,6 +157,13 @@ The loop is kept because narrowing it would be a change justified by no
 measurement at all, while keeping it costs one comparison per iteration. This
 mutation stays in the gate as the thing that turns red if a multi-`::` head ever
 appears.
+
+RE-ANCHORED 0.4.34. 0444 added `qualified = true` as the first statement of this
+loop, so all four Find patterns in this gate went ABSENT and the preflight aborted
+before a suite ran. The guards were never wrong and the pinned tests are parse-level
+(`first_error`), so they are still killable -- only the anchors had drifted. The
+lesson is the ordinary one and it is worth stating because the gate caught it in
+seconds: when the surrounding text grows, re-anchor rather than retire.
 '@.Replace("`r`n", "`n")
   },
 
@@ -148,27 +172,36 @@ appears.
     File = 'src\parser\parser.mbt'
     Find = @'
     while self.at(TColon) && self.at_next(TColon) {
-      let _ = self.bump()
-      let _ = self.bump()
-      if self.peek_name() == "" {
-        break
-      }
-      let _ = self.bump()
-    }
-  } else {
-    return []
-  }
-  let binding : Array[String] = []
-  if self.at(TLParen) {
+      qualified = true
 '@.Replace("`r`n", "`n")
     Repl = @'
-  } else {
-    return []
-  }
-  let binding : Array[String] = []
-  if self.at(TLParen) {
+    while self.at(TRParen) && self.at_next(TColon) {
+      qualified = true
 '@.Replace("`r`n", "`n")
     MustRed = 'a qualified constructor with a payload binds its argument'
+    Prove = @'
+NOT the mutation its name describes, and that predates 0.4.34 -- recorded here
+rather than quietly redesigned, because rewriting it would change what the gate
+covers, and that belongs in its own increment with its own measurement.
+
+What it does is the same thing M1 does: the `::` consumption loop never runs, so the
+path tail is not consumed. It differs from M1 only in which named test it pins
+('a qualified constructor with a payload binds its argument' rather than
+'a qualified constructor is read in an if condition'). The ORDERING claim is not
+expressed by the Find/Repl pair: a genuine "consume the tail after the payload"
+mutation would have to MOVE the loop below the `TLParen` branch, and that
+rearrangement is not what these two strings do. So M1 and M4 have been pinning one
+mutation twice under two names. Both still KILL, so nothing is silently unprotected
+today; the duplication is a real weakness and this note is what says so.
+
+It also could not keep the old form. M1 and M4 used to DELETE the loop, and 0444
+made that loop set `qualified`, which the head-binding decision reads -- deleting it
+stopped compiling at all (COMPILE-ERR, no `Total tests:` line). Pointing the loop
+condition at a token a qualified pattern head never sits on expresses the same
+broken behaviour and still builds. The anchor is the two lines carrying
+`qualified = true`, which are unique to this one of the three qualified-path
+readers, so it does not have to name any surrounding prose.
+'@.Replace("`r`n", "`n")
   }
 )
 
