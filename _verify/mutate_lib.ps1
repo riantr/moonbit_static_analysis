@@ -39,6 +39,24 @@
 #      red. See the long note on it below; it is the newest rule and the only one
 #      the other five cannot imply.
 #
+#   7. ONE GATE AT A TIME, AND NOTHING ELSE TOUCHING ITS FILES. Rule 4 proves a
+#      restore byte-for-byte, but it cannot see a SECOND process: two gates
+#      mutating `src/parser/parser.mbt` concurrently read, rewrite and restore
+#      each other's bytes, and each one's SHA256 check still passes because each
+#      wrote back what IT read.
+#
+#      Measured, not theorised. A release run reported gates 0442 and 0444 FAILED
+#      with every other gate green; both are 5/5 run alone, and both leave the
+#      tree byte-identical. The cause was a gate launched in the background while
+#      another ran in the foreground. The symptom is a gate failing for no
+#      reproducible reason, which is the one symptom worth chasing before
+#      believing anything else.
+#
+#      The same applies outside this harness: any script that edits a source file
+#      to measure it -- `_verify/measure_*.ps1` -- must not share the machine with
+#      a gate. Those scripts rebuild between scans, so a concurrent gate also
+#      fights over `_build`.
+#
 # Usage from a release gate:
 #
 #     . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
