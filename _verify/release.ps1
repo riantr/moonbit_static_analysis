@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -464,12 +464,46 @@ if ($SkipMutations) {
 #   written here rather than quietly, and fixing the `catch`-body limitation is
 #   the way to move it back -- it is now the cheapest thing on the board, since
 #   the finding is already located and already pinned as a defect.
+#
+# --- 0.4.30, the catch-body fix: moui back to 0, proton UP by 15 ---------------
+#
+# FIXED, in 0439: the postfix `catch` arm parses its handler arms instead of
+# consuming them with `skip_braces`, so a parameter read ONLY inside a handler is
+# seen. The finding named above is gone, and the same fix removed proton's
+# `facade_paths.mbt:473` `parameter 'label' may not be used` — the second
+# measured instance of the identical defect, recorded since 0432.
+#
+#   moui     actionable  1 -> 0    parsed 590 UNCHANGED
+#   async    actionable 14 -> 12   parsed 227 UNCHANGED
+#   proton   actionable 63 -> 78   parsed 103 UNCHANGED
+#
+# proton's +15 ARE ALL `no visible binding for '<a suberror variant>'`, and every
+# one is inside a catch body that used to be skipped. `ipc/protocol.mbt:260` is
+# the clearest:
+#
+#     @json.parse(raw) catch {
+#       err => raise MalformedJson(detail=err.to_string())
+#     }
+#
+# That is the per-file `enum_ctors` harvest limitation already recorded in the
+# hex.mbt rows above — a suberror variant used in a DIFFERENT file from its
+# declaration. Reading the body makes the `raise` visible to the resolver, and
+# the resolver does not have the variant. It is the same trade the README
+# describes, in the same direction it has gone before, paid in false positives
+# rather than in unread files.
+#
+# `parsed=` IS UNCHANGED ON ALL SIX, and that is the number this gate exists to
+# protect. It was NOT unchanged on the first attempt: with the arms parsed and no
+# guard, proton `facade_locale.mbt` went from `parsed` to `not-parsed`, because
+# its handler carries an `@xlog` `<?` payload that is not in the subset. M7 in
+# `mutate_0439.ps1` is that regression, and `catch_group_has_log_payload` is the
+# guard that holds `parsed=` at 103.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=590 actionable=1 notices=4119 unreliable=246 withheld=2 total=4366'
+  'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
   'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=227 actionable=14 notices=979 unreliable=2199 withheld=510 total=3192'
-  'proton'          = 'files=137 parsed=103 actionable=63 notices=1123 unreliable=914 withheld=319 total=2100'
+  'async'           = 'files=419 parsed=227 actionable=12 notices=981 unreliable=2199 withheld=510 total=3192'
+  'proton'          = 'files=137 parsed=103 actionable=78 notices=1123 unreliable=906 withheld=317 total=2107'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

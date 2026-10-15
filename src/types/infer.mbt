@@ -481,6 +481,15 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       let _ = self.ty_of(base, TUnknown)
       TUnknown
     }
+    // `expr catch { ... }` has the type of `expr`. The handler arms are
+    // alternative control paths, not extra operands, so joining their types
+    // in would claim the expression can produce values it cannot — the
+    // `SRaise` reason. The base is still walked: the call's arguments are
+    // reads and a type mismatch inside them is a real defect.
+    ECatch(base, _) => {
+      let _ = self.ty_of(base, TUnknown)
+      TUnknown
+    }
   }
 }
 

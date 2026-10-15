@@ -27,6 +27,12 @@ _qa/
 # captures.
 _verify/_*.txt
 _verify/_*.json
+# `remeasure.ps1` writes one full per-file scan per corpus into this directory,
+# for the same reason and with the same size. It is NOT covered by the
+# `_verify/_*.txt` rule above because that rule only matches files directly in
+# `_verify`, not a subdirectory of it -- so `git add _verify` swept six
+# megabyte dumps in before anyone noticed.
+_verify/remeasure_out/
 
 # The mooncakes credential. `git add -A` staged it once before .moonignore
 # existed; the token inside is live. The copy CI needs is a GitHub Actions

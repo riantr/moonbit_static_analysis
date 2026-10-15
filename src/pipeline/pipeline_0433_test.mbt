@@ -169,13 +169,24 @@ test "0433 control: a parameter read by nothing is still reported unused beside 
 /// Asserted here as a FACT rather than as the behaviour we want: the count is
 /// 1, which is the defect. If this ever goes to 0 the limitation was fixed
 /// properly and this test should be replaced, not deleted.
-test "0433 KNOWN LIMIT: a parameter read only inside a deferred catch block is not seen" {
+///
+/// REPLACED BY 0439, WHICH IS WHAT "PROPERLY" LOOKED LIKE. It did go to 0, so
+/// this is no longer a pin: the postfix `catch` arm now parses its handler
+/// instead of skipping it, and the replacement lives at
+/// `pipeline_0439_test.mbt`. The assertion is deliberately NOT inverted in
+/// place — a test named "KNOWN LIMIT" that asserts the limit is gone reads as a
+/// contradiction to anyone who finds it later, and the evidence for the fix is
+/// the corpus (`moui` actionable 1 -> 0) rather than this file.
+test "0433 KNOWN LIMIT RETIRED: see pipeline_0439_test.mbt" {
+  // The shape still parses -- that part did not change and is worth keeping,
+  // because a deferred catch inside parentheses is the shape that reported
+  // `unexpected token ')'` when the arms were first parsed.
   let r = @pipeline.run(
     "fn cancel() -> Unit raise E { raise Boom(1) }\nfn f(marker : Int) -> Unit raise E {\n  defer (cancel() catch { _ => ignore(marker) })\n  cancel() catch { _ => () }\n}\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )
   assert_eq(r.first_error_line, 0)
-  // The defect: `marker` is read, and reported unused anyway.
-  assert_eq(count_family(r, "UnusedParam"), 1)
+  // ...and the read is now SEEN, which is the whole content of the retirement.
+  assert_eq(count_family(r, "UnusedParam"), 0)
 }

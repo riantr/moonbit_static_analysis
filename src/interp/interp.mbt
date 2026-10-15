@@ -928,6 +928,18 @@ fn Interp::eval(
       let _ = self.eval(base, env)
       AAny
     }
+    // `expr catch { ... }`: the base is evaluated and the result is AAny.
+    //
+    // AAny rather than the base's value, for the reason `ECast` gives — the
+    // abstract interpreter prunes on concrete booleans, and a `catch` whose
+    // arms are not modelled must not let a folded base decide which branch a
+    // later condition takes. The arms are not evaluated: they are alternative
+    // control paths, and the interpreter has no notion of which one an error
+    // would select.
+    ECatch(base, _) => {
+      let _ = self.eval(base, env)
+      AAny
+    }
   }
 }
 

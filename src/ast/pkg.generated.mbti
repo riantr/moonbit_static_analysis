@@ -32,6 +32,12 @@ pub(all) enum BOp {
 } derive(Eq)
 pub fn BOp::symbol(Self) -> String
 
+pub(all) struct CatchArm {
+  span: @core.Span
+  bindings: Array[String]
+  body: Array[Stmt]
+} derive(Eq)
+
 pub(all) enum EKind {
   EInt(Int)
   EBigInt
@@ -52,6 +58,8 @@ pub(all) enum EKind {
   ERange(Expr, Expr)
   ETupleField(Expr, Int)
   EIs(Expr, Array[String])
+  ECast(Expr)
+  ECatch(Expr, Array[CatchArm])
 } derive(Eq)
 
 pub(all) struct ElseIf {

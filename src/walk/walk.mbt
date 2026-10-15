@@ -393,6 +393,33 @@ fn is_discard_name(n : String) -> Bool {
 }
 
 ///|
+/// Put `name` in the current frame WITHOUT putting it in the audit list.
+///
+/// `bind` does both, and the second half is what makes this a separate
+/// function. A name that reaches `orders[fi]` is examined by `audit_frame`,
+/// which reports a non-parameter binding with no reads as
+/// `FUnusedLocal` — so a catch pattern's constructor heads would each be
+/// reported as an unused local. `catch Some({ x })` binds `x`; `Some` is a
+/// variant, not a variable, and warning about it would be the analyzer
+/// contradicting the compiler on the language's own spelling.
+///
+/// So these names are resolvable and countable as READS, and are not
+/// themselves auditable. That is also the direction the superset in
+/// `Parser::parse_catch_pattern` needs: a name that binds when it should not
+/// costs silence, and a name that fails to bind when it should costs a false
+/// `no visible binding` on correct code.
+///
+/// An existing binding WINS and is left alone, exactly as in `bind` — a
+/// parameter named `e` must keep reporting as a parameter.
+fn Walker::bind_pattern(self : Walker, name : String, sp : @core.Span) -> Unit {
+  let fi = self.frames.length() - 1
+  let frame = self.frames[fi]
+  if !frame.contains(name) {
+    frame.set(name, { param: false, assigns: 0, varuses: 0, decl_span: sp, })
+  }
+}
+
+///|
 /// Audit a function frame on exit (usage accounting for locals).
 ///
 /// Every finding here is function-scoped, so the caller skips this entirely
@@ -568,6 +595,35 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
     // the fix, in exchange for removing an old one. The `EComp` lesson, in its
     // exact form: the half that is not walked is the half that vanishes.
     ECast(base) => self.walk_expr(base)
+    // `expr catch { p => body }`: the base is the call — read, because its
+    // arguments are reads — and then every arm binds its pattern and walks its
+    // body.
+    //
+    // Both halves are walked, and the reason is the same one `ECast` records:
+    // the half that is not walked is the half that vanishes. Walking the base
+    // alone left the body invisible, which is how `prefix` in moui
+    // `macos_native_ime.mbt:437` was reported as never read when its only
+    // mention is on line 442 inside the handler.
+    //
+    // The arms bind BEFORE they walk, in the CURRENT frame, because the frame
+    // is flat and not flow-scoped — the same trade `EIs` makes. That is sound
+    // here in a way it is not for `EIs`: a catch arm's bindings are used only
+    // inside that arm's own body, so the flat frame can only ever make a name
+    // visible EARLIER than it should be, and the body that walks with it is
+    // the body it belongs to.
+    ECatch(base, arms) => {
+      self.walk_expr(base)
+      for arm in arms {
+        for b in arm.bindings {
+          if b != "" {
+            self.bind_pattern(b, arm.span)
+          }
+        }
+        for st in arm.body {
+          self.walk_stmt(st)
+        }
+      }
+    }
     // A string's INTERPOLATED names are real reads, and they are resolved here
     // rather than ignored. `println("k=\{k}")` is the only mention of `k` in
     // the function, and treating the literal as opaque made every such name

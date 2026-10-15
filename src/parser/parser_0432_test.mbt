@@ -152,7 +152,16 @@ test "0432 control: an enum variant is still harvested" {
 /// treating every function containing a `catch` as if all its parameters were
 /// read, which trades one false positive for an unbounded number of missed true
 /// ones. That is the worse failure, and the honest record of it is this note.
-test "0432 KNOWN LIMIT: a parameter read only inside catch { } is not seen" {
+///
+/// FIXED IN 0439, so the note above is now history. The postfix `catch` arm
+/// parses its handler instead of skipping it, so `label` is read and the false
+/// positive is gone — without the blanket suppression this note rejected. What
+/// is asserted below is therefore no longer the interesting half: it pins only
+/// that the shape still parses, which it also did before the fix and which is
+/// why this test alone could never have caught the defect. The finding-level
+/// assertion is `pipeline_0439_test.mbt`, and the tree-level one is
+/// `parser_0439_test.mbt`.
+test "0432 the `catch`-arm shape still parses (read assertion: pipeline_0439)" {
   let r = @parser.parse(
     "fn resolve(kind : Int, label : String) -> String {\n  call(kind) catch {\n    error => label\n  }\n}\n",
   )

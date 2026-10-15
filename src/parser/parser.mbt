@@ -417,6 +417,13 @@ fn Parser::skip_to_catch(self : Parser) -> Unit {
 /// destructure a tuple (`catch (a, b) {`), or alternate (`catch Some(_) |
 /// None {`) — none modelled by the subset, all read past so the handler body
 /// the caller skips next stays balanced.
+///
+/// THIS IS THE `try` ARM'S PATTERN SCANNER, and it deliberately stays a SCAN.
+/// The `try` arm skips its handler bodies whole, so it has nothing to bind the
+/// names into. The postfix `catch` arm now parses its arms for real and uses
+/// `parse_catch_pattern` instead; the two disagreeing about what a pattern
+/// means is deliberate, because the alternative is the `try` arm manufacturing
+/// `no visible binding` for a name it never bound.
 fn Parser::skip_pattern(self : Parser) -> Unit {
   let mut depth = 0
   while !self.at(TEOF) {
@@ -435,6 +442,205 @@ fn Parser::skip_pattern(self : Parser) -> Unit {
     }
     let _ = self.bump()
   }
+}
+
+///|
+/// Is the fat arrow at the current position?
+///
+/// THERE IS NO FAT-ARROW TOKEN, and reading one off the token names is what
+/// cost this fix its first attempt. `TArrow` exists and is `->`; `=>` has no
+/// production at all. Measured by dumping the stream rather than by reading the
+/// rules — `cancel() catch { _ => () }` lexes to
+///
+///     NAME(cancel) ( ) NAME(catch) { NAME(_) TAssign TGt ( ) }
+///
+/// so a `catch` arm's `=>` arrives as `TAssign` followed by `TGt`, and a check
+/// for `TArrow` simply never fires. The parser then walked off the end of the
+/// arm, consumed the catch's `}` as part of the body, and reported
+/// `expected '}'` at EOF.
+///
+/// This is the same shape as `::`, which is two `TColon` and which
+/// `parse_is_pattern` already consumes as a pair. Fixed on the parser side for
+/// the same reason: a lexer token would mean every match on `Tok` had to learn
+/// a variant, for one call site.
+fn Parser::at_fat_arrow(self : Parser) -> Bool {
+  self.at(TAssign) && self.peek2() == TGt
+}
+
+///|
+/// Consume the fat arrow, on the `at_fat_arrow` spelling only.
+fn Parser::eat_fat_arrow(self : Parser) -> Unit {
+  let _ = self.bump()
+  let _ = self.bump()
+}
+
+///|
+/// The names a `catch` pattern introduces, consumed up to (not past) the `=>`.
+///
+/// THIS IS A SUPERSET, AND THE EXTRA NAMES ARE THE POINT. Every identifier in
+/// the pattern text is returned: `Some({ x })` gives `["Some", "x"]`,
+/// `(a, b)` gives `["a", "b"]`, `Boom(n) | Nope` gives `["Boom", "n", "Nope"]`.
+/// Two of those three list a name the pattern does not bind.
+///
+/// Telling them apart needs a pattern grammar the subset does not have, and the
+/// cost of guessing wrong is asymmetric. A name that SHOULD have bound and did
+/// not is reported as `no visible binding for 'x'` — a false positive on
+/// correct code. A name that bound and should not have produces silence, and
+/// silence is not a defect anyone can file. `Walker::bind_pattern` therefore
+/// puts every one of these in the frame WITHOUT putting it in the audit list,
+/// so the superset cannot produce a finding in either direction.
+///
+/// The wildcard `_` is not a `TName`, so it never reaches the list — which is
+/// correct, because `_` binds nothing and an empty list already says so.
+///
+/// Balanced brackets are tracked so `Wrap({ inner })` does not stop at the
+/// `{` of its inner brace: the `{` that ends the pattern is one at depth 0 with
+/// no bracket open.
+fn Parser::parse_catch_pattern(self : Parser) -> Array[String] {
+  let names : Array[String] = []
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if self.at_fat_arrow() {
+      break
+    }
+    if self.at(TLBrace) && depth == 0 {
+      break
+    }
+    match self.peek() {
+      TName(n) => names.push(n)
+      TLParen | TLBracket => depth += 1
+      TRParen | TRBracket => if depth == 0 { break } else { depth -= 1 }
+      _ => ()
+    }
+    let _ = self.bump()
+  }
+  names
+}
+
+///|
+/// Does this `catch { ... }` group contain a `<?` log payload?
+///
+/// `<?` IS NOT IN THE SUBSET, and this guard is what stops reading a handler
+/// from costing a file. Measured: proton 0.3.4 `facade_locale.mbt:63` read
+/// cleanly at every release up to 0.4.29, because the postfix `catch` arm
+/// consumed the handler with `skip_braces` and never saw line 65 —
+///
+///     @xlog.warn(category="proton.locale") <?
+///       { "message": "system locale query failed; falling back to en-US" }
+///     []
+///
+/// Parsing the handler turned that into a hard parse error and the file went
+/// from `parsed` to `not-parsed`. A fix that fixes one corpus and breaks
+/// another is not a fix, and the number that matters — `parsed=` — had gone
+/// DOWN.
+///
+/// `?>` OCCURS ZERO TIMES in proton, so this is not a paired operator with a
+/// findable end: it is the `xlog` payload suffix, and its payload is an
+/// open-ended run of expressions (`{ ... }` then `[]` above). There is no
+/// structural way to find where one stops, which is why the guard is per GROUP
+/// and not per arm.
+///
+/// The guard scans the whole group and, on a hit, restores the prior behaviour
+/// EXACTLY — `skip_braces`, no arms, no read. Deliberately the old state rather
+/// than a half-measure: a handler group is read or it is not, and a partial
+/// read is the arrangement that produced the original false positive.
+///
+/// Called with `self.p` ON the group's `{`.
+fn Parser::catch_group_has_log_payload(self : Parser) -> Bool {
+  let mut i = self.p
+  let mut depth = 0
+  while i < self.toks.length() {
+    match self.toks[i] {
+      TLBrace => depth += 1
+      TRBrace => {
+        depth -= 1
+        if depth <= 0 {
+          return false
+        }
+      }
+      TEOF => return false
+      TLt =>
+        // `<` THEN `?` -- the order is the source's. Getting it backwards is
+        // what the first draft of this guard did: it looked for `TQuestion`
+        // followed by `TLt`, never fired, and proton's `facade_locale.mbt`
+        // stayed blocked with `unexpected token `?``. `a < ?` is not MoonBit,
+        // so the adjacent pair can only be the log payload.
+        if i + 1 < self.toks.length() {
+          match self.toks[i + 1] {
+            TQuestion => return true
+            _ => ()
+          }
+        }
+      _ => ()
+    }
+    i += 1
+  }
+  false
+}
+
+///|
+/// `catch { pattern => body, ... }` — the handler list, as statements.
+///
+/// Both arm-body shapes are real and the census says which one matters:
+/// `_verify/census_catch.ps1` counts 45 expr-bodied against 9 block-bodied
+/// handler sites in moui, and 273 against 29 in proton. A block-only reading
+/// would have modelled the rare form and left the common one to whatever
+/// `skip_braces` did with it.
+///
+/// The `=>` is optional. MoonBit accepts `catch { e => 0 }` and
+/// `catch { _ => () }`, and the settle probe (`_verify/settle_0439_catch.ps1`)
+/// is what settles the no-arrow spelling rather than a guess — so this reads
+/// the arrow if one is there and does not insist on it, which keeps a
+/// differently-spelled handler from becoming a parse error that the old
+/// `skip_braces` could not produce.
+///
+/// NO SKIP NOTICE IS EMITTED, and that is the whole point of the change. A
+/// `note_skip` here would put a hole in the frame and silence `UnusedParam` for
+/// the entire enclosing function — the `match` treatment, which `pipeline_0433`
+/// already records as making the family unobservable. The arms are read, so
+/// the frame has no hole.
+fn Parser::parse_catch_arms(self : Parser) -> Array[@ast.CatchArm] {
+  let arms : Array[@ast.CatchArm] = []
+  if self.catch_group_has_log_payload() {
+    // A `<?` log payload is inside this group and is not in the subset. The
+    // whole group goes back to being skipped, which is what every release did
+    // before the handler was parsed at all. See `catch_group_has_log_payload`.
+    self.skip_braces()
+    return arms
+  }
+  self.expect(TLBrace, "'{'")
+  while !self.at(TRBrace) && !self.at(TEOF) {
+    self.skip_seps()
+    if self.at(TRBrace) || self.at(TEOF) {
+      break
+    }
+    let asp = self.span()
+    let bindings = self.parse_catch_pattern()
+    if self.at_fat_arrow() {
+      self.eat_fat_arrow()
+    }
+    self.skip_seps()
+    let body = if self.at(TLBrace) {
+      // A block body is its own statement list. `fn_body` is FALSE: a
+      // handler's trailing expression is the arm's value, but this node's
+      // type is the BASE's type (the base is what the catch produces on the
+      // non-error path), so no lens joins the arm's value into anything.
+      let (b, _) = self.parse_block(false)
+      b
+    } else if self.at(TEOF) || self.at(TRBrace) {
+      // `pattern =>` with no body at all. The grammar rejects it; refusing
+      // to guess here keeps a malformed handler from consuming the next arm's
+      // pattern as a body.
+      break
+    } else {
+      let st = self.parse_stmt()
+      [st]
+    }
+    arms.push({ span: asp, bindings, body, })
+    self.skip_seps()
+  }
+  self.expect(TRBrace, "'}'")
+  arms
 }
 
 ///|
@@ -2970,17 +3176,42 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       continue
     }
     // `expr catch { pattern => handler }` — MoonBit's postfix error
-    // handling on a call. The `catch { ... }` group is consumed and
-    // discarded: the handler's body (patterns, `return`s) lives inside the
-    // braces and says nothing the lenses read, while the CALL — whose
-    // arguments ARE read — must survive, or every line shaped like
+    // handling on a call. The `catch { ... }` group is PARSED into
+    // `@ast.CatchArm`s rather than consumed by `skip_braces`.
+    //
+    // The call — whose arguments ARE read — has always survived here, and that
+    // was the reason this arm existed at all: without it the loop broke on the
+    // `catch` keyword and every line shaped like
     // `@process.collect_output(cmd) catch { _ => return "" }` (the measured
-    // Class E deaths at provenance.mbt:416 and jsoncli/main.mbt:252) dies
-    // at the `catch` keyword instead of yielding its call. `catch` is a
-    // keyword in MoonBit, so at_name here can never capture an identifier.
+    // Class E deaths at provenance.mbt:416 and jsoncli/main.mbt:252) died at
+    // the keyword instead of yielding its call. `catch` is a keyword in
+    // MoonBit, so at_name here can never capture an identifier.
+    //
+    // WHAT CHANGED, AND WHY IT WAS NOT OPTIONAL. `skip_braces` also threw away
+    // the handler BODY, and a body is where the reads of the enclosing
+    // function's parameters live. The measured cost was wzzc-dev/moui
+    // `backend/macos/macos_native_ime.mbt:437`:
+    //
+    //     fn native_ime_content_view_handle(..., prefix~ : String) -> UInt64? {
+    //       Some(...) catch { err => { println(prefix + " ... \{err}") ; None } }
+    //     }
+    //
+    // reported as `parameter 'prefix' may not be used`. `prefix` is read only
+    // inside the handler, so the only mention of it in the function was
+    // invisible and the parameter read as unused — the corpus's only
+    // actionable finding.
+    //
+    // Reading the body is only safe if the PATTERN is read too, which is why
+    // this calls `parse_catch_arms` and not `skip_braces`: the body would
+    // otherwise resolve `err` as an unbound name. See `@ast.ECatch`.
     if self.at_name("catch") {
+      let csp = self.span()
       let _ = self.bump()
-      self.skip_braces()
+      let arms = self.parse_catch_arms()
+      // The span is the `catch` TOKEN, for the `ECast` reason: the base
+      // survives as a child and stays reachable through it, while the position
+      // of `catch` itself is recorded nowhere else.
+      e = { span: csp, kind: @ast.ECatch(e, arms), }
       continue
     }
     // `expr as &Trait` — a trait-object cast, and the postfix keyword that

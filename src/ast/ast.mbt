@@ -187,8 +187,8 @@ pub(all) enum EKind {
   /// built on that table would report every cast to a struct type, and the
   /// only way to avoid that is to keep the type and not read it. Carrying
   /// it would be a field no lens can consult, so the node holds the operand
-  /// alone — the same trade `catch { ... }` makes when it discards its
-  /// handler, and the same reason `ETupleField` keeps only the base.
+  /// alone — the same reason `ETupleField` keeps only the base. (`catch` no
+  /// longer discards its handler; see `ECatch`.)
   ///
   /// The operand is NOT optional to the lenses: it is the evaluated
   /// expression, and walking it is what keeps `b as &Sink` from reporting
@@ -196,6 +196,42 @@ pub(all) enum EKind {
   /// halves must be walked or the side that is walked is the side that
   /// vanishes.
   ECast(Expr)
+  /// `expr catch { pattern => body, ... }` — MoonBit's postfix error handling
+  /// on a call, with the handler arms carried instead of discarded.
+  ///
+  /// THE BASE ALONE WAS NOT ENOUGH, and the measured cost of that is the only
+  /// actionable finding wzzc-dev/moui had:
+  ///
+  ///     backend/macos/macos_native_ime.mbt:437:3
+  ///     parameter 'prefix' may not be used (UnusedParam)
+  ///
+  /// `prefix` is read at line 442, inside `catch { err => { ... } }`. The
+  /// postfix arm consumed the handler with `skip_braces`, so the only mention
+  /// of `prefix` in the whole function was invisible and the parameter read as
+  /// unused. `ECast` had already established the rule this node follows: the
+  /// half that is not walked is the half that vanishes.
+  ///
+  /// THE ARMS ARE PARSED, NOT SKIPPED, and that is forced by the lenses rather
+  /// than chosen. A handler body introduces pattern bindings; reading the body
+  /// without introducing them manufactures `no visible binding for 'err'` on
+  /// correct code, which is why the `try` arm in `parse_atom` skips its
+  /// handlers whole. So each arm carries `bindings` and a real statement list,
+  /// and the walker binds before it walks.
+  ///
+  /// WHAT THIS DOES NOT COVER: the STATEMENT-level `try { } catch { }`, which
+  /// also skips its try body and is still `EBigInt` + a skip notice. Fixing
+  /// that is a separate problem — it needs the try body's error semantics, not
+  /// just its syntax — and conflating the two would have meant shipping a fix
+  /// measured on the easy half only.
+  ///
+  /// THE NODE HAS THE BASE'S TYPE, NOT THE ARMS', and the compiler says so in
+  /// one line of MoonBit (`_verify/settle_0439_catch.ps1`, case
+  /// `NEG_arm_type`): `fallible(n) catch { _ => () }` is an `Int`, so wrapping
+  /// it in `ignore(..)` is handed an Int where Unit is wanted and is rejected
+  /// with 4014. That is why `types/infer.mbt` types the node as its base
+  /// rather than joining the arms' types in — the join would be a claim about
+  /// a value the language does not produce.
+  ECatch(Expr, Array[CatchArm])
 } derive(Eq)
 
 ///|
@@ -214,6 +250,29 @@ pub(all) struct Param {
 ///|
 pub(all) struct ElseIf {
   cond : Expr
+  body : Array[Stmt]
+} derive(Eq)
+
+///|
+/// One `catch` handler arm: `pattern => body`.
+///
+/// `bindings` are the names the PATTERN introduces, and they are a SUPERSET on
+/// purpose. A constructor head (`Some(x)`), a tuple pattern (`(a, b)`) and an
+/// alternate (`A | B`) all yield more names than they bind, and the extra ones
+/// cannot produce a finding — `Walker::bind_pattern` puts them in the frame
+/// without putting them in the audit list. The direction that matters is which
+/// way the error goes: a name that should have bound and did not yields a false
+/// `no visible binding`, and a name that bound and should not have yields
+/// silence. Only one of those is a defect the user can hit.
+///
+/// `body` is a statement list even for `e => 0`, because the arm body may be a
+/// block (`=> { ... }`) or a single statement (`=> return ""`, `=> 0`), and the
+/// census says the single-statement form is the COMMON one — 45 of 54 handler
+/// sites in moui, 273 of 323 in proton (`_verify/census_catch.ps1`). A
+/// block-only representation would have modelled the rare form.
+pub(all) struct CatchArm {
+  span : @core.Span
+  bindings : Array[String]
   body : Array[Stmt]
 } derive(Eq)
 
