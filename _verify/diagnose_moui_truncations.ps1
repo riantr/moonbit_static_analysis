@@ -101,7 +101,22 @@ function Classify([string]$t) {
   if ($t -match '^\)\s*->.*=\s*"' -or $t -match '^\s*fn\s+\w+\(.*\)\s*->.*=\s*"') { return 'FFI: fn .. -> T = "js" "sym"' }
   if ($t -match 'async\s+fn\s*\(') { return 'async fn(..) in call-argument position' }
   if ($t -match '^\w+\??=') { return 'labeled argument continuation' }
-  if ($t -eq '{' -or $t -match '^fn\(.*\)\s*\{$') { return 'bare brace / lambda body' }
+  # These two were ONE bucket until 0450 measured them apart, and keeping them
+  # together was wrong in the worst direction: it implied the `{` files fail
+  # because of the brace, and they do not.
+  #
+  #   - `foo.mbt` cut@288 on `{` is a parenthesised struct literal with a type
+  #     ascription. Settled ACCEPT by `_verify/settle_0450_shapes.ps1`, AND this
+  #     parser READS it -- nine fixture variants, all clean, pinned in
+  #     `src/pipeline/pipeline_0450_diagnosis_test.mbt`. A shape that parses
+  #     cannot be what stops a file containing it, so those three files are
+  #     caused by EARLIER CONTEXT that is not isolated yet. Label says so rather
+  #     than naming a cause nobody has measured.
+  #   - `foo.mbt` cut@55 on `fn(_ctx) {` IS a real, reproduced defect: a lambda in
+  #     an `if` branch. Same settle, ACCEPT by `moon check`, and this parser says
+  #     `expected function name` at a `fn` that is neither unexpected nor unnamed.
+  if ($t -eq '{') { return 'bare `{` cut line: shape parses, cause UNISOLATED' }
+  if ($t -match '^fn\(.*\)\s*\{$') { return 'lambda in a branch: NOT parsed' }
   if ($t -match '^\(if\s') { return 'parenthesised if as an operand' }
   if ($t -match '^\s*is\s+@') { return '`is` pattern continuation line' }
   if ($t -match '^\w+\?\s*:') { return 'optional parameter with a type annotation' }
