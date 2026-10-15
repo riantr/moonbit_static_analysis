@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -846,12 +846,85 @@ if ($SkipMutations) {
 # because `Array::clone` is a deprecated alias of a deprecated spelling that no
 # corpus writes -- a behavioural test for it would have meant inventing a call site
 # no measurement produced.
+# --- 0.4.36, 0446: a `#|` closer is a BLANK one, and the lexer was eating it --------
+#
+# Three of the five remaining actionable findings were ONE predicate, and the cause was not
+# a missing declaration. proton 0.3.4 `facade_types.mbt` declares `CookieWaiting` and
+# `CookieCompleted` at lines 589-594, but the scanner read that file only to line 246.
+# `region_line` is `first_error_line`, so a file that hit an error was cut at the error and
+# contributed NOTHING to the cross-file symtab -- and the sibling that USES those names was
+# told they were undefined. Three findings, three files, one predicate.
+#
+# WHY THE FILE WAS CUT. `lex_block_string` demanded a `#|` with only whitespace BEFORE it
+# on its line. The CLOSER is a `#|` with nothing AFTER it, so it satisfied that demand and
+# was consumed as content; the block never closed and the lexer went on reading it as code.
+#
+# THE RULE, SETTLED BY VALUE, not by acceptance. `moon check` accepts EVERY shape -- all
+# nine probes passed it -- so it measures nothing here and was not used to settle it.
+# `moon run`'s printed string settles it, in `_verify/settle_0446_block_string.ps1` (9/9,
+# positive control green). A closer is a LINE-LEADING `#|` whose rest of line is blank;
+# trailing spaces are fine and it may be indented. Every other `#|` is a content segment.
+# Segments are trimmed and joined by a SINGLE SPACE, and the closer contributes an empty
+# final segment, hence the trailing space. End of input also closes, with no trailing empty
+# segment, and is still reported. A non-blank line without `#|` ends the block as CODE with
+# no unterminated report; a blank line does not.
+#
+# THE OLD HEADER WAS WRONG, AND IT IS RECORDED RATHER THAN DELETED. It claimed the closer
+# needs whitespace BEFORE it, and listed `#|AAA\n#|BBB trailing -> "AAA\nBBB trailing"` as a
+# measurement. Both are false: trailing text is CONTENT, and the join is a space, not a
+# newline. Its one correct claim -- that the closer may be indented -- had NO test of its
+# own and survived only because an unrelated test happened to indent one.
+#
+#   moui             actionable  0 -> 0    parsed 590 -> 591
+#   moonbit_labeler  actionable  0 -> 0    parsed  25 ->  26
+#   moonbit_image    actionable  0 -> 0    parsed   2 UNCHANGED
+#   async            actionable  0 -> 0    parsed 227 -> 253
+#   proton           actionable  5 -> 2    parsed 103 -> 106
+#   proton_contract  actionable  0 -> 0    parsed   4 UNCHANGED
+#
+# Five actionable across the six corpora became two, and 31 more files parse fully -- the
+# sum of those `parsed` deltas -- with none lost anywhere. NOT A GENERAL TRUNCATION FIX:
+# 178 other truncated files across the corpora have other causes. The
+# `unterminated block string literal` report itself fired on only 4 files, and that is NOT
+# the same count as the 31 extra parses; a file cut here can stop short without ever
+# producing that report. This note does not claim the two sets are identical.
+#
+# GATE 0446: 5/5 KILLED, every named test confirmed, every restore byte-identical. M1/M3
+# first came back COMPILE-ERR -- they removed a binding still read later (`j`), or made
+# `cur` an unused `let mut` -- so what they were measuring was the COMPILER. Both were
+# corrected to compile, with the failure recorded in their `Prove`.
+#
+# M2 is the one worth reading. It indents the closer, and no test had ever done that: seven
+# tests for this construct all put the closer at column 0 because they were copied from each
+# other, so the rule was pinned only by an UNRELATED test that happened to indent. Two tests
+# were added and M2 re-pointed at them.
+#
+# WHAT IS LEFT, and it is not this predicate: proton `facade_notification.mbt:12,14`,
+# `undefined function '@async.CondVar::Cond'` twice -- a qualified path through
+# `pub using @cond_var {type Cond as CondVar}` in async's `pkg.generated.mbti`.
+#
+# WHAT THE RELEASE GATE CAUGHT IN 0446, AND IT WAS IN 0446'S OWN CODE. The first
+# run of this file failed at stage 2 with four `0020` deprecation warnings: the new
+# `lex_block_string` wrote `cur.to_string().trim().to_string()`, and `StringView::to_string`
+# is deprecated in favour of `to_owned`. `--deny-warn` turns those into errors, so the
+# suite stopped before a single mutation gate ran. All four sites now say `to_owned()`.
+#
+# A GREEN TEST TALLY IS NOT `--deny-warn` CLEAN. During development this same code
+# reported `moon test --target wasm` at 655/655; under this suite the same package exits
+# 1 and prints NO tally at all. The cause of that discrepancy is NOT ESTABLISHED and is
+# not claimed here. What IS established, and is why the fix happened at all: one of the
+# two stages ran the tests and one ran the linter, and only the linter said anything.
+# A suite that runs only the first would have shipped four deprecation warnings.
+#
+# Counted as shipped: wasm 657/657 (the two tests M2 forced into existence are in that
+# 657), js 585/585, wasm-gc 585/585. js and wasm-gc run fewer because `src/sa` needs the
+# async runtime and degrades off wasm. GATE 0446: 5/5 KILLED.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=590 actionable=0 notices=4119 unreliable=246 withheld=2 total=4365'
-  'moonbit_labeler' = 'files=37 parsed=25 actionable=0 notices=553 unreliable=320 withheld=140 total=873'
+  'moui'            = 'files=608 parsed=591 actionable=0 notices=4120 unreliable=244 withheld=0 total=4364'
+  'moonbit_labeler' = 'files=37 parsed=26 actionable=0 notices=566 unreliable=319 withheld=140 total=885'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=227 actionable=0 notices=979 unreliable=2174 withheld=499 total=3153'
-  'proton'          = 'files=137 parsed=103 actionable=5 notices=1116 unreliable=900 withheld=316 total=2021'
+  'async'           = 'files=419 parsed=253 actionable=0 notices=1081 unreliable=2208 withheld=501 total=3289'
+  'proton'          = 'files=137 parsed=106 actionable=2 notices=1334 unreliable=1077 withheld=316 total=2413'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

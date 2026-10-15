@@ -1,27 +1,72 @@
 ///|
 /// Lexer-level tests for the block-string closer.
 ///
-/// The closer rule was measured against the toolchain rather than assumed,
-/// because the previous rule (`|#`) appears in no real code and so reported
-/// "unterminated block string" on anything containing a block string.
+/// EVERY expectation below is the toolchain's own VALUE, measured by
+/// `_verify/settle_0446_block_string.ps1` running each shape through `moon run`
+/// and printing the variable. That is the only instrument that works here:
+/// `moon check` ACCEPTS every shape of this construct, so acceptance cannot
+/// distinguish one rule from another -- it says only "this lexes".
 ///
-/// Note what these tests are NOT: they are not a response to a self-scan
-/// complaint about src/samples/samples.mbt. That file's marker count was 107,
-/// odd, when this rule was written, so its last block really did run to end of
-/// input and the report was true at the time; the file has since gained one
-/// marker and parses clean. The rule was wrong on the five measured counts
-/// below, not because of that report.
+/// WHAT THESE TESTS USED TO ASSERT, and why it moved. The rule they pinned was
+/// "the closer is a `#|` with only whitespace BEFORE it on its line", and it
+/// listed `#|AAA\n#|BBB trailing -> "AAA\nBBB trailing"` among its measurements.
+/// That is false: the trailing text is CONTENT and the string carries on. Under
+/// the old rule EVERY line-leading `#|` closed, so markers paired as
+/// opener/closer alternately, and an ODD count ran to end of input and was
+/// reported "unterminated" -- a finding the toolchain does not make, on valid
+/// MoonBit. proton 0.3.4 `facade_types.mbt` is written that way, and three
+/// findings in three other files came from that file being cut at line 246 while
+/// the enum declaring the names they used sat at 589.
 ///
-/// Measured with `moon run`:
-///   #|AAA\n#|BBB          -> "AAA\nBBB"           closed, rest of line is content
-///   #|AAA\n  #|BBB       -> "AAA\nBBB"           the closer may be indented
-///   #|AAA\n#|BBB trailing -> "AAA\nBBB trailing"
-///   #|one #|two\n#|three   -> "one #|two\nthree"  a mid-line `#|` is content
-///   #|AAA\n|#BBB           -> not closed          `|#` is content
-///   #|AAA\n#|BBB\nCCC      -> "AAA\nBBB", and CCC is then parsed as CODE
+/// The VALUE moved too. Segments are trimmed and joined by a single SPACE, never
+/// by newlines: "AAA\nBBB" was never the string, under either rule.
+///
 
 ///|
-test "block string closes on a line-leading #| and ends at that line" {
+/// THE CLOSER, and the one shape this is really about: a `#|` whose REST OF LINE
+/// IS BLANK. It contributes an empty final segment, which is why every closed
+/// value ends in a space and no end-of-input one does.
+test "block string: a bare #| closes and contributes an empty segment" {
+  let (toks, _, reports) = @lexer.lex("let s = #|AAA\n#|BBB\n#|\n")
+  assert_eq(reports.length(), 0)
+  let mut v = "<none>"
+  for t in toks {
+    match t {
+      TStr(s, _) => if s.contains("AAA") { v = s }
+      _ => ()
+    }
+  }
+  assert_eq(v, "AAA BBB ")
+}
+
+///|
+/// THE CASE THE OLD RULE GOT WRONG. Trailing text makes the `#|` a CONTENT LINE,
+/// not a closer, and the string runs on to the next one. The old expectation
+/// here was "AAA\nBBB trailing" -- that is the claim this section exists to
+/// correct, and `trailing` in the settle is the measurement that corrects it.
+test "block string: a #| with text after it is a content line" {
+  let (toks, _, reports) = @lexer.lex("let s = #|AAA\n#|BBB trailing\n#|\n")
+  assert_eq(reports.length(), 0)
+  let mut v = "<none>"
+  for t in toks {
+    match t {
+      TStr(s, _) => if s.contains("AAA") { v = s }
+      _ => ()
+    }
+  }
+  assert_eq(v, "AAA BBB trailing ")
+}
+
+///|
+/// A line whose first NON-BLANK character is not `#|` ENDS the block, and the
+/// toolchain does not call that unterminated: in `#|abc` / `plain` / `#|`,
+/// `plain` comes back as an unbound identifier (4021), so it is CODE, and the
+/// trailing `#|` is a second string expression (4139).
+///
+/// This is also the shape the old tests used by accident -- their `  1` tail was
+/// never string content, it was code -- which is why their expected values
+/// contained text that had no business being inside the string at all.
+test "block string: a non-blank line without #| ends the block, as code" {
   let (toks, _, reports) = @lexer.lex(
     "fn f() -> int {\n  let s = #|AAA\n#|BBB\n  1\n}\n",
   )
@@ -33,7 +78,66 @@ test "block string closes on a line-leading #| and ends at that line" {
       _ => ()
     }
   }
-  assert_eq(v, "AAA\nBBB")
+  assert_eq(v, "AAA BBB")
+}
+
+///|
+/// A BLANK line does NOT end it. Measured: `#|abc` / <blank> / `#|def` / `#|`
+/// is "abc def ", and so is the same shape with a whitespace-only line. Without
+/// this, the rule above would fire on every blank line inside a block.
+test "block string: a blank line inside the block does not end it" {
+  let (toks, _, reports) = @lexer.lex("let s = #|abc\n\n  \n#|def\n#|\n")
+  assert_eq(reports.length(), 0)
+  let mut v = "<none>"
+  for t in toks {
+    match t {
+      TStr(s, _) => if s.contains("abc") { v = s }
+      _ => ()
+    }
+  }
+  assert_eq(v, "abc def ")
+}
+
+///|
+/// THE CLOSER MAY BE INDENTED, and this test exists because it was MISSING.
+///
+/// Seven tests were written for this construct in 0.4.36 and every one of them put
+/// the closer at column 0 -- because they were written by copying each other. Gate
+/// 0446's M2 tightens the closer to column 0 and only ONE test in the suite went
+/// red: an unrelated block-string test that had happened to indent its markers.
+/// The rule was therefore pinned by accident, and an accident is not a guard.
+///
+/// The toolchain is unambiguous here (`blank_closer` in the settle), and so is the
+/// old header it replaces, which claimed the indented closer worked while getting
+/// everything else about the rule wrong. Indentation of the closer is the one part
+/// of that header that was RIGHT.
+test "block string: an indented #| still closes" {
+  let (toks, _, reports) = @lexer.lex("let s =\n  #|abc\n  #|def\n  #|\n")
+  assert_eq(reports.length(), 0)
+  let mut v = "<none>"
+  for t in toks {
+    match t {
+      TStr(s, _) => if s.contains("abc") { v = s }
+      _ => ()
+    }
+  }
+  assert_eq(v, "abc def ")
+}
+
+///|
+/// AND WITH TRAILING BLANKS AFTER THE MARKER, which is the case that says "rest of
+/// line is blank" rather than "rest of line is empty".
+test "block string: a #| followed only by blanks still closes" {
+  let (toks, _, reports) = @lexer.lex("let s =\n  #|abc\n  #|def\n  #|   \n")
+  assert_eq(reports.length(), 0)
+  let mut v = "<none>"
+  for t in toks {
+    match t {
+      TStr(s, _) => if s.contains("abc") { v = s }
+      _ => ()
+    }
+  }
+  assert_eq(v, "abc def ")
 }
 
 ///|
@@ -41,7 +145,7 @@ test "block string closes on a line-leading #| and ends at that line" {
 /// the lines after it keep counting from where the block ended.
 test "block string value and line counter" {
   let (toks, spans, reports) = @lexer.lex(
-    "fn f() -> int {\n  let s = #|AAA\nBB\n#|\n  1\n}\n",
+    "fn f() -> int {\n  let s = #|AAA\n#|\n  1\n}\n",
   )
   assert_eq(reports.length(), 0)
   let mut v = "<none>"
@@ -51,21 +155,27 @@ test "block string value and line counter" {
       _ => ()
     }
   }
-  assert_eq(v, "AAA\nBB\n")
+  assert_eq(v, "AAA ")
   assert_eq(spans.length(), toks.length())
 }
 
 ///|
-/// `|#` does not close, so the block runs to end of input and is reported.
-test "|# does not close a block string" {
-  let (_, _, reports) = @lexer.lex("fn f() -> int {\n  let s = #|AAA\n  1\n}\n")
+/// End of input closes the block too -- the toolchain tolerates it and the value
+/// carries no trailing empty segment -- but the file is STILL reported, because
+/// whatever followed the last `#|` was never lexed, so every span past it would
+/// be wrong. That report is this test's whole subject.
+test "a block string with no closer is reported, and spans stay consistent" {
+  let (toks, spans, reports) = @lexer.lex("let s = #|AAA\n")
   assert_eq(reports.length(), 1)
   assert_true(reports[0].message.contains("unterminated block string"))
+  assert_eq(spans.length(), toks.length())
 }
 
 ///|
-/// A mid-line `#|` is ordinary content; only a line-leading one closes.
-test "a mid-line #| does not close" {
+/// A mid-line `#|` is ordinary content. Measured: `#|one #|two` / `#|three` is
+/// "one #|two three" -- joined by a space, because the `#|three` line is a
+/// content segment and no closer ever arrives.
+test "a mid-line #| is content" {
   let (toks, _, _) = @lexer.lex("let s = #|one #|two\n#|three\n")
   let mut v = ""
   for t in toks {
@@ -74,7 +184,7 @@ test "a mid-line #| does not close" {
       _ => ()
     }
   }
-  assert_eq(v, "one #|two\nthree")
+  assert_eq(v, "one #|two three")
 }
 
 // --- integer literals -------------------------------------------------------

@@ -318,19 +318,32 @@ test "a multi-line block string keeps later line numbers correct" {
 }
 
 ///|
-/// Pins the measured closer rule, because getting it wrong is silent: this
-/// lexer used to look for `|#`, which never appears in real code, and reported
-/// "unterminated block string" on the module's own src/samples/samples.mbt 鈥?a
-/// file `moon check` compiles cleanly. Found by the 0.4.0 self-scan.
+/// Pins the closer rule end to end, because getting it wrong is silent in the
+/// worst direction: it made three findings in three files that had no cause
+/// anyone could find.
 ///
-/// Measured with `moon run`:
-///   #|AAA\n#|BBB        -> "AAA\nBBB"         (closed)
-///   #|AAA\n|#BBB        -> not closed         (`|#` is content)
-///   #|one #|two\n#|three -> "one #|two\nthree"  (mid-line `#|` is content)
-test "block string closes on a line-leading #|, and |# does not close" {
+/// THE RULE, settled by VALUE in `_verify/settle_0446_block_string.ps1`: the
+/// closer is a line-leading `#|` whose REST OF LINE IS BLANK. Everything else
+/// is a content segment, and the value is those segments trimmed and joined by
+/// a single SPACE.
+///
+///   #|AAA\n#|BBB\n#|            -> "AAA BBB "     closed
+///   #|AAA\n#|BBB trailing\n#|   -> "AAA BBB trailing "   trailing text is CONTENT
+///   #|abc\nplain\n#|            -> plain is CODE, 4021 unbound
+///   #|one #|two\n#|three        -> "one #|two three"      mid-line `#|` is content
+///   #|AAA\n|#BBB                -> `|#` is content
+///
+/// `moon check` ACCEPTS every one of these, so acceptance measures nothing here
+/// and only the value settles the rule. The version below used to end at
+/// `#|b trailing` -- a rule the toolchain does not have.
+test "block string closes on a #| whose rest of line is blank, and |# does not close" {
   let not_closed = "fn f() -> int {\n  1\n}\n#|a|#b\n"
   assert_eq(@pipeline.run(not_closed, "x.mbt", empty_iface()).n_parse, 1)
-  let closed = "fn f() -> int {\n  1\n}\n#|a\n#|b trailing\n"
+  // THE CLOSER IS A BARE `#|`. This fixture used to end at `#|b trailing`,
+  // which is a CONTENT line under the measured rule -- it has text after the
+  // marker -- so the block ran to end of input and this assertion was measuring
+  // a rule the toolchain does not have. The trailing `#|` is what closes it.
+  let closed = "fn f() -> int {\n  1\n}\n#|a\n#|b trailing\n#|\n"
   assert_eq(@pipeline.run(closed, "x.mbt", empty_iface()).n_parse, 0)
 }
 

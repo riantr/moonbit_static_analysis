@@ -997,49 +997,67 @@ fn Lexer::lex_char(self : Lexer) -> Tok {
 }
 
 ///|
-/// A block string. `#|` opens it; a line-leading `#|` closes it and the string
-/// ends at the end of THAT line.
+/// A block string. `#|` opens it; the string ends at the next LINE-LEADING `#|`
+/// **whose rest of line is blank**, and that closer contributes an empty final
+/// segment. Measured against the toolchain by VALUE, in
+/// `_verify/settle_0446_block_string.ps1`:
 ///
-/// Measured against the toolchain rather than assumed, with `moon run` printing
-/// the resulting value:
+///   #|abc / #|def            -> "abc def"        `#|def` is CONTENT
+///   #|abc / #|def / #|       -> "abc def "       the bare `#|` closes
+///   #|AAA / #|BBB trailing   -> "AAA BBB trailing "   also content
+///   #|abc / #|   (blanks)    -> "abc "           trailing blanks are blank
+///   #|one #|two / #|         -> "one #|two "     a mid-line `#|` is content
+///   no closer at all         -> ends at EOF, no trailing space
 ///
-///   #|AAA\n#|BBB            -> "AAA\nBBB"
-///   #|AAA\n  #|BBB         -> "AAA\nBBB"        (the closer may be indented)
-///   #|AAA\n#|BBB trailing   -> "AAA\nBBB trailing"
-///   #|one #|two\n#|three    -> "one #|two\nthree"  (mid-line `#|` is content)
-///   #|AAA\n|#BBB            -> not closed        (`|#` is content)
-///   #|AAA\n#|BBB\nCCC       -> "AAA\nBBB", and CCC is parsed as CODE
+/// So each line-leading `#|` is a SEGMENT: the text after it, trimmed, joined to
+/// its neighbours by a single SPACE. Newlines are not in the value.
 ///
-/// So: the closer is a `#|` with only whitespace before it on its line; the
-/// text after the closer on that line stays inside the string, and the newline
-/// does not. An earlier version of this file looked for `|#`, which never
-/// appears in real code -- it reported "unterminated block string" on anything
-/// containing a block string at all.
+/// THIS HEADER USED TO STATE THE OPPOSITE, and the old claim is recorded here
+/// rather than deleted, because "a reason string is not a reason" has cost this
+/// repository several rankings in a row. It claimed the closer is "a `#|` with
+/// only whitespace BEFORE it on its line", and listed `#|AAA\n#|BBB trailing ->
+/// "AAA\nBBB trailing"` among its measurements. Under that rule `#|BBB trailing`
+/// is the closer. It is not: the value above shows it contributing a segment,
+/// and the string carrying on to the next line. The join is a space, not a
+/// newline. That rule paired markers as opener/closer alternately.
 ///
-/// That report was NOT a false positive to be chased: when it was written, this
-/// module's own src/samples/samples.mbt had 107 `#|` markers, an odd count, so
-/// its last block really did run to end of input and the report was true. I
-/// took the self-scan output as evidence that the closer was wrong and it was
-/// not -- the closer WAS wrong, but for the five measured reasons above, not
-/// for that. A truthful "unterminated" is not a bug report, and treating it as
-/// one wasted a cycle. (The file has since gained one marker and parses clean.)
+/// WHAT THAT COST, and why it stayed invisible for so long: an ODD count of
+/// `#|` lines ran to EOF and was reported "unterminated block string literal" --
+/// a finding the toolchain does not make, on valid MoonBit. Four files across
+/// the six corpora carried it. One of them, proton 0.3.4 `facade_types.mbt`,
+/// writes its block string with content on every `#|` line, so the file was cut
+/// at line 246 while the enum declaring `CookieWaiting` and `CookieCompleted`
+/// sat at 589 -- and a file truncated past its declarations contributes nothing
+/// to the cross-file symbol table, so the sibling that USES those names was told
+/// they were undefined.
+///
+/// `moon check` accepts every shape of this construct, so "does the toolchain
+/// accept the file" cannot settle any of it. Only the value can. That is the
+/// whole reason this table exists and why a reader should be suspicious of any
+/// future edit here that is justified by acceptance alone.
 ///
 /// End of input also closes the block, as the toolchain's tolerance for an
-/// odd count shows, but the file is still reported: whatever followed the last
-/// `#|` was never lexed, so every span past it would be wrong.
+/// unclosed one shows, and the file is still reported: whatever followed the
+/// last `#|` was never lexed, so every span past it would be wrong.
 ///
 /// Newlines inside the body advance the line counter (so every span after it
-/// stays correct) but are NOT emitted as `TNewline` — they are string contents,
+/// stays correct) but are NOT emitted as `TNewline` -- they are string contents,
 /// not statement separators.
 fn Lexer::lex_block_string(self : Lexer) -> Tok {
   let l = self.line
   let c0 = self.col
-  let buf = StringBuilder()
+  // SEGMENTS, not one buffer. Each line-leading `#|` opens a segment; the value
+  // is those segments trimmed and joined by a single space. Accumulating raw
+  // characters cannot produce that, because the newline between two segments is
+  // not in the value at all.
+  let segs : Array[String] = []
+  let mut cur = StringBuilder()
   let n = self.chars.length()
-  // step past the opening `#|`
+  // step past the opening `#|`, which opens the FIRST segment
   self.pos += 2
   self.col += 2
   let mut closed = false
+  let mut ended_at_code = false
   let mut at_line_start = false
   while self.pos < n {
     let c = self.chars[self.pos]
@@ -1047,17 +1065,87 @@ fn Lexer::lex_block_string(self : Lexer) -> Tok {
       at_line_start &&
       self.pos + 1 < n &&
       self.chars[self.pos + 1] == '|' {
-      // The closer is stripped, and the string then ends at the END of that line:
-      // whatever follows the closer on it is still content, the newline after it
-      // is not.
+      // THE CLOSER, and requiring the REST OF ITS LINE TO BE BLANK is the whole
+      // of 0.4.36. A `#|` with anything after it on the line is a CONTENT LINE,
+      // not a closer.
+      //
+      // Settled by VALUE, not by whether `moon check` accepts the file -- every
+      // shape of this construct is accepted, so acceptance measures nothing here.
+      // `_verify/settle_0446_block_string.ps1` runs each shape and compares what
+      // the toolchain actually produced:
+      //
+      //     #|abc / #|def            -> "abc def"     <- NO trailing space, so
+      //                                                       `#|def` is content
+      //     #|abc / #|def / #|       -> "abc def "    <- the bare `#|` closes
+      //                                                       and contributes an
+      //                                                       empty final segment
+      //     #|AAA / #|BBB trailing   -> "AAA BBB trailing "  <- content
+      //     #|abc / #|   (spaces)    -> "abc "        <- trailing blanks are blank
+      //     #|one #|two              -> "one #|two "  <- a mid-line `#|` is content
+      //     (no closer at all)       -> ends at EOF, no trailing space
+      //
+      // THE HEADER OF THIS FUNCTION WAS WRONG AND SAID SO. It claimed the closer
+      // is "a `#|` with only whitespace BEFORE it on its line" and listed
+      // `#|AAA\n#|BBB trailing -> "AAA\nBBB trailing"` as a measurement. Under
+      // that rule `#|BBB trailing` closes the string; it does not. It is the
+      // SECOND measurement above that settles it, and the join is a space rather
+      // than a newline. The old rule paired markers as opener/closer alternately,
+      // so an ODD count of `#|` lines ran to EOF and was reported "unterminated"
+      // -- a finding the toolchain does not make, on valid MoonBit.
+      //
+      // Cost of getting it wrong, measured rather than imagined: proton 0.3.4
+      // `facade_types.mbt` writes its block string at lines 236-245 with content
+      // on every `#|` line and a bare `#|` at 246. The old rule closed at 236, so
+      // 246 opened a second string that ran to EOF, the file was reported
+      // unterminated, and the scan stopped at line 246 -- while the enum
+      // declaring `CookieWaiting` and `CookieCompleted` sits at 589. A file
+      // truncated past its declarations contributes nothing to the cross-file
+      // symbol table, so the sibling that USES those names was told they were
+      // undefined: three findings, in three files, from one.
+      let mut j = self.pos + 2
+      while j < n && (self.chars[j] == ' ' || self.chars[j] == '\t') {
+        j += 1
+      }
+      if j >= n || self.chars[j] == '\n' {
+        // The closer, and it contributes an EMPTY final segment -- which is why
+        // every closed value ends in a space and no EOF-terminated one does.
+        // Measured: `#|abc / #|def / #|` gives "abc def " while `#|abc / #|def`
+        // gives "abc def". That difference is why the value is built from
+        // SEGMENTS rather than accumulated raw.
+        segs.push(cur.to_string().trim().to_owned())
+        segs.push("")
+        closed = true
+        while self.pos < j {
+          self.pos += 1
+          self.col += 1
+        }
+        break
+      }
+      // NOT a closer: this line begins a new SEGMENT and its text is content.
+      segs.push(cur.to_string().trim().to_owned())
+      cur = StringBuilder()
       self.pos += 2
       self.col += 2
-      closed = true
-      while self.pos < n && self.chars[self.pos] != '\n' {
-        buf.write_char(self.chars[self.pos])
-        self.pos += 1
-        self.col += 1
-      }
+      at_line_start = false
+      continue
+    }
+    // A line whose first NON-BLANK character is not `#|` ENDS the block, and the
+    // toolchain does not report that as unterminated. Measured: `#|abc` / `plain`
+    // / `#|` reports `plain` as an UNBOUND IDENTIFIER (4021) -- so `plain` is
+    // CODE, and the trailing `#|` is a second, separate string expression (4139).
+    //
+    // A BLANK line does NOT end it. `#|abc` / <blank> / `#|def` / `#|` is
+    // "abc def ", and so is the same shape with a whitespace-only line.
+    //
+    // `at_line_start` is still true here precisely when only whitespace has been
+    // seen on this line, so this fires on the first real character, not before.
+    if at_line_start &&
+      c != ' ' &&
+      c != '\t' &&
+      c != '\n' &&
+      !(c == '#' && self.pos + 1 < n && self.chars[self.pos + 1] == '|') {
+      segs.push(cur.to_string().trim().to_owned())
+      ended_at_code = true
       break
     }
     if c == '\n' {
@@ -1070,10 +1158,11 @@ fn Lexer::lex_block_string(self : Lexer) -> Tok {
       }
       self.col += 1
     }
-    buf.write_char(c)
+    cur.write_char(c)
     self.pos += 1
   }
-  if !closed {
+  if !closed && !ended_at_code {
+    segs.push(cur.to_string().trim().to_owned())
     self.reports.push(@report.Report::{
       family: @core.FParse,
       lenses: [@core.LStructural],
@@ -1082,7 +1171,11 @@ fn Lexer::lex_block_string(self : Lexer) -> Tok {
       vst: [],
     })
   }
-  let s = buf.to_string()
+  // SEGMENTS JOINED BY A SINGLE SPACE. Newlines are not in the value: measured,
+  // `#|one` / `  #|two` / `#|` is "one two " and not "one\ntwo". Building the
+  // value segment-wise is what makes that fall out, and it is why the closer has
+  // to push an empty segment rather than simply stop.
+  let s = segs.join(" ")
   self.emit(TStr(s, []), l, c0, 1)
   TStr(s, [])
 }
