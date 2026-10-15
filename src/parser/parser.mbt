@@ -4272,6 +4272,27 @@ fn Parser::note_skip(self : Parser, msg : String, sp : @core.Span) -> Unit {
 }
 
 ///|
+/// Read an anonymous function literal whose `fn` keyword has ALREADY been
+/// consumed, from the parameter list through the body.
+///
+/// Extracted so that `fn(a) { .. }` and `async fn(a) { .. }` cannot drift: the
+/// two differ only in the keyword in front of them, and the parameter parser and
+/// the block parser are the same two calls either way. A fix that copied the
+/// eight lines would be a second place to forget something.
+fn Parser::parse_fn_literal(self : Parser, sp : @core.Span) -> @ast.Expr {
+  if self.at(TLBracket) {
+    self.skip_indexed()
+  }
+  let _ = self.parse_param_list()
+  let (_, _) = self.parse_block(false)
+  self.note_skip(
+    "anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed",
+    sp,
+  )
+  { span: sp, kind: @ast.EBigInt, }
+}
+
+///|
 fn Parser::parse_atom(self : Parser) -> @ast.Expr {
   let sp = self.span()
   match self.bump() {
@@ -4357,7 +4378,7 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       )
       scrutinee
     }
-    TName("fn") => {
+    TName("fn") =>
       // An anonymous function literal in expression position:
       // `arr.iter(fn(x) { x + 1 })`. The subset has no closure node, so the
       // literal is read PAST — generic brackets, parameters via the shared
@@ -4366,17 +4387,86 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       // waste: it keeps the token stream in step, so what FOLLOWS the
       // literal is analysed. Statement-level named functions take the
       // SLocalFunc path in `parse_block` and never reach this arm.
-      if self.at(TLBracket) {
-        self.skip_indexed()
+      self.parse_fn_literal(sp)
+    TName("async") =>
+      // `async fn(a, b) { .. }` — an anonymous ASYNC function literal.
+      //
+      // This arm existed for four of the nine files moui 0.1.12 still cannot
+      // finish reading, all four stopped at the same construct and all four
+      // reported it as `expected ')'`:
+      //
+      //     launch_async=Some(async fn(request, frame_interval_ms) { .. }),
+      //
+      // `expected ')'` is the complaint AFTER the argument of `Some(` failed
+      // to parse; it is about the argument, not about the parenthesis. There
+      // was no arm for `async` here, so it was read as an ordinary name and
+      // the argument never started. The short-lambda named argument on the
+      // line before parses fine, which is why the file is `PARTIAL` at line
+      // 23-24 rather than unparsed at zero.
+      //
+      // Settled against the toolchain, not inferred
+      // (`_verify/settle_0453_async_fn_expr.ps1`, 6/6 with a positive control):
+      //
+      //     Some(fn(a) { .. })          ACCEPT   <- already parsed, same shape
+      //     Some(async fn(a) { .. })    ACCEPT
+      //     the corpus declaration      ACCEPT   <- short lambda + this, together
+      //     ignore(async)               REJECT(3002) "unexpected token `)`,
+      //                                                 you may expect `fn`"
+      //     async work()                REJECT(3002)
+      //
+      // The last two are why this arm is written as an `if` on `fn` rather than
+      // as "an `async` starts a function". In the toolchain `async` is bound to
+      // `fn` and to nothing else -- there is no `async call` production and no
+      // value named `async` -- so consuming it wherever it appears would be
+      // untested rather than correct. The guard is what turns that measurement
+      // into a production.
+      //
+      // IT HAS THREE CASES, NOT TWO, and the third is this increment's second
+      // regression -- caught by a corpus, not by the gate.
+      //
+      //   async fn(a) { .. }      a LITERAL. Read it here.
+      //   async fn log(a) { .. }  a nested DECLARATION. A function literal is
+      //                            ANONYMOUS, so a NAME after `fn` is always a
+      //                            declaration -- and `parse_block`'s own
+      //                            discriminator (`at_name("fn") && name_at(p+1)
+      //                            != ""`, the 0450 fix) is false when the cursor
+      //                            is on `async`, so the declaration falls
+      //                            THROUGH to this arm. It must be handed back
+      //                            UNCHANGED, as the name `async`, so that the next
+      //                            statement still begins at `fn` and
+      //                            `parse_block` declares the function.
+      //   anything else           illegal; the toolchain says "you may expect
+      //                            `fn`". Read past with a notice.
+      //
+      // The middle case is why this is not `&& name_at(...) == ""`. With the
+      // `fn`-only guard, `async fn log(s) { .. }` was consumed as an anonymous
+      // literal and the nested function was never declared; with the compound
+      // guard it was handed to an `else` that announced
+      // `async without a following fn` -- a false notice about legal code.
+      // `moonbitlang/async@0.22.4` is written with that shape inside test bodies
+      // (`src/all_any_test.mbt:138`, `src/fs/watch_test.mbt:50` and others), and
+      // all five sites fired it.
+      if self.at_name("fn") {
+        if self.name_at(self.p + 1) == "" {
+          let _ = self.bump()
+          self.parse_fn_literal(sp)
+        } else {
+          // A DECLARATION, not a literal. Yielding the name unchanged is what the
+          // arm did before this increment, so nothing downstream moves.
+          { span: sp, kind: @ast.EName("async"), }
+        }
+      } else {
+        // Unreachable for code `moon check` accepts. Reached only by input the
+        // toolchain refuses, and the honest response to that is to read past
+        // it with a notice rather than invent a name: yielding `async` as a
+        // readable binding would let the structural lens file
+        // `undefined name 'async'` against a program that never meant a name.
+        self.note_skip(
+          "async without a following `fn` is outside the analyzed subset; it was read past",
+          sp,
+        )
+        { span: sp, kind: @ast.EBigInt, }
       }
-      let _ = self.parse_param_list()
-      let (_, _) = self.parse_block(false)
-      self.note_skip(
-        "anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed",
-        sp,
-      )
-      { span: sp, kind: @ast.EBigInt, }
-    }
     TName("try") => {
       // A `try` expression. The subset has no error-handling node: the body
       // block and every `catch`/`finally` arm are skipped WHOLE, not read —

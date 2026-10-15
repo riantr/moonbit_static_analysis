@@ -260,7 +260,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1160,12 +1160,71 @@ if ($SkipMutations) {
 # second one different -- so it now asserts the MESSAGE `expected ':'`. M4's
 # MustRed points at an existing test in another file, because the mutation
 # destroys the field KEY while `{ a: a }` still parses as a value.
+# GATE 0453: an anonymous ASYNC function literal in expression position.
+# After 0452 moui still could not finish reading 9 files, and the largest by-reason
+# bucket was `4x expected ')'`. That label is about the ARGUMENT of a call, not the
+# parenthesis -- the parser is downstream of the real failure, which is why the first
+# reading sent the search towards brackets. Three of the four are one construct:
+#
+#     launch_async=Some(async fn(request, frame_interval_ms) { .. }),
+#
+# `parse_atom` had an arm for `TName("fn")` and none for `async`. The short-lambda
+# named argument on the line ABOVE it parses, which is why those files were PARTIAL
+# at line 23-24 rather than unparsed at zero.
+#
+# Settled in `_verify/settle_0453_async_fn_expr.ps1`, 6/6 with a positive control:
+#
+#     Some(fn(a) { .. })        ACCEPT   <- already read, identical shape
+#     Some(async fn(a) { .. })  ACCEPT
+#     the corpus declaration    ACCEPT
+#     ignore(async)             REJECT(3002) "you may expect `fn`"
+#     async work()              REJECT(3002)
+#
+#   moui     parsed 599 -> 602 (+3)   unreliable 105 -> 46   notices 4150 -> 4203
+#   image and proton_contract byte-identical; actionable 0 on all six.
+#   The `expected ')'` bucket is GONE from the by-reason grouping, and the
+#   `unexpected token ','` bucket is 4 -- the three files that were in it, plus
+#   runtime/app_builder.mbt, which has a SECOND defect behind the first and only
+#   now shows its own.
+#
+# THE THREE OTHER CORPORA MOVED AND NOBODY ASKED THEM TO. proton unreliable
+# 1082 -> 1112, withheld 309 -> 321; async notices 1234 -> 1241; labeler withheld
+# 134 -> 136. `parsed=` is UNCHANGED on all three, which is the signature of
+# "reading further", not of a regression -- and it was checked rather than argued:
+# proton carries 25 `async fn(` literal sites and async carries 45, so a file that
+# used to stop at one of them now stops at whatever comes NEXT and has more of its
+# tail seen. That is the same mechanism 0450 documented, and it is the reason
+# `unreliable` can rise while `parsed=` holds.
+#
+# TWO REGRESSIONS OF MY OWN WERE CAUGHT BY THOSE CORPORA, NOT BY THE GATE:
+#
+#   1. A `fn`-only guard consumed `async fn log(s) { .. }` -- a NESTED
+#      DECLARATION -- as an anonymous literal, so `parse_block` never declared it.
+#      labeler withheld 134 -> 136, two files that had parsed became PARTIAL.
+#   2. The compound guard `at_name("fn") && name_at(p+1) == ""` sent that same
+#      nested declaration to the `else`, which announced `async without a following
+#      fn` -- a FALSE notice about legal code. async hit it on all five of its
+#      nested sites. `else` fires 0 times in all six corpora now.
+#
+# Neither was visible to `_verify/mutate_0453.ps1`, and the reason is worth
+# recording rather than fixing: no fixture in the 0453 file contains a nested async
+# declaration, and a mutation gate cannot see a corpus it was not given. The corpus
+# is the instrument for that, which is why all six SUMMARY lines are pinned.
+#
+# GATE 0453: 5/5 KILLED (M1 the arm never fires, M2 the `fn` not consumed, M3 the
+# body skipped, M4 the `fn` guard dropped, M5 the nested declaration announced).
+# M3's MustRed was RENAMED TWICE before it could discriminate, and both attempts
+# were structurally incapable: `UnusedParam` on the literal's own parameters (they
+# are `let _ =`-discarded, never bound) and a defect inside the body (`parse_block`
+# returns statements that are thrown away, so nothing inside a function literal
+# reaches a lens -- for a plain `fn` exactly as much as for an async one). What
+# works is what reading the body DISCOVERS: a `match` inside it is announced.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=599 actionable=0 notices=4150 unreliable=105 withheld=0 total=4255'
-  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=309 withheld=134 total=877'
+  'moui'            = 'files=608 parsed=602 actionable=0 notices=4203 unreliable=46 withheld=0 total=4249'
+  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=311 withheld=136 total=879'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1189 withheld=308 total=2430'
-  'proton'          = 'files=137 parsed=108 actionable=0 notices=1344 unreliable=1082 withheld=309 total=2426'
+  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1190 withheld=309 total=2431'
+  'proton'          = 'files=137 parsed=108 actionable=0 notices=1344 unreliable=1112 withheld=321 total=2456'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{
