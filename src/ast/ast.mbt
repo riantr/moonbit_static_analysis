@@ -34,6 +34,22 @@ pub(all) enum BOp {
   OpBitXor
   OpShl
   OpShr
+  /// The PIPE, `f <| x` and its mirror `x |> f`. Both spellings are one operator
+  /// in meaning -- each applies a function to a value -- and they are ONE variant
+  /// for the same reason `<` and `>` are two: the node records what the ANALYZER
+  /// concluded, and both directions conclude "a call whose result is unknown".
+  ///
+  /// It is a binary operator rather than a call because the corpus's right-hand
+  /// side is almost always a LAMBDA -- `@async.with_task_group() <| group => { .. }`,
+  /// `Promise::from_async(abort_signal~) <| () => { .. }` -- and every lambda site
+  /// in this parser deliberately SKIPS its body into an opaque node. A call needs
+  /// a callee NAME and there is none, so building one would be claiming a shape
+  /// the parse does not have.
+  ///
+  /// Precedence is the LOWEST binary level and it is left-associative; both are
+  /// settled (`_verify/settle_0464_pipe_operators.ps1`, 14/14) rather than assumed
+  /// from the symbol. See `Parser::parse_pipe`.
+  OpPipe
 } derive(Eq)
 
 ///|
@@ -57,6 +73,7 @@ pub fn BOp::symbol(self : BOp) -> String {
     OpBitXor => "^"
     OpShl => "<<"
     OpShr => ">>"
+    OpPipe => "<|"
   }
 }
 

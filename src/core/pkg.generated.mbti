@@ -4,6 +4,10 @@ package "riantr/moonbit_static_analysis/src/core"
 // Values
 pub fn ambient_names() -> Array[String]
 
+pub fn builtin_method_names() -> Array[String]
+
+pub fn path_tail(String) -> String
+
 pub fn pos(Int, Int) -> Pos
 
 pub fn snapshot_vst(Array[Frame]) -> Array[Frame]
@@ -49,11 +53,13 @@ pub(all) struct Frame {
 pub struct IfaceSymTab {
   types : Map[String, Bool]
   values : Map[String, Bool]
+  aliases : Map[String, String]
 }
 pub fn IfaceSymTab::all_values(Self) -> Map[String, Bool]
 pub fn IfaceSymTab::empty() -> Self
 pub fn IfaceSymTab::has_type(Self, String) -> Bool
 pub fn IfaceSymTab::has_value(Self, String) -> Bool
+pub fn IfaceSymTab::is_const(Self, String) -> Bool
 pub fn IfaceSymTab::merge(Self, Self) -> Self
 pub fn IfaceSymTab::n_types(Self) -> Int
 pub fn IfaceSymTab::n_values(Self) -> Int

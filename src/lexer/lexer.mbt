@@ -119,6 +119,30 @@ pub(all) enum Tok {
   /// tree, and the difference between iterating `n` and `n+1` times is not
   /// something to lose silently.
   TRangeIncl
+  /// `<|` — the PIPE operator. One token, because two tokens is what the corpus
+  /// trips over: `f <| x` lexed as `f`, `<`, `|`, `x` and the parser then reported
+  /// the `|` -- "unexpected token `|`", 22 sites, a message that names neither the
+  /// operator nor the problem.
+  ///
+  /// DIRECTIONAL, and measured rather than assumed
+  /// (`_verify/settle_0464_pipe_operators.ps1`, 14/14): `f <| x` is `f(x)` and
+  /// ACCEPTs, while `x <| f` is REJECT(4101). A single token that accepted both
+  /// readings would accept code the toolchain refuses, and one that guessed the
+  /// other direction would bind every corpus line backwards.
+  TPipeLt
+  /// `|>` — the MIRROR of `<|`, and deliberately its own token rather than a flag
+  /// on `TPipeLt`. Same settle: `x |> f` ACCEPTs, `f |> x` is REJECT(4101).
+  ///
+  /// Keeping them distinct is what lets the parser say which reading it took, and
+  /// therefore report `unexpected token` honestly when neither applies.
+  TPipeGt
+  /// `<+` — a StringBuilder/Array APPEND, three characters including the `+`.
+  ///
+  /// It is NOT "pipe or append", which is what this was assumed to be on the first
+  /// pass, and it is NOT String concatenation: `"a" <+ "b"` is REJECT(4015) while
+  /// `sb <+ "b"` is ACCEPT. Both readings came from the symbol's shape and both
+  /// were wrong; the corpus line `logger <+ "\{k}: \{v}\n"` is a string BUILD.
+  TAppendPlus
   TLParen
   TRParen
   TLBrace
@@ -1417,6 +1441,28 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
     self.col += 2
     self.emit(TArrow, l, c0, 2)
     return TArrow
+  }
+  // 0464 -- the PIPE family. Placed after the shifts and before compound
+  // assignment; mutually exclusive with all of them by their SECOND character
+  // (`|`, `>`, `+` against `|`, `>`, `=`), so the order carries no meaning and
+  // this is only where they read together.
+  if c == '<' && next == Some('|') {
+    self.pos += 2
+    self.col += 2
+    self.emit(TPipeLt, l, c0, 2)
+    return TPipeLt
+  }
+  if c == '|' && next == Some('>') {
+    self.pos += 2
+    self.col += 2
+    self.emit(TPipeGt, l, c0, 2)
+    return TPipeGt
+  }
+  if c == '<' && next == Some('+') {
+    self.pos += 2
+    self.col += 2
+    self.emit(TAppendPlus, l, c0, 2)
+    return TAppendPlus
   }
   // compound assignment: two-char checks. Mutually exclusive with `->` by
   // their second character (`=` vs `>`), so the order against TArrow is free.

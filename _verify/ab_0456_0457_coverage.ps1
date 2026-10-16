@@ -53,11 +53,11 @@ $TARGETS = [ordered]@{
 $CHANGED = @(
   'src/lexer/lexer.mbt',
   'src/parser/parser.mbt',
-  'src/walk/walk.mbt',
-  'src/lexer/lexer_0459_test.mbt',
-  'src/pipeline/pipeline_0460_test.mbt',
-  'src/parser/parser_0417_test.mbt',
-  'src/pipeline/pipeline_0416_test.mbt'
+  'src/ast/ast.mbt',
+  'src/types/types.mbt',
+  'src/interp/interp.mbt',
+  'src/lexer/lexer_0464_test.mbt',
+  'src/pipeline/pipeline_0464_test.mbt'
 )
 
 function Build-Wasm {

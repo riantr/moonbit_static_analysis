@@ -1,0 +1,82 @@
+# Next-increment evidence, measured 2026-10-16 after 6fb4da7 (0459-0463 shipped).
+
+## Ranked blockers, async 0.22.4 — 117 files NOTPARSE of 419, 268 findings withheld
+
+Taken from the NOTPARSE tally of a full-corpus scan. THESE ARE MESSAGE COUNTS, NOT
+FILE COUNTS, and a message is not a construct (see below).
+
+    35x  expected a struct literal field here
+    22x  unexpected token `|`
+    16x  expected '{'
+    11x  expected field name
+     6x  unexpected token `:`
+     5x  unexpected token `->`
+     5x  unexpected token `,`
+     4x  unexpected token `+`
+     3x  expected ';'
+     3x  expected '='
+     2x  unexpected token `>`
+     1x  expected 'in'
+     1x  unexpected token '='
+     1x  expected binding name
+     1x  unexpected token `.`
+     1x  expected ')'
+
+## THE TOP MESSAGE IS ALREADY KNOWN TO COVER MORE THAN ONE CONSTRUCT
+
+Measured, not assumed — three corpus sites, three different shapes, all of which
+produce "expected a struct literal field here":
+
+  1. async src/tls/openssl.mbt:705 — an ANNOTATED `let` with a bare block on the right
+         let _unused : Unit = {
+     2. async src/websocket/utils.mbt:49 — a `for` whose BODY brace is on the header line
+         for i = 0, remaining = remaining; i < data.length(); {
+     3. async src/internal/event_loop/process.mbt:51-53 — SHORTHAND struct-literal fields
+         |> Some
+       }
+       { pid, handle, }
+
+This is the 0459 lesson a third time: the 46-file "character literal must hold exactly
+one character" tally covered two lexer gaps of different size in different files. Do
+not write one fix for this message.
+
+## SITES ARE NOT BLOCKERS — the trap before writing any of it
+
+Counting occurrences of a construct across the corpora says how much of the SHAPE
+exists, not how much of it fails. Two of the three shapes above are already handled:
+
+    corpus       files   letAnnBlock   forBlockBody   shorthandStruct   (sites/files)
+    moui          551        9/4            3/3            112/58
+    labeler        35      148/10           0/0              8/5
+    image          17        2/1            0/0              1/1
+    async         362       32/29          52/33            41/34
+    proton        114        1/1            2/1             34/19
+    contract        2        0/0            0/0              1/1
+
+labeler writes `letAnnBlock` 148 times and is only 5 files unread. proton writes
+`shorthandStruct` 34 times and is 22 files unread. So neither shape is broken in the
+bulk, and a count cannot rank the work.
+
+THE ONLY RANKING THAT COUNTS is per-FILE first-blocker: for each NOTPARSE file, the
+FIRST parse error. That is what decides the file's fate, and the scanner's NOTPARSE
+tally groups by message rather than printing per-file lines, so the per-file blocker
+has to be recovered from the `PARTIAL ... read up to line N` line by reading line N.
+
+## HARNESS TRAP HIT WHILE PRODUCING THIS, worth not re-learning
+
+The first run of the count above reported IDENTICAL numbers for five different
+corpora (343/124, 254/146, 762/290). They were garbage.
+
+Cause: PowerShell variables are CASE-INSENSITIVE. The script used `$T` for the
+corpus-path dictionary and `$t` for a file's text, so the first `[IO.File]::ReadAllText`
+result assigned to `$t` CLOBBERED the dictionary. Every corpus after the first then
+indexed `$T[$k]` into a string, `Get-ChildItem` failed silently, and `$files` kept its
+previous value — so five corpora were counted against moui's file list. The first
+corpus was correct only because it ran before the clobber.
+
+=> the signature to trust: DIFFERENT inputs returning BYTE-IDENTICAL counts is a
+routing defect in the script, not a fact about the data. Run the control (enumerate
+one file path per corpus and print it) before believing any count. This is the same
+shape as the two mutation arms that printed identical 12-line counts in
+`_didbin_reach_1680.py`, and as `fetch_blobs.py` silently fetching against the wrong
+repository.

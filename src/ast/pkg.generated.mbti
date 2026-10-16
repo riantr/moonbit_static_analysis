@@ -29,13 +29,14 @@ pub(all) enum BOp {
   OpBitXor
   OpShl
   OpShr
+  OpPipe
 } derive(Eq)
 pub fn BOp::symbol(Self) -> String
 
 pub(all) struct CatchArm {
-  span: @core.Span
-  bindings: Array[String]
-  body: Array[Stmt]
+  span : @core.Span
+  bindings : Array[String]
+  body : Array[Stmt]
 } derive(Eq)
 
 pub(all) enum EKind {
@@ -60,6 +61,7 @@ pub(all) enum EKind {
   EIs(Expr, Array[String])
   ECast(Expr)
   ECatch(Expr, Array[CatchArm])
+  ENoRaise(Expr, Array[CatchArm])
 } derive(Eq)
 
 pub(all) struct ElseIf {
@@ -104,9 +106,12 @@ pub(all) enum SKind {
   SIf(Expr, Array[Stmt], Array[ElseIf], Array[Stmt]?)
   SWhile(Expr, Array[Stmt])
   SFor(String, @core.Span, Expr, Array[Stmt])
+  SNoBreak(Stmt, Array[Stmt])
   SReturn(Expr?)
+  SRaise(Expr?)
   SBreak
   SContinue
+  STail(Expr)
   SFunc(String, Array[Param], String, Array[Stmt], @core.Span)
   SLetDestruct(Array[String], Expr)
   SLocalFunc(String, Array[Param], String, Array[Stmt], @core.Span)

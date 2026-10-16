@@ -1459,6 +1459,9 @@ fn tok_desc(t : @lexer.Tok) -> String {
     TCaret => "`^`"
     TShl => "`<<`"
     TShr => "`>>`"
+    TPipeLt => "`<|`"
+    TPipeGt => "`|>`"
+    TAppendPlus => "`<+`"
     TBar => "`|`"
     TBang => "`!`"
     TQuestion => "`?`"
@@ -2446,6 +2449,34 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   // inside a `defer` reads as a return from the enclosing function where it
   // would run later at scope exit. That is the same flattening `if` bodies get,
   // and no lens has a use for the difference yet.
+  // 0464 -- `errdefer <expr>` / `errdefer <block>`, the DEFERRED ERROR CLEANUP
+  // statement. Same grammar as `defer` with an error handler, and it was reaching
+  // the expression reader as a plain NAME.
+  //
+  // It became REACHABLE in this increment rather than being new: `src/socket/udp.mbt`
+  // was blocked earlier at a `|>` on line 548, so its three `errdefer` lines had
+  // never been read. Teaching the pipe unblocked the file and surfaced them as
+  // `undefined name 'errdefer'` -- three confident false positives against code
+  // `moon check` compiles, from a file the analyzer had never finished reading.
+  //
+  // => 判据: a false positive nobody can reach is not a false positive that does
+  // not exist. It is a finding whose file has not been read yet, and the only way
+  // to tell the two apart is to unblock the corpus and look. This is the 0459
+  // story with a different ending: the reachability was legitimate, so the gap it
+  // uncovered is fixed here rather than the reach being given back.
+  //
+  // Measured reach: 33 sites across 18 files of moonbitlang/async 0.22.4 and 2 in
+  // proton 0.3.4. The argument is parsed, not skipped -- a `defer`/`errdefer` whose
+  // action is never read would turn every variable it mentions into a false
+  // `FUnusedBinding`.
+  if self.at_name("errdefer") {
+    let _ = self.bump()
+    if self.at(TLBrace) {
+      let (body, _) = self.parse_block(false)
+      return { span: sp, kind: @ast.SBlock(body), }
+    }
+    return { span: sp, kind: @ast.STail(self.parse_expr()), }
+  }
   if self.at_name("defer") {
     let _ = self.bump()
     if self.at(TLBrace) {
@@ -2884,7 +2915,77 @@ fn Parser::parse_expr(self : Parser) -> @ast.Expr {
     )
     return { span: lsp, kind: @ast.EBigInt, }
   }
-  self.parse_or()
+  self.parse_pipe()
+}
+
+///|
+/// THE PIPE TIER -- the LOOSEST binary level, above `parse_or`, and
+/// left-associative.
+///
+/// BOTH PROPERTIES ARE SETTLED, not read off the symbol
+/// (`_verify/settle_0464_pipe_operators.ps1`, 14/14):
+///
+///     `2 * 3 |> inc`    ACCEPT  ->  the LEFT operand is `(2 * 3)`
+///     `2 |> inc * 3`    REJECT  ->  the RIGHT operand is `inc * 3`, a type error
+///                                rather than `(2 |> inc) * 3`
+///     `1 |> inc |> inc` ACCEPT  ->  left-associative
+///
+/// The middle row is the one that pins it. Read as `(2 |> inc) * 3` it would be 9
+/// and would accept; the toolchain rejects it, so the pipe's right operand is the
+/// whole of `inc * 3`. An implementation that grabbed only the following ATOM
+/// would pass both direction rows above and fail both of these, binding corpus
+/// code into a different tree while reporting nothing wrong anywhere.
+///
+/// `f <| x` and `x |> f` are the SAME operator to this analyzer and produce the
+/// same node. The two are separate TOKENS because the toolchain refuses the
+/// reversed reading of each (`x <| f` and `f |> x` are both REJECT(4101)), and a
+/// token that accepted both would accept code the compiler rejects.
+///
+/// `<+` PRODUCES THE SAME NODE, and that is a recorded limitation rather than a
+/// claim of equivalence. `sb <+ "b"` is a StringBuilder append and `f <| x` is
+/// application; this analyzer models neither a builder nor a call result, so both
+/// are "read both operands, result unknown". The settle is what says `<+` is NOT
+/// a pipe -- `inc <+ 1` is refused with "you may expect template string" -- so
+/// nothing here claims the two behave alike, only that this reader cannot tell
+/// them apart and does not pretend to.
+fn Parser::parse_pipe(self : Parser) -> @ast.Expr {
+  let mut l = self.parse_or()
+  while self.at(TPipeLt) || self.at(TPipeGt) || self.at(TAppendPlus) {
+    let sp = self.span()
+    let _ = self.bump()
+    // The RIGHT OPERAND MAY BE A LAMBDA, and that is not a rare spelling: it is
+    // the corpus shape in all 13 of the files this unblocks --
+    // `Promise::from_async(abort_signal~) <| () => { .. }`,
+    // `@async.with_task_group() <| group => { .. }`, `Lazy() <| () => { .. }`.
+    //
+    // `parse_expr` recognises a lambda head only at ITS OWN cursor, and a pipe's
+    // right operand never passes through `parse_expr` -- it goes straight to
+    // `parse_or`. So `parse_atom` stopped at the `(` of `()`, the `=>` was left in
+    // the stream, and the STATEMENT parser then read that `=` as an assignment to
+    // `EBin(OpPipe, ..)`: "invalid assignment target", which is a message about a
+    // pipe and blames neither of the things that are actually in the source.
+    //
+    // Skipped, not parsed, for the reason every other lambda site gives: the
+    // parameters are not bound, so parsing the body would report each of them as
+    // undefined.
+    let r : @ast.Expr = if self.at_lambda_head() {
+      self.skip_lambda_head()
+      if self.at(TLBrace) {
+        self.skip_braces()
+      } else {
+        self.skip_lambda_body()
+      }
+      self.note_skip(
+        "short lambda is outside the analyzed subset; it was read but not analysed",
+        sp,
+      )
+      { span: sp, kind: @ast.EBigInt, }
+    } else {
+      self.parse_or()
+    }
+    l = { span: l.span, kind: @ast.EBin(@ast.OpPipe, l, r), }
+  }
+  l
 }
 
 ///|

@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1452,30 +1452,41 @@ if ($SkipMutations) {
 # tripwire is an untested guard with a footnote.
 #
 # Tests 643 -> 651: `pipeline_0458_test.mbt` and `types_0458_test.mbt`, eight cases.
-# Re-pinned after 0459-0463 (byte literals, array patterns, suberror constructors,
-# `let` shadowing, body-less suberrors). Four corpora moved, and every number moved
-# in the same direction -- `parsed` UP, `unreliable` and `withheld` DOWN, and
-# `actionable` unchanged at 0:
+# Re-pinned after 0464 (the pipe operators, `errdefer`, and a lambda as a pipe's
+# right operand). Two corpora moved, both in the direction that means more files are
+# understood rather than merely more opinions:
 #
-#     moonbit_labeler  parsed  28 -> 32   unreliable 310 -> 124  withheld 136 -> 16
-#     moonbit_image    parsed   2 -> 15   unreliable 285 ->  66  withheld 115 ->  0
-#     async            parsed 275 -> 302 unreliable 1248 -> 916 withheld 308 -> 268
-#     proton           parsed 109 -> 115 unreliable 1067 -> 922 withheld 330 -> 323
+#     async   parsed 302 -> 325   unreliable 916 -> 733   notices 1406 -> 1550
+#     proton  parsed 115 (same)   unreliable 922 -> 921   total    2406 -> 2405
 #
-# `unreliable` falling is the number that matters: it counts files read only up to a
-# parse error, so those 45 files are now read whole rather than read-and-guessed.
+# `unreliable` is the number that carries the meaning: it counts files read only up
+# to a parse error, so async's 23 newly-parsed files are now read whole. The
+# `notices` rise on async is the same trade 0459 made and is worth reading rather
+# than waving at -- a file that parses reports the deliberate exclusions inside it
+# (mostly skipped lambda bodies), so more files understood means more notices as
+# well as fewer unreachable ones.
 #
-# The pin exists to catch movement nobody explained, so the corroboration is
-# recorded rather than left implicit. The coverage A/B over all 1223 corpus files
-# (HEAD 2f7a42d vs this change) reports 1157 unchanged, 66 read further and 0 READ
-# LESS, from maps that the script proves total against the on-disk file count. The
-# four corpora that moved here are the four whose files those 66 are in.
+# proton moved by ONE finding: the `errdefer` arm reads its argument rather than
+# skipping it, so a name in an already-understood file is now read at all.
+# `notices` there is unchanged, so nothing new was merely noticed -- something that
+# could not have been seen before is now seen.
+#
+# MEASURED TWICE, because the first pin was wrong and nothing noticed until the
+# gate ran. The 312 in an earlier draft of this block was taken BEFORE the
+# lambda-as-pipe-right-operand fix landed; that fix is worth 13 more async files on
+# its own (312 -> 325). The pin now records the FINAL source state, re-measured by
+# `_verify/scan_0427.ps1` independently of this gate and agreeing with it.
+#
+# => 判据: a pin is a claim about a source state, so it must be measured against
+# the state that ships. A number copied from a scan taken mid-increment is not a
+# stale baseline, it is a wrong one -- and the release gate is the only thing in
+# this repository positioned to catch it.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=32 actionable=0 notices=678 unreliable=124 withheld=16 total=802'
   'moonbit_image'   = 'files=18 parsed=15 actionable=0 notices=170 unreliable=66 withheld=0 total=236'
-  'async'           = 'files=419 parsed=302 actionable=0 notices=1406 unreliable=916 withheld=268 total=2322'
-  'proton'          = 'files=137 parsed=115 actionable=0 notices=1484 unreliable=922 withheld=323 total=2406'
+  'async'           = 'files=419 parsed=325 actionable=0 notices=1550 unreliable=733 withheld=210 total=2283'
+  'proton'          = 'files=137 parsed=115 actionable=0 notices=1484 unreliable=921 withheld=323 total=2405'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

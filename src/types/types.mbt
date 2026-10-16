@@ -303,6 +303,18 @@ pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
       }
     }
     OpAnd | OpOr => if l is TBool && r is TBool { Some(TBool) } else { None }
+    OpPipe =>
+      // The PIPE IS A CALL, so the result is the callee's return type, which this
+      // analyzer does not model: `1 |> inc` has an Int LEFT and a FUNCTION right,
+      // and no operand rule here can produce a type for it.
+      //
+      // `Some(TUnknown)` rather than `None`. `None` means "operator mismatch" and
+      // the caller reports it, so returning it would turn every pipe in the corpus
+      // into a confident false positive -- a finding about code `moon check`
+      // compiles. Unknown silences the check, which is the honest answer for "a
+      // call whose result was not read", and it is the same treatment a
+      // cross-package name gets (`infer_full` seeds those as TUnknown).
+      Some(TUnknown)
     OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr =>
       // Bitwise ops are Int-on-Int only in this subset: no Float claim is
       // made (Float bitwise is not in the corpus and would be an invented

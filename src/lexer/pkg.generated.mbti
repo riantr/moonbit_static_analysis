@@ -7,9 +7,9 @@ import {
 }
 
 // Values
-pub fn lex(String) -> (Array[Tok], Array[@core.Span], Array[@report.Report])
-
 pub fn is_moonbit_keyword(String) -> Bool
+
+pub fn lex(String) -> (Array[Tok], Array[@core.Span], Array[@report.Report])
 
 // Errors
 
@@ -49,6 +49,9 @@ pub(all) enum Tok {
   TTilde
   TRange
   TRangeIncl
+  TPipeLt
+  TPipeGt
+  TAppendPlus
   TLParen
   TRParen
   TLBrace

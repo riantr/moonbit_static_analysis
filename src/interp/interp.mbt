@@ -1107,6 +1107,15 @@ fn Interp::binop(
             )
             ABottom
           }
+        OpPipe =>
+          // The PIPE IS A CALL, and this analyzer does not know a callee's return
+          // type, so the result is `Any`. Not `ABottom` and not a method error:
+          // every arm above would report "no method matching <|(l, r)" against
+          // code `moon check` compiles, and the operands of a pipe are an Int and
+          // a FUNCTION on purpose -- `1 |> inc` -- so no arithmetic predicate here
+          // could match. `Any` keeps inferring, which is the same treatment a
+          // cross-package value gets.
+          AAny
         OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr =>
           // Int-on-Int at the type level too, matching binop_result. This
           // match has no wildcard, so the arms are also what lets new BOp
