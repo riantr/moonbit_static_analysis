@@ -229,6 +229,83 @@ fn Walker::bind(self : Walker, b : Binding) -> Unit {
 }
 
 ///|
+/// 0462 -- stop treating a name as a PARAMETER from the point a `let` shadows it.
+///
+/// The measured shape, on `moonbitlang/async 0.22.4
+/// src/internal/gzip_internal/encoder.mbt:148-156`:
+///
+///     produced : Int,                    // the parameter
+///     ...
+///     let mut produced = produced        // a NEW binding, shadowing it
+///     produced = self.push_byte(...)     // assigns the SHADOW
+///
+/// and it settled against the toolchain rather than being inferred, because the
+/// discriminator is an ASYMMETRY between two programs:
+///
+///     let mut p = p; p = 5; p     ->  moon check: 0 errors
+///     p = 5; p                    ->  moon check: 1 error
+///
+/// Assigning an unshadowed immutable parameter is ILLEGAL, so the assignment in
+/// the first program cannot be reaching the parameter. Reporting
+/// `parameter 'produced' changed by assignment` there is a false positive, and
+/// it was the last one between async and `actionable = 0`.
+///
+/// WHY IT LIVES HERE AND NOT IN `bind`. `bind` cannot tell a `let` from an
+/// assignment target, a `for` binder or a destructuring name -- all four arrive
+/// as a non-parameter `Binding` with the same name -- and treating those as
+/// shadowing deletes the very finding the lens exists for. An attempt did
+/// exactly that and two tests said so: "a bare-name assignment to a parameter is
+/// still a rebinding" and "an underscore-prefixed parameter changed by
+/// assignment still reports". So this is called from the `SLet` arm only.
+///
+/// ORDERING WAS WRONG AND THE GATE CAUGHT IT. This comment used to claim that
+/// clearing the flag must happen BEFORE the initialiser is walked, because
+/// `let mut produced = produced` READS the parameter on the right-hand side and a
+/// later entry would leave the parameter at `varuses == 0`, firing `FUnusedParam`
+/// on the same line. Gate 0462's M2 reverses the order and 684/684 stayed green,
+/// including a test written specifically to catch it -- an initialiser that shadows
+/// the same name itself, `let mut produced = if produced > 0 { let produced = 1
+/// ... }`, which is the shape that should have separated the two orders.
+///
+/// The reason the argument was wrong is one line: `unshadow_param` COPIES
+/// `assigns` and `varuses` out of the entry it finds and writes them back with
+/// `param` cleared. Reading the parameter after the walk gives
+/// `(param: true, a, v+1)` and writing it back gives `(param: false, a, v+1)`;
+/// clearing first gives `(param: false, a, v)` and the walk then makes it
+/// `(param: false, a, v+1)`. The same fields either way, so the order is not
+/// load-bearing and the original reasoning described a REPLACEMENT where the code
+/// performs a field-wise update.
+///
+/// What IS load-bearing is the ARM, not the order: `bind` cannot tell a `let` from
+/// an assignment target, a `for` binder or a destructuring name -- all four arrive
+/// as a non-parameter `Binding` with the same name -- and demoting there deleted
+/// the very finding the lens exists for. An attempt did exactly that and two
+/// existing tests said so.
+///
+/// WHAT THIS COSTS, stated rather than hidden. A `let` that shadows a parameter
+/// WITHOUT reading it -- `fn f(x : Int) -> Int { let mut x = 5; x }` -- now
+/// suppresses that parameter's `FUnusedParam`. It is a false NEGATIVE, it needs a
+/// `let` that reuses the parameter's own name without touching it, and telling
+/// the two apart would mean reading the initialiser before deciding, which is
+/// what the flag ordering above deliberately does not do.
+fn Walker::unshadow_param(self : Walker, name : String) -> Unit {
+  let fi = self.frames.length() - 1
+  let frame = self.frames[fi]
+  match frame.get(name) {
+    Some(e) =>
+      if e.param {
+        frame.set(name, {
+          param: false,
+          assigns: e.assigns,
+          varuses: e.varuses,
+          decl_span: e.decl_span,
+        })
+      }
+    None => ()
+  }
+}
+
+///|
 /// Whether `name` resolves in any frame. Used only to avoid rebinding a name
 /// the module already declared — a real declaration must win over a harvested
 /// enum constructor of the same name, or the enum's (entirely unknown) shape
@@ -751,7 +828,13 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
     // lenses do with the value afterwards, which is the whole reason it is its
     // own node rather than a flag on `SExpr`.
     STail(e) => self.walk_expr(e)
-    SLet(_, _, init) => self.walk_expr(init)
+    SLet(n, _, init) => {
+      // 0462 -- BEFORE walking the initialiser, so the right-hand side of
+      // `let mut p = p` still counts as a read of the entry it finds. See
+      // `unshadow_param` for why the order is load-bearing.
+      self.unshadow_param(n)
+      self.walk_expr(init)
+    }
     SAssign(target, rhs) => {
       self.walk_target(target)
       self.walk_expr(rhs)

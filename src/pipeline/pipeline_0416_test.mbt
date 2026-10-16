@@ -73,12 +73,24 @@ test "0416: a braced suberror body is skipped whole" {
 
 ///|
 /// The NEGATIVE CONTROL for B, and the one that keeps the shape test honest.
-/// The UNBRACED suberror is a different grammar (`suberror E of T`) and must
+/// An UNBRACED suberror is a different grammar (`suberror E`) and must
 /// keep working. If the new lookahead misread it as braced, the skip would
 /// swallow the rest of the file and this function would vanish from the module.
+///
+/// The fixture was `suberror Timeout of String` until 0.4.30, and that is not a
+/// suberror header — `moon check` rejects it with `[3002]`, as it does
+/// `suberror E(T)` and `suberror E(x : T)`
+/// (`_verify/settle_0463b_bodyless_grammar.ps1`, 7/7). A control written on a
+/// grammar that does not exist is worse than no control: it is what let two
+/// comments in `parser.mbt` document `of` as real. The real unbraced form is
+/// `suberror E` and that is what this uses now.
+///
+/// The observable is unaffected by the 0.4.30 body-less harvest, which adds the
+/// suberror's OWN name (`Timeout`) to `enum_ctors` and no function name — so a
+/// swallowed `after_it` is still undefined and still counted.
 test "0416: an UNBRACED suberror still parses and the file continues" {
   let r = @pipeline.run(
-    "suberror Timeout of String\nfn after_it() -> Int {\n  1\n}\nfn caller() -> Int {\n  after_it()\n}\n",
+    "suberror Timeout\nfn after_it() -> Int {\n  1\n}\nfn caller() -> Int {\n  after_it()\n}\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )

@@ -102,8 +102,13 @@ test "0417: a block in a body does not start an enum body" {
 /// cost a top-level name, and those are the ones pyroduct's 26 findings rested
 /// on.
 test "0417: top-level declarations are still harvested" {
+  // The `suberror` fixture was `suberror Bad of String` until 0.4.30. That is not
+  // a suberror header -- `moon check` rejects it, as it does `suberror E(T)` and
+  // `suberror E(x : T)` (`_verify/settle_0463b_bodyless_grammar.ps1`, 7/7) -- so
+  // the harvest was being asserted against a grammar that does not exist. The
+  // assertion is unchanged in meaning and now runs on the real body-less form.
   let t = @parser.collect_declared_names(
-    "fn helper() -> Int {\n  1\n}\nlet top : Int = 2\nconst K : Int = 3\nstruct Pos {\n  line : Int\n}\ntype Alias = Int\nsuberror Bad of String\nextern \"c\" fn ext_fn(Int) -> Int\nfn Pos::shift(Self) -> Pos\n",
+    "fn helper() -> Int {\n  1\n}\nlet top : Int = 2\nconst K : Int = 3\nstruct Pos {\n  line : Int\n}\ntype Alias = Int\nsuberror Bad\nextern \"c\" fn ext_fn(Int) -> Int\nfn Pos::shift(Self) -> Pos\n",
   )
   assert_true(t.has_value("helper"))
   assert_true(t.has_value("top"))

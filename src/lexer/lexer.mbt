@@ -342,20 +342,37 @@ fn Lexer::run(self : Lexer) -> Unit {
         continue
       }
     }
-    // A byte-string literal `b"\x00"`. Real MoonBit, and 878 of them appear in
-    // wzzc-dev/moui 0.1.12 across 134 files. Without this branch the `b` lexed
-    // as an identifier and the string after it became a second atom, so the
-    // pair hit `parse_atom`'s catch-all and ended the file at
+    // A byte literal `b"\x00"` / `b'\x00'`. Real MoonBit, and 878 of the
+    // double-quoted form appear in wzzc-dev/moui 0.1.12 across 134 files. Without
+    // this branch the `b` lexed as an identifier and the string after it became a
+    // second atom, so the pair hit `parse_atom`'s catch-all and ended the file at
     // `views/date_picker_control.mbt:40` (`if bytes == b"\x00"`).
+    //
+    // 0459 -- the SINGLE-QUOTED form is a different construct, not a spelling of
+    // this one: `b"\x00"` is a `Bytes` string while `b'\x00'` is a single `Byte`
+    // (settled, `_verify/settle_0459_literal_escapes.ps1`: `b'\x00'` accepts
+    // against a `-> Byte` annotation and `b'ab'` is REJECT(3001)). 58 files write
+    // the single-quoted form and every one of them stopped at
+    // "character literal must hold exactly one character", because `b` lexed as
+    // a name and `'\x00'` then became a character literal four characters long.
+    //
+    // So the two forms take DIFFERENT readers: `lex_string` for the double-quoted
+    // Bytes, and `lex_char` for the single-quoted Byte -- which is exactly the
+    // reader whose length check rejects `b'ab'` the way the toolchain does.
     //
     // The test is the character AFTER the `b`, so an identifier that merely
     // starts with `b` — `box`, `b2` — still lexes as one name.
     if c == 'b' &&
       self.pos + 1 < self.chars.length() &&
-      self.chars[self.pos + 1] == '"' {
+      (self.chars[self.pos + 1] == '"' || self.chars[self.pos + 1] == '\'') {
+      let quoted = self.chars[self.pos + 1] == '"'
       self.pos += 1
       self.col += 1
-      last = self.lex_string()
+      if quoted {
+        last = self.lex_string()
+      } else {
+        last = self.lex_char()
+      }
       continue
     }
     if is_letter(c) || c == '@' {
@@ -949,6 +966,29 @@ fn Lexer::copy_nested_char(self : Lexer, buf : StringBuilder) -> Unit {
 }
 
 ///|
+/// The value of a hex digit, or -1 for anything else. Used by the `\xNN` and
+/// `\u{...}` escapes in `lex_char`, where "stop at the first non-digit" is the
+/// whole termination condition -- so the sentinel has to be distinguishable from
+/// the digit `0`, which is why this returns -1 rather than 0.
+///
+/// `unsafe_to_char` rather than `to_char`: `b'\x00'` and `'\u{0}'` are NUL, and
+/// `to_char` REJECTS a code point outside the printable range. Those are the
+/// literals the corpus is full of, so the safe conversion cannot be the one that
+/// runs here. The value is bounded by the digits actually consumed, and an escape
+/// with no digits writes nothing at all.
+fn hex_value(c : Char) -> Int32 {
+  if c >= '0' && c <= '9' {
+    c.to_int() - '0'.to_int()
+  } else if c >= 'a' && c <= 'f' {
+    c.to_int() - 'a'.to_int() + 10
+  } else if c >= 'A' && c <= 'F' {
+    c.to_int() - 'A'.to_int() + 10
+  } else {
+    -1
+  }
+}
+
+///|
 /// A character literal, `'x'`, lexed as `TStr(payload)`: the analyzer has no
 /// separate character value, and since types come from annotations only, no
 /// claim can be keyed off the difference.
@@ -983,14 +1023,63 @@ fn Lexer::lex_char(self : Lexer) -> Tok {
       self.pos += 1
       self.col += 1
       let e = self.chars[self.pos]
-      buf.write_char(
-        match e {
-          'n' => '\n'
-          't' => '\t'
-          'r' => '\r'
-          other => other
-        },
-      )
+      // 0459 -- `\xNN` and `\u{...}` produce ONE character from several source
+      // characters. Every other escape passed through as `other => other`, so
+      // `\x00` became the three-character payload `x00` and `'\u{0}'` became
+      // `u{0}`; both then failed the "must hold exactly one character" check
+      // below. 58 files corpus-wide write `b'\x..'` and 19 write `'\u{..}'`.
+      //
+      // Settled before implementing (`_verify/settle_0459_literal_escapes.ps1`,
+      // 8/8): both are legal MoonBit, `'\u{1F600}'` is as legal as `'\u{0}'` so
+      // the brace form is NOT "two hex digits", and `b'ab'` is REJECT(3001) so the
+      // one-character rule still has teeth.
+      if e == 'x' ||
+        (
+          e == 'u' &&
+          self.pos + 1 < self.chars.length() &&
+          self.chars[self.pos + 1] == '{'
+        ) {
+        let braced = e == 'u'
+        if braced {
+          self.pos += 1
+          self.col += 1
+        }
+        let mut v = 0
+        let mut digits = 0
+        while self.pos + 1 < self.chars.length() {
+          let h = hex_value(self.chars[self.pos + 1])
+          if h < 0 {
+            break
+          }
+          self.pos += 1
+          self.col += 1
+          v = v * 16 + h
+          digits += 1
+        }
+        if braced &&
+          self.pos + 1 < self.chars.length() &&
+          self.chars[self.pos + 1] == '}' {
+          self.pos += 1
+          self.col += 1
+        }
+        // A malformed escape writes nothing rather than the source characters:
+        // falling through to `other => other` is what turned one escape into a
+        // three-character payload in the first place, and the payload is now
+        // checked for length. Digits are still consumed so a bad escape does not
+        // leak its characters into the literal as a second payload.
+        if digits > 0 {
+          buf.write_char(v.unsafe_to_char())
+        }
+      } else {
+        buf.write_char(
+          match e {
+            'n' => '\n'
+            't' => '\t'
+            'r' => '\r'
+            other => other
+          },
+        )
+      }
     } else {
       buf.write_char(c)
     }

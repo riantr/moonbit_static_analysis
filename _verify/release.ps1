@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1452,12 +1452,30 @@ if ($SkipMutations) {
 # tripwire is an untested guard with a footnote.
 #
 # Tests 643 -> 651: `pipeline_0458_test.mbt` and `types_0458_test.mbt`, eight cases.
+# Re-pinned after 0459-0463 (byte literals, array patterns, suberror constructors,
+# `let` shadowing, body-less suberrors). Four corpora moved, and every number moved
+# in the same direction -- `parsed` UP, `unreliable` and `withheld` DOWN, and
+# `actionable` unchanged at 0:
+#
+#     moonbit_labeler  parsed  28 -> 32   unreliable 310 -> 124  withheld 136 -> 16
+#     moonbit_image    parsed   2 -> 15   unreliable 285 ->  66  withheld 115 ->  0
+#     async            parsed 275 -> 302 unreliable 1248 -> 916 withheld 308 -> 268
+#     proton           parsed 109 -> 115 unreliable 1067 -> 922 withheld 330 -> 323
+#
+# `unreliable` falling is the number that matters: it counts files read only up to a
+# parse error, so those 45 files are now read whole rather than read-and-guessed.
+#
+# The pin exists to catch movement nobody explained, so the corroboration is
+# recorded rather than left implicit. The coverage A/B over all 1223 corpus files
+# (HEAD 2f7a42d vs this change) reports 1157 unchanged, 66 read further and 0 READ
+# LESS, from maps that the script proves total against the on-disk file count. The
+# four corpora that moved here are the four whose files those 66 are in.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
-  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=569 unreliable=310 withheld=136 total=879'
-  'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=285 withheld=115 total=387'
-  'async'           = 'files=419 parsed=275 actionable=0 notices=1259 unreliable=1248 withheld=308 total=2507'
-  'proton'          = 'files=137 parsed=109 actionable=0 notices=1374 unreliable=1067 withheld=330 total=2441'
+  'moonbit_labeler' = 'files=37 parsed=32 actionable=0 notices=678 unreliable=124 withheld=16 total=802'
+  'moonbit_image'   = 'files=18 parsed=15 actionable=0 notices=170 unreliable=66 withheld=0 total=236'
+  'async'           = 'files=419 parsed=302 actionable=0 notices=1406 unreliable=916 withheld=268 total=2322'
+  'proton'          = 'files=137 parsed=115 actionable=0 notices=1484 unreliable=922 withheld=323 total=2406'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

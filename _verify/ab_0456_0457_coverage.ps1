@@ -43,12 +43,21 @@ $TARGETS = [ordered]@{
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
 }
 
-# The three files the change touches. parser.mbt is the source under test;
-# the other two are tests that pin the new behaviour.
+# Every file the change touches, sources AND tests. The tests are here because the
+# "HEAD" build compiles the whole package: a test that pins 0459-0463 behaviour
+# would fail to build against the HEAD parser, and the build failure would look
+# exactly like a measurement problem. Two of these four are NOT in HEAD at all
+# (they are new files), which the restore step handles by leaving them absent --
+# and which the byte-comparison guard below has to tolerate rather than treat as a
+# mismatch.
 $CHANGED = @(
+  'src/lexer/lexer.mbt',
   'src/parser/parser.mbt',
-  'src/parser/parser_0436_test.mbt',
-  'src/parser/parser_0456_test.mbt'
+  'src/walk/walk.mbt',
+  'src/lexer/lexer_0459_test.mbt',
+  'src/pipeline/pipeline_0460_test.mbt',
+  'src/parser/parser_0417_test.mbt',
+  'src/pipeline/pipeline_0416_test.mbt'
 )
 
 function Build-Wasm {
@@ -129,19 +138,36 @@ try {
     $onDisk = (cmd.exe /c "git hash-object src/parser/parser.mbt").Trim()
     $inHead = (cmd.exe /c "git rev-parse HEAD:src/parser/parser.mbt").Trim()
     if ($onDisk -ne $inHead) { throw "parser.mbt is NOT the HEAD blob ($onDisk vs $inHead) -- A/B void" }
-    $newTest = Test-Path 'src/parser/parser_0456_test.mbt'
-    if ($newTest) { throw 'parser_0456_test.mbt still present; the HEAD build would pin the new behaviour' }
-    Write-Host '   restore verified: parser.mbt == HEAD blob, new test file absent'
+    # Every file the change touches must be byte-identical to HEAD before the
+    # "HEAD" build, not just parser.mbt. This used to assert that one specific
+    # test file was ABSENT, which was correct only while that file was new --
+    # and it became a false check the moment the file was committed, which is
+    # exactly the kind of stale guard that stops meaning anything.
+    foreach ($p in $CHANGED) {
+      # A file that is NOT in HEAD has no blob to match, and its correct HEAD
+      # state is ABSENCE. `git rev-parse` prints its own error and leaves the
+      # variable empty, so an unguarded comparison here would read "" as a
+      # mismatch and void an A/B that is in fact correct.
+      cmd.exe /c "git rev-parse HEAD:$p > NUL 2>&1" | Out-Null
+      if ($LASTEXITCODE -ne 0) {
+        if (Test-Path (Join-Path $root $p)) { throw "$p is not in HEAD but is on disk -- A/B void" }
+        continue
+      }
+      $o = (cmd.exe /c "git hash-object $p").Trim()
+      $h = (cmd.exe /c "git rev-parse HEAD:$p").Trim()
+      if ($o -ne $h) { throw "$p is NOT the HEAD blob ($o vs $h) -- A/B void" }
+    }
+    Write-Host ('   restore verified: ' + $CHANGED.Count + ' files match HEAD (or are absent from it)')
   } finally { Pop-Location }
 
   Build-Wasm
-  Save-Reach '_ab_head.txt'
+  Save-Reach '_ab2_head.txt'
 
   Write-Host ''
   Write-Host '2. restore the change, build it, map reach again'
   Restore-Working
   Build-Wasm
-  Save-Reach '_ab_fixed.txt'
+  Save-Reach '_ab2_fixed.txt'
 
   Write-Host ''
   Write-Host 'done -- run ab_0456_0457_diff.ps1 to classify'

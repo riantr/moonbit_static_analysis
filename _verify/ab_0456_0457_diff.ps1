@@ -34,8 +34,8 @@ function Rank {
   return [int]$Reach
 }
 
-$head  = Load-Reach '_ab_head.txt'
-$fixed = Load-Reach '_ab_fixed.txt'
+$head  = Load-Reach '_ab2_head.txt'
+$fixed = Load-Reach '_ab2_fixed.txt'
 
 Write-Host 'coverage A/B -- 0456+0457'
 Write-Host ('  files in HEAD map  : ' + $head.Count)

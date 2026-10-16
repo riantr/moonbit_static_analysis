@@ -223,18 +223,31 @@ pub fn parse(src : String) -> ParseResult {
       // about a body is removed. This does not reduce the notice COUNT.
       p.skip_decl_line(kw, sp)
     } else if kw == "suberror" {
-      // A suberror has TWO shapes: `suberror Timeout of String` is one line,
-      // while `pub suberror DecodeError { UnsupportedFormat(String) ... }` is
-      // braced. Sending the braced shape to the LINE skipper stopped the skip
+      // A suberror has TWO shapes: `priv suberror Boom` is one line, while
+      // `pub suberror DecodeError { UnsupportedFormat(String) ... }` is braced.
+      // Sending the braced shape to the LINE skipper stopped the skip
       // at the newline and left `{ ... }` to be parsed as an expression block,
       // so every payload type inside it was reported as an undefined name —
       // `String` four times over in riantr/moonbit_image 0.3.7's `types.mbt`.
+      //
+      // This comment used to give the unbraced example as `suberror Timeout of
+      // String`. THAT FORM DOES NOT EXIST — `moon check` rejects it with `[3002]`,
+      // and so do `suberror E(T)` and `suberror E(x : T)`
+      // (`_verify/settle_0463b_bodyless_grammar.ps1`, 7/7). A body-less suberror
+      // cannot carry a payload at all: braces are the only way to give it one, so
+      // the two surviving shapes are `suberror E` and `suberror E derive(...)`.
+      // The discriminator below is unchanged and still correct — it asks whether a
+      // brace follows, not what the keyword is — but the example that explained it
+      // taught a grammar the toolchain does not have.
       //
       // Same split `struct` / `enum` already get, decided by what actually
       // follows the keyword rather than by the keyword's name.
       if p.next_is_lbrace() {
         p.skip_decl_braced(kw, sp)
       } else {
+        // The body-less branch is the one that leaves the suberror's OWN name
+        // unregistered as a value. See `harvest_bodyless_suberror`.
+        p.harvest_bodyless_suberror()
         p.skip_decl_line(kw, sp)
       }
     } else if kw == "using" {
@@ -689,9 +702,17 @@ fn Parser::skip_modifiers(self : Parser) -> Unit {
 /// It scans a bounded number of tokens AHEAD rather than only looking at the
 /// keyword, because the parser is positioned at the keyword itself: a braced
 /// declaration reads `suberror DecodeError {`, three tokens in. The bound is
-/// what keeps the question answerable — an unbraced header (`suberror Timeout
-/// of String`) must NOT be answered by a brace belonging to some later
-/// declaration, and a header is never longer than a handful of tokens.
+/// what keeps the question answerable — an unbraced header (`suberror Timeout`,
+/// with or without a `derive(...)` list) must NOT be answered by a brace
+/// belonging to some later declaration, and a header is never longer than a
+/// handful of tokens.
+///
+/// This comment used to give `suberror Timeout of String` as the unbraced
+/// example. That is not a suberror header; `moon check` rejects it, and so does
+/// `suberror E(T)` and `suberror E(x : T)`
+/// (`_verify/settle_0463b_bodyless_grammar.ps1`, 7/7). The bound is still doing
+/// the work it was written to do, but the example that justified it was a
+/// grammar that does not exist.
 fn Parser::next_is_lbrace(self : Parser) -> Bool {
   let mut i = self.p
   let mut scanned = 0
@@ -842,6 +863,83 @@ fn Parser::skip_decl_braced(
     }
   }
   self.skip(what, true, sp)
+}
+
+///|
+/// A BODY-LESS `suberror` DECLARES ITS OWN NAME as its only constructor.
+///
+/// `priv suberror Boom` is a complete declaration and `raise Boom` is how one
+/// raises it; `moon check` accepts both (settled,
+/// `_verify/settle_0463_suberror_bodyless.ps1`, 7/7). But `harvest_ctors` is
+/// reachable only from the BRACED branch, so a body-less suberror's own name
+/// never entered `enum_ctors` — and `enum_ctors` is what seeds the module frame
+/// as VALUES (`walk.mbt:1197`, `infer.mbt:880`).
+///
+/// Measured, five shapes through `pipeline.run`, the finding counted per shape:
+///
+///     A  body-less suberror declared BEFORE the use   UndefinedName 1
+///     B  body-less suberror declared AFTER  the use   UndefinedName 1
+///     C  suberror WITH a body, declared AFTER         UndefinedName 0
+///     D  the TYPE name in a signature, body-less      UndefinedName 0
+///     E  control, nothing declared at all            UndefinedName 1
+///
+/// A and B together rule out ORDER, which was the first guess and the one the
+/// corpus could never have separated: in async `InvalidBlock` is declared in a
+/// SIBLING file, a different resolution path entirely. C says the variable is the
+/// BODY. D says the type name always resolved, so the hole is value-shaped and not
+/// type-shaped — which is why adding a TYPE binding would have changed nothing.
+///
+/// THE NAME IS THE DECLARED NAME, not "the token after the keyword", and on this
+/// grammar those happen to agree — the settled list of body-less headers is short
+/// enough to state in full (`_verify/settle_0463b_bodyless_grammar.ps1`, 7/7):
+///
+///     priv suberror Boom                    ACCEPT
+///     priv suberror Boom derive(Debug)      ACCEPT
+///     priv suberror Boom of String          REJECT [3002]
+///     priv suberror Boom(String)            REJECT [3002]
+///     priv suberror Boom(msg : String)      REJECT [3002]
+///
+/// A body-less suberror cannot carry a payload at all, so `derive` is the only
+/// word that can follow the name. `declared_name_after_kw` is used rather than a
+/// positional read because it already encodes the `[...]` and path cases; the
+/// grammar does not currently need that, and a positional read would be reading a
+/// property of today's grammar rather than of the declaration.
+///
+/// NOT AN `enum`. An enum's type name is not a constructor — `enum Shape { Circle }`
+/// does not make `Shape` a value — so this rule is scoped to `suberror` alone.
+///
+/// WHY NO CORPUS NUMBER MOVED, measured rather than assumed. moonbitlang/async
+/// 0.22.4 has 12 body-less suberror declarations and 10 bare `raise Name` sites
+/// across 7 files, and this fix left all six corpus summaries byte-identical. The
+/// reason is that `collect_declared_names` has ALWAYS carried the name: a
+/// body-less suberror's name is the token right after the keyword, and
+/// `declares_value("suberror")` is true, so it has always been written into
+/// `tab.values` (the sibling table, built per directory at `sa/main.mbt:1188`).
+/// Probed directly:
+///
+///     collect_declared_names("priv suberror Boom ...")
+///       Boom.value = Some(true)   Boom.type = Some(true)
+///
+/// So a PACKAGE scan always resolved the name from the sibling table and never
+/// reached `enum_ctors` at all. Only the intra-file path was missing it, which is
+/// what a single-file run with an empty table sees — and what three tests in
+/// `pipeline_0460_test.mbt` see, by handing `IfaceSymTab::empty()`.
+///
+/// This is also exactly why 0461 was needed and 0463 was not. A braced suberror's
+/// CONSTRUCTORS live in the BODY, which `declared_name_after_kw` never sees, so
+/// both tables missed them and 13 corpus findings were real. 0463's name is right
+/// after the keyword, so the sibling table was never wrong about it.
+///
+/// => 判据: do NOT remove this harvest on the reasoning that the sibling table
+/// already covers the name. It does — for a package scan. This is the intra-file
+/// table, it is the one `pipeline.run` is given an EMPTY `IfaceSymTab` with, and
+/// "no corpus number moved" is the strongest possible argument that this gap is
+/// invisible to measurement, which is not the same as the gap being absent.
+fn Parser::harvest_bodyless_suberror(self : Parser) -> Unit {
+  match declared_name_after_kw(self.toks, self.p) {
+    Some(d) => if !self.enum_ctors.contains(d) { self.enum_ctors.push(d) }
+    None => ()
+  }
 }
 
 ///|
@@ -1016,7 +1114,25 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
         } else if depth == 0 &&
           !in_holder &&
           (declares_value(n) || declares_type(n)) {
-          if n == "enum" {
+          if n == "enum" || n == "suberror" {
+            // 0461 -- `suberror` ARMS THE SAME BODY HARVEST as `enum`, and did not.
+            // A suberror's constructors are declared inside a brace body exactly
+            // like an enum's variants, they are ordinary bare names in MoonBit
+            // (settled, `_verify/settle_0461_constructors.ps1`, 5/5:
+            // `raise InvalidBlock("bad")` compiles against
+            // `priv suberror FormatError { InvalidBlock(String) }`), and without
+            // this the TYPE was registered while every CONSTRUCTOR was not.
+            //
+            // Measured cost of the omission, 13 false positives in two files:
+            // async `gzip_internal/decoder.mbt` x10 `no visible binding for
+            // 'InvalidBlock'` (declared in `metadata.mbt`, used in `decoder.mbt`
+            // -- a SIBLING, which is why this harvest is the one that matters),
+            // plus `'InvalidTrailer'` and `'NeedMoreInput'`; proton
+            // `native.mbt` x3 `'RuntimeActive'`, `'RuntimeDestroyed'`,
+            // `'WindowLive'`.
+            //
+            // `ends_variant` already accepted `(`, so a constructor with a payload
+            // was not the missing half -- the arming was.
             enum_pending = true
           }
           match declared_name_after_kw(toks, i) {
@@ -1159,7 +1275,17 @@ fn ends_variant(toks : Array[@lexer.Tok], i : Int32) -> Bool {
     return false
   }
   match toks[i] {
-    TLParen | TComma | TRBrace | TNewline | TSemi => true
+    // 0461 -- `TAssign` is the DISCRIMINANT: `RuntimeActive = 0`. Accepted only
+    // after the toolchain said so (`_verify/settle_0461_constructors.ps1` 7/7,
+    // `enum_variant_discriminant`), not because a variant plausibly has one.
+    //
+    // Measured cost of its absence: proton 0.3.4 declared
+    //     priv enum RuntimeLifecycleState { RuntimeActive = 0 ... }
+    // in `internal/native/types.mbt:1409` and used the variants bare in the
+    // SIBLING `internal/native/native.mbt`, which reported
+    // `undefined name 'RuntimeActive'` and two siblings. The harvest was armed
+    // and the names were well-formed -- only the token after them was refused.
+    TLParen | TComma | TRBrace | TNewline | TSemi | TAssign => true
     _ => false
   }
 }
@@ -2702,6 +2828,21 @@ fn Parser::parse_guard(self : Parser) -> @ast.Stmt {
 ///|
 
 ///|
+/// Whether the token at the cursor is a LITERAL, in the sense that it can be the
+/// whole of a pattern: `is b'\x08'`, `is 0`, `is 1.5`. `at` takes a bare token and
+/// cannot compare the payload-carrying kinds, so the payload-bearing literals need
+/// this form -- the same reason `at_str` and `at_name` exist.
+fn Parser::at_pattern_literal(self : Parser) -> Bool {
+  match self.peek() {
+    TInt(_) => true
+    TBigInt => true
+    TFloat(_) => true
+    TStr(_, _) => true
+    _ => false
+  }
+}
+
+///|
 /// An expression. The entry for every position an expression can appear, and
 /// therefore the place a lambda has to be recognised: the three sites that
 /// already knew about lambdas were `parse_call_args`' POSITIONAL branch (bare
@@ -3031,6 +3172,58 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
     self.p = j
     return found
   }
+  // 0460 -- an ARRAY PATTERN, `is [ a, b, c ]`. Without this branch the `[` fell
+  // through to the head branch below, which read the FIRST ELEMENT as the head
+  // name and returned. Three consequences, measured on `async 0.22.4
+  // src/internal/gzip_internal/metadata.mbt`:
+  //
+  //   * the elements were read as EXPRESSIONS, so the four names the pattern binds
+  //     were reported `undefined name 'compression_method'` and then used eight
+  //     lines later -- a confident false positive against legal MoonBit;
+  //   * the `]` was never consumed, so the token after the pattern was read as
+  //     code: `undefined name 'else'`, ON A KEYWORD, which is the loudest possible
+  //     tell that the pattern never ended;
+  //   * `no visible binding for 'u32le'`, because `u32le(mtime)` was read as a call.
+  //
+  // All 14 async and all 9 proton findings the 0459 lexer work surfaced are this
+  // shape, which is why 0459 could not ship alone.
+  //
+  // WHY EVERY LOWERCASE NAME BINDS HERE, AT ANY DEPTH -- unlike the tuple branch
+  // just above, which needs `depth >= 2` because a bare name directly inside `(`
+  // is a CONSTRUCTOR of an or-pattern. An array element IS a binding: settled 7/7
+  // in `_verify/settle_0460_array_pattern.ps1`, where `[Some(v)]` binds `v` (a
+  // name inside constructor parens, depth 2) and `[[inner], tail]` binds `inner`
+  // (depth 2, inside a NESTED bracket) while `[1, 2, 3]` binds nothing and a
+  // pattern that does not mention a name leaves it unbound.
+  //
+  // The settle also refused the obvious guess: `name(args)` in a pattern is a
+  // CONSTRUCTOR pattern, not a call. A first draft used a plain function and got
+  // "The type Int does not have the constructor pair" -- which is why `u32le`, a
+  // builtin constructor, is legal in the corpus at all.
+  if self.at(TLBracket) {
+    let _ = self.bump()
+    let found : Array[String] = []
+    let mut depth = 1
+    let mut j = self.p
+    while j < self.toks.length() {
+      match self.toks[j] {
+        TLBracket => depth += 1
+        TRBracket => {
+          depth -= 1
+          if depth == 0 {
+            j += 1
+            break
+          }
+        }
+        TEOF => break
+        TName(n) => if self.pattern_binding_at(j) { found.push(n) }
+        _ => ()
+      }
+      j += 1
+    }
+    self.p = j
+    return found
+  }
   let mut head = ""
   let mut qualified = false
   if self.peek_name() != "" {
@@ -3115,6 +3308,21 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
       }
       let _ = self.bump()
     }
+  } else if self.at_pattern_literal() {
+    // 0460 -- a LITERAL PATTERN: `guard compression_method is b'\x08' else { .. }`.
+    //
+    // This branch used to be the bare `return []` below, which CONSUMED NOTHING.
+    // A literal is a complete pattern that binds no name, so returning immediately
+    // left both the literal and everything after it in the stream -- and the
+    // token after a guard's pattern is `else`. The measured result was
+    // `undefined name 'else'` ON A KEYWORD, in `async 0.22.4
+    // src/internal/gzip_internal/metadata.mbt:69` and `:72`.
+    //
+    // The keyword is the tell. A pattern that did not end cannot report anything
+    // more specific than "there is a name I cannot resolve here", and the one
+    // name it cannot resolve is `else`.
+    let _ = self.bump()
+    return []
   } else {
     return []
   }
