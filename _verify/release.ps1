@@ -1573,9 +1573,36 @@ if ($SkipMutations) {
 # The comment at that arm asserted the opposite ("the scrutinee is an ordinary expression")
 # and has been corrected in place.
 #
-# The labeler one is UNRESOLVED and is not fixed here: either the argument index is off by
-# one, or a single-line `for`-header binder takes a wrong type -- the latter would tie it to
-# the `for` family.
+# The labeler one is LOCATED, and the two hypotheses above are both FALSIFIED. Measured on a
+# four-case probe (`moon check` ACCEPTs all of it), an `if` body, a `while` body, a `for` body
+# and a bare block ALL leak identically:
+#
+#   fn s3(n : Int) -> Unit {
+#     for i = 0; i < n; i = i + 1 {
+#       let x : Double = 1.0
+#       ignore(x)
+#     }
+#     for x = 0; x <= 1; x = x + 1 { take(x) }   <- take's Int param
+#   }
+#
+# reports `argument 1 to 'take' has incompatible type 'float'; expected 'int'`. The control is
+# the same function with the inner `let x` renamed: it reports NOTHING.
+#
+# So it is neither an argument-index bug nor a single-line `for`-header bug. It is a BINDING
+# SCOPE LEAK: `collect_stmt_bindings` descends into a nested statement list with the SAME
+# binding array, so an inner binding outlives the construct and SHADOWS a later binder of the
+# same name.
+#
+# THIS IS THE MIRROR IMAGE OF A KNOWN FALSE NEGATIVE ALREADY PINNED, not a second bug. 0468
+# measured that a block's bindings do NOT scope -- `let y` inside a block stayed visible
+# afterwards, where `moon check` reports [4021] unbound. That is the same missing scope seen
+# from the side that loses findings; labeler:1218 is the same missing scope seen from the side
+# that MANUFACTURES one. A leaked name only becomes a false positive when something later
+# binds the same name.
+# => 判据: one mechanism, two directions. A class of findings is not a list of defects.
+#
+# NOT FIXED HERE. Every nested body in every corpus shares that frame, so the fix moves the
+# finding count corpus-wide and is its own increment.
 #
 # A SECOND PIN MOVED INSIDE 0468 THAT NEVER SHOWED IN ANY SUMMARY: `parse_block` was called
 # with `false`, so no `EBlock` body ever contained a `STail`, `Infer::ty_of` returned
