@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1399,8 +1399,61 @@ if ($SkipMutations) {
 # `parse_failures == 0` plus the absence of a false notice -- and both hold while the branch
 # still binds a bogus name, because a notice is not a failure. Only a lens that resolves
 # names separates the two, which is what the new file asserts.
+#
+# ---------------------------------------------------------------------------
+# GATE 0458 -- and this one closes the corpus.
+#
+#     PARSED 608/608 files understood (100.0%); 0 more read only up to their
+#     first parse error
+#
+# moui is no longer "607 of 608". `runtime/app_builder.mbt` was the last file it
+# could not finish, and `unreliable` went 9 -> 0 with it: every file in that corpus
+# is now UNDERSTOOD rather than read-until-some-error, which is a stronger statement
+# than "no file is blocked".
+#
+# The blocker was one missing head in `fn_type_annotation`. After the `(` it handed
+# `async` to `type_annotation()` as an ordinary type NAME; the parameter loop then
+# broke on the `(` that followed rather than on a comma, and `expect(TRParen)`
+# reported `expected ')'` at line 47.
+#
+# THE GRAMMAR IS NOT WHAT THE SOURCE LOOKS LIKE, settled 7/7 with two controls that
+# can fail (`_verify/settle_0458_async_fn_type.ps1`). The trailing `?` makes the
+# RETURN type optional; it does not lift the group into a nullable function:
+#
+#     fn build(f? : ((Int) -> Unit)? = None)                          ACCEPT
+#     fn build(f? : ((Int) -> Unit)  = None)                          REJECT(4014)
+#     fn build(launch_async? : (async (Int, Int) -> Unit)? = None)    ACCEPT
+#
+# Three fixtures had to be corrected before any grammar was measured, and each
+# correction first looked like a verdict ABOUT the grammar: two were call sites given
+# the wrong return shape, one confused an optional PARAMETER (`x?`) with a nullable
+# TYPE (`T?`) -- and the corpus line carries both. When a probe about the language
+# disagrees with you, suspect the probe's fixture first; it was wrong three times here.
+#
+# M4 IS THE ROW WORTH READING. Dropping `at_name("async")` from the head and keying on
+# the bracket alone SURVIVED the first 648-test run -- which is exactly enough evidence
+# to write "unobservable by construction" into a `Prove`, and it would have been wrong.
+# `fn f(g : (((Int)) -> Unit)) -> Unit` is valid MoonBit (ACCEPT, zero errors), and after
+# the outer `(` is bumped the cursor is on `(` with the next token also `(`. The
+# plain-function-type control cannot see it, because there the cursor lands on
+# `String`. So: "no test covers this" and "no program can reach this" are different
+# claims, and a survivor verdict is a claim about the second while the evidence on hand
+# only ever supports the first.
+#
+# M5 IS A SURVIVOR WHOSE CLAIM IS MEASURED RATHER THAN ARGUED. Two end-to-end tests in
+# this increment's first draft asserted the RENDERED annotation and were deleted: the
+# string is consumed inside the parser and handed to `ann_to_ty`, and it is not part of
+# the pipeline result, so no end-to-end assertion can reach it (the same trap
+# `pipeline_0413_test.mbt:83` describes). `src/types/types_0458_test.mbt` then answers
+# the real question -- are the two renderings indistinguishable DOWNSTREAM -- by
+# asserting `ann_to_ty("async (Int, Int) -> Unit?")` is `TUnknown` beside a control
+# showing `ann_to_ty` does distinguish types. Teach it the `async` head and that test
+# goes red on purpose, at which point M5 must become KILLED. A survivor with no
+# tripwire is an untested guard with a footnote.
+#
+# Tests 643 -> 651: `pipeline_0458_test.mbt` and `types_0458_test.mbt`, eight cases.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=607 actionable=0 notices=4221 unreliable=9 withheld=0 total=4230'
+  'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=569 unreliable=310 withheld=136 total=879'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=285 withheld=115 total=387'
   'async'           = 'files=419 parsed=275 actionable=0 notices=1259 unreliable=1248 withheld=308 total=2507'

@@ -1372,6 +1372,29 @@ fn tok_desc(t : @lexer.Tok) -> String {
 /// becomes quieter than it was.
 fn Parser::fn_type_annotation(self : Parser) -> String {
   let _ = self.bump() // (
+  // 0458 -- the ASYNC function type, `(async (A, B) -> R)?`.
+  //
+  // Without this, `async` was read as an ordinary type NAME by the first
+  // `type_annotation()` below, the parameter loop then broke on the `(` that
+  // followed it rather than on a comma, and `expect(TRParen)` reported
+  // `expected ')'` -- which is what stopped wzzc-dev/moui 0.1.12
+  // `runtime/app_builder.mbt:47`, the last file that corpus could not finish.
+  //
+  // `async` IS followed by `(` in every shape the grammar admits, the same
+  // argument 0456 made for the `@`-qualified `is` head: there is no `async` type
+  // without a parenthesised parameter list. So the lookahead is a discriminator
+  // rather than a guard -- but it is still written as one, because a reader who
+  // has not read the settle should not have to take that on faith. The settle
+  // (`_verify/settle_0458_async_fn_type.ps1`, 7/7) also pins the part that is NOT
+  // obvious: the trailing `?` makes the RETURN type optional, it does not lift
+  // the group into a nullable function type. `async (A, B) -> R?` is the reading,
+  // and the `?` is emitted below by the clause that already existed.
+  let mut out = if self.at_name("async") && self.lparen_at(self.p + 1) {
+    let _ = self.bump() // async
+    "async "
+  } else {
+    ""
+  }
   let params : Array[String] = []
   while !self.at(TRParen) && !self.at(TEOF) {
     self.skip_seps()
@@ -1388,7 +1411,9 @@ fn Parser::fn_type_annotation(self : Parser) -> String {
   }
   self.skip_seps()
   self.expect(TRParen, "')'")
-  let mut out = "("
+  // `out` already carries the `async ` head if there was one, so this appends to
+  // it rather than re-declaring it.
+  out = out + "("
   let mut first = true
   for p in params {
     if first {
@@ -4097,6 +4122,21 @@ fn Parser::name_at(self : Parser, j : Int32) -> String {
   match self.toks[j] {
     TName(n) => n
     _ => ""
+  }
+}
+
+///|
+/// Whether the token `j` positions ahead is `(`. `at(TLParen)` only reads the
+/// CURSOR, and the async head of a function type has to be recognised BEFORE it
+/// is consumed -- a parameter list that does not begin with `async` must be left
+/// exactly as it was, so the test cannot go through a bump and a retreat.
+fn Parser::lparen_at(self : Parser, j : Int32) -> Bool {
+  if j < 0 || j >= self.toks.length() {
+    return false
+  }
+  match self.toks[j] {
+    TLParen => true
+    _ => false
   }
 }
 
