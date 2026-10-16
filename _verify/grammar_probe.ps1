@@ -145,7 +145,20 @@ foreach ($k in $PROBE_CASES.Keys) {
   Push-Location $d
   $mo = (& $moon check 2>&1 | Out-String)
   Pop-Location
-  $mv = if (($mo -replace "`r?`n", ' ') -match '0 errors') { 'MOON-OK' } else { 'MOON-BAD' }
+  # `(?<!\d)0 errors` and NOT `0 errors`. The old pattern was unanchored, so the
+  # string `10 errors` CONTAINS `0 errors` and every case whose error count was a
+  # multiple of ten scored MOON-OK. Measured on this toolchain, not reasoned: a
+  # fixture with ten undefined names reports `Failed with 0 warnings, 10 errors`
+  # and the old test answered True -- i.e. illegal MoonBit reported as LEGAL, which
+  # promotes the row into the REAL GAP tally. This is the control's own failure
+  # shape, one level down: a verdict that reads clean while the opposite is true.
+  #
+  # The count is a plausible fixture size, not an exotic one -- 10, 20, 30 all trip
+  # it -- and the tally it corrupts is the one the control exists to police. The
+  # negative lookbehind costs nothing and is pinned by `moonverdict_ten_errors` in
+  # `_verify/grammar_probe_control.ps1`, which fails the release gate if this line
+  # is reverted. A sweep over counts 0..25 is in that control's header.
+  $mv = if (($mo -replace "`r?`n", ' ') -match '(?<!\d)0 errors') { 'MOON-OK' } else { 'MOON-BAD' }
 
   $so = (& $moonrun $wasm $d 2>&1 | Out-String)
   $parsed = [regex]::Match($so, 'parsed=(\d+)').Groups[1].Value
