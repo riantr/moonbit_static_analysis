@@ -1,12 +1,12 @@
-# Coverage-loss A/B for the uncommitted 0456+0457 change.
+# Coverage-loss A/B for the uncommitted 0466 change.
 #
 # WHAT THIS PROVES, AND WHAT IT CANNOT
 # -----------------------------------
-# The concern: 0457 turns `async fn` declarations from a bogus EName("async")
-# binding into a read-past with a notice, and that honest marking is expected
-# to push async's `unreliable` count up (1158 -> 1248). A move that size must
-# not be pinned on inference, so this builds BOTH parsers from ONE tree and
-# diffs how far the scanner reads in every single file of all six corpora.
+# The concern: 0466 parses MORE in async and proton than 0465 did (async
+# 330 -> 337 files parsed, proton 115 -> 116, proton withheld 323 -> 59). A
+# move that size must not be pinned on inference, so this builds BOTH parsers
+# from ONE tree and diffs how far the scanner reads in every single file of
+# all six corpora.
 #
 # It answers one question only: did any file get read LESS? It does not claim
 # the finding counts are correct -- only that nothing was lost.
@@ -19,9 +19,12 @@
 # working state, and the redirect runs under cmd.exe because PowerShell's `>`
 # re-encodes as UTF-16 and mangles the em dashes in these source comments.
 #
-# The 0456 test file is moved aside for the HEAD build because it pins
-# behaviour the HEAD parser does not have; leaving it in place would make the
-# HEAD build fail for a reason that has nothing to do with the measurement.
+# The 0466 test files are moved aside for the HEAD build because they pin
+# behaviour the HEAD (0465) parser does not have; leaving them in place would
+# make the HEAD build fail for a reason that has nothing to do with the
+# measurement. This list is NOT optional bookkeeping: a new test file left out
+# of it fails the HEAD build, and a build failure is indistinguishable from a
+# measurement problem unless you already know to look for it.
 
 # Native tools here write progress to stderr (git's LF/CRLF warning, moon's
 # task log). With ErrorActionPreference=Stop that stderr becomes a terminating
@@ -44,20 +47,21 @@ $TARGETS = [ordered]@{
 }
 
 # Every file the change touches, sources AND tests. The tests are here because the
-# "HEAD" build compiles the whole package: a test that pins 0459-0463 behaviour
+# "HEAD" build compiles the whole package: a test that pins 0466 behaviour
 # would fail to build against the HEAD parser, and the build failure would look
-# exactly like a measurement problem. Two of these four are NOT in HEAD at all
-# (they are new files), which the restore step handles by leaving them absent --
-# and which the byte-comparison guard below has to tolerate rather than treat as a
-# mismatch.
+# exactly like a measurement problem. BOTH of the three test entries below are
+# NOT in HEAD at all (0466 added them), which the restore step handles by
+# leaving them absent -- and which the byte-comparison guard below has to
+# tolerate rather than treat as a mismatch.
+#
+# 0466 touched no lexer/ast/types/interp file, so unlike the 0456+0457 list this
+# one is three entries wide. Re-pointing this list is part of every increment:
+# the previous list's stale entries are harmless (they restore to their own HEAD
+# blob), but a MISSING new test file is fatal.
 $CHANGED = @(
-  'src/lexer/lexer.mbt',
   'src/parser/parser.mbt',
-  'src/ast/ast.mbt',
-  'src/types/types.mbt',
-  'src/interp/interp.mbt',
-  'src/lexer/lexer_0464_test.mbt',
-  'src/pipeline/pipeline_0464_test.mbt'
+  'src/parser/parser_0466_test.mbt',
+  'src/pipeline/pipeline_0466_test.mbt'
 )
 
 function Build-Wasm {
@@ -94,7 +98,7 @@ function Restore-Working {
   }
 }
 
-Write-Host 'coverage A/B -- 0456+0457'
+Write-Host 'coverage A/B -- 0466'
 Write-Host ('  repo   : ' + $root)
 Write-Host ('  HEAD   : ' + ((git rev-parse --short HEAD).Trim()))
 Write-Host ('  change : ' + ((git diff --stat src/parser/parser.mbt) -replace "`r?`n", ' '))

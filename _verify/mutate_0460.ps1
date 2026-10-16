@@ -87,11 +87,50 @@ Invoke-MutationGate -Name '0460' -Target 'js' -Mutations @(
   # WHY `inner` still resolves is NOT established. The guard binds through the
   # pattern AST as well as through the name list `parse_is_pattern` returns, and
   # this probe did not separate the two paths. Stated as open rather than guessed.
+  #
+  # RE-POINTED 2026-10, NOT RETIRED, and the distinction is the whole entry.
+  # 0466 added `|| self.rest_binding_at(j)` to this condition. That pushed the line
+  # past `moon fmt`'s width, so the ONE line this anchor described is now FOUR:
+  #
+  #     -  TName(n) => if self.pattern_binding_at(j) { found.push(n) }
+  #     +  TName(n) =>
+  #     +    if self.pattern_binding_at(j) || self.rest_binding_at(j) {
+  #     +      found.push(n)
+  #     +    }
+  #
+  # `mutate_lib.ps1` matches `Find` with a LITERAL ordinal `IndexOf`, not a regex,
+  # so a reformat is indistinguishable from the code being deleted. Pre-flight
+  # caught it and ABORTED with no suite run, which is that guard doing its job.
+  #
+  # MEASURED rather than assumed, because the two diagnoses want opposite fixes: if
+  # the anchor had stopped matching earlier, the right move would be to retire the
+  # mutation, because an anchor that has rotted is a gate that stopped checking
+  # anything. `git cat-file blob HEAD:src/parser/parser.mbt` matched the old one-line
+  # anchor; the working tree does not. So 0466 moved it, and it was live until now.
+  # The property is still live: nested binding still runs through
+  # `pattern_binding_at(j)`, which is what `depth == 1` replaces.
+  #
+  # WHY THE `rest_binding_at` HALF SURVIVES INTO THE REPLACEMENT. Replacing the
+  # WHOLE condition with `depth == 1` is the tidier edit and it is the wrong one: it
+  # would delete the rest-binding arm too, making this a TWO-property mutation whose
+  # second victim is 0466's own `rest_binds` row. The WITNESS paragraph above names
+  # exactly one witness, and it would have become false. A mutation that changes two
+  # things records a kill that neither of its properties earned on its own.
   @{
     Name = 'M4 only top-level array elements bind'
     File = $PARSER
-    Find = 'TName(n) => if self.pattern_binding_at(j) { found.push(n) }'
-    Repl = 'TName(n) => if depth == 1 { found.push(n) }'
+    Find = @'
+TName(n) =>
+          if self.pattern_binding_at(j) || self.rest_binding_at(j) {
+            found.push(n)
+          }
+'@
+    Repl = @'
+TName(n) =>
+          if depth == 1 || self.rest_binding_at(j) {
+            found.push(n)
+          }
+'@
     MustRed = '0460: a nested array pattern binds its inner names'
   }
 

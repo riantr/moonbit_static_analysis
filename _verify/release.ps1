@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1481,37 +1481,44 @@ if ($SkipMutations) {
 # the state that ships. A number copied from a scan taken mid-increment is not a
 # stale baseline, it is a wrong one -- and the release gate is the only thing in
 # this repository positioned to catch it.
-# Tests 768 -> 783: `parser_0465_test.mbt` (6 cases) and `pipeline_0465_test.mbt`
-# (9 cases). Re-pinned after 0465 (the `..` chain link) and 0465b (loops in
-# expression position). ONE corpus moved, and it moved further than the parse work
-# alone accounts for:
+# Tests 783 -> 795: `parser_0466_test.mbt` (6 cases) and `pipeline_0466_test.mbt`
+# (6 cases). Re-pinned after 0466 (`-> T noraise` / `-> T nocancel`) and 0466b (`.. rest`
+# in an array pattern). TWO corpora moved, and proton moved a long way:
 #
-#     async   parsed 325 -> 330   unreliable 733 -> 691   withheld 210 -> 189
-#             notices 1550 -> 1554   total 2283 -> 2245
+#     async   parsed 330 -> 337   unreliable 691 -> 614   notices 1574 -> 1576
+#     proton  parsed 115 -> 116   unreliable 921 -> 727   withheld 323 -> 59
 #
-# `parsed` 331 BEFORE 0465b and 330 after it: the honest `for`/`while` expression arm
-# gives back one file that the old code read all the way through -- by way of a
-# finding that was a lie (`undefined name 'for'`, a KEYWORD resolved as a binding).
-# That is the right trade and worth stating plainly, because the old number was the
-# better-looking one. `unreliable` fell 42, which is the count that carries meaning:
-# those files are now read whole instead of stopping at a parse error.
+# proton's `withheld` fell by 264 and `unreliable` by 194. `withheld` counts findings
+# the analyzer deliberately does not make inside a file it only partially read -- the
+# "outside the analyzed subset" notices -- so a file that moves from partial to fully
+# read takes its withheld notices with it. That is the mechanism, and it is why a
+# `withheld` drop of this size means reach rather than silence.
 #
-# 0465b IS THE 0464b SHAPE AGAIN. `src/websocket/conn.mbt` was blocked 80 lines ABOVE
-# its `let kind : MessageKind = for frame = ... { ... }`, so the false positive had no
-# path to be observed at all. Teaching the chain unblocked the file and revealed it.
-# The reach was legitimate, so the GAP was fixed rather than the reach given back --
-# and `match` and `if` in the identical position, already reporting honestly, are the
-# control that made it a two-keyword gap rather than a general one.
+# 0466b IS THE 0464b SHAPE, THIRD TIME. Unblocking
+# `moonbitlang/async 0.22.4 src/internal/event_loop/fs.mbt` (it carried
+# `-> Unit nocancel` on two signatures) revealed `undefined name 'payload'` TWICE,
+# from `guard! buf is [u32le(_), u32le(mask), .. payload]` -- a name the pattern
+# ITSELF introduces. The reach was legitimate, so the gap was fixed rather than the
+# reach given back.
 #
 # => 判据: a false positive nobody can reach is not a false positive that does not
 # exist. It is a finding whose file has not been read yet, and the only way to tell
 # the two apart is to unblock the corpus and look.
+#
+# AND A HARNESS DEFECT THIS PIN IS SHIPPED NEXT TO. `mutate_0465.ps1` and
+# `mutate_0466.ps1` both ended at the closing paren of their mutation lists, so
+# `Write-MutationGateVerdict` never ran and `exit` never ran: a MUST-RED MISS printed
+# loudly and the process still returned 0. 0466's first run is what exposed it -- M3
+# was declared MustRed, the harness printed the miss, and the gate exited 0 anyway.
+# That is the same defect release.ps1 already fixed once in its Stage function, and
+# it means the earlier `mutation gate 0465 True` line was not evidence. Both gates now
+# end in the verdict tail and both re-run GATE OK under it.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=32 actionable=0 notices=678 unreliable=124 withheld=16 total=802'
   'moonbit_image'   = 'files=18 parsed=15 actionable=0 notices=170 unreliable=66 withheld=0 total=236'
-  'async'           = 'files=419 parsed=330 actionable=0 notices=1554 unreliable=691 withheld=189 total=2245'
-  'proton'          = 'files=137 parsed=115 actionable=0 notices=1484 unreliable=921 withheld=323 total=2405'
+  'async'           = 'files=419 parsed=337 actionable=0 notices=1576 unreliable=614 withheld=189 total=2190'
+  'proton'          = 'files=137 parsed=116 actionable=0 notices=1613 unreliable=727 withheld=59 total=2340'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

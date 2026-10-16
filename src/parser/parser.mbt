@@ -1991,6 +1991,32 @@ fn Parser::parse_raise_effect(self : Parser) -> Unit {
     let _ = self.bump()
     return
   }
+  // 0466 -- `noraise` and `nocancel`. Same slot, and the parser stopped at them, so
+  // every one of them reported `expected '{'` at the body: a message about a brace
+  // standing where a keyword is.
+  //
+  //   pub async fn Mutex::acquire(self : Mutex) -> Unit noraise {
+  //   pub async fn remove(path : StringView) -> Unit nocancel {
+  //
+  // Measured reach is per-FILE first blocker over the files still unread: 16 files
+  // (async 11, proton 5) of the 64 NOTPARSE files across the two corpora.
+  //
+  // THEY DO NOT CARRY AN ERROR TYPE, and that is the whole reason this is not folded
+  // into the `raise` arm below. `-> T raise E` names one and the guard further down
+  // is careful about where that type stops; `-> T noraise E` and `-> T nocancel E`
+  // are both REJECTed with 3002 by the toolchain
+  // (`_verify/settle_0466_effect_annotation.ps1`, rows `ret_noraise_with_type` and
+  // `ret_nocancel_with_type`). So a shared tail would read a token that is not there
+  // -- a SILENT misparse, which is the exact direction the guard's own comment says
+  // to avoid, and the failure would land somewhere else in the file entirely.
+  //
+  // `raise` is the control for the gap being two keywords and not one: proton has 781
+  // `-> T raise` sites and is not blocked at any of them, while the 16 files here are
+  // blocked at exactly these two words.
+  if self.at_name("noraise") || self.at_name("nocancel") {
+    let _ = self.bump()
+    return
+  }
   if !self.at_name("raise") {
     return
   }
@@ -3243,6 +3269,46 @@ fn Parser::pattern_binding_at(self : Parser, j : Int32) -> Bool {
 }
 
 ///|
+/// 0466b -- a `.. rest` in an ARRAY pattern BINDS, and it is not a field path.
+///
+/// `pattern_binding_at` refuses any name whose previous token is a `TDot`. That rule
+/// is right and gives the wrong answer here: `Foo.bar` is a path, but `.. rest` is
+/// TWO dots and the name after them is exactly what the pattern binds.
+///
+///     guard! buf is [u32le(_), u32le(mask), .. payload]
+///     payload
+///
+/// at `moonbitlang/async 0.22.4 src/internal/event_loop/fs.mbt:105` and `:152`, both
+/// reported `undefined name 'payload'` -- a name the pattern itself introduced, on
+/// code `moon check` compiles.
+///
+/// THE PREDICATE CHECKS TWO DOTS, NOT ONE. Widening `pattern_binding_at` to accept a
+/// single preceding `TDot` would bind every segment of every `Foo.bar` in every
+/// pattern, which is the rule's whole purpose. `.. rest` and `.field` are
+/// distinguishable here and only here.
+///
+/// Settled, `_verify/settle_0466b_rest_binding.ps1`: `rest_binds` ACCEPT with
+/// `rest` USED, a canary beside it REJECTing a name the pattern never mentions, and
+/// `rest_bare` ACCEPT -- a bare `..` with no name after it is legal too.
+///
+/// NOT DONE, AND MEASURED BEFORE IT COULD BE: the TUPLE branch above. No pinned
+/// corpus writes `is (a, .. rest)`, and adding a shape with no evidence of it being
+/// written is the habit this increment exists to avoid.
+fn Parser::rest_binding_at(self : Parser, j : Int32) -> Bool {
+  if j < 2 || j >= self.toks.length() {
+    return false
+  }
+  if self.toks[j - 1] != TDot || self.toks[j - 2] != TDot {
+    return false
+  }
+  let n = match self.toks[j] {
+    TName(s) => s
+    _ => return false
+  }
+  n != "_" && !@lexer.is_moonbit_keyword(n)
+}
+
+///|
 /// The same predicate at the CURSOR, for the branch that parses rather than
 /// scans.
 fn Parser::at_pattern_binding(self : Parser) -> Bool {
@@ -3373,7 +3439,15 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
           }
         }
         TEOF => break
-        TName(n) => if self.pattern_binding_at(j) { found.push(n) }
+        // 0466b: `.. rest` inside the bracket is a BINDING. `pattern_binding_at`
+        // refuses any name preceded by a `TDot` -- correctly, for `Foo.bar` -- and
+        // `.. rest` is two dots. The corpus shape is
+        // `[u32le(_), u32le(mask), .. payload]`, whose `payload` then reads as an
+        // ordinary local. See `rest_binding_at`.
+        TName(n) =>
+          if self.pattern_binding_at(j) || self.rest_binding_at(j) {
+            found.push(n)
+          }
         _ => ()
       }
       j += 1

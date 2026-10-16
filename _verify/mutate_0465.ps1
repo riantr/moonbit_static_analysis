@@ -149,3 +149,18 @@ Invoke-MutationGate -Name '0465' -Target 'js' -Mutations @(
     Prove = 'Unobservable by construction: the behavioral lens returns AAny for any receiver it does not model, and AAny is itself the fail-safe, so a chain yielding AAny produces no finding a fixture could catch. The settle (S::new()..get().v ACCEPT vs S::new().get().v REJECT 4028) is what makes the receiver the correct answer; no in-tree observation separates the two.'
   }
 )
+
+# THE VERDICT TAIL, ADDED 0466 AND IT IS A FIX, NOT A BOILERPLATE LINE. This file ended
+# at the closing paren of the mutation list, so `Write-MutationGateVerdict` was never
+# called and `exit` never ran: a MUST-RED MISS printed loudly and the process still
+# returned 0. The run that exposed it was 0466's, where M3 was declared MustRed, the
+# harness printed `MUST-RED MISS`, and the gate exited 0 anyway.
+#
+# It also means the RELEASE GATE's `mutation gate 0465 True` line was not evidence --
+# that stage passed unconditionally. The measurements in that run were real (6 killed,
+# 2 declared survivors, every restore byte-identical), but nothing would have reported
+# a verdict mismatch, which is the guarantee the stage exists to provide. Same defect
+# class as release.ps1's Stage function, fixed there once and reintroduced here.
+Write-MutationGateVerdict -Name '0465'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
+exit 0
