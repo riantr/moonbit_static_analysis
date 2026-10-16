@@ -233,11 +233,29 @@ test "0436 control: the qualified form says exactly what the unqualified one doe
 }
 
 ///|
-/// KNOWN LIMIT, PINNED -- a PACKAGE-qualified pattern head. `is @pkg.Type::Ctor`
-/// does NOT parse today: `parse_is_pattern` reads a `TName` head, and this head
-/// starts with `@`, so `peek_name()` is "", the reader returns without consuming
-/// anything, and the cascade ends the file. On the `if` shape that is 6 parse
-/// errors and the statements after the `let` are lost.
+/// FIXED at 0.4.xx -- a PACKAGE-qualified pattern head, `is @pkg.Type::Ctor`.
+///
+/// WHAT THIS NOTE USED TO SAY, and it was wrong in a way worth keeping. It read:
+/// "`parse_is_pattern` reads a `TName` head, and this head starts with `@`, so
+/// `peek_name()` is `""`, the reader returns without consuming anything, and the
+/// cascade ends the file." That is not what happens. `@pkg` lexes as ONE `TName`
+/// whose string INCLUDES the `@` (lexer.mbt:361), so `peek_name()` returns
+/// `"@pkg"` and the reader consumes it happily. What it does NOT consume is the
+/// `.Type` segment that follows: the `::` loop expects a `TColon` and finds a
+/// `TDot`, so `qualified` stays false and the reader returns with `.Type::Ctor`
+/// still in the token stream.
+///
+/// The two stories predict the same symptom and a different repair. This one
+/// predicted `unexpected token @`; the scanner actually said ``unexpected token
+/// `:` ``, because the `::` is what finally reached `parse_atom`'s catch-all --
+/// and that disagreement is what gave the fix away. 0455 is the same lesson from
+/// the other end: a label carried forward until it was measured is a label, not a
+/// fact.
+///
+/// Settled against the toolchain BEFORE implementing -- `_verify/settle_0456_at_is_head.ps1`,
+/// 9/9, with the canary REJECTing and the package boundary REJECTing so the
+/// ACCEPTs are discriminating. `is @pkg.Type::Ctor` is legal MoonBit, which is the
+/// only reason it is worth parsing.
 ///
 /// 48 sites corpus-wide (`moonbit-community/sqlite3 0.2.3 async_test.mbt:5` is
 /// `statement.step_async() is @sqlite3.StepResult::Done(..)`, and the payload
@@ -265,14 +283,17 @@ test "0436 control: the qualified form says exactly what the unqualified one doe
 /// that agrees with "no problem" is not evidence of no problem; cross-referencing
 /// two lists only tells you about the part both can see.
 ///
-/// Pinned rather than fixed so the next round inherits a measured number, a
-/// failing test, and a script that produces the number. Asserting the CURRENT
-/// failure is the honest form: implementing the `@`-head turns this red.
-test "0436 KNOWN LIMIT: a package-qualified is pattern head does not parse yet" {
+/// This limit was PINNED rather than fixed so the next round would inherit a
+/// measured number, a failing test, and a script that produces the number --
+/// asserting the CURRENT failure being the honest form, because implementing the
+/// `@`-head would turn it red. That is what happened, and it is the intended
+/// workflow rather than a broken test: the row below now asserts the fixed
+/// behaviour, and `_verify/pkg_head_impact.ps1` still produces the number.
+test "0436 KNOWN LIMIT, NOW FIXED: a package-qualified is pattern head parses" {
   let r = @parser.parse(
     "enum StepResult {\n  Done(Int)\n  Busy\n}\nfn f(self : StepResult) -> Int {\n  if self is @sqlite3.StepResult::Done(..) {\n    1\n  } else {\n    0\n  }\n}\n",
   )
-  assert_true(r.first_error != 0)
+  assert_eq(r.first_error, 0)
 }
 
 ///|

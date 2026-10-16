@@ -221,17 +221,34 @@ function literal out of a name.
   @{
     Name = 'M5 a nested async declaration is announced as an illegal async'
     File = 'src\parser\parser.mbt'
+    # RE-ANCHORED by 0457, and the failure that forced it is the useful part.
+    #
+    # This pattern named the declaration branch's OLD body -- the `EName("async")`
+    # that 0457 replaced. 0457 changed that body, so this gate's pre-flight
+    # reported `PREFLIGHT MISS: M5` and ABORTED the whole gate rather than
+    # quietly passing. That is the harness working: a gate whose anchor has
+    # moved is a gate that no longer measures what its name claims.
+    #
+    # The regression M5 guards is NOT retired -- it shipped once in this
+    # repository and the history below is why it stays pinned. The declaration
+    # branch now announces itself with its OWN message, so the mutation is the
+    # same confusion one branch down: announce the declaration with the sibling's
+    # "no following `fn`" message, which is false, because `fn` IS there.
+    #
+    # This is now the same mutation as 0457's M3, which is a deliberate
+    # duplicate rather than a consolidation. Two gates pointing at one branch
+    # from two angles is exactly what made the staleness visible here: a single
+    # copy would have gone stale in silence the first time 0457 touched the
+    # text.
     Find = @'
-        } else {
-          // A DECLARATION, not a literal. Yielding the name unchanged is what the
-          // arm did before this increment, so nothing downstream moves.
-          { span: sp, kind: @ast.EName("async"), }
+          self.note_skip(
+            "the `async` of an `async fn` declaration is outside the analyzed subset; it was read past",
+            sp,
+          )
+          { span: sp, kind: @ast.EBigInt, }
         }
 '@.Replace("`r`n", "`n")
     Repl = @'
-        } else {
-          // A DECLARATION, not a literal. Yielding the name unchanged is what the
-          // arm did before this increment, so nothing downstream moves.
           self.note_skip(
             "async without a following `fn` is outside the analyzed subset; it was read past",
             sp,

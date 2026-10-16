@@ -3011,6 +3011,31 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
   if self.peek_name() != "" {
     head = self.peek_name()
     let _ = self.bump()
+    // A PACKAGE-qualified head: `@pkg.Type::Ctor`. `@pkg` already lexed as ONE
+    // `TName`, with the `@` INSIDE the name string (lexer.mbt:361, "a lone `@`
+    // starts a package alias token") -- so `peek_name()` returns `"@pkg"`, NOT
+    // `""`, and the `::` loop below never sees anything because the token after
+    // the head is a `.` and not a `:`.
+    //
+    // THE PINNED REASON WAS WRONG about this, and 0455 is the precedent for
+    // distrusting one. `parser_0436_test.mbt` recorded that "`parse_is_pattern`
+    // reads a `TName` head, and this head starts with `@`, so `peek_name()` is
+    // `\"\"`, the reader returns without consuming anything". It does not: the
+    // reader consumes `@pkg` and returns with `.Type::Ctor` still in the token
+    // stream, which is why the scanner reported `unexpected token `:` `` on a
+    // line whose `:` is a path marker rather than `unexpected token @``. Same
+    // symptom, and the fix this needs is four tokens instead of a new head kind.
+    //
+    // Settled with the toolchain before implementing, not after -- see
+    // `_verify/settle_0456_at_is_head.ps1`, 9/9 with the canary REJECTing and the
+    // package boundary REJECTing. `is @pkg.Type::Ctor` is legal MoonBit, so the
+    // parser must CONSUME the path rather than leave it behind.
+    if head.has_prefix("@") && self.at(TDot) {
+      let _ = self.bump()
+      if self.peek_name() != "" {
+        let _ = self.bump()
+      }
+    }
     // A QUALIFIED constructor: `is St::Shutdown`. There is no `TColonColon` in
     // the lexer -- `::` is two `TColon` tokens -- so the path tail has to be
     // consumed HERE or the second `:` survives the pattern, walks back up
@@ -4486,9 +4511,30 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
           let _ = self.bump()
           self.parse_fn_literal(sp)
         } else {
-          // A DECLARATION, not a literal. Yielding the name unchanged is what the
-          // arm did before this increment, so nothing downstream moves.
-          { span: sp, kind: @ast.EName("async"), }
+          // A DECLARATION, not a literal. The keyword is handed back UNCHANGED --
+          // there is no bump in this branch, before or after this increment -- so
+          // the next statement still begins at `fn` and `parse_block` declares the
+          // function. Nothing about the cursor moves.
+          //
+          // READ PAST, NOT READ AS A NAME. This yielded `EName("async")`, which is
+          // precisely what the branch below refuses to invent: "yielding `async`
+          // as a readable binding would let the structural lens file
+          // `undefined name 'async'` against a program that never meant a name."
+          // The toolchain agrees -- `async` cannot be bound at all, so the finding
+          // was refuted by construction rather than merely unverified. Both facts
+          // are in `_verify/settle_0457_nested_async_fn.ps1`, 5/5.
+          //
+          // IT WAS INVISIBLE FOR AS LONG AS IT WAS because every file carrying this
+          // shape was ALSO blocked by something earlier: `watch_test.mbt` died on
+          // `is @async.TimeoutError` at line 389, which 0456 fixed. The file then
+          // parsed whole and three sites surfaced at once, taking async's
+          // actionable count from 0 to 3. A false positive that no corpus could
+          // reach is not a false positive that does not exist.
+          self.note_skip(
+            "the `async` of an `async fn` declaration is outside the analyzed subset; it was read past",
+            sp,
+          )
+          { span: sp, kind: @ast.EBigInt, }
         }
       } else {
         // Unreachable for code `moon check` accepts. Reached only by input the

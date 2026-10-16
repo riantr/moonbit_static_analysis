@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1337,12 +1337,74 @@ if ($SkipMutations) {
 # OTHER conjunct of the same `if` -- `closer_ahead` -- and it SURVIVED the first run,
 # which is how the repository learned that the newline-before-a-closing-bracket rule
 # had no test pinning it anywhere. That test now exists.
+#
+# GATES 0456 + 0457, shipped together because 0456 alone breaks the invariant this
+# file exists to protect.
+#
+# 0456 consumed the `.Type` of a package-qualified `is` head (`@pkg.Type::Ctor`, four
+# tokens, parser.mbt:3033). moui 606 -> 607; `backend/macos/macos_services.mbt` parses
+# whole. It also corrects the pin on `parser_0436_test.mbt` that recorded the WRONG
+# mechanism: it said `peek_name()` is `""` for an `@` head, which is false -- it returns
+# `"@pkg"`. Both stories predict the same symptom and a different repair, which is the
+# only reason the disagreement was worth chasing.
+#
+# 0456 BROKE async actionable 0 -> 3 by unblocking `src/fs/watch_test.mbt`, which had
+# been dying at line 389 on `is @async.TimeoutError`. The file then parsed whole and
+# three `undefined name 'async'` sites surfaced at once -- a false positive 0457 removed.
+# So `actionable` could not be pinned between the two increments, which is why they ship
+# as one commit: a visible parse failure traded for invisible wrong findings is worse
+# than either alone.
+#
+# WHY async's `unreliable` ROSE 1175 -> 1248 while `actionable` fell to 0. Honest
+# re-classification, verified rather than argued. 46 read-past `async fn` sites now mark
+# their region unreliable instead of silently binding a name. A move that size cannot be
+# pinned on inference, so `_verify/ab_0456_0457_coverage.ps1` builds BOTH parsers from ONE
+# tree and diffs how far the scanner reads in EVERY file of all six corpora:
+#
+#     files in HEAD map 1223 / fixed map 1223
+#     unchanged 1220   read further 3   READ LESS 0
+#
+#     async/src/fs/watch_test.mbt          389 -> EOF     (0456 unblocked it)
+#     async/src/websocket/server.mbt   NOLINE -> PARTIAL 34
+#     moui/backend/macos/macos_services.mbt 406 -> EOF     (0456)
+#
+# `watch_test.mbt` moving FROM 389 is the cross-check: 389 is the `is @async.TimeoutError`
+# line the 0457 comment names as the blocker, so the A/B confirms the comment's own claim
+# by a different instrument.
+#
+# THE REACH METRIC, and why it had to be built rather than reused. `FOUND` lines look like
+# the per-file record and cover only 183 of async's 419 files -- a fully-read clean file
+# prints `CLEAN`, and one that failed at its FIRST construct prints nothing at all. Keying
+# the diff on `FOUND` would have dropped 56% of the corpus silently, and every clean file
+# would have read as "absent" rather than "unchanged". So reach is one state per file:
+# EOF / a line number / NOLINE, with NOLINE made explicit precisely because it is the
+# state most likely to MOVE. The map is checked for totality against the files on disk,
+# and it validates itself twice against the scanner's own accounting:
+# EOF == `parsed` (275) and PARTIAL + NOLINE == `NOTPARSE` (83 + 61 = 144).
+#
+# `pins.ps1` exists because these six numbers were once measured by an ad-hoc loop that
+# returned `files=3675 parsed=2831 actionable=125` for moonbit_labeler and then returned
+# the IDENTICAL line for moonbit_image. Two corpora cannot agree exactly, so that was a
+# stale file being read -- and it was caught only by the coincidence of the match. Every
+# corpus now asserts its TARGET line and its file count against disk before the number is
+# printed, and any two identical summaries abort the run.
+#
+# GATE 0457, 3 KILLED / 1 declared survivor. M4 (adding the `bump` the branch deliberately
+# does not have) was declared KILLED in the first run so the suite could decide; it
+# survived 643/643, and structurally so -- `parse_block` tests the token at the cursor, and
+# after this branch that token is `fn` either way, so both variants build the same tree.
+#
+# 639 -> 643 tests: `pipeline_0457_test.mbt` is new, and none of its four cases existed
+# before. 0453 pinned that a nested async declaration is not mistaken for a literal, via
+# `parse_failures == 0` plus the absence of a false notice -- and both hold while the branch
+# still binds a bogus name, because a notice is not a failure. Only a lens that resolves
+# names separates the two, which is what the new file asserts.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=606 actionable=0 notices=4212 unreliable=20 withheld=0 total=4232'
-  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=294 withheld=136 total=862'
+  'moui'            = 'files=608 parsed=607 actionable=0 notices=4221 unreliable=9 withheld=0 total=4230'
+  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=569 unreliable=310 withheld=136 total=879'
   'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=285 withheld=115 total=387'
-  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1175 withheld=306 total=2416'
-  'proton'          = 'files=137 parsed=109 actionable=0 notices=1374 unreliable=1032 withheld=321 total=2406'
+  'async'           = 'files=419 parsed=275 actionable=0 notices=1259 unreliable=1248 withheld=308 total=2507'
+  'proton'          = 'files=137 parsed=109 actionable=0 notices=1374 unreliable=1067 withheld=330 total=2441'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{
