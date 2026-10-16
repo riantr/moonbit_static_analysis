@@ -49,11 +49,23 @@ $WALK = @'
     }
 '@.Replace("`r`n", "`n")
 
+# RE-POINTED BY 0467b, and NOT retired -- the difference matters. `mutate_lib.ps1`
+# matches `Find` by literal ordinal `IndexOf`, so a 2-space dedent is
+# indistinguishable from a deletion: this anchor missed preflight on a change that
+# moved the code rather than removing it. The arm is still there and still carries
+# the same defect surface -- the per-function collector must descend into the loop
+# statement or the `for` binder is lost -- so retiring it would trade a live guard
+# for a footnote.
+#
+# Two things changed under the anchor at once, and both are 0467b: the arm dedented
+# from 8 to 6 spaces when the collector was hoisted to top level, and the callee was
+# renamed `scan` -> `collect_stmt_bindings`. The property M4 pins is UNCHANGED, so
+# the mutation stays one property: drop the `loop_stmt` descent, keep the block.
 $SCAN = @'
-        SNoBreak(loop_stmt, block) => {
-          scan(bs, [loop_stmt])
-          scan(bs, block)
-        }
+      SNoBreak(loop_stmt, block) => {
+        collect_stmt_bindings(bs, [loop_stmt])
+        collect_stmt_bindings(bs, block)
+      }
 '@.Replace("`r`n", "`n")
 
 $TOP = @'
@@ -115,9 +127,9 @@ Invoke-MutationGate -Name 'M1..M5' -Target 'js' -Mutations @(
     File = 'src\walk\walk.mbt'
     Find = $SCAN
     Repl = @'
-        SNoBreak(_, block) => {
-          scan(bs, block)
-        }
+      SNoBreak(_, block) => {
+        collect_stmt_bindings(bs, block)
+      }
 '@.Replace("`r`n", "`n")
     MustRed = '0443: a `nobreak` block on a `for` loop is read'
   },

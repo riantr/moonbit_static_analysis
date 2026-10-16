@@ -1013,88 +1013,183 @@ fn Walker::walk_conditional(
 }
 
 ///|
+/// Add one binding, skipping a duplicate.
+fn bind_add(bs : Array[Binding], b : Binding) -> Unit {
+  if !bs.contains(b) {
+    bs.push(b)
+  }
+}
+
+///|
+/// 0467b -- the expression side of the collector's gap. Only `ECatch` and `ENoRaise`
+/// carry a STATEMENT LIST inside an expression, so those two are the whole of it; every
+/// other `E*` variant is inert as far as binding collection goes.
+///
+/// WHY THIS IS TOP-LEVEL AND NOT NESTED IN `collect_fn_bindings`. It and
+/// `collect_stmt_bindings` are mutually recursive -- a catch arm body is statements, and
+/// a `let` initialiser is an expression, so either can contain the other -- and MoonBit
+/// does NOT forward-reference between nested `fn`s. Written as nested functions, the
+/// first build failed with `Error: [4021] The value identifier scan_expr is unbound` at
+/// every call site inside `scan`. Hoisting both to the top level is the fix, and it is
+/// why `bind_add` is here too rather than a closure over `out`.
+fn collect_expr_bindings(bs : Array[Binding], e : @ast.Expr) -> Unit {
+  match e.kind {
+    ECatch(_, arms) =>
+      for arm in arms {
+        collect_stmt_bindings(bs, arm.body)
+      }
+    ENoRaise(_, arms) =>
+      for arm in arms {
+        collect_stmt_bindings(bs, arm.body)
+      }
+    _ => ()
+  }
+}
+
+///|
 /// Pass 1 for one function: params first, then every binding in the body
 /// (findLocals): `let`, bare assignments peeled to the base name, `for`
 /// variables. Dead branches are still collected (the binding analysis is
 /// not flow-sensitive).
 fn collect_fn_bindings(f : FnInfo) -> Array[Binding] {
   let out : Array[Binding] = []
-  fn add(bs : Array[Binding], b : Binding) -> Unit {
-    if !bs.contains(b) {
-      bs.push(b)
-    }
-  }
-
   for p in f.params {
-    add(out, { name: p.name, tyann: p.tyann, param: true, decl_span: p.span, })
+    bind_add(out, {
+      name: p.name,
+      tyann: p.tyann,
+      param: true,
+      decl_span: p.span,
+    })
   }
-  fn scan(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit {
-    for s in stmts {
-      match s.kind {
-        SLet(n, ann, _) =>
-          add(bs, { name: n, tyann: ann, param: false, decl_span: s.span, })
-        SAssign(target, _) =>
-          match target.assigned_base() {
-            Some(b) =>
-              add(bs, {
-                name: b,
-                tyann: "",
-                param: false,
-                decl_span: target.span,
-              })
-            None => ()
-          }
-        SFor(v, vsp, _, body) => {
-          add(bs, { name: v, tyann: "", param: false, decl_span: vsp, })
-          scan(bs, body)
+  collect_stmt_bindings(out, f.body)
+  out
+}
+
+///|
+/// Every binding a statement list introduces. Top-level for the reason on
+/// `collect_expr_bindings`: the two are mutually recursive.
+fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit {
+  for s in stmts {
+    match s.kind {
+      // 0467b -- A CATCH ARM'S BODY IS A STATEMENT LIST, AND THE COLLECTOR WAS NEVER
+      // TAUGHT IT. `walk_expr` learned `ECatch` and `ENoRaise` long ago and walks
+      // `arm.body` there; this pre-pass did not, and it is the pre-pass that fills the
+      // frame (`walk_stmt`'s `SLet` arm never binds anything -- it walks the
+      // initialiser). So every `let` inside a catch arm was invisible, and every use
+      // of it reported `no visible binding`.
+      //
+      // This is the SAME defect 0443 recorded one level up for `SNoBreak` -- "walk_stmt
+      // was taught `SNoBreak` and the COLLECTOR was not, and the compiler is silent
+      // about a missing arm in a match that has a catch-all" -- one statement kind
+      // further out, and for the same reason nobody noticed: `Walker::resolve` is
+      // gated on `!self.partial`, and every file containing one was unread.
+      //
+      // Measured, not assumed. `moonbitlang/async 0.22.4 src/fs/dir.mbt` in `mkdir`:
+      //
+      //     let last_path_sep_index = match path.rev_find("/") { .. }   // line 43
+      //     let parent = path[:last_path_sep_index].trim_end(chars="/") // line 49
+      //     let parent = if @event_loop.platform is Windows { .. }    // line 50
+      //     mkdir(parent, permission~, recursive=true, ..)              // line 55
+      //
+      // reported `49:26 no visible binding for 'last_path_sep_index'` and
+      // `55:13 no visible binding for 'parent'` -- two actionable false positives on
+      // code `moon check` compiles, from a file that only became readable at 0467
+      // (it carried `f : async (String, Array[String]) -> Unit` at line 433).
+      //
+      // EVERY statement that carries an expression routes through `collect_expr_bindings`,
+      // not just `SExpr`. The first version of this fix handled `SExpr` alone and
+      // changed nothing measurable -- because `expr catch { .. }` as the last thing in a
+      // function is a `STail`, not an `SExpr`, and that is the shape `dir.mbt` writes.
+      // A fix on one of the seven positions a construct can appear in is a fix on one
+      // of seven.
+      //
+      // `arm.bindings` is deliberately NOT added here. The walk binds those through
+      // `bind_pattern` at the `ECatch` arm of `walk_expr`, and adding them to the
+      // pre-pass as well would put `err` into the frame BEFORE that call, where
+      // `bind` is a no-op because it is guarded on `frame.contains` -- which would
+      // silently move `err` off the binding path `unshadow_param` accounts for.
+      // Scanning the bodies is the whole of the gap.
+      SExpr(e) => collect_expr_bindings(bs, e)
+      STail(e) => collect_expr_bindings(bs, e)
+      SReturn(e) =>
+        match e {
+          Some(x) => collect_expr_bindings(bs, x)
+          None => ()
         }
-        // `loop nobreak { .. }` -- BOTH halves are descended into, and the loop
-        // half is the one that matters here: its `for` BINDER is collected by the
-        // `SFor` arm above, so wrapping the loop without descending would drop
-        // `for x in xs` on the floor and report its own binder as unbound.
-        //
-        // That is not hypothetical. The first run of the 0443 tests failed with
-        // `no visible binding for 'x'` and `no visible binding for 'i'` -- not
-        // `no visible binding for 'nobreak'`, which is the finding this increment
-        // set out to remove. `walk_stmt` was taught `SNoBreak` and the COLLECTOR
-        // was not, and the compiler is silent about a missing arm in a match that
-        // has a catch-all.
-        SNoBreak(loop_stmt, block) => {
-          scan(bs, [loop_stmt])
-          scan(bs, block)
+      SRaise(e) =>
+        match e {
+          Some(x) => collect_expr_bindings(bs, x)
+          None => ()
         }
-        SIf(_, then, elseifs, els) => {
-          scan(bs, then)
-          for ei in elseifs {
-            scan(bs, ei.body)
-          }
-          match els {
-            Some(e) => scan(bs, e)
-            None => ()
-          }
-        }
-        SLetDestruct(names, _) =>
-          for n in names {
-            add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
-          }
-        // A local function's OWN name is a binding of the ENCLOSING scope —
-        // its calls there must resolve, and a self-call resolves through it
-        // too (the inner frame deliberately does not hold the name). Its
-        // BODY is not collected here: it owns a frame of its own, walked at
-        // the SLocalFunc arm of walk_stmt.
-        SLocalFunc(n, _, _, _, _) =>
-          add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
-        SWhile(_, body) => scan(bs, body)
-        // A bare block is a plain statement list: its bindings join the
-        // enclosing frame, same as an `if` body's.
-        SBlock(body) => scan(bs, body)
-        _ => ()
+      SWhile(e, body) => {
+        collect_expr_bindings(bs, e)
+        collect_stmt_bindings(bs, body)
       }
+      SFor(v, vsp, e, body) => {
+        bind_add(bs, { name: v, tyann: "", param: false, decl_span: vsp, })
+        collect_expr_bindings(bs, e)
+        collect_stmt_bindings(bs, body)
+      }
+      SIf(e, then, elseifs, els) => {
+        collect_expr_bindings(bs, e)
+        collect_stmt_bindings(bs, then)
+        for ei in elseifs {
+          collect_stmt_bindings(bs, ei.body)
+        }
+        match els {
+          Some(b) => collect_stmt_bindings(bs, b)
+          None => ()
+        }
+      }
+      SLet(n, ann, init) => {
+        bind_add(bs, { name: n, tyann: ann, param: false, decl_span: s.span, })
+        collect_expr_bindings(bs, init)
+      }
+      SAssign(target, rhs) => {
+        match target.assigned_base() {
+          Some(b) =>
+            bind_add(bs, {
+              name: b,
+              tyann: "",
+              param: false,
+              decl_span: target.span,
+            })
+          None => ()
+        }
+        collect_expr_bindings(bs, rhs)
+      }
+      // `loop nobreak { .. }` -- BOTH halves are descended into, and the loop
+      // half is the one that matters here: its `for` BINDER is collected by the
+      // `SFor` arm above, so wrapping the loop without descending would drop
+      // `for x in xs` on the floor and report its own binder as unbound.
+      //
+      // That is not hypothetical. The first run of the 0443 tests failed with
+      // `no visible binding for 'x'` and `no visible binding for 'i'` -- not
+      // `no visible binding for 'nobreak'`, which is the finding this increment
+      // set out to remove. `walk_stmt` was taught `SNoBreak` and the COLLECTOR
+      // was not, and the compiler is silent about a missing arm in a match that
+      // has a catch-all.
+      SNoBreak(loop_stmt, block) => {
+        collect_stmt_bindings(bs, [loop_stmt])
+        collect_stmt_bindings(bs, block)
+      }
+      SLetDestruct(names, _) =>
+        for n in names {
+          bind_add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
+        }
+      // A local function's OWN name is a binding of the ENCLOSING scope —
+      // its calls there must resolve, and a self-call resolves through it
+      // too (the inner frame deliberately does not hold the name). Its
+      // BODY is not collected here: it owns a frame of its own, walked at
+      // the SLocalFunc arm of walk_stmt.
+      SLocalFunc(n, _, _, _, _) =>
+        bind_add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
+      // A bare block is a plain statement list: its bindings join the
+      // enclosing frame, same as an `if` body's.
+      SBlock(body) => collect_stmt_bindings(bs, body)
+      _ => ()
     }
   }
-
-  scan(out, f.body)
-  out
 }
 
 ///|

@@ -1,4 +1,4 @@
-# Classify the 0466 reach A/B.
+# Classify the 0467 reach A/B.
 #
 # The question is ONE-SIDED on purpose: coverage may grow freely, but a single
 # file read less is a regression and must be named out loud. So this reports
@@ -37,7 +37,7 @@ function Rank {
 $head  = Load-Reach '_ab2_head.txt'
 $fixed = Load-Reach '_ab2_fixed.txt'
 
-Write-Host 'coverage A/B -- 0466'
+Write-Host 'coverage A/B -- 0467'
 Write-Host ('  files in HEAD map  : ' + $head.Count)
 Write-Host ('  files in fixed map : ' + $fixed.Count)
 if ($head.Count -ne $fixed.Count) {

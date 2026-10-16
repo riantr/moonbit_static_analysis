@@ -1,9 +1,9 @@
-# Coverage-loss A/B for the uncommitted 0466 change.
+# Coverage-loss A/B for the uncommitted 0467 change.
 #
 # WHAT THIS PROVES, AND WHAT IT CANNOT
 # -----------------------------------
-# The concern: 0466 parses MORE in async and proton than 0465 did (async
-# 330 -> 337 files parsed, proton 115 -> 116, proton withheld 323 -> 59). A
+# The concern: 0467 parses MORE in async and proton than 0466 did (async
+# 337 -> 352 files parsed, proton 116 -> 121, proton withheld 59 -> 53). A
 # move that size must not be pinned on inference, so this builds BOTH parsers
 # from ONE tree and diffs how far the scanner reads in every single file of
 # all six corpora.
@@ -19,8 +19,8 @@
 # working state, and the redirect runs under cmd.exe because PowerShell's `>`
 # re-encodes as UTF-16 and mangles the em dashes in these source comments.
 #
-# The 0466 test files are moved aside for the HEAD build because they pin
-# behaviour the HEAD (0465) parser does not have; leaving them in place would
+# The 0467 test files are moved aside for the HEAD build because they pin
+# behaviour the HEAD (0466) parser does not have; leaving them in place would
 # make the HEAD build fail for a reason that has nothing to do with the
 # measurement. This list is NOT optional bookkeeping: a new test file left out
 # of it fails the HEAD build, and a build failure is indistinguishable from a
@@ -47,21 +47,27 @@ $TARGETS = [ordered]@{
 }
 
 # Every file the change touches, sources AND tests. The tests are here because the
-# "HEAD" build compiles the whole package: a test that pins 0466 behaviour
+# "HEAD" build compiles the whole package: a test that pins 0467 behaviour
 # would fail to build against the HEAD parser, and the build failure would look
 # exactly like a measurement problem. BOTH of the three test entries below are
-# NOT in HEAD at all (0466 added them), which the restore step handles by
+# NOT in HEAD at all (0467 added them), which the restore step handles by
 # leaving them absent -- and which the byte-comparison guard below has to
 # tolerate rather than treat as a mismatch.
 #
-# 0466 touched no lexer/ast/types/interp file, so unlike the 0456+0457 list this
-# one is three entries wide. Re-pointing this list is part of every increment:
-# the previous list's stale entries are harmless (they restore to their own HEAD
-# blob), but a MISSING new test file is fatal.
+# 0467 touched TWO source files, not one: `parser.mbt` for the async function type and
+# `walk.mbt` for 0467b, the binding collector that had never descended into a catch arm.
+# Listing only the parser would have built a "HEAD" side with 0467b still applied, and
+# the diff would have shown a movement it could not explain.
+#
+# Both test files are here for the same reason as ever: the "HEAD" build compiles the
+# whole package, and a test that pins 0467 behaviour fails to build against a HEAD parser
+# -- a build failure is indistinguishable from a measurement problem unless you already
+# know to look for it.
 $CHANGED = @(
   'src/parser/parser.mbt',
-  'src/parser/parser_0466_test.mbt',
-  'src/pipeline/pipeline_0466_test.mbt'
+  'src/walk/walk.mbt',
+  'src/parser/parser_0467_test.mbt',
+  'src/pipeline/pipeline_0467_test.mbt'
 )
 
 function Build-Wasm {
@@ -98,7 +104,7 @@ function Restore-Working {
   }
 }
 
-Write-Host 'coverage A/B -- 0466'
+Write-Host 'coverage A/B -- 0467'
 Write-Host ('  repo   : ' + $root)
 Write-Host ('  HEAD   : ' + ((git rev-parse --short HEAD).Trim()))
 Write-Host ('  change : ' + ((git diff --stat src/parser/parser.mbt) -replace "`r?`n", ' '))

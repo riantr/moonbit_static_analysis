@@ -1518,12 +1518,49 @@ fn Parser::fn_type_annotation(self : Parser) -> String {
   // obvious: the trailing `?` makes the RETURN type optional, it does not lift
   // the group into a nullable function type. `async (A, B) -> R?` is the reading,
   // and the `?` is emitted below by the clause that already existed.
-  let mut out = if self.at_name("async") && self.lparen_at(self.p + 1) {
-    let _ = self.bump() // async
-    "async "
-  } else {
-    ""
-  }
+  // 0467 -- THE HEAD IS NO LONGER DETECTED HERE, and removing it is the fix rather than
+  // a tidy-up.
+  //
+  // This function used to look for `async` itself, which it had to: `fn_type_body`'s
+  // parameter loop routes every element through `type_annotation()`, and back then
+  // `type_annotation()` had no `async` arm, so an inner `async` arrived as an ordinary
+  // type name. 0467 gave `type_annotation()` that arm, so the head is now found on the
+  // way in -- and detecting it a SECOND time here did not merely duplicate work, it
+  // duplicated the HEAD: `(async (Int) -> Unit)?` rendered
+  // `async (async (Int) -> Unit)?`, which parses, reports nothing, and is the wrong
+  // string.
+  //
+  // The mutation gate is what found it: M4 removed exactly these six lines and SURVIVED
+  // every parse-level row, because "it parses" cannot see a doubled annotation. The
+  // row that kills it is in `parser_0467_test.mbt`, and it asserts the STRING.
+  self.fn_type_body("")
+}
+
+///|
+/// The `( Args ) -> R [effect] [?]` body of a function type, with the head already
+/// decided by the caller.
+///
+/// 0467. This was the tail of `fn_type_annotation`, extracted because the SAME
+/// construct is spelled three ways and only one of them worked:
+///
+///     (async (A, B) -> R)?        a parenthesised annotation   -- WORKED (0458)
+///     async (A, B) -> R           a bare parameter annotation  -- parsed=0
+///     -> async (A, B) -> R        a bare return annotation    -- parsed=0
+///
+/// The second reading is `moon check`'s own verdict on the third spelling, measured
+/// by running this analyzer over one file containing each shape, not by reading the
+/// code: `parsed=1` for the parenthesised form and `parsed=0` for both bare ones.
+/// The cause is an ORDERING fact, not a missing keyword: the `async` lookahead in
+/// `fn_type_annotation` sits AFTER its `let _ = self.bump() // (`, so it can only
+/// ever see `async` when something already put a `(` in front of it.
+///
+/// => 判据: a construct that is correct in one position and absent in another is
+/// usually an ENTRY POINT, not a rule. Keeping one body and three thin entry points
+/// is what stops the three from drifting again -- a second copy of the parameter
+/// loop would have been the tidier-looking edit and would have been a fourth
+/// spelling to keep in step.
+fn Parser::fn_type_body(self : Parser, prefix : String) -> String {
+  let mut out = prefix
   let params : Array[String] = []
   while !self.at(TRParen) && !self.at(TEOF) {
     self.skip_seps()
@@ -1633,6 +1670,45 @@ fn Parser::type_annotation(self : Parser) -> String {
   // reach `expect_name`, which reported "expected type name" and ended the file.
   if self.at(TLParen) {
     return self.fn_type_annotation()
+  }
+  // 0467 -- the ASYNC function type with NO parentheses of its own, which is how a
+  // parameter writes it and how a return type writes it:
+  //
+  //     f : async () -> Unit,                             src/task_group.mbt:50
+  //     f : async (Tcp, Addr) -> Unit,                    src/socket/tcp.mbt:143
+  //     f : async (Request, &@io.Reader, ServerConn) -> Unit   src/http/server.mbt:294
+  //     -> async (Int) -> Unit                            the return spelling
+  //
+  // 19 unread files across the two corpora stop on this shape -- 11 async, 8 proton --
+  // and it is the largest single group measured on the tree that shipped as 12b38a3.
+  //
+  // `lparen_at(self.p + 1)` is not a stylistic choice, it is the settled grammar. The
+  // toolchain's own diagnostic for a bare `async` is the whole argument:
+  //
+  //     fn f(g : async) -> Int { .. }
+  //     Parse error, unexpected token `)`, you may expect `(`.
+  //
+  // `_verify/settle_0467_async_param_type.ps1`, row `canary_bare_async`. So there is no
+  // `async` type without a parameter list, and the lookahead is a discriminator rather
+  // than a guard -- written as one anyway, for the same reason 0458 wrote its own as
+  // one. The companion canary is `canary_any_name`: `bogus (Int) -> Unit` REJECTs with
+  // 3002, so this is a KEYWORD slot and not "a name followed by a parenthesised list".
+  // BOTH bumps below, and not one. `fn_type_body` starts INSIDE the parentheses --
+  // `fn_type_annotation` has already consumed the `(` by the time it calls it -- so a
+  // single bump here leaves the cursor sitting ON the `(` and the body reads `(Int)`
+  // as a nested type before tripping over `->` with `expected ')'`. Measured, not
+  // reasoned: the first version bumped only `async` and every one of these shapes
+  // reported `expected ')'` twice.
+  //
+  // The explanation lives HERE rather than inside the arm so that the arm is four lines
+  // of code, which is what makes it a usable mutation anchor. A comment inside it made
+  // the anchor depend on prose, and a mutation anchor that depends on prose is one
+  // `moon fmt` reflow away from being silently retired -- which is exactly what happened
+  // to gate 0460's M4 in the same increment.
+  if self.at_name("async") && self.lparen_at(self.p + 1) {
+    let _ = self.bump() // async
+    let _ = self.bump() // (
+    return self.fn_type_body("async ")
   }
   // `&T` = `Ref[T]`. Consumed here, folded into the name below, so the head
   // name is still a TName and the rest of the parameter list stays in step.

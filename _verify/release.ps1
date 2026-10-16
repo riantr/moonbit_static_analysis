@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1481,44 +1481,66 @@ if ($SkipMutations) {
 # the state that ships. A number copied from a scan taken mid-increment is not a
 # stale baseline, it is a wrong one -- and the release gate is the only thing in
 # this repository positioned to catch it.
-# Tests 783 -> 795: `parser_0466_test.mbt` (6 cases) and `pipeline_0466_test.mbt`
-# (6 cases). Re-pinned after 0466 (`-> T noraise` / `-> T nocancel`) and 0466b (`.. rest`
-# in an array pattern). TWO corpora moved, and proton moved a long way:
+# Tests 795 -> 820: `parser_0467_test.mbt` (13 cases) and `pipeline_0467_test.mbt`
+# (12 cases). Re-pinned after 0467 and 0467b. TWO corpora moved, and async moved a long
+# way -- the largest single-increment gain since the pipe:
 #
-#     async   parsed 330 -> 337   unreliable 691 -> 614   notices 1574 -> 1576
-#     proton  parsed 115 -> 116   unreliable 921 -> 727   withheld 323 -> 59
+#     async   parsed 337 -> 352   unreliable 614 -> 373   withheld 189 -> 115
+#     proton  parsed 116 -> 121   unreliable 727 -> 575   withheld  59 ->  53
 #
-# proton's `withheld` fell by 264 and `unreliable` by 194. `withheld` counts findings
-# the analyzer deliberately does not make inside a file it only partially read -- the
-# "outside the analyzed subset" notices -- so a file that moves from partial to fully
-# read takes its withheld notices with it. That is the mechanism, and it is why a
-# `withheld` drop of this size means reach rather than silence.
+# async's `unreliable` fell 241 and proton's 152. `unreliable` is the count that carries
+# meaning: those files are now read whole instead of stopping at a parse error. `withheld`
+# counts the notices the analyzer deliberately does not make inside a partially-read file,
+# so a drop there is reach rather than silence.
 #
-# 0466b IS THE 0464b SHAPE, THIRD TIME. Unblocking
-# `moonbitlang/async 0.22.4 src/internal/event_loop/fs.mbt` (it carried
-# `-> Unit nocancel` on two signatures) revealed `undefined name 'payload'` TWICE,
-# from `guard! buf is [u32le(_), u32le(mask), .. payload]` -- a name the pattern
-# ITSELF introduces. The reach was legitimate, so the gap was fixed rather than the
-# reach given back.
+# 0467 THE ASYNC FUNCTION TYPE. One construct, THREE spellings, and until this increment
+# exactly one of them parsed:
 #
-# => 判据: a false positive nobody can reach is not a false positive that does not
-# exist. It is a finding whose file has not been read yet, and the only way to tell
-# the two apart is to unblock the corpus and look.
+#     (async (A, B) -> R)?      a parenthesised annotation   -- parsed=1 (0458)
+#     async (A, B) -> R         a bare parameter annotation  -- parsed=0
+#     -> async (A, B) -> R      a bare return annotation    -- parsed=0
 #
-# AND A HARNESS DEFECT THIS PIN IS SHIPPED NEXT TO. `mutate_0465.ps1` and
-# `mutate_0466.ps1` both ended at the closing paren of their mutation lists, so
-# `Write-MutationGateVerdict` never ran and `exit` never ran: a MUST-RED MISS printed
-# loudly and the process still returned 0. 0466's first run is what exposed it -- M3
-# was declared MustRed, the harness printed the miss, and the gate exited 0 anyway.
-# That is the same defect release.ps1 already fixed once in its Stage function, and
-# it means the earlier `mutation gate 0465 True` line was not evidence. Both gates now
-# end in the verdict tail and both re-run GATE OK under it.
+# Measured by running the analyzer over one file per shape, NOT by reading the code. The
+# cause was an ORDERING fact rather than a missing keyword: the `async` lookahead in
+# `fn_type_annotation` sat AFTER its `bump() // (`, so it could only ever see `async` when
+# something had already put a `(` in front of it. The body is now shared
+# (`fn_type_body`) behind three thin entry arms, so the spellings cannot drift again.
+#
+# The grammar is settled in `_verify/settle_0467_async_param_type.ps1`, 17 rows, and two
+# parts of it are not guessable from the symbol. The toolchain's own diagnostic for a bare
+# `async` is the whole first argument --
+#
+#     Parse error, unexpected token `)`, you may expect `(`.
+#
+# -- so the parenthesised list is REQUIRED and `lparen_at` is a discriminator rather than
+# a guard. And `g : bogus (Int) -> Unit` REJECTs with 3002, so the head is a KEYWORD and
+# not any name followed by a parenthesised list; that is what makes gate 0467's M3
+# killable rather than a survivor.
+#
+# 0467b THE BINDING COLLECTOR, WHICH WAS NOT IN THE RANKING AT ALL. Reaching
+# `moonbitlang/async 0.22.4 src/fs/dir.mbt` produced two ACTIONABLE false positives on
+# code `moon check` compiles: `49:26 no visible binding for 'last_path_sep_index'` and
+# `55:13 no visible binding for 'parent'`. Both are bound by a `let` INSIDE A CATCH ARM.
+# `collect_fn_bindings` descends into `SIf`/`SFor`/`SWhile`/`SBlock`, but `catch` is an
+# EXPRESSION, so no arm ever scanned one -- and `walk_stmt`'s `SLet` never binds anything
+# itself, so the pre-pass is the only thing that fills the frame.
+#
+# THAT IS THE 0464b SHAPE FOR THE FOURTH TIME, and gate 0443 had already written the same
+# sentence one level up for `SNoBreak`: "walk_stmt was taught `SNoBreak` and the COLLECTOR
+# was not, and the compiler is silent about a missing arm in a match that has a catch-all".
+# Nobody noticed for years because `Walker::resolve` is gated on `!self.partial`, and
+# every file containing a catch arm was unread.
+#
+# => 判据: a false positive nobody can reach is not a false positive that does not exist.
+# It is a finding whose file has not been read yet, and the only way to tell the two apart
+# is to unblock the corpus and look. The reach was legitimate, so the GAP was fixed rather
+# than the reach given back.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=32 actionable=0 notices=678 unreliable=124 withheld=16 total=802'
   'moonbit_image'   = 'files=18 parsed=15 actionable=0 notices=170 unreliable=66 withheld=0 total=236'
-  'async'           = 'files=419 parsed=337 actionable=0 notices=1576 unreliable=614 withheld=189 total=2190'
-  'proton'          = 'files=137 parsed=116 actionable=0 notices=1613 unreliable=727 withheld=59 total=2340'
+  'async'           = 'files=419 parsed=352 actionable=0 notices=1637 unreliable=373 withheld=115 total=2010'
+  'proton'          = 'files=137 parsed=121 actionable=0 notices=1643 unreliable=575 withheld=53 total=2218'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{
