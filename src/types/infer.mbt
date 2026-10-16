@@ -352,6 +352,35 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       TUnknown
     }
     EField(base, _) => self.ty_of(base, TUnknown)
+    // A `..` CHAIN LINK. The receiver and every argument are typed exactly as an
+    // `EMethodCall` does, for the same reasons -- an undefined name inside an
+    // argument is still found.
+    //
+    // THE RESULT IS THE RECEIVER'S TYPE, and that is the one place this lens
+    // departs from `EMethodCall`'s TUnknown. `recv..name(args)` evaluates to
+    // `recv`, which is measured rather than read off the symbol
+    // (`_verify/settle_0465_dotdot_chain.ps1`): `S::new()..get().v` is accepted
+    // where `S::new().get().v` REJECTs with 4028, and `get` returns Int -- so the
+    // `..` link cannot have produced an Int. Typing this by the METHOD's return
+    // type, which is what folding it into `EMethodCall` or `EBin` would do, would
+    // make every one of the 33 corpus files parse and be wrong about the type of
+    // every chain in them.
+    //
+    // A qualifier receiver (`@pkg..f(..)`) is typed as TUnknown: `@pkg` is a
+    // package and not a value, so there is no receiver type to report.
+    EDotDot(base, _, args, _) =>
+      if base.is_qualifier() {
+        for arg in args {
+          ignore(self.ty_of(arg, TUnknown))
+        }
+        TUnknown
+      } else {
+        let bt = self.ty_of(base, TUnknown)
+        for arg in args {
+          ignore(self.ty_of(arg, TUnknown))
+        }
+        bt
+      }
     EIndex(base, idx) => {
       let bt = self.ty_of(base, TUnknown)
       let it = self.ty_of(idx, TUnknown)

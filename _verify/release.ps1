@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1481,11 +1481,36 @@ if ($SkipMutations) {
 # the state that ships. A number copied from a scan taken mid-increment is not a
 # stale baseline, it is a wrong one -- and the release gate is the only thing in
 # this repository positioned to catch it.
+# Tests 768 -> 783: `parser_0465_test.mbt` (6 cases) and `pipeline_0465_test.mbt`
+# (9 cases). Re-pinned after 0465 (the `..` chain link) and 0465b (loops in
+# expression position). ONE corpus moved, and it moved further than the parse work
+# alone accounts for:
+#
+#     async   parsed 325 -> 330   unreliable 733 -> 691   withheld 210 -> 189
+#             notices 1550 -> 1554   total 2283 -> 2245
+#
+# `parsed` 331 BEFORE 0465b and 330 after it: the honest `for`/`while` expression arm
+# gives back one file that the old code read all the way through -- by way of a
+# finding that was a lie (`undefined name 'for'`, a KEYWORD resolved as a binding).
+# That is the right trade and worth stating plainly, because the old number was the
+# better-looking one. `unreliable` fell 42, which is the count that carries meaning:
+# those files are now read whole instead of stopping at a parse error.
+#
+# 0465b IS THE 0464b SHAPE AGAIN. `src/websocket/conn.mbt` was blocked 80 lines ABOVE
+# its `let kind : MessageKind = for frame = ... { ... }`, so the false positive had no
+# path to be observed at all. Teaching the chain unblocked the file and revealed it.
+# The reach was legitimate, so the GAP was fixed rather than the reach given back --
+# and `match` and `if` in the identical position, already reporting honestly, are the
+# control that made it a two-keyword gap rather than a general one.
+#
+# => 判据: a false positive nobody can reach is not a false positive that does not
+# exist. It is a finding whose file has not been read yet, and the only way to tell
+# the two apart is to unblock the corpus and look.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=32 actionable=0 notices=678 unreliable=124 withheld=16 total=802'
   'moonbit_image'   = 'files=18 parsed=15 actionable=0 notices=170 unreliable=66 withheld=0 total=236'
-  'async'           = 'files=419 parsed=325 actionable=0 notices=1550 unreliable=733 withheld=210 total=2283'
+  'async'           = 'files=419 parsed=330 actionable=0 notices=1554 unreliable=691 withheld=189 total=2245'
   'proton'          = 'files=137 parsed=115 actionable=0 notices=1484 unreliable=921 withheld=323 total=2405'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

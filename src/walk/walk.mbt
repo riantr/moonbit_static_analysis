@@ -615,6 +615,22 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
         self.walk_expr(a)
       }
     }
+    // A `..` CHAIN LINK, walked exactly as a method call is, and for the same two
+    // reasons: the receiver is an evaluated expression -- so a name read only there
+    // counts, and `output..write(name)` being a use of `output` is the same
+    // half-vanishing defect `ECatch` and `EComp` were built to stop -- and a
+    // qualifier receiver is a package rather than a binding.
+    //
+    // The method NAME is not resolved, for the `EMethodCall` reason: it is a member
+    // of the receiver's type, not a name in this file.
+    EDotDot(base, _, args, _) => {
+      if !base.is_qualifier() {
+        self.walk_expr(base)
+      }
+      for a in args {
+        self.walk_expr(a)
+      }
+    }
     EField(base, _) =>
       // the `$` rule: walk the object only — the
       // field name is a column/tag, not a variable

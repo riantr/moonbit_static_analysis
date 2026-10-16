@@ -1,0 +1,247 @@
+# Next-increment evidence: the `..` METHOD-CHAIN continuation (0465 candidate)
+
+Measured 2026-10-16 against the pinned corpora, working tree = 0464.
+
+## A `..` IN THE SOURCE IS TWO CONSTRUCTS, AND A GREP THAT COUNTS THEM MERGES BOTH
+
+The 0459 lesson again ("character literal" covered two lexer gaps), in a shape that
+looks even more like one thing than a byte literal does. Two uses of `..`:
+
+  1. STRUCT-UPDATE SPREAD  `{ ..base, f: v }`   -- handled at parser.mbt:4321
+  2. LEADING-DOT CHAIN     `expr` / `..m(x)` / `.m(y)`  -- NOT handled
+
+Counting `^\s*\.\.[A-Za-z_]` gives 106 sites in moui and 164 in labeler, which makes
+the chain look like the largest remaining `..` win in the repository. That reading is
+false: essentially all of moui's and all of labeler's are spread #1, and the parser
+has read them for several releases.
+
+## THE DISCRIMINATOR, AND THE TWO THAT WERE WRONG FIRST
+
+Three passes were needed to count this. The two that failed are recorded because the
+failure signature is reusable, and because one of them produced a number that was
+already written down and would have been believed.
+
+PASS 1 -- "does the line end with a comma". WRONG. A spread base is routinely CALLED,
+so `..noop_modifier(),` ends with `),` -- paren then comma. It reported 58 chain sites
+in moui, every one of them a spread.
+
+PASS 2 -- "is the NEXT non-blank line dot-led". ALSO WRONG, and it UNDERCOUNTED. It
+only sees the leading-newline form, so it misses `output..write(line)..write(s)` and
+every chain whose next line is ordinary code. It reported async at 110 sites / 10
+files.
+
+PASS 3 -- the test that holds: a site is a CHAIN link iff it matches
+`\.\.[A-Za-z_]\w*\s*\(` AND its trimmed line does NOT end in `,` or `}`. A spread is a
+field of a struct literal, so it ends in a separator or the closing brace; a chain
+link is a postfix continuation, so it ends in whatever the call ends in. Controls,
+printed and eyeballed in the same run:
+
+    corpus     files  chain_sites  chain_files   spread_call_sites
+    moui        551           0            0          51  (6 files)
+    labeler      35           0            0           1  (1 file)
+    image        17           0            0           0
+    async       362         180           33           1  (1 file)
+    proton      114           0            0           0
+    contract      2           0            0           0
+
+  sampled CHAIN (async): `..send_response(200, "OK", extra_headers={`,
+                       `..write_reader(file)`, `dir.read_all()..sort()`
+  sampled SPREAD (moui): `..noop_modifier(),`, `{ ..noop_modifier(), identity_kind: ... }`
+
+=> 判据: a classifier for a construct that shares a spelling with another construct
+has to be shown its OWN output, not just its totals. Passes 1 and 2 both produced a
+plausible number; only printing the classified lines showed that pass 1 was counting
+the wrong thing entirely and pass 2 was counting half of the right thing. The same
+shape as a message tally that "covers 3+ constructs" -- the message is not the
+construct, and neither is a total.
+
+## SO `..` IS AN ASYNC-ONLY CONSTRUCT
+
+moui and labeler write ZERO chain links -- their 51 and 1 sites are spreads, handled at
+parser.mbt:4321. That is why moui is 608/608 parsed while async still has files unread,
+and it is the whole difference: moui's `..` is a field inside a struct literal, async's
+is a postfix continuation.
+
+    async src/http/send.mbt:333-337
+        let content_length = self
+          ..write(path)
+          ..write(b" HTTP/1.1\r\n")
+          ..write(self.headers)
+          .send_headers(extra_headers)
+
+    async src/http/parser_wbtest.mbt:44-47
+        w
+        ..write("GET / HTTP/1.1\r\n")
+        ..write("Host: x.y.org\r\n")
+        .write("User-Agent: MoonBit\r\n\r\n")
+
+    async examples/http_file_server/main.mbt:44   the INLINE form, pass 2 missed it
+        output..write(line_prefix(line_no))..write(line).write("\n")
+
+The ceiling is therefore 33 async files, not the 10 that pass 2 reported -- and the
+earlier "5 files, `a..b()..c()`" line in settle_0464_pipe_operators.ps1 was itself
+pass-2 shaped, so 5 was an undercount too. The authoritative figure is still the
+per-FILE FIRST BLOCKER from a scan, since most of those 33 are blocked earlier on
+`<|`, `async fn`, or a `for` header.
+
+## WHAT THE PARSER DOES TODAY, AND WHERE IT STOPS
+
+`parse_postfix_from` (parser.mbt:3644) does `bump()` then `expect_name("field name")`
+on a `TDot`, and `expect_name` (parser.mbt:1390-1400) reports `expected \{what}` for
+any token that is not a `TName`. `..m(x)` arrives as TDot TDot TName, so the second
+TDot is handed to `expect_name`. The async tally for "expected field name" is 11x.
+
+That last step is now MEASURED, not derived. Fixture dir under %TEMP%, scanned with
+`moonrun _build/wasm/debug/build/moonbit_static_analysis.wasm <dir> --extern-iface-dir
+.repos`, with a positive control in every run:
+
+    control.mbt   { ..base, v }            CLEAN    <- the spread, already handled
+    single.mbt    self / .write(head)      CLEAN    <- single-dot chain, 2346 works
+    chain.mbt     self / ..write / ..write / .write   NOTPARSE expected field name
+    v_inline          self..write(p).write(h)       NOTPARSE expected field name
+    v_lastdouble      self / ..write(p)   (no trailing `.`)   NOTPARSE
+    v_noargs          self / ..flush      / .write(p) NOTPARSE
+    v_fieldlink       self / ..width      / .write(p) NOTPARSE
+    v_startsdd        ..write(p) / .write(p)  (statement starts with `..`) NOTPARSE
+
+    PARSED 2/8, actionable=0, 8 withheld
+
+Every double-dot variant fails and both controls stay clean, so the controls did their
+job: the harness is not simply failing everything. The failure is ONE place --
+`parse_postfix_from` hands the second TDot to `expect_name` -- and every shape above
+reaches it, so the fix is not per-shape.
+
+`actionable=0` with 8 withheld is the correct behaviour for a construct the analyzer
+does not model: it reports a gap about itself, not a defect in the scanned code.
+
+Still to settle against the TOOLCHAIN (the fixture above measures this analyzer, not
+MoonBit): whether `..m(x)` and `.m(y)` are the same operator or differ in what the
+chain evaluates to. That decides whether the fix can be "consume the extra dot" or
+needs a distinct node.
+
+There IS a leading-dot continuation block already, at parser.mbt:2346, and its own
+comment records a stated limit worth quoting before anything is changed:
+
+    "the statement-level path can only offer an `EBigInt` placeholder there"
+
+i.e. `expr` / `.m(x)` is read, but the RECEIVER IS REPLACED by `EBigInt`. So a fix for
+the double-dot form must decide whether it inherits that placeholder. That is a
+modelling question with a wrong answer available (a chain whose receiver is dropped
+loses every name the receiver mentioned), and it is exactly what a settle should pin.
+
+## SETTLED, against the toolchain: `_verify/settle_0465_dotdot_chain.ps1`, 13 rows, GATE OK
+
+    ctl_ok             ACCEPT                     control: the package can accept
+    ctl_bad            REJECT(4021)               control: check can reject
+    dot_chain          ACCEPT                     control: the shape under test's sibling
+    dd_leading         ACCEPT     self / ..bump() / .get()
+    dd_inline          ACCEPT     S::new()..bump().get()
+    dd_two_links       ACCEPT     S::new()..bump()..bump().get()
+    dd_after_int       ACCEPT     S::new()..get().v      <- DECISIVE
+    dot_after_int      REJECT(4028)  S::new().get().v    <- control for the row above
+    dd_final_link      ACCEPT     `..` as the LAST link, no trailing `.`
+    dd_noarg_link      ACCEPT     ..reset(), no arguments
+    dd_unknown_name    REJECT(4015,3002)
+    dd_arity           REJECT(4080)   ..two(1) where two/2 takes 2
+    dd_field           REJECT(4015,3002)   ..v, where v is a field not a method
+    dd_bare_name       REJECT(4014,3002)   ..bump, no argument list -> PARENS REQUIRED
+
+THE RULE, all three parts measured rather than assumed:
+
+    `a..m(x)`  CALLS m on a, DISCARDS the result, and EVALUATES TO `a`.
+
+  - value is the RECEIVER, not the result: `dd_after_int` accepts `S::new()..get().v`
+    where `get` returns `Int`, while `dot_after_int` rejects the `.` spelling. If `..`
+    were a spelling of `.`, these two rows would agree.
+  - it IS a call: `dd_arity` rejects with 4080, an arity error, so the arguments are
+    bound and typechecked. A projection would not do that.
+  - the link must be callable: `dd_field` rejects `..v` on a field. So this cannot be
+    modelled as `EField`, and it cannot be modelled as `EBin` either -- the type lens
+    would give it the METHOD's return type, and the settled value is the receiver's.
+
+=> the AST needs its own node. An `EDotDot(recv, name, args)` whose type is the
+receiver's and whose interp value is the receiver's, with the arguments still walked
+and typed. Modelling it as `EField`/`ECall` would parse every one of the 33 files and
+be wrong about every one of them, which is worse than not reading them.
+
+## WHAT SHIPPING IT COST, MEASURED
+
+    corpus              parsed        unreliable    withheld    actionable
+    async  before 0465     325              733          210            0
+    async  after  0465     331              661          191            1   <- !
+    async  after 0465b     330              691          189            0
+
+`actionable` went to 1 and then back to 0, and the middle row is the interesting one.
+
+0465b: `undefined name 'for'` at `async src/websocket/conn.mbt:486` --
+`let kind : MessageKind = for frame = self.recv_frame_header() { ... }`. A KEYWORD
+resolved as a binding, on code `moon check` compiles.
+
+`parse_atom` had arms for `if`, `match`, `try`, `async`, `fn`, `true`, `false` and
+none for a loop keyword, so `for` fell through to the generic TName arm. `match` and
+`if` in the IDENTICAL position already reported "X expression is outside the analyzed
+subset" -- that is the control which makes this a two-keyword gap rather than a
+general one, and it is what a fixture for "keywords in expression position" would
+have collapsed into a single vague claim.
+
+The file was blocked 80 lines ABOVE that line until 0465, so the finding had no path
+to be observed. 0464b's `errdefer` exactly: unblocking does not create findings, it
+reveals ones whose reach was blocked, and the honest response is to fix the GAP.
+
+=> async `parsed` went 331 -> 330, i.e. the fix gave a file BACK. The old number was
+the better-looking one and it was bought with a lie. 0465b extracts
+`parse_while_stmt` / `parse_for_stmt` out of `parse_stmt` and calls them from
+expression position, so the token handling is not duplicated and cannot drift.
+
+## TWO BUGS THE FIXTURES CAUGHT AND `moon check --deny-warn` COULD NOT
+
+Both shipped in the first draft of the parser arm and both were invisible to every
+compile-time check. They are the reason the house rule is a fixture, not a warning.
+
+1. `Parser::expect` BUMPS on success. The arm had `expect(TLParen, ..)` followed by
+   another `bump()`, which consumed the FIRST ARGUMENT -- `..write(path)` then parsed
+   from the token after `path`. Four fixtures reported `parameter 'path' may not be
+   used`. The tree was still perfectly well typed: `EDotDot(EName("self"), "write",
+   [], [])` is a legal node, just the wrong one.
+2. A missing `(` fell through to `parse_call_args` at whatever token the cursor was on
+   and CASCADED a second report. Not cosmetic: the NOTPARSE message tally is what
+   RANKS the remaining work, so one defect counted as two messages would send the
+   next increment after a shape that does not exist.
+
+=> 判据: "it compiles" is not a statement about the tree. A dropped argument yields a
+smaller and still well-typed tree, so the only control that catches it is one that
+counts what the node carries. That is `parser_0465_test.mbt`'s "the first `..` argument
+is not dropped", and it is the row M3 is killed by.
+
+## STILL NOT SUPPORTED, AND NOT CLAIMED
+
+`for x = expr { body }` in EXPRESSION position -- a single binder with `=` and no `in`,
+which is the shape at `conn.mbt:486` itself. It reports honestly (`unexpected token
+=`) rather than being read, so it costs reach and not correctness. It is a separate
+for-form with its own settle, and folding it in here would repeat the mistake this
+file is about.
+
+## WHY THE CORPUS COULD NOT HAVE SETTLED THIS
+
+Read the shape in place, at `async src/http/send.mbt:333-343`:
+
+    let content_length = self
+      ..write(path)
+      ..write(b" HTTP/1.1\r\n")
+      ..write(self.headers)
+      .send_headers(extra_headers)
+    ...
+    if content_length is Some(len) {
+
+Under BOTH rules this binds `send_headers`'s result to `content_length`, because every
+`..` link in real code is a method that returns the receiver (`write`). Real code never
+chains a method that changes the type -- so the corpus is CONSISTENT with both
+semantics and cannot tell them apart. Only `dd_after_int`, which chains `get` returning
+`Int` on purpose, separates them.
+
+=> 判据: a settle that mirrors the corpus settles nothing when the corpus is
+self-consistent. The fixture has to be built to DISCRIMINATE the two readings, which
+means deliberately writing the shape the corpus never uses. "Every corpus site has a
+chain that returns the receiver" is a fact about the corpus, not evidence about the
+operator. This is the same move as 0464's `2 |> inc * 3`, which pinned PRECEDENCE
+only because it was written wrong on purpose.

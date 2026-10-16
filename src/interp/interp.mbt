@@ -848,6 +848,35 @@ fn Interp::eval(
       let _ = self.eval(base, env)
       AAny
     }
+    // A `..` CHAIN LINK. The arguments and the receiver are evaluated, and the
+    // VALUE IS THE RECEIVER'S -- the one place this lens does not return AAny
+    // where `EMethodCall` does.
+    //
+    // That is not optimism, it is the settled reading
+    // (`_verify/settle_0465_dotdot_chain.ps1`): `recv..name(args)` calls `name`,
+    // discards its result, and evaluates to `recv`. `S::new()..get().v` is accepted
+    // where `S::new().get().v` REJECTs with 4028, and `get` returns Int, so the `..`
+    // link demonstrably did not produce an Int. Handing back the receiver is the
+    // claim the settle licenses; AAny would be discarding a fact the language
+    // guarantees, and the method's return value would be inventing one.
+    //
+    // WHAT IS NOT MODELLED is the write a mutating method performs. `w..write(b"x")`
+    // hands on the receiver as it was read, and no mutation is recorded -- the same
+    // fail-toward-silence trade `EMethodCall` makes, and a statement about what is
+    // untracked rather than a guess about the result.
+    //
+    // A qualifier receiver is not evaluated, for the same reason the walk does not
+    // resolve it, and yields AAny because a package has no value.
+    EDotDot(base, _, args, _) => {
+      let mut out : AbsVal = AAny
+      if !base.is_qualifier() {
+        out = self.eval(base, env)
+      }
+      for a in args {
+        let _ = self.eval(a, env)
+      }
+      out
+    }
     EIndex(base, idx) => {
       let b = self.eval(base, env)
       let _ = self.eval(idx, env)

@@ -2492,67 +2492,10 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     return self.parse_guard()
   }
   if self.at_name("while") {
-    let _ = self.bump()
-    let cond = self.parse_expr()
-    let (body, _) = self.parse_block(false)
-    return self.maybe_nobreak({ span: sp, kind: @ast.SWhile(cond, body), })
+    return self.parse_while_stmt(sp)
   }
   if self.at_name("for") {
-    // MoonBit has TWO for forms. `for x in xs` reads a binder; the C-style
-    // three-clause form does not, and reading its head as a binder made the
-    // parser demand `in` right after it — `expected 'in'`, the error that
-    // stopped 15 of riantr/pyroduct's 32 unreadable files (600+ occurrences of
-    // `for i = 0; i < n; i = i + 1` in that one corpus).
-    //
-    // Which form it is is decided by LOOKING, not by parsing, so the binder
-    // path below keeps every test it has.
-    if self.is_c_style_for() {
-      return self.parse_c_for()
-    }
-    let _ = self.bump()
-    // One binder, or a comma-separated list of them: `for x in xs` is the
-    // common form, `for k, v in entries { ... }` is pair destructuring
-    // (measured blockers: `for k, _ in other.types {`, `for i, _ in
-    // verdicts {`). A tuple-paren pattern `for (a, b) in ...` is not
-    // modelled and still reports. The comma is only another binder when a
-    // pattern name follows it — `peek2_is_pattern_name` also refuses `in`,
-    // so a malformed `for k, in` cannot eat the keyword.
-    let (first, vsp) = self.expect_name("loop variable")
-    let names : Array[String] = [first]
-    while self.at(TComma) && self.peek2_is_pattern_name() {
-      let _ = self.bump()
-      let (n, _) = self.expect_name("loop variable")
-      names.push(n)
-    }
-    if !self.at_name("in") {
-      self.err("expected 'in'", self.span())
-    } else {
-      let _ = self.bump()
-    }
-    let seq = self.parse_expr()
-    let (body, _) = self.parse_block(false)
-    if names.length() == 1 {
-      return self.maybe_nobreak({
-        span: sp,
-        kind: @ast.SFor(names[0], vsp, seq, body),
-      })
-    }
-    // Multi-binder desugar. The lenses only know single-binder SFor, so
-    // the sugar is expanded here rather than taught to every lens:
-    //   for k, v in entries { body }
-    // becomes
-    //   for $pair in entries { let (k, v) = $pair; body }
-    // `$` never lexes into a name, so the head binder cannot collide with
-    // user code; a `_` binder is covered by the audit's discard exemption.
-    let body2 : Array[@ast.Stmt] = []
-    body2.push({
-      span: sp,
-      kind: @ast.SLetDestruct(names, { span: sp, kind: @ast.EName("$pair"), }),
-    })
-    for st in body {
-      body2.push(st)
-    }
-    return { span: sp, kind: @ast.SFor("$pair", vsp, seq, body2), }
+    return self.parse_for_stmt(sp)
   }
   if self.at(TLBrace) && !self.at_struct_literal() {
     // A bare `{ ... }` block in statement position — `fn main`'s inner
@@ -2705,6 +2648,119 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
 /// The empty-block case is why this uses `parse_block` and not a loop that
 /// requires at least one statement: rejecting `nobreak { }` would reject valid
 /// MoonBit, and the probe that says so is above.
+
+///|
+/// `while cond { body }`, as a STATEMENT. Extracted from `parse_stmt` in 0465b so
+/// that expression position can consume the identical construct -- see
+/// `parse_loop_as_expr`, which is the whole reason this exists.
+fn Parser::parse_while_stmt(self : Parser, sp : @core.Span) -> @ast.Stmt {
+  let _ = self.bump()
+  let cond = self.parse_expr()
+  let (body, _) = self.parse_block(false)
+  self.maybe_nobreak({ span: sp, kind: @ast.SWhile(cond, body), })
+}
+
+///|
+/// `for` as a STATEMENT, in all three of its forms. Extracted from `parse_stmt` in
+/// 0465b for the reason `parse_while_stmt` was.
+fn Parser::parse_for_stmt(self : Parser, sp : @core.Span) -> @ast.Stmt {
+  // MoonBit has TWO for forms. `for x in xs` reads a binder; the C-style
+  // three-clause form does not, and reading its head as a binder made the
+  // parser demand `in` right after it — `expected 'in'`, the error that
+  // stopped 15 of riantr/pyroduct's 32 unreadable files (600+ occurrences of
+  // `for i = 0; i < n; i = i + 1` in that one corpus).
+  //
+  // Which form it is is decided by LOOKING, not by parsing, so the binder
+  // path below keeps every test it has.
+  if self.is_c_style_for() {
+    return self.parse_c_for()
+  }
+  let _ = self.bump()
+  // One binder, or a comma-separated list of them: `for x in xs` is the
+  // common form, `for k, v in entries { ... }` is pair destructuring
+  // (measured blockers: `for k, _ in other.types {`, `for i, _ in
+  // verdicts {`). A tuple-paren pattern `for (a, b) in ...` is not
+  // modelled and still reports. The comma is only another binder when a
+  // pattern name follows it — `peek2_is_pattern_name` also refuses `in`,
+  // so a malformed `for k, in` cannot eat the keyword.
+  let (first, vsp) = self.expect_name("loop variable")
+  let names : Array[String] = [first]
+  while self.at(TComma) && self.peek2_is_pattern_name() {
+    let _ = self.bump()
+    let (n, _) = self.expect_name("loop variable")
+    names.push(n)
+  }
+  if !self.at_name("in") {
+    self.err("expected 'in'", self.span())
+  } else {
+    let _ = self.bump()
+  }
+  let seq = self.parse_expr()
+  let (body, _) = self.parse_block(false)
+  if names.length() == 1 {
+    return self.maybe_nobreak({
+      span: sp,
+      kind: @ast.SFor(names[0], vsp, seq, body),
+    })
+  }
+  // Multi-binder desugar. The lenses only know single-binder SFor, so
+  // the sugar is expanded here rather than taught to every lens:
+  //   for k, v in entries { body }
+  // becomes
+  //   for $pair in entries { let (k, v) = $pair; body }
+  // `$` never lexes into a name, so the head binder cannot collide with
+  // user code; a `_` binder is covered by the audit's discard exemption.
+  let body2 : Array[@ast.Stmt] = []
+  body2.push({
+    span: sp,
+    kind: @ast.SLetDestruct(names, { span: sp, kind: @ast.EName("$pair"), }),
+  })
+  for st in body {
+    body2.push(st)
+  }
+  { span: sp, kind: @ast.SFor("$pair", vsp, seq, body2), }
+}
+
+///|
+/// A LOOP IN EXPRESSION POSITION -- `let kind : MessageKind = for frame = .. { .. }`
+/// at `moonbitlang/async 0.22.4 src/websocket/conn.mbt:486`.
+///
+/// THE LOOP IS CONSUMED AND REPORTED HONESTLY, AND NEVER TURNED INTO A NAME. That
+/// last part is the fix. `parse_atom` had arms for `if`, `match`, `try`, `async`,
+/// `fn`, `true` and `false` and none for a loop keyword, so `for` fell through to
+/// the generic `TName` arm, became `EName("for")`, and the structural walk resolved
+/// it as a binding: `undefined name 'for'`, ACTIONABLE, on code `moon check`
+/// compiles. `while` did the same. `match` and `if` in the very same position
+/// already reported "X expression is outside the analyzed subset", which is what
+/// makes this a gap in two keywords rather than a general one.
+///
+/// REACHABLE ONLY AFTER 0465. The `..` chain in `conn.mbt` used to stop the parse
+/// 80 lines above line 486, so the finding had no path to be observed. Teaching the
+/// chain unblocked the file and revealed it, which is the 0464b `errdefer` case
+/// again: unblocking a file does not create findings, it reveals ones whose reach
+/// was previously blocked, and the honest response is to fix the gap rather than
+/// give the reach back.
+///
+/// The loop body is SKIPPED WHOLE and the value is `EBigInt` -- the same treatment
+/// `if` and `match` get, because the subset has no loop-valued expression and no
+/// node to put one in. The STATEMENT is parsed by the same routines statement
+/// position uses, so the token consumption is identical and cannot drift; only the
+/// result is discarded. `EBigInt` rather than a guessed value is the existing
+/// rule: const_eval must not fold a bound it never read.
+fn Parser::parse_loop_as_expr(self : Parser, sp : @core.Span) -> @ast.Expr {
+  if self.at_name("while") {
+    let _ = self.parse_while_stmt(sp)
+  } else {
+    let _ = self.parse_for_stmt(sp)
+  }
+  self.note_skip(
+    "loop expression is outside the analyzed subset; it was read but not analysed",
+    sp,
+  )
+  { span: sp, kind: @ast.EBigInt, }
+}
+
+///|
 fn Parser::maybe_nobreak(self : Parser, loop_stmt : @ast.Stmt) -> @ast.Stmt {
   if !self.at_name("nobreak") {
     return loop_stmt
@@ -3644,6 +3700,57 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
 fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
   let mut e = start
   while true {
+    // `recv..name(args)` -- the `..` CHAIN LINK, 180 sites in 33 corpus files.
+    //
+    // CHECKED BEFORE THE SINGLE-DOT BRANCH BELOW, and that ordering is the whole
+    // fix: `..` arrives as TWO TDot tokens (the lexer has `..<` and `..<=` but no
+    // bare `..` one), so the single-dot branch used to bump the first and hand
+    // the second to `expect_name`, which reported `expected field name` -- a
+    // message naming neither the operator nor the receiver. Measured on fixtures:
+    // all six double-dot shapes NOTPARSE that way while the spread and the
+    // single-dot chain stayed CLEAN.
+    //
+    // NOT A SPELLING OF `recv.name(args)`. `recv..name(args)` calls `name`,
+    // discards its result, and evaluates to `recv`, so the node is `EDotDot` and
+    // not `EMethodCall` -- see `@ast.EDotDot` and
+    // `_verify/settle_0465_dotdot_chain.ps1`.
+    //
+    // THE PARENTHESES ARE REQUIRED, measured rather than assumed: `dd_bare_name`
+    // writes `..bump` with no argument list over a real method and is REJECTed
+    // (4014, 3002). So this is not a shortcut for a common case, it is the
+    // grammar, and a missing `(` reports here instead of producing a node the
+    // toolchain would not accept.
+    if self.at(TDot) && self.at_next(TDot) {
+      let csp = self.span()
+      let _ = self.bump()
+      let _ = self.bump()
+      let (m, _) = self.expect_name("method name after '..'")
+      // STOP AT A MISSING `(`, do not fall through to parsing arguments.
+      //
+      // `expect` only bumps when the token matches, so on a bare `..name` the
+      // cursor is still sitting on the line break and `parse_call_args` runs at
+      // the wrong token. That produced a CASCADE -- `..bump` reported twice, once
+      // as `expected '(' after '..' method name` and once more from the argument
+      // loop -- and a cascade is not cosmetic: the NOTPARSE message tally is what
+      // ranks the remaining work, so one defect counted as two messages would
+      // send the next increment after a shape that does not exist. This file
+      // reproduces it: 1x in the tally, 2 findings withheld.
+      if !self.at(TLParen) {
+        self.err("expected '(' after '..' method name", self.span())
+        break
+      }
+      // The `(` is bumped HERE rather than by an `expect`, because `expect` bumps
+      // only on success and this arm needs to know whether it did. Written the other
+      // way round it consumed the FIRST ARGUMENT: `..write(path)` parsed from the
+      // token after `path`, so `path` never reached the AST and `parameter 'path' may
+      // not be used` fired on four fixtures with `moon check --deny-warn` completely
+      // clean -- a dropped argument still yields a well-typed tree.
+      let _ = self.bump()
+      let (args, labels) = self.parse_call_args()
+      self.expect(TRParen, "')'")
+      e = { span: csp, kind: @ast.EDotDot(e, m, args, labels), }
+      continue
+    }
     if self.at(TDot) {
       let _ = self.bump()
       // `pair.0` — a tuple FIELD is an Int literal, not a name. The number
@@ -4753,6 +4860,23 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       )
       { span: sp, kind: @ast.EBigInt, }
     }
+    TName("for") | TName("while") =>
+      // A loop in EXPRESSION position, which is legal MoonBit:
+      //     let kind : MessageKind = for frame = self.recv_frame_header() { .. }
+      // at `moonbitlang/async 0.22.4 src/websocket/conn.mbt:486`.
+      //
+      // These two had NO arm here, so `for` fell through to the generic TName arm
+      // and became `EName("for")` -- and a keyword is not a binding, so the
+      // structural walk reported `undefined name 'for'` as an ACTIONABLE finding on
+      // code `moon check` compiles. `while` did the same. `match` and `if` in the
+      // identical position already report honestly, which is the control for this
+      // row: the defect is the two missing arms, not expression position itself.
+      //
+      // The construct is consumed by the SAME routines statement position uses, so
+      // the token stream cannot drift between the two positions, and the body is
+      // skipped whole -- the subset has no loop-valued expression. See
+      // `parse_loop_as_expr`.
+      self.parse_loop_as_expr(sp)
     TName("match") => {
       // A `match` expression, statement or value position alike. The subset
       // has no pattern matching and no node for the arms, so the arms are

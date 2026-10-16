@@ -143,6 +143,49 @@ pub(all) enum EKind {
   ///
   /// The labels are `ECall`'s, carried for the same reason.
   EMethodCall(Expr, String, Array[Expr], Array[String])
+  /// A `..` CHAIN LINK: `recv..name(args)`.
+  ///
+  /// THIS IS NOT A SPELLING OF `recv.name(args)`, and treating it as one was the
+  /// reading the symbol's shape suggested and the corpus cannot refute. Settled
+  /// against the toolchain in `_verify/settle_0465_dotdot_chain.ps1`, 13 rows,
+  /// all controls held:
+  ///
+  ///     S::new()..get().v   ACCEPT      <- `get` returns Int, and this is S.v
+  ///     S::new().get().v    REJECT(4028)  <- the `.` spelling of the same thing
+  ///
+  /// So `recv..name(args)` CALLS `name`, DISCARDS its result, and EVALUATES TO
+  /// `recv`. The two rows above are the same expression spelled two ways and they
+  /// disagree, which is the only thing that settles it: real code only chains
+  /// methods that RETURN the receiver, so all 180 corpus sites are consistent with
+  /// both readings and cannot tell them apart. `dd_arity` REJECTs with 4080, so the
+  /// arguments are really bound and this is a call and not a projection;
+  /// `dd_field` REJECTs `..v` on a field, so the link must be callable.
+  ///
+  /// IT CANNOT BE `EMethodCall` with the result ignored, and cannot be `EBin`
+  /// either. Both would type the node by the METHOD's return type, and the settled
+  /// value is the receiver's -- so every lens would be wrong about every one of the
+  /// 33 corpus files while parsing all of them, which is worse than not reading
+  /// them. The type lens returns the RECEIVER's type and the behavioral lens
+  /// returns the RECEIVER's value; that is the claim, and the settle is the reason.
+  ///
+  /// WHAT IT DOES NOT COVER: the statement-level form
+  ///
+  ///     w
+  ///     ..write(b"GET / HTTP/1.1\r\n")
+  ///     ..write(self.headers)
+  ///     .send_headers(extra)
+  ///
+  /// arrives with the receiver already consumed by the previous statement, so the
+  /// parser can only offer `EBigInt` there -- the same stated limit the single-dot
+  /// form at `parse_postfix_from`'s caller already carries. The receiver is still
+  /// READ, because the previous statement walked it, so no name goes unreported; what
+  /// is lost is its TYPE. The inline form (`output..write(name).write(":")`, 65
+  /// sites across 29 files) goes through the ordinary postfix loop and keeps it.
+  ///
+  /// A MUTATING method is not modelled -- the value handed on is the receiver as it
+  /// was read, and no write is recorded. That is the fail-toward-silence direction
+  /// and is shared with `EMethodCall`.
+  EDotDot(Expr, String, Array[Expr], Array[String])
   /// A list/set comprehension: `[ for pat in <sources> => body ]` and its
   /// block-bodied sibling `[ for pat in <sources> { body } ]`.
   ///

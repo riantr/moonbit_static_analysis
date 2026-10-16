@@ -53,6 +53,7 @@ pub(all) enum EKind {
   EField(Expr, String)
   EIndex(Expr, Expr)
   EMethodCall(Expr, String, Array[Expr], Array[String])
+  EDotDot(Expr, String, Array[Expr], Array[String])
   EComp(Array[String], Array[Expr], Expr)
   EStruct(String, Array[(String, Expr)])
   ETuple(Array[Expr])
