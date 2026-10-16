@@ -344,6 +344,30 @@ pub(all) enum EKind {
   /// BASE's type for the same reason `ECatch` does -- the arms are alternative
   /// control paths, not extra operands.
   ENoRaise(Expr, Array[CatchArm])
+  /// A `match` whose ARMS were skipped: `match subject { pattern => value, .. }`.
+  ///
+  /// ONLY THE SUBJECT IS CARRIED, and carrying it is the whole point. Until 0469 the
+  /// parser yielded the subject as the match's own VALUE, which was wrong twice over:
+  ///
+  ///   - the VALUE is the join of the arms, not the subject, so
+  ///     `let vok = match bd { .. }` typed `vok` as the subject's type. Measured on
+  ///     moonbit_image 0.3.7 `png.mbt:980`: `operand of '!' must be bool, got 'int'`
+  ///     on code `moon check` compiles.
+  ///   - dropping the subject instead fixes that but LOSES ITS READS, so an undefined
+  ///     name used only as a match subject stops being reported -- a true positive
+  ///     traded for the absence of a false one, which is not a trade worth making.
+  ///
+  /// So this variant carries the subject and says nothing about the value. `walk_expr`
+  /// descends into it (the subject is real, analysed code), `ty_of` answers `Unknown`
+  /// (the arms' join is not available and guessing it is the bug this node exists to
+  /// end), and `eval` evaluates the subject for its effects.
+  ///
+  /// THE PRECEDENT IS `ECatch`, and the two differ in exactly the place that matters:
+  /// `ECatch` TYPES as its base because `expr catch { .. }` really does produce the
+  /// base's value when no arm matches. A `match` does NOT -- its value comes from the
+  /// arms, which are the part this analyzer does not model. Same shape, opposite answer,
+  /// and the reason they cannot share one variant.
+  EMatch(Expr)
 } derive(Eq)
 
 ///|

@@ -179,12 +179,39 @@ function Invoke-MutationGate {
   }
 
   $absent = @()
+  $ambiguous = @()
   foreach ($m in $live) {
     $findText = ([string]$m.Find).Replace("`r`n", $nl)
-    if ($texts[$m.File].IndexOf($findText, [System.StringComparison]::Ordinal) -lt 0) {
+    $hay = $texts[$m.File]
+    # COUNT, do not merely test presence. `mutate_lib` removes the FIRST literal match, so
+    # an anchor that occurs twice silently targets the wrong site while the gate reports
+    # a clean kill. Four anchors have now been found that way, across three increments:
+    #   0467  a DEDENT that made a `Find` stop matching, indistinguishable from a deletion
+    #   0468  a RENAME (`fn_body` -> `value_block`) in 0426's M3/M4
+    #   0468  a DUPLICATED block: 0433's M4 named `defer` and removed `errdefer`
+    #   0469  the same rename again in 0433's M1 (`let scrutinee` -> `let subject`)
+    # => 判据: a pre-flight that tests PRESENCE cannot distinguish a unique anchor from a
+    # duplicated one, and a wrong site is a green result that means nothing.
+    #
+    # This WARNS and does not fail. Several gates legitimately anchor on text that occurs
+    # more than once, and turning that into an error would abort working gates over a
+    # diagnostic. The count is printed so it is in front of whoever reads the output.
+    $count = 0
+    $step = [Math]::Max(1, $findText.Length)
+    $idx = $hay.IndexOf($findText, [System.StringComparison]::Ordinal)
+    while ($idx -ge 0) {
+      $count++
+      $idx = $hay.IndexOf($findText, $idx + $step, [System.StringComparison]::Ordinal)
+    }
+    if ($count -eq 0) {
       $absent += $m.Name
       Write-Output ('PREFLIGHT MISS: ' + $m.Name + '  (' + $m.File + ')')
       Write-Output ('  looking for: |' + (($findText -split "`n")[0]) + '|')
+    } elseif ($count -gt 1) {
+      $ambiguous += $m.Name
+      Write-Output ('PREFLIGHT AMBIGUOUS x' + $count + ': ' + $m.Name + '  (' + $m.File + ')')
+      Write-Output ('  the FIRST occurrence is the one that will be mutated -- check that')
+      Write-Output ('  it is the one the mutation names.')
     }
   }
   if ($absent.Count -gt 0) {
@@ -194,7 +221,11 @@ function Invoke-MutationGate {
     $script:MutationGateFailures += ($Name + ' (preflight)')
     return
   }
-  Write-Output ('Pre-flight: all ' + $live.Count + ' live patterns present.')
+  if ($ambiguous.Count -gt 0) {
+    Write-Output ('Pre-flight: all ' + $live.Count + ' live patterns present, ' + $ambiguous.Count + ' AMBIGUOUS (see above).')
+  } else {
+    Write-Output ('Pre-flight: all ' + $live.Count + ' live patterns present and UNIQUE.')
+  }
 
   # ---- BASELINE --------------------------------------------------------------
   # Rule 1. Without this, every count below is uninterpretable.

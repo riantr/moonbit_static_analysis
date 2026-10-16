@@ -1157,7 +1157,17 @@ test "an optional type annotation folds into the annotation string" {
 }
 
 ///|
-test "a match expression is skipped whole and yields its scrutinee" {
+/// 0469. THIS ROW USED TO BE CALLED "yields its scrutinee" AND ASSERTED `@ast.EName(x)
+/// where `x` was the scrutinee's own name. That was not a description of the construct,
+/// it was a PIN ON THE DEFECT: `let v = match e { .. }` bound `v` to `e`, so `v` carried
+/// the SUBJECT's type instead of the match's, and moonbit_image 0.3.7 `png.mbt:980`
+/// reported `operand of '!' must be bool, got 'int'` on code `moon check` compiles.
+///
+/// The first fix yielded the same bare `EBigInt` the anonymous-`fn` arm uses, and that was
+/// ALSO wrong: it fixed the type and LOST THE SUBJECT'S READS, turning two true positives
+/// in `pipeline_0433_test.mbt` into false negatives. The node now carries the subject and
+/// says nothing about the value -- see `@ast.EMatch`.
+test "a match expression is skipped whole and yields EMatch, not the subject" {
   let r = @parser.parse(
     "fn f(e) -> Int {\n  let v = match e { Some(x) => x, None => 0 }\n  v\n}\n",
   )
@@ -1171,7 +1181,17 @@ test "a match expression is skipped whole and yields its scrutinee" {
       match body[0].kind {
         @ast.SLet(_, _, init) =>
           match init.kind {
-            @ast.EName(x) => assert_eq(x, "e")
+            // 0469. `EMatch`, carrying the subject. NOT `@ast.EName("e")`, which is
+            // what this arm used to build and what made `!v` an integer.
+            @ast.EMatch(inner) =>
+              // The subject is CARRIED, not discarded. This is the half that keeps
+              // undefined names in a match subject reported, and it is the reason a bare
+              // opaque node was not the fix: the first version of this increment
+              // yielded one and two `pipeline_0433` rows went red with it.
+              match inner.kind {
+                @ast.EName(x) => assert_eq(x, "e")
+                _ => assert_true(false)
+              }
             _ => assert_true(false)
           }
         _ => assert_true(false)

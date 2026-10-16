@@ -921,6 +921,15 @@ fn Interp::eval(
       }
       out
     }
+    // 0469. A `match` whose arms were skipped. The subject is evaluated for its
+    // EFFECTS -- it is real code that runs -- and its value is discarded, because the
+    // match's value comes from the arms and the arms are not modelled. `ABottom` rather
+    // than `AAny`: `AAny` is absorbed by every operator arm (interp.mbt:1076, :1094),
+    // which would make this indistinguishable from evaluating the subject.
+    EMatch(subject) => {
+      let _ = self.eval(subject, env)
+      ABottom
+    }
     // A tuple literal; `(e)` grouping is folded at parse time, so every
     // ETuple is a real tuple. Elements are evaluated; there is no tuple
     // value in the lattice, so the result is the type name.

@@ -56,23 +56,45 @@ $PARSER = 'src\parser\parser.mbt'
 
 Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
 
+  # RE-POINTED BY 0469 for the same reason as `mutate_0426`'s M3/M4: this anchor spans two
+  # lines of the `match` arm, and 0469 renamed `let scrutinee` to `let subject` because the
+  # node was no longer the match's VALUE. The rename moved the text and nothing else --
+  # `skip_seps` before `parse_expr` is still the decision M1 removes -- so this is a
+  # re-point and not a retirement. See `mutate_0426.ps1`'s header for the general form.
   @{
     Name = 'M1 a match subject on the next line is not read at all'
     File = $PARSER
     Find = @'
       self.skip_seps()
-      let scrutinee = self.parse_expr()
+      let subject = self.parse_expr()
 '@.Replace("`r`n", "`n")
     Repl = @'
-      let scrutinee = self.parse_expr()
+      let subject = self.parse_expr()
 '@.Replace("`r`n", "`n")
     MustRed = 'a match subject on the next line is read, not skipped'
   },
 
+  # RE-ANCHORED BY 0469, AND FOUND BY THE NEW PRE-FLIGHT rather than by a failure. M2's
+  # `Find` spans the WHOLE arm, and `errdefer` (:2585) and `defer` (:2593) are five lines
+  # of identical text, so it matched TWICE and -- like M4 before it -- mutated `errdefer`
+  # while naming `defer`. It still killed, and its `MustRed` still confirmed, which is the
+  # dangerous part: the named test reddened only incidentally, because a broken `errdefer`
+  # arm swallows tokens and shifts a later `defer` in the same fixture.
+  #
+  # `mutate_lib`'s pre-flight now COUNTS occurrences and prints this for every ambiguous
+  # anchor. It printed it on this gate's FIRST RUN after the change, which is the whole
+  # argument for counting rather than testing presence.
+  #
+  # THE DECLARED GAP: with M2 and M4 both anchored here, `errdefer`'s identical arm has no
+  # mutation. That is stated rather than papered over -- `errdefer { .. }` and `defer
+  # { .. }` are the same five lines, so a guard for one is a guard for neither until
+  # someone separates them.
   @{
     Name = 'M2 defer accepts only a block, so defer <expr> dies on the keyword'
     File = $PARSER
     Find = @'
+  if self.at_name("defer") {
+    let _ = self.bump()
     if self.at(TLBrace) {
       let (body, _) = self.parse_block(false)
       return { span: sp, kind: @ast.SBlock(body), }
@@ -80,6 +102,8 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     return { span: sp, kind: @ast.STail(self.parse_expr()), }
 '@.Replace("`r`n", "`n")
     Repl = @'
+  if self.at_name("defer") {
+    let _ = self.bump()
     let (body, _) = self.parse_block(false)
     return { span: sp, kind: @ast.SBlock(body), }
 '@.Replace("`r`n", "`n")

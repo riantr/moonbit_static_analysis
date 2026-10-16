@@ -64,6 +64,7 @@ pub(all) enum EKind {
   ECast(Expr)
   ECatch(Expr, Array[CatchArm])
   ENoRaise(Expr, Array[CatchArm])
+  EMatch(Expr)
 } derive(Eq)
 
 pub(all) struct ElseIf {

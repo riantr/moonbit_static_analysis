@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1595,10 +1595,56 @@ if ($SkipMutations) {
 # => 判据: a survivor is not always an untested property. Sometimes it is a mutation whose
 # RESULT is unobservable, and the two want opposite responses.
 #
+# --- 0469: a `match`'s value is the ARMS, not the subject -------------------------
+#
+# `parser.mbt`'s `TName("match")` arm used to read the subject and YIELD IT. That is the
+# one place in the parser where "the expression I had to parse to keep the token stream in
+# step" and "the value this expression produces" are different things: a `match`'s value is
+# the join of its arms, and the arms are what this analyzer skips.
+#
+#   moui             actionable 0 -> 0   UNCHANGED, byte for byte
+#   moonbit_labeler  actionable 1 -> 1   total 803 -> 801
+#   moonbit_image    actionable 1 -> 0   total 231 -> 230
+#   async            actionable 0 -> 0   UNCHANGED, byte for byte
+#   proton           actionable 0 -> 0   UNCHANGED, byte for byte
+#   proton_contract  actionable 0 -> 0   UNCHANGED, byte for byte
+#
+# FOUR OF SIX ARE BYTE-IDENTICAL, and that is the result being claimed: a fix that moved
+# every corpus would be a fix whose scope nobody measured. moonbit_image's actionable goes
+# to ZERO -- that is the whole increment. labeler's stays at 1 because its finding is the
+# unrelated `for`-header/argument-index defect 0468 made reachable.
+#
+# THE OBVIOUS FIX WAS WRONG, WAS WRITTEN FIRST, AND WAS MEASURED BEFORE IT WAS KEPT.
+# Yielding the bare `EBigInt` the anonymous-`fn` arm uses fixes the type and LOSES THE
+# SUBJECT'S READS, turning two TRUE positives in `pipeline_0433_test.mbt` into false
+# negatives. It passed this corpus stage and failed two unit tests.
+# => 判据: "the fix removed the finding" is not the same claim as "the fix removed the
+# defect". A trade of one true positive for the absence of a false one is not a trade.
+# `EMatch(subject)` carries the subject and says nothing about the value: `walk_expr`
+# descends, `ty_of` answers Unknown, `eval` runs the subject for its effects and yields
+# `ABottom` rather than `AAny` (which every operator arm absorbs).
+#
+# IT CANNOT BE FOLDED INTO `ECatch` DESPITE THE IDENTICAL SHAPE. `ECatch` TYPES as its
+# base because `expr catch { .. }` really does produce the base's value when no arm
+# matches. A `match` does not -- its value comes from the arms. Same shape, opposite
+# answer, and that difference is the entire argument for a new variant.
+#
+# A TEST WAS CORRECTED IN PLACE RATHER THAN LEFT: it was named "a match expression is
+# skipped whole and yields its scrutinee" and asserted `@ast.EName("e")`. That was not a
+# description of the construct, it was a PIN ON THE DEFECT.
+#
+# AND TWO ROWS WERE FOUND VACUOUS BY THE GATE. `UnusedParam == 0` for a parameter read
+# only inside a match subject cannot fail, because a `match` silences `UnusedParam` for its
+# whole enclosing function by design. M2 measured it: deleting the walk arm reddens three
+# rows and not that one. It is recorded in place rather than deleted.
+# => 判据: before keeping a negative row, ask whether ANY mutation can turn it red.
+#
+# GATE 0469: 4/4 KILLED, no declared survivors, every restore byte-identical.
+#
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
-  'moonbit_labeler' = 'files=37 parsed=33 actionable=1 notices=711 unreliable=91 withheld=16 total=803'
-  'moonbit_image'   = 'files=18 parsed=17 actionable=1 notices=207 unreliable=23 withheld=0 total=231'
+  'moonbit_labeler' = 'files=37 parsed=33 actionable=1 notices=711 unreliable=89 withheld=16 total=801'
+  'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=23 withheld=0 total=230'
   'async'           = 'files=419 parsed=390 actionable=0 notices=1686 unreliable=285 withheld=49 total=1971'
   'proton'          = 'files=137 parsed=122 actionable=0 notices=1645 unreliable=544 withheld=35 total=2189'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'

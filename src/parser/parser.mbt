@@ -5120,30 +5120,38 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       // has no pattern matching and no node for the arms, so the arms are
       // skipped whole — balanced braces, whatever they hold.
       //
-      // KNOWN DEFECT, measured at 0.4.29. This arm YIELDS THE SCRUTINEE, and
-      // the scrutinee is NOT the match's value. So
+      // 0469: THIS ARM NOW YIELDS AN OPAQUE NODE. Until this increment it yielded
+      // the SCRUTINEE, and the scrutinee is NOT the match's value. So
       //     let vok = match bd { .. }
-      // binds `vok` to `bd` itself: same VALUE, same TYPE, same reads. Measured
-      // on moonbit_image 0.3.7 `png.mbt:980`, which reports
+      // bound `vok` to `bd` itself: same VALUE, same TYPE, same reads. Measured on
+      // moonbit_image 0.3.7 `png.mbt:980`, which reported
       //     operand of '!' must be bool, got 'int'
-      // for `!vok` because `vok` is an Int where a Bool was required.
+      // for `!vok` because `vok` was an Int where a Bool was required. That was
+      // this increment's `actionable` on moonbit_image, and it was NOT caused by
+      // 0468 -- 0468 only made the file readable.
       //
-      // An earlier version of this comment claimed the scrutinee is "an
-      // ordinary expression" and that yielding it "drops nothing". That claim
-      // is FALSE and is recorded here rather than deleted, because it is the
-      // reason the defect survived: conflating "the expression I had to parse
-      // to keep the token stream in step" with "the value this expression
-      // produces". For every other construct in this file those are the same
-      // expression. For `match` they are not — the value comes from the arms,
-      // which are exactly what gets skipped.
+      // THE DEFECT AND WHY IT SURVIVED, kept rather than deleted. The comment here
+      // used to say the scrutinee "is an ordinary expression" and that yielding it
+      // "drops nothing". That claim is FALSE, and it is the reason the defect lived:
+      // it conflated "the expression I had to parse to keep the token stream in
+      // step" with "the value this expression produces". For every other construct
+      // in this file those are the same expression. For `match` they are not --
+      // the value comes from the ARMS, which are exactly what gets skipped.
       //
-      // The trade is real but was stated backwards. Parsing the scrutinee is
-      // REQUIRED; yielding it is not. The sibling `TName("fn")` arm below has
-      // precisely the same shape — it reads a whole body and drops it — and
-      // says so honestly, yielding an opaque node. `match` is the inconsistent
-      // one. The cost of the correct behaviour is that reads inside the
-      // scrutinee leave the lens; that cost is worth paying, because the
-      // alternative is not "fewer reads", it is "the wrong type".
+      // Parsing the scrutinee is REQUIRED; yielding it is not. The sibling
+      // `TName("fn")` arm below has precisely the same shape -- it reads a whole
+      // body and drops it -- and said so honestly all along, yielding an opaque
+      // node. `match` was the inconsistent one, and this arm is now consistent
+      // with it.
+      //
+      // THE PRICE, STATED RATHER THAN DISCOVERED LATER: reads inside the scrutinee
+      // leave the lens. `match f(x) { .. }` no longer counts `f` and `x` as reads,
+      // so a binding used ONLY as a match subject can now report as unused. That
+      // is the same trade the anonymous-`fn` arm has always made, and it is the
+      // right one: the alternative is not "fewer reads", it is "the wrong type",
+      // and a wrong TYPE manufactures findings on correct code while a missing READ
+      // only risks missing some. The corpora were re-measured after this change
+      // rather than after it was argued for -- see `_verify/release.ps1`.
       //
       // The SUBJECT may start on the NEXT LINE. `match` alone at the end of a
       // line, with the scrutinee and its arms following, is the shape wzzc-dev/
@@ -5168,14 +5176,24 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       // already assumes. Implementing the rejected spelling as well would accept
       // something `moon check` refuses, and the `_` that second form fails on is
       // the whole point of recording both.
+      // 0469. The subject is PARSED so the cursor lands after it -- that is what keeps
+      // the token stream in step, so what FOLLOWS the match is analysed -- and it is
+      // CARRIED rather than discarded, because it is real code whose reads are real.
+      // What is NOT carried is the match's value: that comes from the arms, and the arms
+      // are skipped. `EMatch(subject)` says exactly that much and nothing more.
+      //
+      // THE COMMENT SITS ABOVE BOTH LINES ON PURPOSE. `skip_seps` immediately before
+      // `parse_expr` is what lets the subject start on the next line, and M1 of
+      // `mutate_0433.ps1` removes that call as a two-line anchor. A comment wedged
+      // between them breaks the adjacency without changing a single behaviour.
       self.skip_seps()
-      let scrutinee = self.parse_expr()
+      let subject = self.parse_expr()
       self.skip_braces()
       self.note_skip(
         "match expression is outside the analyzed subset; it was read but not analysed",
         sp,
       )
-      scrutinee
+      { span: sp, kind: @ast.EMatch(subject), }
     }
     TName("fn") =>
       // An anonymous function literal in expression position:

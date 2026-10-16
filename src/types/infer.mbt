@@ -461,6 +461,17 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       }
       tail_ty
     }
+    // 0469. A `match` whose arms were skipped. The value is the JOIN OF THE ARMS and
+    // the arms are exactly what this analyzer does not model, so the honest answer is
+    // `TUnknown`.
+    //
+    // The subject is NOT the answer, and answering with it was the bug this ends:
+    // moonbit_image 0.3.7 `png.mbt:980` reported `operand of '!' must be bool, got
+    // 'int'` because `let vok = match bd { .. }` typed `vok` as `bd`'s type. The
+    // subject is still TYPED by the lenses that descend into it -- `walk_expr` does,
+    // so an undefined name in it is still reported -- which is why this arm returns
+    // Unknown WITHOUT typing the subject as a whole.
+    EMatch(_) => TUnknown
     // A tuple literal; `(e)` grouping is folded away at parse time, so every
     // ETuple is a real tuple. Elements are typed; there is no tuple Ty to
     // name, so the result is unknown.

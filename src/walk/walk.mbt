@@ -682,6 +682,12 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       for st in body {
         self.walk_stmt(st)
       }
+    // 0469. A `match` whose arms were skipped. Only the SUBJECT is carried, and the
+    // subject is real analysed code: `match compute(x) { .. }` still counts `compute`
+    // and `x` as reads. Without this arm the walk would lose them and an undefined
+    // name used only as a match subject would stop being reported -- a true positive
+    // traded for the absence of a false one.
+    EMatch(subject) => self.walk_expr(subject)
     ETuple(elems) =>
       for x in elems {
         self.walk_expr(x)
@@ -1097,6 +1103,9 @@ fn collect_expr_bindings(bs : Array[Binding], e : @ast.Expr) -> Unit {
     // the whole reason the node exists rather than collapsing to its tail at
     // parse time.
     EBlock(body) => collect_stmt_bindings(bs, body)
+    // 0469. The match SUBJECT, for the same reason `walk_expr` walks it: it is an
+    // expression and it can carry a binding inside a `catch` or a block.
+    EMatch(subject) => collect_expr_bindings(bs, subject)
     // 0468. ARGUMENTS ARE EXPRESSIONS, so a block -- or a `catch`, or anything
     // else that binds -- can sit in one. `Bytes::from_array({ let copy = ..;
     // copy })` in `gif.mbt` is the measured case.
