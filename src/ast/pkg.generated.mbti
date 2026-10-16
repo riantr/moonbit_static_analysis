@@ -56,6 +56,7 @@ pub(all) enum EKind {
   EDotDot(Expr, String, Array[Expr], Array[String])
   EComp(Array[String], Array[Expr], Expr)
   EStruct(String, Array[(String, Expr)])
+  EBlock(Array[Stmt])
   ETuple(Array[Expr])
   ERange(Expr, Expr)
   ETupleField(Expr, Int)

@@ -907,6 +907,20 @@ fn Interp::eval(
       }
       AType("Struct")
     }
+    // A block used as an EXPRESSION, `let x = { .. }`. The earlier statements
+    // run for their effects and the TAIL is the value, so the tail is routed
+    // to `eval` rather than to `exec_stmt` — executing it would discard the
+    // value the `let` exists to capture.
+    EBlock(body) => {
+      let mut out = AAny
+      for st in body {
+        match st.kind {
+          @ast.STail(t) => out = self.eval(t, env)
+          _ => self.exec_stmt(st, env)
+        }
+      }
+      out
+    }
     // A tuple literal; `(e)` grouping is folded at parse time, so every
     // ETuple is a real tuple. Elements are evaluated; there is no tuple
     // value in the lattice, so the result is the type name.

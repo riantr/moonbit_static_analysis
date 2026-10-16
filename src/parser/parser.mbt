@@ -2271,14 +2271,25 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
 /// Parse a `{ ... }` block and return its statements TOGETHER WITH the span of
 /// the closing brace.
 ///
-/// `fn_body` marks the block that carries a function's VALUE, and it is the only
-/// thing that distinguishes a tail expression from an ordinary one. Only in a
-/// function body is a trailing expression what the function returns;
+/// `value_block` marks the block whose VALUE is its tail, and it is the only
+/// thing that distinguishes a tail expression from an ordinary one. In a
+/// function body a trailing expression is what the function returns;
 /// `fn f() -> Int { 1 }` returns 1, while `fn g() -> Int { while c { 1 } }`
 /// returns nothing at all. The same block parser reads loop bodies, `if` arms
 /// and bare blocks, so without the flag it cannot tell those apart -- and
 /// guessing wrong is silent, because a discarded value looks exactly like a
 /// returned one until a caller tries to use it.
+///
+/// RENAMED FROM `fn_body` BY 0468, and the rename is the fix's other half. The
+/// flag does not mean "this is a function body" -- it means "this block's last
+/// statement is its value" -- and a block in the RHS of a `let` is a second
+/// place that is true. Leaving the name alone would have let the next reader
+/// read `parse_block(false)` at the `EBlock` call site as a considered
+/// decision, when it was actually the bug: the block's two lenses key off
+/// `STail`, so with the flag false no `EBlock` body ever contained one,
+/// `Infer::ty_of` returned `TUnknown` for every block and `Interp::eval`
+/// returned `AAny`. Both arms were dead code and the corpus numbers were
+/// unmoved by them.
 ///
 /// The span is why the return is a tuple. `SFunc` / `SLocalFunc` used to carry
 /// the header span only, so a function's extent was unknown to everything
@@ -2293,7 +2304,7 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
 ///|
 fn Parser::parse_block(
   self : Parser,
-  fn_body : Bool,
+  value_block : Bool,
 ) -> (Array[@ast.Stmt], @core.Span) {
   self.expect(TLBrace, "'{'")
   let body : Array[@ast.Stmt] = []
@@ -2345,7 +2356,7 @@ fn Parser::parse_block(
     // `skip_seps`, because that is what consumes the newline or `;` in front of
     // `}` — after it, every final statement looks like the last one, including
     // one followed by several blank lines or a stray separator.
-    if fn_body && self.at(TRBrace) {
+    if value_block && self.at(TRBrace) {
       match st.kind {
         SExpr(e) => {
           body.push({ span: st.span, kind: @ast.STail(e), })
@@ -4728,6 +4739,48 @@ fn Parser::at_struct_literal(self : Parser) -> Bool {
   }
   match (self.toks[i], self.toks[i + 1]) {
     (TName(_), TColon) | (TName(_), TComma) => true
+    // `{ a }` — a literal whose ONLY field is the shorthand, so the brace holds a
+    // name and then the close brace and matches none of the other shapes.
+    //
+    // ADDED BY 0468, and it is not optional. Settled against the toolchain in
+    // `_verify/settle_0468_let_block_rhs.ps1`: `fn f() -> S { let a = 1
+    // let x = { a } x }` is ACCEPTed as a one-field `S`. Without this arm the
+    // discriminator answers false for that brace, the expression path stops
+    // treating it as a literal, and a perfectly good struct literal is rewritten
+    // as a block -- a regression that would have IMPROVED every corpus count
+    // while quietly changing what the analyzer means.
+    //
+    // It costs nothing, and that is MEASURED rather than argued. The settle carries
+    // two independent negatives, and they are the whole safety argument:
+    //
+    //   neg_bare_name            REJECT [4033]   fn f() -> Int { let x = { b }; x }
+    //   ambig_shorthand_one_noann REJECT [4014]  the same with the name `a`
+    //
+    // The first is the one that matters. `{ b }` with `b` an ordinary local Int is
+    // INDISTINGUISHABLE in shape from a one-field struct literal -- there is no
+    // annotation, no comma, no colon -- and the toolchain refuses it. So there is no
+    // legal unannotated `{ <name> }` BLOCK for this arm to capture: every brace it
+    // matches really is a literal. (It was once called `block_bare_name` and sat in the
+    // `block_` family, which asserted the opposite; it REJECTed the whole time and
+    // nothing asserted it. Re-measured 2026-10-17 and renamed.)
+    //
+    // A block can never begin with a bare name either -- every statement form starts
+    // with a keyword or `(` -- which is why the widened pattern costs nothing a second
+    // way.
+    (TName(_), TRBrace) => true
+    // A QUOTED KEY, `{ "a": 1 }` — 0452's map literal. Added by 0468 AFTER FOUR
+    // 0452 TESTS WENT RED, and the reason is worth keeping: a quoted key arrives
+    // as `TStr`, not `TName`, so it matches none of the shapes above and every map
+    // literal was being routed to the BLOCK path.
+    //
+    // The arm is unconditional on the SECOND token, and that is not laziness. A
+    // statement can never begin with a string literal -- every statement form
+    // starts with a keyword or `(` -- so a brace whose first token is a string is
+    // a literal whatever follows it. Settled, not assumed: `_verify/settle_0468_
+    // let_block_rhs.ps1` measures `{ "a": 1 }` as ACCEPT and `{ "a" }` as REJECT
+    // (4014), and BOTH must reach the field grammar -- the second so the missing
+    // colon is still reported instead of the file being silently read.
+    (TStr(_, _), _) => true
     // `{ ..base, ... }` — the struct update form, whose first field starts with
     // the two TDot tokens of a bare `..` rather than with a name.
     (TDot, TDot) => true
@@ -4961,6 +5014,41 @@ fn Parser::parse_fn_literal(self : Parser, sp : @core.Span) -> @ast.Expr {
 ///|
 fn Parser::parse_atom(self : Parser) -> @ast.Expr {
   let sp = self.span()
+  // A brace is the one atom whose reading needs a decision BEFORE the cursor moves:
+  // `at_struct_literal` reads the token one past it, and `parse_block` wants the
+  // brace still unconsumed. So it is settled here, once, and the bump below never
+  // sees the ambiguity.
+  //
+  // Until 0468 every brace reached the atom's TLBrace arm, and a block
+  // (`let x = { 1 }`) reached the FIELD grammar, which rejected the content and
+  // reported `expected a struct literal field here` at the brace. That was the
+  // first blocker on ~10 files across four corpora: five async files share the
+  // identical line `let _unused : Unit = {`, plus `let n = {`, `let status = {`,
+  // `let fxl : HDecoder = {` and `let y_cover : Double = {`.
+  //
+  // Settled in `_verify/settle_0468_let_block_rhs.ps1` (scaffolding-verified):
+  // `{ 1 }`, `{ let y = 1; y + 1 }`, `{ }` and the nested `{ { 1 } }` are all
+  // ACCEPTed by the toolchain, so they are blocks. `{ a }` is ALSO accepted -- as
+  // a ONE-FIELD LITERAL -- which is why `at_struct_literal` was widened with
+  // (TName, TRBrace) in the same increment. Deciding here without that widening
+  // would have been a regression wearing a fix: the corpus counts would have
+  // improved while a good struct literal silently became a block.
+  if self.at(TLBrace) && !self.at_struct_literal() {
+    // `true`, NOT `false`, and that is the whole difference between reading the
+    // block's value and reading the file. `parse_block` marks a trailing
+    // expression as `STail` only under this flag, and BOTH block lenses key off
+    // `STail` -- `Infer::ty_of` returns `tail_ty` and `Interp::eval` assigns `out`
+    // from it. With `false` no `EBlock` body ever contained one, so every block
+    // typed `TUnknown` and evaluated `AAny`, and those two arms were dead code.
+    //
+    // The corpus counts could not tell: `walk_stmt` reads an `SExpr` tail exactly
+    // as well as an `STail` one, so the tree was walked, the files were parsed and
+    // every measured number came out the same. => 判据: a construct can be READ
+    // correctly and still carry no value. Asserting the NODE is the only row that
+    // sees this, and it is why the tail row is a test and not a comment.
+    let (body, _) = self.parse_block(true)
+    return { span: sp, kind: @ast.EBlock(body), }
+  }
   match self.bump() {
     TInt(i) => { span: sp, kind: @ast.EInt(i), }
     TBigInt => { span: sp, kind: @ast.EBigInt, }
@@ -5030,16 +5118,44 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     TName("match") => {
       // A `match` expression, statement or value position alike. The subset
       // has no pattern matching and no node for the arms, so the arms are
-      // skipped whole — balanced braces, whatever they hold. The SCRUTINEE
-      // is read and yielded: it is an ordinary expression, and dropping it
-      // would drop its reads — the same trade the comprehension's `sources`
-      // made.
+      // skipped whole — balanced braces, whatever they hold.
+      //
+      // KNOWN DEFECT, measured at 0.4.29. This arm YIELDS THE SCRUTINEE, and
+      // the scrutinee is NOT the match's value. So
+      //     let vok = match bd { .. }
+      // binds `vok` to `bd` itself: same VALUE, same TYPE, same reads. Measured
+      // on moonbit_image 0.3.7 `png.mbt:980`, which reports
+      //     operand of '!' must be bool, got 'int'
+      // for `!vok` because `vok` is an Int where a Bool was required.
+      //
+      // An earlier version of this comment claimed the scrutinee is "an
+      // ordinary expression" and that yielding it "drops nothing". That claim
+      // is FALSE and is recorded here rather than deleted, because it is the
+      // reason the defect survived: conflating "the expression I had to parse
+      // to keep the token stream in step" with "the value this expression
+      // produces". For every other construct in this file those are the same
+      // expression. For `match` they are not — the value comes from the arms,
+      // which are exactly what gets skipped.
+      //
+      // The trade is real but was stated backwards. Parsing the scrutinee is
+      // REQUIRED; yielding it is not. The sibling `TName("fn")` arm below has
+      // precisely the same shape — it reads a whole body and drops it — and
+      // says so honestly, yielding an opaque node. `match` is the inconsistent
+      // one. The cost of the correct behaviour is that reads inside the
+      // scrutinee leave the lens; that cost is worth paying, because the
+      // alternative is not "fewer reads", it is "the wrong type".
       //
       // The SUBJECT may start on the NEXT LINE. `match` alone at the end of a
       // line, with the scrutinee and its arms following, is the shape wzzc-dev/
       // moui 0.1.12 writes throughout -- `views/form/form_field.mbt:42`,
       // `runtime/scroll_to_key.mbt:30`, `runtime/runtime_events.mbt:358` -- and
-      // it was the largest single blocker left at 0.4.30.
+      // it was the largest single blocker this increment closed.
+      //
+      // That sentence used to read "the largest single blocker left at 0.4.30".
+      // Measured wrong: `moon.mod` is `0.4.29` now and `git log ed410cd..HEAD --
+      // moon.mod` is EMPTY, so the version never changed between the commit that
+      // wrote the pin and HEAD. 0.4.30 never shipped; the pin pointed at a
+      // version that does not exist.
       //
       // Settled with the toolchain, not inferred (`_verify/grammar_probe.ps1`,
       // one form per package with a broken canary alongside):
@@ -5304,13 +5420,10 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
         }
       }
     TLBrace => {
-      // A bare `{ ... }` in expression position — a struct literal without
-      // the `Type::` prefix, in a context where the type is already known.
-      // The field grammar is the same as the prefixed form; the path is ""
-      // because there is none. This arm is also what a plain block in
-      // expression position (`let x = { 1 }`) reaches: the field grammar
-      // rejects the content and reports at the brace, which is the boundary
-      // the scanner trusts.
+      // Reached only when `at_struct_literal` said yes -- the guard above returned
+      // for every other brace. A struct literal without the `Type::` prefix, in a
+      // context where the type is already known. The field grammar is the same as
+      // the prefixed form; the path is "" because there is none.
       let fields = self.parse_struct_fields(sp)
       { span: sp, kind: @ast.EStruct("", fields), }
     }

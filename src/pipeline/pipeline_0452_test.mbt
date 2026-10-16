@@ -140,11 +140,34 @@ test "0452: a quoted key without a colon is reported as a missing colon" {
 /// truncates the file, and truncating the file is what turned one unreadable
 /// construct into several unreadable files over and over in this repository.
 ///
-/// The failing literal is followed by two more declarations, and the test asserts
-/// the file's own structure survived -- `probe` is still called at the end.
+/// THE FIXTURE CHANGED IN 0468, and the old one was not a malformed literal at all.
+/// It was `let m = { 1 }`, and this file asserted that cost exactly one parse
+/// failure -- because until 0468 a brace in expression position was always sent to
+/// the struct-literal field grammar, and `{ 1 }` failed there. It is not malformed:
+/// `_verify/settle_0468_let_block_rhs.ps1` settles `let x = { 1 }` as ACCEPT by the
+/// toolchain, a block whose tail is `1`. So 0468 reads it, correctly, and the
+/// expectation of one failure became a FALSE one -- the assertion was measuring the
+/// old bug.
+///
+/// What the test is FOR is recovery from a malformed literal, so the fixture became
+/// `{ 1: 2 }` -- a NUMERIC key, which cannot begin a field. That is the SAME
+/// `peek_name() == ""` branch the old `{ 1 }` fixture took, so the recovery path under
+/// test is unchanged, and it costs EXACTLY ONE parse failure, so
+/// `parse_failures(r) == 1` keeps its full strength instead of being relaxed to match
+/// whatever the parser happened to do.
+///
+/// TWO other fixtures were measured and rejected for the test, both because they cost
+/// TWO failures rather than one: `{ "a" }` and `{ "a": }`. In both the field grammar
+/// recovers and then the surrounding `expect(TRBrace)` reports as well.
+///
+/// The count was taken from the pipeline's own `parse_failures`, which counts every
+/// ParseError report. A probe reading the scanner's notice lines said ONE for both --
+/// the scanner DEDUPES by message, and a count of distinct messages is not a count of
+/// parse failures. Relaxing `== 1` to `>= 1` on that evidence would have fitted the
+/// expectation to the fixture, which is the thing this file exists to avoid.
 test "0452: a malformed map literal does not cost the rest of the file" {
   let r = @pipeline.run(
-    "///|\nfn probe() -> Int {\n  let m = { 1 }\n  2\n}\n\n///|\nfn after_one() -> Int {\n  3\n}\nafter_one()\n",
+    "///|\nfn probe() -> Map[String, Int] {\n  let m = { 1: 2 }\n  m\n}\n\n///|\nfn after_one() -> Int {\n  3\n}\nafter_one()\n",
     "recovery.mbt",
     @core.IfaceSymTab::empty(),
   )

@@ -74,6 +74,15 @@ test "0433: a match subject on the next line parses in let position too" {
 /// helper -- a one-statement function that passes or fails for reasons that have
 /// nothing to do with `defer`. Four of this file's tests were wrong that way
 /// before the index was corrected.
+///
+/// THE `SBlock` ASSERTION WAS ADDED BY 0468, and until it existed this row could not see
+/// the mutation it was written for. `defer`'s block branch builds `SBlock`; without it the
+/// arm falls through to `STail(self.parse_expr())`, and 0468 taught `parse_expr` to read a
+/// `{` as a BLOCK. So `defer { g() }` still parses, still yields two statements, and still
+/// reports nothing -- the mutation went invisible by making the code BETTER.
+/// => `body.length()` counts statements; it cannot see WHICH KIND they are. Asserting the
+/// kind is what separates "read past as one block" from "read as an expression whose value
+/// happens to be a block".
 test "0433: defer followed by a block is one statement" {
   let r = @parser.parse(
     "fn g() -> Unit { () }\nfn f() -> Unit {\n  defer {\n    g()\n  }\n  g()\n}\n",
@@ -82,7 +91,13 @@ test "0433: defer followed by a block is one statement" {
   assert_eq(r.reports.length(), 0)
   // Two statements -- the `defer` and the trailing call -- not three.
   match r.tree.body[1].kind {
-    @ast.SFunc(_, _, _, body, _) => assert_eq(body.length(), 2)
+    @ast.SFunc(_, _, _, body, _) => {
+      assert_eq(body.length(), 2)
+      match body[0].kind {
+        @ast.SBlock(_) => ()
+        _ => assert_true(false)
+      }
+    }
     _ => assert_true(false)
   }
 }

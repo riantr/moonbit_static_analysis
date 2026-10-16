@@ -28,6 +28,25 @@
 # now reported in milliseconds instead of after the suite.
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify/mutate_0426.ps1
+#
+# RE-POINTED BY 0468, and the reason is worth keeping because it is the second time this
+# has happened. M3 and M4 anchored on the literal `if fn_body && self.at(TRBrace) {`, and
+# 0468 RENAMED that flag to `value_block` -- correctly, because the flag does not mean "this
+# is a function body", it means "this block's last statement is its value", and a block in
+# the RHS of a `let` is a second place that is true.
+#
+# THESE TWO ARE RE-POINTED, NOT RETIRED, and the difference matters. A rename changes the
+# TEXT a mutation matches and nothing about the DECISION it removes; the mutations below
+# still ask the same two questions and still have the same answers. The gate's own preflight
+# message says to mark a mutation `Retired` "rather than inventing an anchor to match" --
+# that applies when the code has changed SHAPE, and inventing a new shape would indeed be
+# fiction. Here the shape is identical and only the identifier moved, so re-pointing is the
+# honest repair and retiring would have silently deleted two questions.
+#
+# => 判据: a preflight MISS asks "did the code change shape?" before it asks "did the text
+# change?". Get that order wrong and a rename looks like a deletion -- which is exactly what
+# `mutate_lib.ps1`'s literal `IndexOf` matching did to 0443's M4 in 0467, where a DEDENT
+# was indistinguishable from a deletion.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -66,13 +85,18 @@ $muts = @(
     Repl = '    STail(e) => self.ret_vals.push(ABottom)'
   }
 
-  # --- M3: `fn_body` ignored -- every block has a tail ---------------------
+  # --- M3: `value_block` ignored -- every block has a tail ---------------------
   # A loop body's, an `if` arm's and a bare block's trailing expressions all
   # become return values, and the joins widen.
+  #
+  # RE-POINTED by 0468: `fn_body` was renamed `value_block`. See the header. The
+  # mutation now also reaches an EXPRESSION block, which 0468 added and which is
+  # exactly the second kind of block whose tail is its value -- so the mutation
+  # got WIDER, not weaker.
   @{
-    Name = 'M3 fn_body ignored, every block has a tail'
+    Name = 'M3 value_block ignored, every block has a tail'
     File = $PARSER
-    Find = '    if fn_body && self.at(TRBrace) {'
+    Find = '    if value_block && self.at(TRBrace) {'
     Repl = '    if self.at(TRBrace) {'
   }
 
@@ -82,8 +106,8 @@ $muts = @(
   @{
     Name = 'M4 position ignored, every expression statement is a tail'
     File = $PARSER
-    Find = '    if fn_body && self.at(TRBrace) {'
-    Repl = '    if fn_body {'
+    Find = '    if value_block && self.at(TRBrace) {'
+    Repl = '    if value_block {'
   }
 
   # --- M5: the empty tuple is a tuple again -------------------------------

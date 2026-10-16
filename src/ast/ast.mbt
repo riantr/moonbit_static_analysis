@@ -208,6 +208,21 @@ pub(all) enum EKind {
   /// fields are stored as `(name, EName(name))` — the value is a real
   /// expression, so a shorthand read still counts as a use of the name.
   EStruct(String, Array[(String, Expr)])
+  /// A block used as an EXPRESSION: `let x = { .. }`. The block's value is its
+  /// TAIL, so this is not the same node as `SBlock` — that one is a statement
+  /// list with no value.
+  ///
+  /// WHY THE STATEMENTS ARE KEPT RATHER THAN COLLAPSED TO THE TAIL. Reducing
+  /// `{ let y = 1; y + 1 }` to `y + 1` would delete the binding of `y`, and the
+  /// name-resolution lens would then report `no visible binding for 'y'` on code
+  /// `moon check` compiles. That is the 0467b defect arriving from a new
+  /// direction: a finding invented by the reader, on a program that is fine.
+  ///
+  /// Settled in `_verify/settle_0468_let_block_rhs.ps1`: `{ 1 }`,
+  /// `{ let y = 1; y + 1 }`, `{ }` and the nested `{ { 1 } }` are all ACCEPTed by
+  /// the toolchain, and `{ a }` is a legal one-field struct literal — which is
+  /// why the parser distinguishes the two BEFORE building either node.
+  EBlock(Array[Stmt])
   /// A tuple expression, or the unit value: `(a, b)` is two elements and `()`
   /// is `ETuple([])`. A parenthesized GROUPING `(e)` is not a tuple and never
   /// becomes one — it yields `e` itself, so precedence and spans stay honest.

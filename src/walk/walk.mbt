@@ -668,6 +668,20 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
         let (_, v) = f
         self.walk_expr(v)
       }
+    // A block in EXPRESSION position, `let x = { .. }`. The statements are the
+    // whole point: `let y = 1` inside the block is a real binding, and skipping
+    // the body would leave the tail reading names nothing declares -- which is
+    // the 0467b defect arriving from a new direction, an invented finding on
+    // code `moon check` compiles.
+    //
+    // CURRENT frame, no new scope -- the SAME rule `SBlock` gets at walk_stmt
+    // (walk.mbt:951) and at the collectors (walk.mbt:1189, 1301). A new frame
+    // here would make the block's own bindings unreadable to the `let` that
+    // consumes its value, which is the mirror image of the bug above.
+    EBlock(body) =>
+      for st in body {
+        self.walk_stmt(st)
+      }
     ETuple(elems) =>
       for x in elems {
         self.walk_expr(x)
@@ -948,6 +962,27 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
     // scope, the same treatment SIf bodies get. The binding analysis is not
     // flow-scoped anywhere else either, and a new frame here would make
     // bindings declared in the block unreadable to the statements after it.
+    //
+    // MEASURED WRONG AGAINST THE TOOLCHAIN, 2026-10-17, and recorded here rather than
+    // left as a design choice. A block scopes LEXICALLY in MoonBit. `moon check`
+    // REJECTs both of these with [4021] "The value identifier is unbound":
+    //
+    //   fn f() -> Int { let x = { let y = 1  y };  x + y }   y unbound at line 6
+    //   fn h(c : Bool) -> Int { if c { let z = 1  z };  z }   z unbound at line 14
+    //
+    // and this analyzer reports NEITHER. So the paragraph above describes an intentional
+    // approximation that is measurably wrong in the direction of a false NEGATIVE.
+    //
+    // 0468 found this while testing `EBlock`, which copies this rule on purpose (see
+    // `EBlock` in `walk_expr` and walk.mbt:669). It is NOT a 0468 regression and it was
+    // deliberately not fixed here: `SBlock` covers every `if` arm, loop body and bare
+    // block on every corpus, so teaching blocks to scope moves the whole corpus-wide
+    // finding count and is its own increment.
+    //
+    // => The argument "a new frame here would make bindings declared in the block
+    // unreadable to the statements after it" is TRUE of THIS analyzer and FALSE of
+    // MoonBit, which scopes the other way. It is a reason the rule is wrong, not a
+    // reason it is right. Pinned both ways in `pipeline_0468_test.mbt`.
     SBlock(body) =>
       for st in body {
         self.walk_stmt(st)
@@ -1025,6 +1060,20 @@ fn bind_add(bs : Array[Binding], b : Binding) -> Unit {
 /// carry a STATEMENT LIST inside an expression, so those two are the whole of it; every
 /// other `E*` variant is inert as far as binding collection goes.
 ///
+/// THAT SENTENCE WAS TRUE AND IS NOW FALSE TWICE OVER, and both corrections are 0468.
+/// It was the reasoning that let this function grow a `_ => ()` catch-all and stop.
+///
+///   1. `EBlock` also carries a statement list -- it is a block, that is what it is.
+///   2. An expression that merely CONTAINS one does not need a new variant. An
+///      `ECall`'s arguments are expressions, so `{ let copy = ..; copy }` passed as
+///      `Bytes::from_array({ ... })` is reachable without any new node at all.
+///
+/// The second one cost two false `no visible binding for 'copy'` findings on
+/// `riantr/moonbit_image 0.3.7 gif.mbt:853,855` before it was found, and the first
+/// cost five on `png.mbt:113..124`. => 判据: a `_ => ()` arm is a CLAIM that nothing
+/// else in the type matters. Here it was a claim nobody checked, made while the type
+/// was smaller, and it stayed true-looking for exactly as long as the type stayed small.
+///
 /// WHY THIS IS TOP-LEVEL AND NOT NESTED IN `collect_fn_bindings`. It and
 /// `collect_stmt_bindings` are mutually recursive -- a catch arm body is statements, and
 /// a `let` initialiser is an expression, so either can contain the other -- and MoonBit
@@ -1041,6 +1090,23 @@ fn collect_expr_bindings(bs : Array[Binding], e : @ast.Expr) -> Unit {
     ENoRaise(_, arms) =>
       for arm in arms {
         collect_stmt_bindings(bs, arm.body)
+      }
+    // A block in EXPRESSION position, `let x = { let y = 1; y + 1 }`. The
+    // `_ => ()` catch-all below would skip the body and the frame would never
+    // learn `y` -- so the tail would report a name nothing binds. This arm is
+    // the whole reason the node exists rather than collapsing to its tail at
+    // parse time.
+    EBlock(body) => collect_stmt_bindings(bs, body)
+    // 0468. ARGUMENTS ARE EXPRESSIONS, so a block -- or a `catch`, or anything
+    // else that binds -- can sit in one. `Bytes::from_array({ let copy = ..;
+    // copy })` in `gif.mbt` is the measured case.
+    ECall(_, args, _) =>
+      for a in args {
+        collect_expr_bindings(bs, a)
+      }
+    EMethodCall(_, _, args, _) =>
+      for a in args {
+        collect_expr_bindings(bs, a)
       }
     _ => ()
   }
@@ -1237,7 +1303,7 @@ pub fn walk_module(
   fn collect_top(stmts : Array[@ast.Stmt]) -> Unit {
     for s in stmts {
       match s.kind {
-        SLet(n, ann, _) =>
+        SLet(n, ann, init) => {
           if !module_bindings.contains(name_binding(n)) {
             module_bindings.push({
               name: n,
@@ -1246,6 +1312,28 @@ pub fn walk_module(
               decl_span: s.span,
             })
           }
+          // 0468. A module-level `let x : T = { ... }` RUNS the block at module
+          // init, so every binding inside it lives in the module frame -- the same
+          // rule the `SBlock` arm below already follows.
+          //
+          // This arm was MISSING and the corpus charged for it the moment 0468 made
+          // the block parse: `src/../png.mbt:110` is `let fxl : HDecoder = {` with
+          // `let ls = Array::make(288, 0)` on the very next line, read at 113, 116,
+          // 119, 122 and 124. Collected without this descent, those are five false
+          // `no visible binding for 'ls'` findings on code `moon check` compiles --
+          // the 0467b defect arriving through a construct that did not exist in the
+          // AST until 0468 added it. `actionable` went 0 -> 15 on that corpus alone,
+          // and every one of the 15 traced back to this one omission.
+          //
+          // ONLY `EBlock`, and that is the whole safety argument. A `let f = fn() {
+          // .. }` initialiser is an `EBigInt` carrying a skip note, never an
+          // `EBlock`, so this cannot hoist a lambda's function-local names into the
+          // module frame. `SBlock` stays the same arm it was.
+          match init.kind {
+            EBlock(body) => collect_top(body)
+            _ => ()
+          }
+        }
         SAssign(target, _) =>
           match target.assigned_base() {
             Some(b) =>

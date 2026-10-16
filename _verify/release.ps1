@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1535,12 +1535,72 @@ if ($SkipMutations) {
 # It is a finding whose file has not been read yet, and the only way to tell the two apart
 # is to unblock the corpus and look. The reach was legitimate, so the GAP was fixed rather
 # than the reach given back.
+# --- 0468: a BLOCK in the RHS of a `let`, and TWO THINGS IT IS NOT ONE OF ---------
+#
+# Until this increment every `{` in expression position reached the atom's TLBrace arm and
+# went to the FIELD grammar, which rejected the content and reported `expected a struct
+# literal field here` at the brace. A block -- `{ let y = 1; y + 1 }`, whose value is its
+# TAIL -- was unreadable.
+#
+#   moui             actionable  0 -> 0   parsed 608 UNCHANGED
+#   moonbit_labeler  actionable  0 -> 1   parsed  32 -> 33
+#   moonbit_image    actionable  0 -> 1   parsed  15 -> 17
+#   async            actionable  0 -> 0   parsed 352 -> 390
+#   proton           actionable  0 -> 0   parsed 121 -> 122
+#   proton_contract  actionable  0 -> 0   parsed   4 UNCHANGED
+#
+# moui and proton_contract are the CONTROL and they are the reason the other four can be
+# read as gain: both were ALREADY complete (608/608 and 4/4) and so cannot have
+# contributed a single parse.
+#
+# *** ACTIONABLE IS 1 ON TWO CORPORA AND NOT 0, AND NEITHER IS CAUSED BY THE BLOCK. ***
+#
+# Both are PRE-EXISTING defects that 0468 made REACHABLE by reading more files -- the
+# standing 判据 that a false positive nobody can reach is not a false positive that does not
+# exist. They are pinned HERE rather than quietly, and they are the reason the pin moves UP:
+#
+#   moonbit_image 0.3.7 png.mbt:980          `operand of '!' must be bool, got 'int'`
+#   moonbit_labeler 0.2.13 app_moui/rasterizer.mbt:1218
+#                                           `argument 2 to 'blend_pixel' has incompatible
+#                                            type 'float'; expected 'int'`
+#
+# The image one is ROOT-CAUSED and the fix is one line, deliberately NOT in this increment:
+# parser.mbt's `TName("match")` arm reads the scrutinee and YIELDS IT, so
+# `let vok = match bd { .. }` binds `vok` to `bd` itself -- same value, same type. The
+# sibling `TName("fn")` arm does the same kind of skip and correctly yields an OPAQUE node;
+# `match` is the inconsistent one. That changes parser semantics for an existing construct,
+# so it is its own increment with its own guard test, not a line borrowed into 0468.
+# The comment at that arm asserted the opposite ("the scrutinee is an ordinary expression")
+# and has been corrected in place.
+#
+# The labeler one is UNRESOLVED and is not fixed here: either the argument index is off by
+# one, or a single-line `for`-header binder takes a wrong type -- the latter would tie it to
+# the `for` family.
+#
+# A SECOND PIN MOVED INSIDE 0468 THAT NEVER SHOWED IN ANY SUMMARY: `parse_block` was called
+# with `false`, so no `EBlock` body ever contained a `STail`, `Infer::ty_of` returned
+# `TUnknown` for EVERY block and `Interp::eval` returned `AAny`. Both arms were dead code
+# and every corpus number above is the same with and without them, because `walk_stmt` reads
+# an `SExpr` tail exactly as well as an `STail` one.
+# => 判据: a construct can be READ correctly and still carry no value. Only a row that
+# counts what the tree CARRIES sees this -- `0468: the tail's TYPE reaches the operator
+# below` -- and it is M4 of `mutate_0468.ps1`. The flag is now named `value_block`, because
+# "this is a function body" was the name that let the bug read as a decision.
+#
+# GATE 0468: 11/11 KILLED, no declared survivors, every restore byte-identical. Two of the
+# eleven had to be REWRITTEN rather than re-anchored, and both rewrites are in the gate:
+# M5's named row was the wrong one (a third lens already reports that name), and M11's first
+# form mutated to `AAny`, which this behavior lens absorbs BY DESIGN -- interp.mbt:1076 has
+# `AAny => true` in `numeric` and :1094 short-circuits the whole operator arm on it.
+# => 判据: a survivor is not always an untested property. Sometimes it is a mutation whose
+# RESULT is unobservable, and the two want opposite responses.
+#
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
-  'moonbit_labeler' = 'files=37 parsed=32 actionable=0 notices=678 unreliable=124 withheld=16 total=802'
-  'moonbit_image'   = 'files=18 parsed=15 actionable=0 notices=170 unreliable=66 withheld=0 total=236'
-  'async'           = 'files=419 parsed=352 actionable=0 notices=1637 unreliable=373 withheld=115 total=2010'
-  'proton'          = 'files=137 parsed=121 actionable=0 notices=1643 unreliable=575 withheld=53 total=2218'
+  'moonbit_labeler' = 'files=37 parsed=33 actionable=1 notices=711 unreliable=91 withheld=16 total=803'
+  'moonbit_image'   = 'files=18 parsed=17 actionable=1 notices=207 unreliable=23 withheld=0 total=231'
+  'async'           = 'files=419 parsed=390 actionable=0 notices=1686 unreliable=285 withheld=49 total=1971'
+  'proton'          = 'files=137 parsed=122 actionable=0 notices=1645 unreliable=544 withheld=35 total=2189'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

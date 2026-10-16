@@ -442,6 +442,25 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       }
       TUnknown
     }
+    // A block used as an EXPRESSION, `let x = { .. }`. The block's type is its
+    // TAIL's -- `_verify/settle_0468_let_block_rhs.ps1` settles `{ 1 }` as an
+    // Int -- so an `if`-body style join would be wrong here: only the last
+    // statement is the value, and the earlier ones are ordinary statements.
+    //
+    // The tail is typed ONCE, here, rather than through `walk_stmt`, whose
+    // `STail` arm types it with a `TUnknown` hint and returns nothing. Routing
+    // it through both would type it twice, and a name error inside the tail
+    // would then be reported twice.
+    EBlock(body) => {
+      let mut tail_ty = TUnknown
+      for st in body {
+        match st.kind {
+          @ast.STail(t) => tail_ty = self.ty_of(t, hint)
+          _ => self.walk_stmt(st)
+        }
+      }
+      tail_ty
+    }
     // A tuple literal; `(e)` grouping is folded away at parse time, so every
     // ETuple is a real tuple. Elements are typed; there is no tuple Ty to
     // name, so the result is unknown.

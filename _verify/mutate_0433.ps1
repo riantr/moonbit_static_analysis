@@ -94,16 +94,42 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     MustRed = 'the defer keyword is not reported as an ordinary name'
   },
 
+  # RE-ANCHORED AND RE-DESCRIBED BY 0468. TWO defects were in this one mutation and both
+  # are fixed here; neither is a weakening.
+  #
+  # 1. IT WAS NOT MUTATING `defer`. Its `Find` was the bare
+  #        if self.at(TLBrace) { parse_block(false); return SBlock(body); }
+  #    and `mutate_lib` matches by the first literal `IndexOf`. That text occurs TWICE --
+  #    `errdefer` at parser.mbt:2587 and `defer` at :2595 -- and the FIRST is `errdefer`.
+  #    So this mutation has always removed ERRDEFER's block branch while naming defer.
+  #    The anchor now carries `if self.at_name("defer") {` so it can only match one arm.
+  #
+  # 2. IT USED TO KILL BY ACCIDENT, and 0468 removed the accident. With the wrong arm gone,
+  #    `errdefer { .. }` fell through to `parse_expr`, and before 0468 a `{` in expression
+  #    position reached the FIELD grammar and reported. 0468 taught `parse_expr` to read a
+  #    `{` as a block, so the fall-through now SUCCEEDS -- the mutation went invisible
+  #    because the code got better, not weaker.
+  #
+  # => THE ROW WAS ALSO BLIND. `defer followed by a block is one statement` asserted only
+  # `body.length() == 2`, and both `SBlock` and `STail(EBlock(..))` give 2. The row now
+  # asserts the KIND as well (parser_0433_test.mbt), which is what makes this killable
+  # against the CORRECT anchor. Asserting the node, not the count, is the 0465 lesson
+  # applied to a construct that was still wearing 0433's clothes.
   @{
     Name = 'M4 defer accepts only an expression, dropping the block form'
     File = $PARSER
     Find = @'
+  if self.at_name("defer") {
+    let _ = self.bump()
     if self.at(TLBrace) {
       let (body, _) = self.parse_block(false)
       return { span: sp, kind: @ast.SBlock(body), }
     }
 '@.Replace("`r`n", "`n")
-    Repl = ''
+    Repl = @'
+  if self.at_name("defer") {
+    let _ = self.bump()
+'@.Replace("`r`n", "`n")
     MustRed = 'defer followed by a block is one statement'
   }
 )
