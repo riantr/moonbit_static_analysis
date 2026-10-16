@@ -1196,6 +1196,42 @@ fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit 
           Some(x) => collect_expr_bindings(bs, x)
           None => ()
         }
+      // ---------------------------------------------------------------------------
+      // 0468/0469 MEASURED DEFECT, NOT YET FIXED: EVERY NESTED BODY SHARES `bs`.
+      //
+      // Each arm below passes the SAME `bs` into its body, so a `let` written inside an
+      // `if` arm, a `while` body, a `for` body or a bare block outlives the construct and
+      // lands in the ENCLOSING function's table. `Infer::run_fn` seeds its frame 0 from
+      // that table (infer.mbt:816-819) and `declare_sym` is guarded on `frame.contains`,
+      // so the FIRST binding for a name wins -- and a flat table makes the INNER one
+      // first.
+      //
+      // Both directions of the same missing scope are MEASURED, not argued:
+      //
+      //   FALSE POSITIVE. moonbit_labeler 0.2.13 app_moui/rasterizer.mbt:1218 reports
+      //     `argument 2 to 'blend_pixel' has incompatible type 'float'; expected 'int'`
+      //   on code `moon check` compiles. Line 1196 writes `let x : Double = ...` inside a
+      //   `for i` body; line 1217 binds `x` as a `for` header over an `Int`; line 1218
+      //   passes it to an `Int` parameter. The inner `Double` wins.
+      //   A four-case probe reproduces it in ALL of `if`/`while`/`for`/bare-block, with
+      //   `moon check` accepting the file, and the control -- the same function with the
+      //   inner `let` renamed -- reports nothing.
+      //
+      //   FALSE NEGATIVE. 0468's `0468: a block's bindings do not scope (KNOWN FALSE
+      //   NEGATIVE, pinned)` is this same frame: `let y` inside a block stayed visible
+      //   afterwards, where `moon check` reports [4021] unbound.
+      //
+      // => 判据: one mechanism, two directions. A leaked name only becomes a FALSE
+      // POSITIVE when something later binds the same name -- which is why this sat
+      // latent for so long and why "the blocks do not scope" and "labeler:1218" were
+      // filed as two separate items.
+      //
+      // NOT FIXED HERE. The change is small in this function and large everywhere else:
+      // `bs` also seeds the type lens's frame 0, so removing nested contributions is only
+      // safe if the type lens DECLARES each binding as it walks the body that owns it.
+      // Every corpus's finding count moves. It is its own increment, and 0468's two rows
+      // that PIN this false negative are expected to go red when it lands -- which is what
+      // "pinned, not endorsed" was for.
       SWhile(e, body) => {
         collect_expr_bindings(bs, e)
         collect_stmt_bindings(bs, body)
