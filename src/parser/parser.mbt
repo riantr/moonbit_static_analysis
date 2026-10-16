@@ -2885,13 +2885,41 @@ fn Parser::maybe_nobreak(self : Parser, loop_stmt : @ast.Stmt) -> @ast.Stmt {
 }
 
 ///|
+/// The C-style `for` init clause is a DECLARATION, and `parse_stmt` cannot see that.
+///
+/// Settled against the toolchain (`_verify/settle_0470_c_for_init.ps1`), three rows:
+///
+///   for i = 0; i < n; i = i + 1 { .. }      ACCEPT   -- so `i = 0` DECLARES `i`
+///   for let i = 0; i < n; i = i + 1 { .. }  REJECT    -- `let` is FORBIDDEN here
+///   for j = n; j < 1; j = j - 1 { .. } ignore(j)   REJECT -- `j` does not outlive it
+///
+/// The sharpest row is RECORDed rather than predicted, because predicting it would only
+/// encode a guess. An enclosing `let x : Int = 99`, then `for x = 0; ..`, then `ignore(x)`
+/// AFTER the loop, ACCEPTs: the init clause SHADOWS the enclosing binding for the loop and
+/// the enclosing one is still visible afterwards. An assignment would have collided or
+/// overwritten; only a declaration both shadows and ends. That is the behaviour `SLet`
+/// models, and it is why the node below is a declaration and not a rebinding.
+///
+/// The clause has no `let` keyword, so `parse_stmt` read `x = xs` as an ASSIGNMENT and
+/// built an `SAssign`. That is the wrong node twice over: it is a declaration, and it is
+/// scoped to the loop rather than assigned onto the enclosing frame.
+///
+/// The observable cost was moonbit_labeler 0.2.13 app_moui/rasterizer.mbt:1218, the last
+/// `actionable` on any corpus:
+///
+///     argument 2 to 'blend_pixel' has incompatible type 'float'; expected 'int'
+///
+/// `Infer::assign_check` REPORTS a mismatch but does not rebind, so the `x : Double`
+/// leaked from an enclosing body survived and the loop's own `x` never replaced it. The
+/// three-way bisect is what located this: the same file with a plain `let x : Int = xs`
+/// in place of the `for` header is CLEAN, and with no inner `x` at all it is CLEAN.
 fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // for
   let stmts : Array[@ast.Stmt] = []
   // init may be empty: `for ; i < n; i = i + 1`
   if !self.at(TSemi) {
-    stmts.push(self.parse_stmt())
+    stmts.push(self.c_for_init(sp))
   }
   self.expect(TSemi, "';'")
   // An absent condition is a constant-true loop, not a missing one.
@@ -2912,6 +2940,65 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   }
   stmts.push({ span: sp, kind: @ast.SWhile(cond, loop_body), })
   self.maybe_nobreak({ span: sp, kind: @ast.SBlock(stmts), })
+}
+
+///|
+/// Read the C-style `for` init clause as the DECLARATION it is. See `parse_c_for` for the
+/// settle that establishes this.
+///
+/// The clause is `name = value` with no `let`, so the ordinary statement reader returns an
+/// `SAssign`. That is the wrong node here for two independently measured reasons: the
+/// clause DECLARES rather than assigns, and the name does not outlive the loop.
+///
+/// The test is made on the TOKEN, before the clause is parsed, and never on the shape of the
+/// node that comes back. An earlier version unwrapped an `EBin` out of the right-hand side
+/// and matched nothing at all -- silently, because `EBin` is what the COMPOUND branch
+/// produces, while the plain `=` branch stores the value DIRECTLY. `moon check --deny-warn`
+/// was 0 and all 857 tests stayed green while this function returned every statement
+/// unchanged and the corpus finding it was written to clear stayed.
+///
+/// The node shape cannot discriminate either, which is why it was the wrong test: in
+/// `for i = j + 1; ..` a plain `=` legitimately carries an `EBin` value, and `x += 1` wraps
+/// its value in one. `TName(_)` followed by `TAssign` is the only reading that separates the
+/// two, and it excludes `TPlusEq` and its siblings for free rather than by exclusion.
+///
+/// Anything that is not exactly that shape is handed back untouched, so a form this does not
+/// model is READ exactly as before rather than silently rewritten into something it is not --
+/// the rule every other arm in this file follows.
+fn Parser::c_for_init(self : Parser, _sp : @core.Span) -> @ast.Stmt {
+  // Separators first: in `for\n  i = 0; ..` the clause's first real token is not at `self.p`.
+  let mut i = self.p
+  while i < self.toks.length() {
+    match self.toks[i] {
+      TNewline | TSemi => i += 1
+      _ => break
+    }
+  }
+  let mut plain_decl = false
+  if i + 1 < self.toks.length() {
+    match self.toks[i] {
+      TName(_) =>
+        match self.toks[i + 1] {
+          TAssign => plain_decl = true
+          _ => ()
+        }
+      _ => ()
+    }
+  }
+  let st = self.parse_stmt()
+  if !plain_decl {
+    return st
+  }
+  // The token test has already established the plain `=` branch, so the right-hand side IS
+  // the value and there is nothing to unwrap.
+  match st.kind {
+    SAssign(target, value) =>
+      match target.kind {
+        @ast.EName(n) => { span: st.span, kind: @ast.SLet(n, "", value), }
+        _ => st
+      }
+    _ => st
+  }
 }
 
 ///|

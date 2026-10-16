@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1709,9 +1709,55 @@ if ($SkipMutations) {
 # a defect fix: the honest options are to give it per-function entry, to say plainly that
 # it only analyses programs, or to keep it and state the coverage it does not have.
 #
+# ---------------------------------------------------------------------------
+# GATE 0470: the C-style `for` INIT CLAUSE is a DECLARATION. 5/5 KILLED, no declared
+# survivors, every restore byte-identical.
+#
+# The clause carries no `let`, so the ordinary statement reader built an `SAssign`. That is
+# the wrong node twice over: the clause DECLARES rather than assigns, and the name does not
+# outlive the loop. `Infer::assign_check` REPORTS a mismatch but does not rebind, so an
+# `x : Double` leaked from an enclosing body survived and the loop's own `x` never replaced
+# it -- moonbit_labeler 0.2.13 app_moui/rasterizer.mbt:1218, the last `actionable` on any
+# corpus.
+#
+# THE TOOLCHAIN STATES THE INCREMENT IN ONE LINE, and the settle gates it as claim 4:
+#
+#     Unknown binder n in the for-loop steps. Binders in the steps must be declared in the
+#     initialization block of the for-loop.                      [4106]
+#
+# An assignment reading cannot produce that message, because there would be nothing to
+# "declare in the initialization block". The settle's RECORDed row is the second half: an
+# enclosing `let x : Int`, then `for x = 0; ..`, then `ignore(x)` after the loop ACCEPTs --
+# the clause SHADOWS the enclosing binding and the enclosing one survives, which only a
+# declaration does.
+#
+# => THE PIN MOVED ON EXACTLY ONE CORPUS. labeler actionable 1 -> 0, total 801 -> 800. moui
+# 4225, image 230, async 1971, proton 2189 and contract 34 are BYTE-IDENTICAL to the pins
+# above. Five of six unchanged is the control that makes the sixth meaningful: a parser
+# change that moved every number everywhere would be a different parser change, and one that
+# moved nothing would have cleared nothing.
+#
+# => THE FIRST VERSION OF THE FIX WAS INERT AND NOTHING REPORTED IT. It unwrapped an `EBin`
+# out of the right-hand side -- which is the shape the COMPOUND branch produces, while the
+# plain `=` branch stores the value DIRECTLY -- so it matched nothing and handed every
+# statement back. `moon check --deny-warn` was 0 and all 857 tests stayed green while the
+# corpus finding it was written to clear stayed. M2 of the gate IS that inert version, and
+# it is killed by the row that asserts the node KIND rather than a count.
+#
+# => 判据: before keeping a negative row, ask whether ANY mutation can turn it red. The 0470
+# pipeline rows were first written against the family `ArgumentTypeMismatch`, which does not
+# exist -- it is `ArgTypeMismatch`. Four rows asserting `== 0` on a family that cannot occur
+# are vacuous and passed 868/868; only the one `== 1` row caught it, by failing. M5 pins the
+# inert mutation on the pipeline row specifically so that vacuity cannot come back silently.
+#
+# => 判据: a token-level test and a node-shape test are not interchangeable. `for i = j + 1`
+# is a plain `=` whose value is legitimately an `EBin`, and `x += 1` wraps its value in one,
+# so the shape cannot tell a declaration from a compound assignment. The discriminator is
+# `TName(_)` followed by `TAssign`, which excludes `TPlusEq` and its siblings for free.
+#
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
-  'moonbit_labeler' = 'files=37 parsed=33 actionable=1 notices=711 unreliable=89 withheld=16 total=801'
+  'moonbit_labeler' = 'files=37 parsed=33 actionable=0 notices=711 unreliable=89 withheld=16 total=800'
   'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=23 withheld=0 total=230'
   'async'           = 'files=419 parsed=390 actionable=0 notices=1686 unreliable=285 withheld=49 total=1971'
   'proton'          = 'files=137 parsed=122 actionable=0 notices=1645 unreliable=544 withheld=35 total=2189'
