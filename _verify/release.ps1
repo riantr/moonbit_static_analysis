@@ -1668,6 +1668,47 @@ if ($SkipMutations) {
 #
 # GATE 0469: 4/4 KILLED, no declared survivors, every restore byte-identical.
 #
+# --- DIRECTION 2: THE BEHAVIOR LENS IS UNOBSERVABLE ON EVERY PINNED CORPUS -------
+#
+# This is a VERIFICATION gap, not a correctness gap, and the distinction decides what to do
+# about it. Measured by `_verify/dir2_behavior_reach.ps1`, which carries its own POSITIVE
+# CONTROL -- a fixture the scanner really does tag `[behavior]` -- so its zeros cannot be an
+# artefact of a broken reader:
+#
+#   ALL SIX CORPORA      7493 findings      0 carrying the behavior lens
+#     moui                4152              0
+#     async               1677              0
+#     proton               959              0
+#     moonbit_labeler      469              0
+#     moonbit_image        202              0
+#     proton_contract        34              0
+#
+# THE MECHANISM, CONFIRMED CAUSALLY RATHER THAN BY CORRELATION. `interp.mbt` executes
+# top-level statements and whatever they reach; a function nothing calls is never executed.
+# Appending ONE top-level call to a copy of proton_contract 0.3.4 -- changing no other byte
+# -- takes that corpus from 0 findings to 1, and that 1 is `[behavior]` ALONE:
+#
+#     322:18 - error: no method matching application_route() (MethodError) [behavior]
+#
+# So the lens is neither broken nor silent for want of defects. It has nothing to run: all
+# six pinned corpora are libraries, and not one contains a `main()`.
+#
+# => WHAT THIS COSTS. Roughly a thousand lines of `interp.mbt` are unexercised by every
+# corpus, so the SIX SUMMARY lines this gate pins -- its primary defence -- carry ZERO signal
+# about the behavior lens. Any regression there leaves all six pins green. Every interp
+# mutation is catchable ONLY by a unit test, which is why `mutate_0426`'s M1/M2, `mutate_0443`
+# and `mutate_0469`'s M11 all name interp tests explicitly rather than relying on a drift.
+#
+# => 判据: a pin is a claim about a source state, and a pin that cannot distinguish two
+# states is not a pin. Six corpus lines that stay identical whatever `interp.mbt` does are
+# the same confident zero as a broken reader, and the only defence against both is a
+# control that proves the counter can see a thing it is reporting as absent.
+#
+# NOT CHANGED HERE. Making the lens analyze every function rather than only main-reachable
+# ones is a SEMANTIC change to what the third lens means, and it is a decision rather than
+# a defect fix: the honest options are to give it per-function entry, to say plainly that
+# it only analyses programs, or to keep it and state the coverage it does not have.
+#
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=33 actionable=1 notices=711 unreliable=89 withheld=16 total=801'
