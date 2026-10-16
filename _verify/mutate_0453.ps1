@@ -131,12 +131,28 @@ alone would have called it killed.
   @{
     Name = 'M3 the body is skipped, not read'
     File = 'src\parser\parser.mbt'
+    # RE-ANCHORED by 0471, and the reason is worth keeping. This pattern used to be the two
+    # ADJACENT lines `parse_param_list()` / `parse_block(false)`, because the literal went
+    # straight from one to the other. 0471 put the `-> T` / `raise` tail between them --
+    #   let _ = self.parse_param_list()
+    #   if self.at(TArrow) { ... }
+    #   self.parse_raise_effect()
+    #   let (_, _) = self.parse_block(false)
+    # -- and the two-line pattern stopped matching, which the pre-flight caught and this
+    # gate ABORTED on rather than running a suite it could not honestly report.
+    #
+    # The MUTATION is unchanged in meaning: the body is still skipped rather than read. Only
+    # the anchor moved, and it moved onto the pair that still brackets the body parse. A
+    # re-anchor is only safe if the thing being mutated is still the same thing, so the
+    # anchor is now `parse_raise_effect()` / `parse_block(false)` -- a pair that is UNIQUE in
+    # this file, where the bare `let (_, _) = self.parse_block(false)` is not (parse_c_for and
+    # parse_if have it too, and anchoring on it alone would mutate one of those instead).
     Find = @'
-  let _ = self.parse_param_list()
+  self.parse_raise_effect()
   let (_, _) = self.parse_block(false)
 '@.Replace("`r`n", "`n")
     Repl = @'
-  let _ = self.parse_param_list()
+  self.parse_raise_effect()
   if self.at(TLBrace) { let _ = self.skip_braces() }
 '@.Replace("`r`n", "`n")
     MustRed = '0453: a construct inside an async literal''s body is still announced'

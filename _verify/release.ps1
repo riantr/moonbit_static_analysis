@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -537,18 +537,19 @@ if ($SkipMutations) {
 #   - the six SUMMARY lines carry ZERO signal about the behavior lens, which no pinned
 #     corpus reaches (7493 findings, none of them from that lens; see the DIRECTION 2
 #     block in NARRATIVE.md). A pin that cannot distinguish two states is not a pin.
-#   - `moonbit_labeler` moved 801 -> 800 at 0470, the last `actionable` on any corpus.
-#     The other five are byte-identical, and five-unchanged is what makes the sixth mean
-#     something.
+#   - `moonbit_labeler` moved 801 -> 800 at 0470 (the last `actionable` on any corpus) and
+#     800 -> 793 at 0471. `proton` moved at 0471 too: 122 -> 131 parsed, `unreliable`
+#     544 -> 187. moui, image, async and contract have been byte-identical across both.
+#     Four-unchanged against two-moved is the control, and `actionable` stayed 0 on both.
 #   - `parse_block`'s parameter is named `value_block`, not `fn_body`. The old name is
 #     what let a real bug read as a decision.
 #
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
-  'moonbit_labeler' = 'files=37 parsed=33 actionable=0 notices=711 unreliable=89 withheld=16 total=800'
+  'moonbit_labeler' = 'files=37 parsed=35 actionable=0 notices=738 unreliable=55 withheld=16 total=793'
   'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=23 withheld=0 total=230'
   'async'           = 'files=419 parsed=390 actionable=0 notices=1686 unreliable=285 withheld=49 total=1971'
-  'proton'          = 'files=137 parsed=122 actionable=0 notices=1645 unreliable=544 withheld=35 total=2189'
+  'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=187 withheld=6 total=2068'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

@@ -1277,3 +1277,106 @@ inert mutation on the pipeline row specifically so that vacuity cannot come back
 is a plain `=` whose value is legitimately an `EBin`, and `x += 1` wraps its value in one,
 so the shape cannot tell a declaration from a compound assignment. The discriminator is
 `TName(_)` followed by `TAssign`, which excludes `TPlusEq` and its siblings for free.
+## 0471: an anonymous `fn`'s TAIL between `)` and `{`
+
+`parse_fn_literal` went from `parse_param_list()` straight to `parse_block()`. A literal
+carrying `-> Type` or `raise`/`noraise` therefore left the cursor on the tail token, and
+`parse_block` -- looking for `{` -- reported `expected '{'`. A complaint about a brace that
+was never the problem, which is the same shape as the DECLARED-fn `-> T raise E` clause
+whose absence once cost 24.5% of moui's 608 files.
+
+THE FIX IS NOT A THIRD READER. A declared `fn` already reads this tail with two calls, and
+the literal was making neither:
+
+    if self.at(TArrow) { retann = self.return_annotation() }
+    self.parse_raise_effect()
+
+`return_annotation` already knows both spellings of a function-type return (settle_0427_retfn)
+and `parse_raise_effect` already knows `raise E`, `!`, `noraise` and `nocancel`. A literal and
+a declared function are the same production, and `parse_fn_literal` exists precisely so the
+two literal arms (`fn` and `async fn`) share one reader -- which is why adding the two calls
+in one place was the whole fix.
+
+=> THE POSITION WAS RULED OUT BY MEASUREMENT, and this is the part worth keeping. The
+obvious reading -- "literals only work as call arguments" -- is wrong in BOTH directions:
+
+    let h = fn(x : Int) { x }          ACCEPTED
+    g(fn(x) { x })                     ACCEPTED
+    let h = fn(x : Int) -> Int { x }   PARSE ERROR
+    g(fn(x) -> Int { x })              PARSE ERROR
+
+so the variable is the RETURN ANNOTATION and not where the literal sits. Had the first
+draft's fixture used a call argument -- which is what the proton blockers look like -- the
+increment would have been filed as "literals work as arguments but not as values", a
+different defect with a different fix.
+
+REACH, per-FILE first blocker, measured on the tree at 0470:
+
+    corpus          parsed        unreliable        notices
+    moonbit_labeler  33 -> 35 (+2)  89 -> 55  (-34)   711 -> 738 (+27)
+    proton          122 -> 131 (+9) 544 -> 187(-357) 1645 -> 1881 (+236)
+    moui / image / async / contract      BYTE-IDENTICAL
+
+`unreliable` is the number that carries the meaning: it counts files read only up to a parse
+error, so proton's 357 is files now read whole. The `notices` rise is the same trade 0459,
+0464 and 0467 made -- a file that parses reports the deliberate exclusions inside it. proton's
+`withheld` fell 35 -> 6 for the same reason: fewer partial reads means fewer notices withheld
+from files the analyzer could not trust.
+
+`actionable` stayed 0 on both. Nine more proton files became readable and not one manufactured
+a finding, which is the number that makes the rest mean anything -- more reach is also more
+opportunity to invent something.
+
+THE GRAMMAR IS SETTLED, 9 rows with two controls (`_verify/settle_0471_fn_literal_tail.ps1`).
+Four of its seven claims failed on the first run and every failure was the FIXTURE, not the
+grammar: a one-line `if x < 0 { raise Boom } x` inside a body is rejected by the toolchain
+with `unexpected token id`, calling a `raise`-annotated literal from a non-raising function
+is [4122], and `raise` with no error type needs a bare-`raise` CALLER or the toolchain asks
+for a specific error [4118]. None of those say anything about the tail, and all three read
+like a grammar rejection if you do not check the error code.
+
+=> 判据: GATE 0471: 5/5 KILLED, no declared survivors, every restore byte-identical. M4 is the
+mutation worth reading -- it removes the `if self.at(TArrow)` GUARD, so `return_annotation()`
+runs on an untailed literal and eats the BODY's first token as a type. Every "a literal with
+a tail parses" row stays green; only the untailed row and the corpus numbers move. A fix
+that guards its new reader badly is worse than no reader, and no row that only asks "does the
+new form parse" would have caught it.
+
+M2's anchor is `self.parse_raise_effect()` PLUS its next line, because that call appears
+THREE times in `parser.mbt` (1605, 2039, 5128) and a bare anchor mutates whichever comes
+first -- a different function entirely. The pre-flight counts occurrences and would have
+warned; anchoring correctly was cheaper than reading the warning.
+
+TWO ROWS IN `pipeline_0471_test.mbt` PLACE THEIR PROBE ON THE FAR SIDE OF THE LITERAL, and
+they are the ones this increment really turns on. A tail read with the wrong extent
+swallows the token after the literal: `parsed` goes UP on every affected corpus, every
+SUMMARY line looks like progress, and the analyzer has quietly stopped reading the code
+that follows. The six pins cannot see that, and neither can a parse-shape assertion.
+
+One row asserts `ArgTypeMismatch == 0` because the literal yields `EBigInt` and is
+therefore deliberately opaque to the type lens whatever its annotation says. The first draft
+asserted `== 1` for `g(fn(c : Char) -> Char { c })` and it came back 0, which is CORRECT --
+`-> T` is read to keep the token stream in step and nothing reads it. Asserting a finding
+the analyzer never makes is not a strong row, it is a false one written in the test rather
+than in the product.
+ONE OLDER GATE HAD TO BE RE-ANCHORED, and the pre-flight is what caught it rather than a red
+test. `mutate_0453`'s M3 ("the body is skipped, not read") anchored on the two ADJACENT lines
+`let _ = self.parse_param_list()` and `let (_, _) = self.parse_block(false)`, because before
+0471 the literal went straight from one to the other. Putting the tail between them broke the
+two-line pattern, and the gate ABORTED at pre-flight with `PREFLIGHT MISS` rather than running
+a suite it could not honestly report.
+
+The mutation was RE-ANCHORED, not retired, because the thing it mutates did not change shape --
+it only grew. The new anchor is the `parse_raise_effect()` / `parse_block(false)` pair, which
+is UNIQUE in the file; the bare `let (_, _) = self.parse_block(false)` is not, and anchoring on
+that alone would have mutated `parse_c_for` or `parse_if` instead. Gate 0453 is 5/5 KILLED
+after the move, every restore byte-identical.
+
+=> 判据: a PREFLIGHT MISS is not a gate failure to be worked around, it is the harness doing
+the one job it cannot do any other way -- telling you that a mutation's anchor no longer
+points at the thing it was written to mutate. The alternative -- inventing a nearby anchor
+until the pre-flight is quiet -- is how a gate ends up testing a function nobody changed. The
+re-anchor was only safe because the mutation's MEANING was unchanged and that could be
+checked by reading the two versions of the function side by side; a re-anchor of a pattern
+whose intent had drifted would have been a silent weakening, so the reasoning is recorded
+here rather than left in the diff.

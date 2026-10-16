@@ -5085,11 +5085,47 @@ fn Parser::note_skip(self : Parser, msg : String, sp : @core.Span) -> Unit {
 /// two differ only in the keyword in front of them, and the parameter parser and
 /// the block parser are the same two calls either way. A fix that copied the
 /// eight lines would be a second place to forget something.
+///
+/// 0471. THE TAIL BETWEEN `)` AND `{`, which is `-> Type raise E` and was not read
+/// here at all. This function went from the parameter list straight to the body, so
+/// a literal carrying either clause left the cursor on `->` or on `raise`, and
+/// `parse_block` -- looking for `{` -- reported `expected '{'`. A complaint about a
+/// brace that was never the problem, which is the same shape as the declared-`fn`
+/// `-> T raise E` clause whose absence once cost 24.5% of wzzc-dev/moui's 608 files.
+///
+/// THE POSITION WAS RULED OUT BY MEASUREMENT, because the obvious reading ("literals
+/// only work as call arguments") is wrong in both directions:
+///
+///     let h = fn(x : Int) { x }          ACCEPTED by the analyzer
+///     g(fn(x) { x })                     ACCEPTED by the analyzer
+///     let h = fn(x : Int) -> Int { x }   PARSE ERROR
+///     g(fn(x) -> Int { x })              PARSE ERROR
+///
+/// so the variable is the RETURN ANNOTATION and not where the literal sits. Two of
+/// the six corpora' first blockers were exactly this: `moonbit_labeler` 0.2.13
+/// app_moui/canvas_view.mbt:350 and component_blackbox_test.mbt:662, and five proton
+/// files whose literals carry `raise`.
+///
+/// THE TWO CALLS ARE THE DECLARED-FN PATH'S, not a third reader. `return_annotation`
+/// already knows both spellings of a function-type return (settle_0427_retfn) and
+/// `parse_raise_effect` already knows `raise E`, `!`, `noraise` and `nocancel`; a
+/// literal and a declared function are the same production, and the two places to
+/// forget something are exactly what the extraction above was written to remove.
+/// Which tails are legal is settled in `_verify/settle_0471_fn_literal_tail.ps1`,
+/// 9 rows with two controls.
 fn Parser::parse_fn_literal(self : Parser, sp : @core.Span) -> @ast.Expr {
   if self.at(TLBracket) {
     self.skip_indexed()
   }
   let _ = self.parse_param_list()
+  // The return annotation is DISCARDED, like the parameters: the subset has no
+  // closure node, so the literal yields `EBigInt` and no lens reads either. It is
+  // read so that the cursor lands on the body.
+  if self.at(TArrow) {
+    let _ = self.bump()
+    let _ = self.return_annotation()
+  }
+  self.parse_raise_effect()
   let (_, _) = self.parse_block(false)
   self.note_skip(
     "anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed",
