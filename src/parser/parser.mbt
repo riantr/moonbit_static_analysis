@@ -2526,7 +2526,57 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   }
   if self.at_name("continue") {
     let _ = self.bump()
-    return { span: sp, kind: @ast.SContinue, }
+    // 0472. `continue` MAY CARRY VALUES, and it carried none until now: the arm bumped the
+    // keyword and returned, leaving `i + 1, 0` in the stream, where the `,` died as a parse
+    // error. Two async files stopped on exactly this, both immediately AFTER the
+    // initializer-list header this increment also added:
+    //
+    //     async/src/socket/addr_utils.mbt:267       continue i + 1, i + 1
+    //     async/src/internal/gzip_internal/crc32.mbt:63      continue crc, i + 8
+    //
+    // Settled in `_verify/settle_0472_for_init_list.ps1`: `continue v1, v2` is ACCEPTed, and
+    // so is `continue` with no value at all.
+    //
+    // THE VALUES ARE READ AND NOT ASSIGNED, and that is the deliberate choice. `continue a, b`
+    // means "set the first loop variable to a, the second to b", and the loop variables are
+    // named by the initializer clause -- which is four frames away from here. Synthesising
+    // `SAssign(EName(loopvar_i), v_i)` would need that list threaded through `parse_block`,
+    // and getting it wrong would make the type lens check an assignment nobody wrote against a
+    // target that does not exist. So the values are EVALUATED and walked, which is what makes
+    // the names in them resolve, and the assignment itself is NOT modelled.
+    // => 判据: reach and semantics are separate increments. A reading that makes the file
+    // legible without asserting something the model cannot support is the honest one; an
+    // `SAssign` here would be a plausible-looking fabrication, and the type lens would report
+    // against it. Recorded as a gap rather than guessed at.
+    // NO `skip_seps()` HERE, and that is the load-bearing detail rather than an oversight.
+    // A bare `continue` on its own line is followed by a `TNewline` and then the NEXT
+    // STATEMENT, so skipping separators would read that statement's head as this one's value
+    // and swallow the rest of the body. The lexer emits no whitespace token, so "a value
+    // follows" is exactly "the token immediately after `continue` can begin an expression" --
+    // and a `TNewline` here means the next statement, not a value.
+    //
+    // The first draft of this arm called `skip_seps()` and was wrong in the direction that
+    // silently eats code.
+    let bare = match self.peek() {
+      TNewline | TSemi | TRBrace | TLBrace | TEOF => true
+      _ => false
+    }
+    if bare {
+      return { span: sp, kind: @ast.SContinue, }
+    }
+    let vals : Array[@ast.Stmt] = [{ span: sp, kind: @ast.SContinue, }]
+    let mut more = true
+    while more {
+      let v = self.parse_expr()
+      vals.push({ span: v.span, kind: @ast.SExpr(v), })
+      if self.at(TComma) {
+        let _ = self.bump()
+        self.skip_seps()
+      } else {
+        more = false
+      }
+    }
+    return { span: sp, kind: @ast.SBlock(vals), }
   }
   // `defer { ... }` and `defer <expr>` — a statement deferred to scope exit.
   //
@@ -2919,7 +2969,9 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   let stmts : Array[@ast.Stmt] = []
   // init may be empty: `for ; i < n; i = i + 1`
   if !self.at(TSemi) {
-    stmts.push(self.c_for_init(sp))
+    for d in self.c_for_inits(sp) {
+      stmts.push(d)
+    }
   }
   self.expect(TSemi, "';'")
   // An absent condition is a constant-true loop, not a missing one.
@@ -2965,8 +3017,49 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
 /// Anything that is not exactly that shape is handed back untouched, so a form this does not
 /// model is READ exactly as before rather than silently rewritten into something it is not --
 /// the rule every other arm in this file follows.
+
+///|
+/// THE INITIALIZER CLAUSE MAY BE A LIST, not a single binding. Measured as per-FILE first
+/// blockers on the tree at 0471, three async files stop on this header:
+///
+///     async/src/websocket/utils.mbt:49          for i = 0, remaining = remaining; i < data.length(); {
+///     async/src/internal/gzip_internal/crc32.mbt:53      for crc = current, i = 0; i + 8 <= len; {
+///     async/src/socket/addr_utils.mbt:262      for i = 0, zero_group_start = 0; i < 8; i = i + 1 {
+///
+/// Each carries SEVERAL loop variables and each body updates them together:
+///
+///     continue i + 1, 0
+///     continue crc, i + 8
+///
+/// So the clause declares N bindings and `continue` assigns all N. It is settled in
+/// `_verify/settle_0472_for_init_list.ps1` (8 claims, 2 controls): two and three
+/// initializers are both legal, with or without an update clause, and a comma-separated
+/// list outside a `for` header is a plain tuple.
+///
+/// The list reader calls `c_for_init` per entry rather than re-implementing it, so the
+/// declaration test stays in one place -- the same reasoning that put `parse_fn_literal`
+/// in one place in 0471.
+fn Parser::c_for_inits(self : Parser, sp : @core.Span) -> Array[@ast.Stmt] {
+  let out : Array[@ast.Stmt] = []
+  out.push(self.c_for_init(sp))
+  // A comma still on the cursor after a COMPLETE statement cannot belong to the statement's
+  // own expression -- `parse_stmt` consumed that value already, tuple included -- so it is
+  // the list separator. That is what makes this safe rather than a guess: the dangerous
+  // case would be a comma inside an unconsumed value, and there is none.
+  while self.at(TComma) {
+    let _ = self.bump()
+    self.skip_seps()
+    out.push(self.c_for_init(sp))
+  }
+  out
+}
+
+///|
+/// ONE initializer of the C-style `for` header, read as the DECLARATION it is. See
+/// `parse_c_for` for the settle that establishes that, and `c_for_inits` for the list.
+///
+/// Separators first: in `for\n  i = 0; ..` the clause's first real token is not at `self.p`.
 fn Parser::c_for_init(self : Parser, _sp : @core.Span) -> @ast.Stmt {
-  // Separators first: in `for\n  i = 0; ..` the clause's first real token is not at `self.p`.
   let mut i = self.p
   while i < self.toks.length() {
     match self.toks[i] {

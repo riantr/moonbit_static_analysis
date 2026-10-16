@@ -1380,3 +1380,75 @@ re-anchor was only safe because the mutation's MEANING was unchanged and that co
 checked by reading the two versions of the function side by side; a re-anchor of a pattern
 whose intent had drifted would have been a silent weakening, so the reasoning is recorded
 here rather than left in the diff.
+## 0472: the C-style `for`'s initializer LIST, and a `continue` that CARRIES VALUES
+
+Two gaps, both located by asking the scanner for `read up to line N` and then reading line N
+of THAT FILE. That is worth a note of its own, because `_verify/rank_0468_first_blocker.ps1`
+prints a header line and then the blocker source line, and the lines are laid out loosely
+enough that reading them as PAIRS produced a shape count that was wrong in both directions --
+attributing a `for` to a file whose blocker was a destructuring `let`. => 判据: a ranking is
+a REPORT. Deriving structure from a report's formatting is how the report gets wrong.
+
+THE HEADER. Three async files stop on a comma-separated initializer list:
+
+    async/src/websocket/utils.mbt:49        for i = 0, remaining = remaining; i < data.length(); {
+    async/src/internal/gzip_internal/crc32.mbt:53     for crc = current, i = 0; i + 8 <= len; {
+    async/src/socket/addr_utils.mbt:262     for i = 0, zero_group_start = 0; i < 8; i = i + 1 {
+
+`c_for_init` read exactly ONE initializer and `parse_c_for` pushed one statement. The list
+reader calls `c_for_init` per entry rather than re-implementing it, so the token test from
+0470 stays in one place.
+
+THE VALUE. Two of those three then stopped on the NEXT line, because `continue` bumped the
+keyword and returned, leaving its values in the stream:
+
+    async/src/socket/addr_utils.mbt:267                continue i + 1, i + 1
+    async/src/internal/gzip_internal/crc32.mbt:63     continue crc, i + 8
+
+AND THIS IS THE HALF THAT REMOVES FINDINGS. `walk.mbt` and `infer.mbt` both treat `SContinue`
+as a no-op (`SBreak | SContinue => ()`), so before this increment the names in
+`continue p, r, c, vr` were read by NOTHING -- and an unread binding is exactly what
+`UnusedLocal` reports. moonbit_image's bmp.mbt carries `continue p, r, c, vr` eight times.
+
+THE VALUES ARE READ AND NOT ASSIGNED, and that is the deliberate choice. `continue a, b` means
+"set loop variable one to a, loop variable two to b", and those variables are named by the
+header, four frames away. Synthesising `SAssign(EName(loopvar_i), v_i)` would have the type
+lens check an assignment nobody wrote against a target that may not exist -- a plausible
+fabrication that would manufacture findings. Gate M5 is that fabrication, and it is killed.
+
+NO `skip_seps()` BEFORE LOOKING FOR A VALUE, and the first draft had it. A bare `continue` is
+followed by a `TNewline` and then the NEXT STATEMENT, so skipping separators reads that
+statement's head as the value and swallows the rest of the body -- the file would still parse
+and `parsed` would still go UP, so no corpus number could see it. Gate M4 inverts the guard
+and the row that kills it puts a name after the continue.
+
+REACH, measured on the tree at 0471:
+
+    async   parsed 390 -> 392   unreliable 285 -> 264   notices 1686 -> 1690   actionable 0
+    labeler / proton / moui / contract   BYTE-IDENTICAL
+
+THE SETTLE'S FIRST RUN SAID "REJECT" FOUR TIMES OUT OF EIGHT CLAIMS AND WAS WRONG EVERY TIME
+-- the fixtures, not the grammar. A loop variable is NOT MUTABLE: `for i = 0, total = 0;
+i < n; i = i + 1 { total = total + i }` is [4087] "The variable total is not mutable", and
+the body has to go through `continue`. The header those two rows were written to test is
+fine -- A3 and A4, which put the update in the `continue`, ACCEPT, and so does the corpus.
+=> 判据: when a settle row fails, read the ERROR CODE before deciding which of you is wrong.
+4122 (calling a raising fn from a non-raising one) and 4118 (a bare `raise` needing a
+bare-`raise` caller) both look exactly like a grammar refusal in the output.
+
+=> ONE CORPUS NUMBER MOVED AND IT IS NOT EVIDENCE. moonbit_image `unreliable` 23 -> 15, total
+230 -> 222, with `notices` 207 UNCHANGED and `actionable` 0. `unreliable` is defined in
+`src/sa/main.mbt` as the findings at or after a file's FIRST READ FAILURE -- "derived from an
+already-wrong tree, so reported only as a count, never as results". bmp.mbt's failure is
+line 117, a multi-line C-style header, and reading `continue a, b` correctly CHANGES that
+already-wrong tree.
+
+Checked rather than waved through, in three steps: the count is stable across four runs of
+the same wasm (so it is not the flakiness this project has seen elsewhere); reverting ONLY
+the `continue` arm and keeping the header list reproduces HEAD's 23 exactly, so the header
+change did not touch image at all; and on a COPY of bmp.mbt with the line-117 header repaired
+so the whole file parses, `notices` is 14 vs 14 and every shown finding is byte-identical,
+with only the suppressed remainder moving 14 -> 6. No evidence-bearing number moved anywhere,
+and the whole investigation cost about an hour of not shipping a mystery.
+
+Gate 0472: 5/5 KILLED, no declared survivors, every restore byte-identical.

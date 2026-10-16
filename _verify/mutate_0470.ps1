@@ -40,10 +40,23 @@ Invoke-MutationGate -Name '0470' -Target 'wasm' -Mutations @(
   # M1 THE ORIGINAL DEFECT, RESTORED LITERALLY. The call site goes back to the ordinary
   # statement reader, which is the one-line shape this increment actually had before it.
   # This is the defect as it shipped, not a paraphrase of it.
+  #
+  # RE-ANCHORED at 0472. The anchor was `stmts.push(self.c_for_init(sp))`, and 0472 replaced
+  # that single push with a loop over `c_for_inits(sp)` to admit a LIST of initializers
+  # (`for i = 0, remaining = remaining; ..`). The 55-gate release run then aborted on this row
+  # with `PREFLIGHT MISS` and nothing else -- the harness reporting that the anchor no longer
+  # points at what the mutation names, which is the same event as `mutate_0453` M3 at 0471.
+  # The MEANING is unchanged: the init clause is still read by the ordinary statement reader.
+  # So the whole `for` loop is replaced by the one push, which is exactly the code as it
+  # shipped before 0470 -- re-anchored, not retired, and not weakened.
+  #
+  # The replacement is also still a KILL and not merely a build failure: `for i = 0` reads back
+  # as `SAssign`, which is what `MustRed` turns red on. A mutation that stopped compiling, or
+  # stopped reaching the clause, would have tested nothing.
   @{
     Name = 'M1 the init clause is read by the ordinary statement reader again'
     File = $PARSER
-    Find = '    stmts.push(self.c_for_init(sp))'
+    Find = "    for d in self.c_for_inits(sp) {`n      stmts.push(d)`n    }"
     Repl = '    stmts.push(self.parse_stmt())'
     MustRed = '0470: a C-style for init clause is built as SLet, not SAssign'
   }
