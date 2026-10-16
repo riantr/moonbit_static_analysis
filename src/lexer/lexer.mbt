@@ -65,11 +65,23 @@ pub(all) enum Tok {
   TCaret
   TShl
   TShr
-  /// A lone `|` — the or-pattern separator inside match arms
-  /// (`SAssign(_) | SLet(_) => ...`). Match bodies are skipped whole, so no
-  /// pattern grammar is needed; the token exists so the CHARACTER stops
-  /// reaching lex_op's unknown-char arm, whose FParse report marked whole
-  /// files partial on an or-pattern they could otherwise read.
+  /// A lone `|` — TWO roles, and the second one was missed for a long time.
+  ///
+  /// The first role is the or-pattern separator inside match arms
+  /// (`SAssign(_) | SLet(_) => ...`). Match bodies are skipped whole, so no pattern
+  /// grammar is needed; the token exists so the CHARACTER stops reaching lex_op's
+  /// unknown-char arm, whose FParse report marked whole files partial on an
+  /// or-pattern they could otherwise read.
+  ///
+  /// The second role is the BITWISE-OR OPERATOR, and it is a real one:
+  /// `parse_bitor` consumes `TBar` and builds `EBin(OpBitOr, ...)` (parser.mbt:3134).
+  /// This comment used to claim "the parser never sees one", which stopped being true
+  /// when that tier was added. The cost of the stale claim was concrete: because `|`
+  /// was understood as bitwise-or but was MISSING from `newline_suppressed_after`, an
+  /// expression could not continue across a line break after it, and
+  /// `input_dispatch_result.mbt` died on `(if self.handled { 1 } else { 0 }) |` with
+  /// "unexpected end of line" while `+`, `&` and `||` all continued correctly.
+  /// Settled in `_verify/settle_0455_paren_if.ps1`, 20/20 with a positive control.
   TBar
   TBang
   /// `?` — real MoonBit (optional types `T?`, optional parameters `x? : T`),
@@ -173,6 +185,16 @@ fn is_letter(c : Char) -> Bool {
 /// Newline suppression: after openers,
 /// binary operators, assignment and arrows an expression continues across
 /// lines; after `}` it does not.
+///
+/// `TBar` belongs in this set because `|` is the BITWISE-OR operator as well as the
+/// or-pattern separator, and the operator reading is the one that reaches the parser
+/// (`parse_bitor`, parser.mbt:3134). Its absence was not visible as long as every
+/// `|` in the corpus sat on one line: `+`, `&` and `||` were all listed here, so
+/// `a +\n b` and `a &\n b` parsed and only `a |\n b` failed. Measured in
+/// `_verify/settle_0455_paren_if.ps1`, which also pins that the or-pattern role is
+/// unaffected -- suppression drops the `TNewline` TOKEN, `TBar` itself still reaches
+/// the stream, and match bodies are skipped whole so no pattern parser can be
+/// confused by the missing line break.
 fn newline_suppressed_after(prev : Tok) -> Bool {
   match prev {
     TPlus
@@ -193,6 +215,7 @@ fn newline_suppressed_after(prev : Tok) -> Bool {
     | TCaret
     | TShl
     | TShr
+    | TBar
     | TBang
     | TComma
     | TColon

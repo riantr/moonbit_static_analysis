@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1301,11 +1301,47 @@ if ($SkipMutations) {
 # moved to `src/parser/parser_0454_test.mbt` and reads `ECall`'s third field directly,
 # the way `parser_0430_test.mbt` already does for `x~` and `x?`. Asserting "the call
 # parses" passes; asserting a finding count passes; neither is evidence about a label.
+# 0.4.xx -- newline suppression after the BITWISE-OR token. `unexpected end of line`
+# is 0 occurrences across all six corpora; it was 1 in moui.
+#
+# ONE TOKEN WAS MISSING. `newline_suppressed_after` listed TPlus, TAmp, TCaret,
+# TAndAnd, TOrOr, TShl, TShr and every comparison operator, and did not list TBar. So
+# the lexer emitted TNewline after `|`, `parse_bitor` bumped the `|` correctly, and
+# the operand parse landed on TNewline and `parse_primary` raised "unexpected end of
+# line" (parser.mbt:4664).
+#
+# THE EVIDENCE KEPT POINTING ELSEWHERE, which is the part worth keeping. A sweep for
+# "trailing binary operators" reports 178 corpus files and 2296 sites and would have
+# ranked this as the largest available lever; 103 of those are moui files and only 3
+# moui files fail to parse at all, because `+`, `&` and `||` already continue. And
+# `input_dispatch_result.mbt` had been carried for several rounds as "a parenthesised
+# `if` as an operand", which is false -- a parenthesised `if` parses fine. A token's
+# role is whatever the CONSUMER does with it, and `TBar`'s own comment still said "the
+# parser never sees one" after `parse_bitor` had started consuming it.
+#
+#   moui             parsed 605 -> 606 (+1)   actionable 0 -> 0
+#   moonbit_labeler  parsed  28 ->  28        unreliable 311 -> 294
+#   moonbit_image    parsed   2 ->   2        unreliable 294 -> 285
+#   async            parsed 274 -> 274        unreliable 1188 -> 1175
+#   proton           parsed 109 -> 109        byte-identical
+#   proton_contract  parsed   4 ->   4        byte-identical
+#
+# THE 42 FINDINGS THAT LEFT `unreliable` ARE NOT A COVERAGE LOSS, and it was verified
+# rather than assumed: both builds came from the same tree, one with TBar in the set
+# and one without, and the per-file comparison found ZERO files read less, one newly
+# complete (`input_dispatch_result.mbt`) and one read further (labeler). `actionable`
+# and `notices` are unchanged in every corpus, so what vanished was exactly the class
+# the analyzer itself flags as "this file was not fully understood".
+#
+# GATE 0455, 4/4 KILLED with named tests. M4 is the row worth noting: it deletes the
+# OTHER conjunct of the same `if` -- `closer_ahead` -- and it SURVIVED the first run,
+# which is how the repository learned that the newline-before-a-closing-bracket rule
+# had no test pinning it anywhere. That test now exists.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=605 actionable=0 notices=4209 unreliable=23 withheld=0 total=4232'
-  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=311 withheld=136 total=879'
-  'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=294 withheld=117 total=396'
-  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1188 withheld=309 total=2429'
+  'moui'            = 'files=608 parsed=606 actionable=0 notices=4212 unreliable=20 withheld=0 total=4232'
+  'moonbit_labeler' = 'files=37 parsed=28 actionable=0 notices=568 unreliable=294 withheld=136 total=862'
+  'moonbit_image'   = 'files=18 parsed=2 actionable=0 notices=102 unreliable=285 withheld=115 total=387'
+  'async'           = 'files=419 parsed=274 actionable=0 notices=1241 unreliable=1175 withheld=306 total=2416'
   'proton'          = 'files=137 parsed=109 actionable=0 notices=1374 unreliable=1032 withheld=321 total=2406'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
