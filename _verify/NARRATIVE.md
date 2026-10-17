@@ -1878,3 +1878,125 @@ program to a rule about clause COUNT. The rows that decide a grammar are the one
 ALREADY WRITES -- and when a corpus file and a settle disagree, the corpus is the one carrying a
 compiler's verdict on real code. The cheapest possible check would have been to write the
 corpus line as a settle row from the start; it was four lines away in the same repository.
+## 0477 -- the PATTERN on the left of a `let`
+
+`async/src/os_error/error.mbt` reported one line and nothing else:
+
+    1x  expected '='
+
+Line 79 is `let OSError(errno, context~) = self`, and the reason is not a near miss. There is
+no pattern reader in the parser at all: a binding was read as a NAME followed by `=`, so
+`OSError` was consumed as the bound VARIABLE and the reader then met `(` where it wanted `=`.
+21 such sites in that corpus -- os_error, pipe, js_async, process/redirect -- and each one
+cost its whole file.
+
+**THE READER ALREADY EXISTED.** `parse_is_pattern` has read constructor patterns for `is`
+since 0444, including the payload loop that collects every binding at every depth, and its
+sub-features were settled against the toolchain for exactly what this shape uses: a lowercase
+head binds while an uppercase one is a constructor TEST (settle_0444, 9/9), and `.. rest`
+binds in an array (settle_0466b). So 0477 is a CALL SITE, not a second pattern reader. Two
+readers would be two sets of rules for one grammar, and the corpus would be what found the
+difference.
+
+Settled in `_verify/settle_0477_let_pattern.ps1`, 2 controls + 9 rows, GATE OK:
+
+    ACCEPT   positional / labeled / `..` rest / nested / tuple
+    ACCEPT   a label BINDS the name (`let Circle(label~) = s`, then reading `label`)
+    REJECT(4080, 3007)   anything after `..`        NOT this reader's check
+    REJECT(4080, 4085)   an unknown label             NOT this reader's check
+    REJECT(4080)         too many positionals         NOT this reader's check
+    REJECT(0011)         a refutable pattern          NOT this reader's check
+
+**THE SCAFFOLD WAS WRONG TWICE, and the controls caught both.** Declaring the fixture as a
+`struct` made BOTH controls reject with 4199 -- *The type OSError does not declare a custom
+constructor* -- because a struct declares no constructor, and `let OSError(..) = e` was never
+a struct pattern. The corpus agrees; `pkg.generated.mbti:22` has `suberror OSError {
+OSError(Int, context~ : String) }`. Then `Square(Int, side : Int)` was a parse error: inside a
+variant the fields are POSITIONAL (`Int`) or LABELLED (`name~ : Type`), never `name : Type`.
+Both faults were in the PRELUDE, and both were fixed by changing the fixture until the
+toolchain agreed rather than by relaxing an expectation the compiler rejects.
+
+**AND ONE OF MY OWN ROWS WAS LYING ABOUT ITSELF.** S7 is labelled "nested constructor" and as
+first written it was a byte-for-byte copy of S9, so it duplicated the irrefutability question
+instead of asking its own. Caught on re-read, replaced, and the answer moved: nested
+constructors are ACCEPT.
+
+=> NO NEW NODE. `SLetDestruct(Array[String], Expr)` is already the node for a `let` that binds
+several names at once -- it is what `let (a, b) = pair` produces, and walk, infer and interp
+already bind every name in it and evaluate the initialiser once. The four REJECTs are TYPE
+questions and the parser is type-blind; refusing them here would mean refusing the corpus on a
+check this reader is not equipped to make.
+
+**THE BINDING IS THE CLAIM, AND THE CORPUS FILE COULD NOT PROVE IT.** `error.mbt:79` sits in
+an `impl` body, and impl bodies are outside the analyzed subset, so the file proves the PARSE
+and leaves the binding untested. A file that parses while binding nothing is the worst outcome
+available: it converts a coverage blocker into a confident false positive against code the
+compiler accepts, which is what 0460's comment records happening when an array pattern was read
+as expressions. So the rows that matter are at the FINDING level, and every positive row has a
+canary beside it -- because a row asserting `UndefinedName == 0` passes just as well on a lens
+that has stopped resolving names altogether.
+
+MEASURED. `actionable` 0 on all six corpora; ZERO `undefined name` findings anywhere in async.
+
+    async    parsed 400 -> 403, unreliable 158 -> 120, notices 1754 -> 1776,
+             withheld 31 unchanged, total 1912 -> 1896
+    proton   unreliable 187 -> 186, total 2068 -> 2067; parsed, notices, withheld UNCHANGED
+
+`parsed +3` is exactly the three files the backlog named. `unreliable -38` against `parsed +3`
+is the expected PAIR and not two events: unblocking a file reveals findings whose reach was
+blocked, it does not create them.
+
+**PROTON'S -1, ATTRIBUTED -- AND MY FIRST ATTRIBUTION WAS WRONG TWICE.** The whole 2198-line
+scan output differs on exactly one line: `facade_session.mbt ... 91 after it not shown`, where
+HEAD said 92. `notices` is 128 in both and the region boundary is 1548 in both, so one finding
+moved from after the boundary to before it. The mechanism is `facade_session.mbt:1664`,
+`let Open(id, completion) = command` -- the single constructor-pattern site in that corpus.
+At HEAD that line was the file's first parse error; 0477 reads past it, so the first failure
+moves later and one fewer finding sits in the untrusted zone. The file is still blocked, by the
+`<?` log payload, which is the next backlog item.
+
+Two wrong turns are worth recording because both would have shipped a confident story:
+
+1. I concluded 1664 "cannot matter" because the file reports `read up to line 1548`. That number
+   is the ANALYSIS REGION boundary, not the parse cut. The arithmetic (`total = actionable +
+   notices + unreliable`, with total findings fixed at 128) is what actually pins the move.
+2. The first `git worktree` A/B was CONFOUNDED. It reported HEAD 187 vs mine 186 -- the right
+   answer for entirely the wrong reason. `--extern-iface-dir` was being IGNORED: the extern
+   tree is taken from the process CWD's `.repos`, and the two runs sat in different
+   directories, so the HEAD build resolved against a different interface tree. Redone from one
+   CWD, with the `Info:` line confirming both runs used the same tree, the same 187-vs-186
+   stands -- now for the right reason. => an A/B that does not verify its own inputs agrees
+   with a broken one by coincidence, and the coincidence is indistinguishable from the result.
+
+**AND A NAVIGATION TRAP THAT MADE ALL FIVE OF MY OWN TESTS FAIL, CONTROLS INCLUDED.** A
+function body is wrapped in `SBlock` only when it is a SINGLE statement. `parser_0476`
+navigates `body[0].kind -> SBlock(stmts)` because its fixture is one `for` loop;
+`parser_0432` goes direct because its fixture is two statements. Both are right. My fixtures
+have two or three statements and I navigated through `SBlock` anyway. Five failures including
+both controls is the signature of a wrong NAVIGATION rather than a wrong reader -- and the
+corpus scan had already measured the reader working.
+
+Gate 0477: 4/4 KILLED, no declared survivors, every restore byte-identical. M2 is the mutation
+the increment exists for: it binds one INVENTED name instead of the pattern's, parses clean,
+and is invisible to `first_error` -- visible only as `undefined name` on the next line.
+
+**AND A DECLARED SURVIVOR FROM 0.4.34 EXPIRED UNDER THIS INCREMENT.** The full 60-gate run came
+back red on gate **0421**, not on 0477: `M7 nested-constructor rule removed` was declared
+`Expect = 'SURVIVED'` with a `Prove` argument that it had become UNREACHABLE rather than merely
+unobserved -- with the rule removed, `Some(Os(error))` binds both `Os` and `error`, nothing is
+undefined and nothing is audited, so the mutated source reads CLEANER than the original. That
+argument was TRUE, and true about a particular OBSERVATION SURFACE.
+
+0477 is what ended it. The new row asserts `names.length()` at the AST, so removing the rule
+makes `One` bind alongside `inner` and the assertion reports `2 != 1`. Applied by hand the
+mutation turns exactly ONE test red and it is that one -- which is also why the gate's own
+summary line, "1 of 948 red", was not enough on its own to NAME it. `Expect` is now `MustRed`,
+and the 0.4.34 reasoning is left in place rather than quietly rewritten: it was checked and
+found wanting, not forgotten.
+
+=> 判据: a declared survivor is a claim about the CURRENT suite, not a constant -- and it was
+also a claim about a current OBSERVATION SURFACE. "No lens can disagree with this rule" stayed
+true; an AST assertion is not a lens. The risk a survivor names is the risk that the next
+increment buys a different instrument, and this one did. The failure mode to watch is the
+opposite one: a gate that reads "KILLED" and moves on has told you the suite grew, and a gate
+that reads "SURVIVED" and leaves the note alone has told you nothing has.

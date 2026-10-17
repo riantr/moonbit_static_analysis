@@ -2500,6 +2500,53 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(names, init), }
     }
+    // 0477 -- a CONSTRUCTOR PATTERN on the left of a `let`.
+    //
+    //   let OSError(errno, context~) = self
+    //
+    // `async/src/os_error/error.mbt:79` reads exactly that, and it is 1 of 21 such sites in
+    // that corpus. Before this branch the token after `let` reached the plain binding path
+    // below, which consumed `OSError` as the bound VARIABLE and then met `(` where it wanted
+    // `=` -- the whole of the file's report, and the whole of why the corpus counted it as
+    // unreadable rather than as a finding:
+    //
+    //     1x  expected '='
+    //
+    // THE PATTERN READER ALREADY EXISTED. `parse_is_pattern` has read constructor patterns
+    // for `is` since 0444, including the payload loop that collects every binding at every
+    // depth, and its sub-features are settled against the toolchain for exactly what this
+    // shape uses: a lowercase head binds while an uppercase one is a constructor test
+    // (`_verify/settle_0444_is_head.ps1`, 9/9), and `.. rest` binds in an array
+    // (`_verify/settle_0466b_rest_binding.ps1`). So this is a CALL SITE, not a second
+    // pattern reader -- two readers would be two sets of rules for one grammar, and the
+    // corpus would be the thing that found the difference.
+    //
+    // NO NEW NODE. `SLetDestruct(Array[String], Expr)` is already the node for a `let` that
+    // binds SEVERAL names at once -- it is what `let (a, b) = pair` produces, and walk, infer
+    // and interp already bind every name in it and evaluate the initialiser ONCE. A
+    // constructor pattern binds `errno` and `context` the same way, and the subset has no
+    // tuple types to per-element either, so synthesising an `SLet` over a `$pair` would be a
+    // second spelling of a node that already exists.
+    //
+    // WHAT THE PARSER DELIBERATELY DOES NOT CHECK.
+    // `_verify/settle_0477_let_pattern.ps1` settled 9 rows against `moon check`, and four of
+    // the refusals are NOT this branch's to make: an unknown label REJECT(4080, 4085), too
+    // many positionals REJECT(4080), anything after `..` REJECT(4080, 3007), and a refutable
+    // pattern REJECT(0011) -- the last because `let C(x) = e` requires a single-constructor
+    // type, and a `struct` declares no constructor at all (REJECT 4199). Every one of those
+    // is a TYPE question. This reader is type-blind, and refusing them here would mean
+    // refusing the corpus on a check it is not equipped to make, which is the false negative
+    // 0475's negative rows were written to prevent.
+    //
+    // The HEAD cannot bind, and that is settled rather than incidental: `parse_is_pattern`
+    // binds a head only when it is NOT followed by `(` and `is_binding_head_name` requires it
+    // to be lowercase besides. `OSError` is neither, so the constructor stays a constructor.
+    if self.peek_name() != "" && self.at_next(TLParen) {
+      let names = self.parse_is_pattern()
+      self.expect(TAssign, "'='")
+      let init = self.parse_expr()
+      return { span: sp, kind: @ast.SLetDestruct(names, init), }
+    }
     let (name, _) = self.expect_name("binding name")
     let mut ann = ""
     if self.at(TColon) {

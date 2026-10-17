@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -567,6 +567,40 @@ if ($SkipMutations) {
 #     and the other five corpora byte-identical. The general lesson is in NARRATIVE.md: a settle
 #     row that passes BECAUSE the toolchain refused the fixture is evidence about the fixture,
 #     and the rows that decide a grammar are the ones the corpus already writes.
+#   - `async` AND `proton` AT 0477. `os_error/error.mbt` reported `1x expected '='` and
+#     nothing else: there is no `parse_pattern` in the parser, so `let OSError(errno,
+#     context~) = self` had `OSError` consumed as the bound VARIABLE and then met `(` where it
+#     wanted `=`. 21 such sites in async. Settled in `_verify/settle_0477_let_pattern.ps1`,
+#     2 controls + 9 rows, and implemented as a CALL SITE onto the `parse_is_pattern` reader
+#     that already exists for `is`, emitting the existing `SLetDestruct` node -- no new node.
+#       async    parsed 400 -> 403, unreliable 158 -> 120, notices 1754 -> 1776,
+#                total 1912 -> 1896, withheld 31 unchanged, actionable still 0
+#       proton   unreliable 187 -> 186, total 2068 -> 2067; parsed 131, notices 1881 and
+#                withheld 6 all UNCHANGED
+#     `parsed +3` on async is exactly the three files the backlog named, and `unreliable -38`
+#     against it is the expected PAIR and not two events: unblocking a file reveals findings
+#     whose reach was blocked, it does not create them. ZERO `undefined name` findings anywhere
+#     in async is the load-bearing number -- a reader that parsed the pattern and bound NOTHING
+#     would have been silent on `first_error` and loud on the next line.
+#     proton's -1 is attributed, and the attribution is the hard part of this increment. The
+#     whole 2198-line scan output differs on exactly ONE line: `facade_session.mbt ... 91 after
+#     it not shown`, where HEAD said 92. `notices` is 128 and the region boundary is 1548 in
+#     both, so one finding moved from after the boundary to before it, and the mechanism is
+#     `facade_session.mbt:1664` (`let Open(id, completion) = command`, the single
+#     constructor-pattern site in that corpus). At HEAD that line was the file's first parse
+#     error; 0477 reads past it, so the first failure moves later. The file is still blocked,
+#     by the `<?` log payload.
+#     TWO WRONG TURNS ARE RECORDED THERE because both would have shipped a confident story.
+#     First: `read up to line 1548` was read as the parse cut, which would have "proved" 1664
+#     could not matter -- it is the ANALYSIS REGION boundary, and the arithmetic
+#     (`total = actionable + notices + unreliable`) is what actually pins the move. Second: the
+#     first `git worktree` A/B was CONFOUNDED, because `--extern-iface-dir` is IGNORED and the
+#     extern tree is taken from the process CWD's `.repos`; the two runs sat in different
+#     directories, so HEAD resolved against a different interface tree. Redone from one CWD
+#     with the `Info:` line confirming both runs used the same tree, the same 187-vs-186 stands
+#     -- now for the right reason.
+#     => an A/B that does not verify its own inputs agrees with a broken one by coincidence, and
+#     the coincidence is indistinguishable from the result.
 #   - `async` AT 0473, attributed rather than asserted. Every one of async's C1-shaped
 #     headers -- `for <name> = .. {` with no `;` before `{` -- was enumerated across the
 #     tree and cross-referenced against the scanner's own PARTIAL list, then A/B'd against
@@ -614,8 +648,8 @@ $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=35 actionable=0 notices=738 unreliable=55 withheld=16 total=793'
   'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=13 withheld=0 total=220'
-  'async'           = 'files=419 parsed=400 actionable=0 notices=1754 unreliable=158 withheld=31 total=1912'
-  'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=187 withheld=6 total=2068'
+  'async'           = 'files=419 parsed=403 actionable=0 notices=1776 unreliable=120 withheld=31 total=1896'
+  'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=186 withheld=6 total=2067'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }
 $TARGETS = [ordered]@{

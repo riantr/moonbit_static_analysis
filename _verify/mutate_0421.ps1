@@ -266,28 +266,29 @@ if after < self.toks.length() && self.toks[after] == TDot {
     return false
   }
 '@
-    Expect = 'SURVIVED'
-    Prove = @'
-DECLARED SURVIVED BY 0.4.34. Full mechanism in gate 0419 M1; the same argument, a
-different rule.
-
-This one is the sharpest illustration, because the comment directly above it claims
-TWO findings -- "reported unused while `error`, which IS used, is reported undefined"
--- and 0.4.34 made exactly one of the two unreachable. `Walker::EIs` moved from `bind`
-to `bind_pattern`, so the phantom `Os` no longer reaches the audit list and the unused
-half of that pair is gone. The `error` half was never reachable anyway: at depth 2 the
-name still binds correctly and the read resolves. Measured: 646/646 green.
-
-So this mutation is not merely UNOBSERVED, it is now UNREACHABLE. With the
-nested-constructor rule removed, `Some(Os(error))` binds both `Os` and `error`,
-nothing is undefined and nothing is audited -- the mutated source reads CLEANER than
-the original. That is the honest way to describe a guard the current lenses can no
-longer disagree with.
-
-The comment above this block has been left in place deliberately rather than quietly
-rewritten. It was true when it was written, it is stale now, and a reader who trusts
-it deserves to know it was checked rather than forgotten.
-'@.Replace("`r`n", "`n")
+    MustRed = '0477: a nested constructor binds only the innermost name'
+    # EXPIRED AT 0477, and the way it expired is the whole point of keeping the note.
+    #
+    # This row was DECLARED SURVIVED BY 0.4.34 with a `Prove` argument that the mutation had
+    # become UNREACHABLE rather than merely unobserved: with the nested-constructor rule
+    # removed, `Some(Os(error))` binds both `Os` and `error`, nothing is undefined and nothing
+    # is audited, so the mutated source reads CLEANER than the original. 646/646 green.
+    #
+    # That argument was TRUE, and true about a particular OBSERVATION SURFACE. 0477 is what
+    # ended it. The new row `0477: a nested constructor binds only the innermost name` asserts
+    # `names.length()` at the AST, so removing the rule makes `One` bind alongside `inner` and
+    # the assertion reports `2 != 1`. Measured rather than argued: the mutation applied by hand
+    # turns exactly ONE test red and it is this one -- which is also why the gate's own summary
+    # line ("1 of 948 red") was not enough on its own to name it.
+    #
+    # The stale comment above this block in the original file was left in place deliberately
+    # rather than quietly rewritten, and the same courtesy is owed here: the 0.4.34 reasoning
+    # was CHECKED and found wanting, not forgotten.
+    #
+    # => 判据: a declared survivor is a claim about the CURRENT suite, not a constant -- and it
+    # was also a claim about a current OBSERVATION SURFACE. "No lens can disagree with this
+    # rule" stayed true; an AST assertion is not a lens. The risk a survivor names is the risk
+    # that the next increment buys a different instrument, and this one did.
   }
 
   # --- M8: the or-pattern depth rule removed --------------------------------
