@@ -5372,23 +5372,57 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       )
       { span: sp, kind: @ast.EBigInt, }
     }
-    TName("for") | TName("while") =>
-      // A loop in EXPRESSION position, which is legal MoonBit:
-      //     let kind : MessageKind = for frame = self.recv_frame_header() { .. }
-      // at `moonbitlang/async 0.22.4 src/websocket/conn.mbt:486`.
-      //
-      // These two had NO arm here, so `for` fell through to the generic TName arm
-      // and became `EName("for")` -- and a keyword is not a binding, so the
-      // structural walk reported `undefined name 'for'` as an ACTIONABLE finding on
-      // code `moon check` compiles. `while` did the same. `match` and `if` in the
-      // identical position already report honestly, which is the control for this
-      // row: the defect is the two missing arms, not expression position itself.
-      //
-      // The construct is consumed by the SAME routines statement position uses, so
-      // the token stream cannot drift between the two positions, and the body is
-      // skipped whole -- the subset has no loop-valued expression. See
-      // `parse_loop_as_expr`.
+    // The loop keyword is consumed BELOW, by this arm, and NOT by the scrutinee:
+    // `parse_atom` matches on `self.bump()`, so the token has already been taken
+    // by the time this body runs and the cursor sits on the one AFTER it.
+    //
+    // That is why this arm RESTORES the cursor instead of dispatching straight
+    // into the statement-position readers. Every one of them is written against
+    // the invariant "the cursor is ON the keyword": `parse_while_stmt` opens with
+    // `self.bump()` to step over `while`, `parse_for_stmt` calls `is_c_style_for`
+    // whose scan starts at `self.p + 1`, and `parse_c_for` opens with `bump() // for`.
+    // `parse_loop_as_expr` also re-tests `at_name("while")` to choose between them.
+    //
+    // THE BUG THIS IS, measured rather than reasoned. `parse_loop_as_expr` used to be
+    // called with the keyword still consumed by the scrutinee, so its `at_name("while")`
+    // re-test was false for EVERY loop expression and all of them went to
+    // `parse_for_stmt`, which then bumped the token after the keyword as if it were
+    // `for`. A temporary trace, added and then reverted, showed it exactly:
+    //
+    //     TRACE atom enter    p=13 cur=`while`
+    //     TRACE atom dispatch p=14 cur=`a`
+    //     TRACE as_expr       p=14 cur=`a` at_while=false
+    //
+    // The measured trigger, all `let k = <loop> { 1 }`, one file each:
+    //
+    //     while a { 1 }         parses   (nothing after the keyword to misread)
+    //     while a > 0 { 1 }     `unexpected token `>``
+    //     while a + 0 { 1 }     `unexpected token `+``
+    //     while 1 < 2 { 1 }     `unexpected token `<``
+    //     while g(a) > 0 { 1 }  parses   (a CALL head survives the misroute)
+    //     any of the above in STATEMENT position: parses
+    //
+    // The call-head row is why this was not diagnosed earlier: an operator is not
+    // the trigger, the misroute is, and a call head happens to survive it. And
+    // `if a { while a > 0 { 1 } } else { 2 }` parses too, which is a FALSE PASS --
+    // the `TName("if")` arm above skips the branch whole, so nothing inside it was
+    // ever parsed. An `if` branch is not evidence about its contents.
+    //
+    // Restoring the cursor is the whole fix and it costs one line: every reader
+    // downstream then sees exactly the state its own comments describe.
+    // TWO EXPLICIT ARMS rather than ONE ARM COVERING BOTH KEYWORDS. Written that way
+    // with this comment above it, `moon fmt` lays the comment out BETWEEN the two
+    // alternatives and the result reads like a half-finished pattern -- which is how this
+    // read the first time it was written. One line each, both identical, is plainer and
+    // gives the mutation gate a separate anchor per keyword.
+    TName("for") => {
+      self.p -= 1
       self.parse_loop_as_expr(sp)
+    }
+    TName("while") => {
+      self.p -= 1
+      self.parse_loop_as_expr(sp)
+    }
     TName("match") => {
       // A `match` expression, statement or value position alike. The subset
       // has no pattern matching and no node for the arms, so the arms are

@@ -1536,3 +1536,160 @@ Gate 0473: 7/7 KILLED, no declared survivors, every restore byte-identical. 913 
 AND A NOTE FOR ANYONE READING A GATE LOG. The test total is TARGET dependent: 899 on wasm and
 827 on js, so gates `0.4.23` onward report `of 827 red` and a mid-run drop from 899 to 827 is
 that, not a suite quietly losing 8% of its tests while reporting green.
+
+## 0474: a loop in EXPRESSION position was dispatched to the WRONG reader
+
+THE DEFECT. `parse_atom` matches on `self.bump()`, so the loop keyword is consumed as the match
+SCRUTINEE and the cursor has already moved past it by the time the arm's body runs.
+`parse_loop_as_expr` then chose between `parse_while_stmt` and `parse_for_stmt` by RE-TESTING
+`at_name("while")` -- against that already-moved cursor. The re-test was therefore false for
+EVERY loop expression, and all of them went to `parse_for_stmt`, which bumped the token after the
+keyword as if it were `for`.
+
+Isolated by a temporary trace, added, measured, then reverted:
+
+    TRACE atom enter    p=13 cur=`while`
+    TRACE atom dispatch p=14 cur=`a`
+    TRACE as_expr       p=14 cur=`a` at_while=false
+
+THE MEASURED TRIGGER, one fixture per row, all `let k = <loop> { 1 }`:
+
+    while a { 1 }          parsed   nothing after the keyword to misread
+    while a > 0 { 1 }      `unexpected token `>``
+    while a + 0 { 1 }      `unexpected token `+``
+    while 1 < 2 { 1 }      `unexpected token `<``
+    while g(a) > 0 { 1 }   parses   a CALL head survives the misroute
+    any of the above in STATEMENT position: parses
+
+Two rows in that table are why this survived so long. The call head shows the OPERATOR is not the
+trigger -- the misroute is, and a call happens to survive it. And `if a { while a > 0 { 1 } } else
+{ 2 }` parses too, which is a FALSE PASS: the `TName("if")` arm skips the branch whole, so nothing
+inside it was ever parsed. An `if` branch is not evidence about its contents, and a call head is
+not evidence that the head was handled.
+
+THE FIX restores the cursor before dispatching, so every downstream reader sees exactly the state
+its own comments describe -- `parse_while_stmt` opens with `bump()`, `is_c_style_for` scans from
+`self.p + 1`, `parse_c_for` opens with `bump() // for`. One line, in TWO EXPLICIT ARMS rather than
+one `TName("for") | TName("while")`: written as an or-pattern with the comment above it, `moon fmt`
+lays the comment out BETWEEN the alternatives and the result reads like a half-finished pattern.
+
+=> 判据: a helper that RE-DERIVES which construct it is handling, from a cursor its caller has
+already moved, cannot be correct by construction. The caller already knows which arm it matched.
+Reading the code says the code is correct here -- `peek()` is the CURRENT token -- so this one
+cannot be found by reading.
+
+SETTLED. `_verify/settle_0474_loop_expr.ps1`, 7 gated rows (2 controls, 5 claims) and 1 recorded,
+all ACCEPT against `moon check`. Tests: `parser_0474_test.mbt` 8 rows, `pipeline_0474_test.mbt` 3.
+
+WHAT IT BUYS IS EXACTLY "THE FILE PARSES", AND NOT ONE FINDING MORE. `parse_loop_as_expr` consumes
+the loop through the statement-position readers and then DISCARDS the statement, returning an
+opaque `EBigInt`, so the loop body is parsed and thrown away. `pipeline_0474_test.mbt` pins that in
+both directions: an undefined name inside a loop expression's body is NOT reported, while the same
+name in a statement-position loop IS. A gain in `parsed` is a gain in COVERAGE, not in analysis,
+and the two are not the same claim.
+
+MEASURED. Five of six corpora are byte-identical -- moui, moonbit_labeler, moonbit_image, proton and
+proton_contract did not move by a single field. `actionable` is 0 on all six.
+
+    async    parsed 394 -> 396, notices 1698 -> 1728, unreliable 243 -> 203,
+             withheld 40 -> 31, total 1941 -> 1931
+
+`notices` +30 with `unreliable` -40 is ONE event, not two: the two files that recovered used to be
+counted rather than reported, so they now report real notices. Attributed against a `git worktree`
+build of HEAD:
+
+    websocket/conn.mbt           blocked at 486 -> PARSES   `let kind = for frame = .. {`
+    internal/event_loop/io.mbt   blocked at 364 -> PARSES   a `while` expression
+    http/parser.mbt              blocked at  80 -> blocked at 440
+
+Nothing else moved; blocked-with-findings 21 -> 20.
+
+### The mutation that CANNOT fail, and why it was kept anyway
+
+Gate 0474 is 3 KILLED and 1 declared SURVIVED, and the survivor is the interesting part.
+
+M3 turns the restore `self.p -= 1` into `self.p += 1`. The obvious move is to go looking for the
+row that kills it. That is the wrong question, because "which test catches this" and "can ANY test
+catch this" have different answers and different verdicts. So the second one was measured instead
+(`_verify/measure_0474_m3.ps1`, both trees built and scanned in one session, changing only that
+line):
+
+    correct   924/924 green   files=419 parsed=396 actionable=0 notices=1728 unreliable=203
+                               withheld=31 total=1931    20 PARTIAL (blocked-file) lines
+    mutated   924/924 green   files=419 parsed=396 actionable=0 notices=1728 unreliable=203
+                               withheld=31 total=1931    20 PARTIAL (blocked-file) lines
+
+and the two blocked-file lists are IDENTICAL NAME FOR NAME, not merely equal in length -- the count
+alone would have hidden a file trading places with another. A 419-file corpus containing the very
+loop-expression sites this increment is about moves not one bit.
+
+The mechanism is one line of the increment's own code: `let _ = self.parse_for_stmt(sp)`. M3 sends
+the header to `parse_c_for` instead, which builds a perfectly well-formed `SBlock`+`SWhile` -- and
+it is thrown away. Both readers consume the identical token range. That is the worst shape a
+mutation can have: it does not crash, does not error, and is wrong.
+
+WHAT WOULD KILL IT is a real change rather than a missing fixture: analysing the loop-expression
+body. The moment a loop expression keeps its tree, M3 has something to be wrong about and the gate
+says so.
+
+=> 判据: this project has already used "a mutation that cannot fail tests nothing" to DELETE a
+mutation. This is the same sentence pointing the other way, and both halves are needed: a green run
+is compatible with "untested" and with "unobservable", and only one of them is acceptable to leave
+behind. Reach PAST the suite before declaring a survivor -- the corpus is a measurement the test
+suite structurally cannot make, because a discarded subtree cannot fail an assertion and cannot
+move a finding count either.
+
+Gate 0474: 3 KILLED, 1 declared SURVIVED with its argument, every restore byte-identical. 924 tests.
+
+### The release gate caught a gate lying to itself, and that is the better story
+
+The first full run after this increment FAILED, at `mutate_0465` M6 -- a gate three increments
+old, whose row belongs to the very arms this increment rewrote:
+
+    SURVIVED  M6 `for` and `while` in expression position report as undefined names
+    GATE FAILED: 0465  (named test did not go red)
+
+M6's anchor was the single line `TName("for") | TName("while") =>`. 0474 split that or-pattern
+into two explicit arms, and afterwards the string existed in the file in exactly ONE place --
+inside the comment this increment wrote to explain why the arm had been split.
+
+So the mutation rewrote the PROSE. The text edit applied cleanly. The pre-flight reported the
+anchor "present and UNIQUE", which was true. 852/852 stayed green. And the gate reported a
+SURVIVED for a mutation that had changed no code at all.
+
+It failed only because M6 is declared KILLED. Had it been a declared survivor -- which, by rule
+5, is exactly the verdict a `--=`-turned-`+=` row invites when someone cannot find a test -- it
+would have passed silently and nobody would ever have looked again.
+
+FOUR things came out of it, and the third is the one that outlives the increment:
+
+1. M6 is RE-ANCHORED onto the two real arms, keeping its meaning exactly: both keywords are
+   renamed in one edit, because they are now two arms and the row is about both.
+
+2. The parser comment was REWORDED so it cannot satisfy an anchor again. This is the part that
+   feels like tidying and is not: a comment that quotes an anchor-shaped string is a live
+   tripwire for every future gate, and this one was live for exactly one run.
+
+3. `mutate_lib.ps1` GAINED RULE 8: an anchor must not be satisfiable by prose. The pre-flight
+   already counted occurrences and reported uniqueness, and NEITHER property can distinguish
+   code from a comment that quotes it. It now also tests whether every line the match spans
+   begins with `//`, and ABORTS if so. A match on a line the compiler never reads is not a
+   match on code.
+
+4. The near-miss is recorded here rather than only in the gate that fixed it, because the
+   general shape is not about parsers. An anchor is a POINTER to the line that decides
+   behaviour. Presence says the text exists; uniqueness says it is alone; neither says it is
+   the line that matters. A gate that verifies a pointer has found its target is a different
+   thing from a gate that verifies the pointer's label appears once.
+
+=> 判据: a mutation that changed nothing and a mutation that changed the wrong thing produce
+the SAME green suite. The harness already had a rule for the first (NO-OP IS A FAILURE, added
+when an absent anchor was read as a clean run). It had nothing for the second, and the second
+is the more dangerous one, because an absent anchor aborts loudly while a prose-satisfied one
+does not.
+
+AND THE ORDER MATTERS, because it is the reason this was caught at all. `mutate_0474` was run
+ALONE first and was green; had the 57-gate run been the only check, the failure would still
+have surfaced -- but the 0474 anchor split and the 0465 anchor were made in the SAME increment,
+and the gate that noticed was the older one. A new gate does not test the increment that added
+it. Only the gates that already existed can notice that adding it broke something.

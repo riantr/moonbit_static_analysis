@@ -111,11 +111,43 @@ Invoke-MutationGate -Name '0465' -Target 'js' -Mutations @(
   }
 
   # M6 THE LOOP-EXPRESSION ARMS NEVER MATCH, and `for` becomes a name again.
+  #
+  # RE-ANCHORED AT 0474, AND THE NEAR-MISS IS THE POINT. This used to match the single
+  # or-pattern that covered both keywords. 0474 split it into two explicit arms, and the old
+  # text then survived in exactly ONE place -- inside a comment that quoted the pattern to
+  # explain why the arm had been split. So the mutation rewrote the PROSE, the pre-flight
+  # correctly reported the anchor "present and UNIQUE", and 852/852 stayed green for a
+  # mutation that had changed no code at all.
+  #
+  # The release gate caught it, which is precisely what it is for, but the lesson outlives the
+  # fix: A GATE ANCHOR MUST NOT BE SATISFIABLE BY PROSE. Presence and uniqueness are the wrong
+  # two properties -- a comment that quotes code has both. The pre-flight also cannot tell a
+  # real anchor from a match inside a line that begins with `//`, and it should; recorded as a
+  # harness gap rather than patched here, because changing the matcher invalidates all 57 gates.
+  # The parser comment that caused it has been reworded so it cannot satisfy an anchor again.
   @{
     Name = 'M6 `for` and `while` in expression position report as undefined names'
     File = $PARSER
-    Find = 'TName("for") | TName("while") =>'
-    Repl = 'TName("forr") | TName("whilee") =>'
+    Find = @'
+    TName("for") => {
+      self.p -= 1
+      self.parse_loop_as_expr(sp)
+    }
+    TName("while") => {
+      self.p -= 1
+      self.parse_loop_as_expr(sp)
+    }
+'@.Replace("`r`n", "`n")
+    Repl = @'
+    TName("forr") => {
+      self.p -= 1
+      self.parse_loop_as_expr(sp)
+    }
+    TName("whilee") => {
+      self.p -= 1
+      self.parse_loop_as_expr(sp)
+    }
+'@.Replace("`r`n", "`n")
     MustRed = '0465b: `for` and `while` in expression position report honestly'
   }
 

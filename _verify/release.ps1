@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -531,7 +531,7 @@ if ($SkipMutations) {
 # corpus moved -- and history at the top of the release script is what made the entry
 # point unreadable.
 #
-# FOUR LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
+# SIX LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
 # they are claims about THESE numbers rather than about a past increment:
 #
 #   - the six SUMMARY lines carry ZERO signal about the behavior lens, which no pinned
@@ -539,8 +539,9 @@ if ($SkipMutations) {
 #     block in NARRATIVE.md). A pin that cannot distinguish two states is not a pin.
 #   - `moonbit_labeler` moved 801 -> 800 at 0470 (the last `actionable` on any corpus) and
 #     800 -> 793 at 0471. `proton` moved at 0471: 122 -> 131 parsed, `unreliable`
-#     544 -> 187. `async` moved at 0472: 390 -> 392 parsed, `unreliable` 285 -> 264,
-#     and again at 0473: 392 -> 394 parsed. `actionable` has been 0 on every one of them.
+#     544 -> 187. `async` moved at 0472: 390 -> 392 parsed, `unreliable` 285 -> 264;
+#     at 0473, 392 -> 394 parsed; and at 0474, 394 -> 396 parsed, `notices` 1698 -> 1728,
+#     `unreliable` 243 -> 203, `withheld` 40 -> 31. `actionable` has been 0 on every one.
 #   - `async` AT 0473, attributed rather than asserted. Every one of async's C1-shaped
 #     headers -- `for <name> = .. {` with no `;` before `{` -- was enumerated across the
 #     tree and cross-referenced against the scanner's own PARTIAL list, then A/B'd against
@@ -553,6 +554,20 @@ if ($SkipMutations) {
 #     for it, and `http/utils.mbt` (`for input = input {`, `for rest = start {`) is the
 #     only candidate in that class. That is an inference from the arithmetic, not a
 #     measurement, and it is labelled as one.
+#   - `async` AT 0474, attributed the same way. A loop in EXPRESSION position was routed to
+#     the wrong reader -- `parse_loop_as_expr` re-tested `at_name("while")` against a cursor
+#     its own caller had already moved past the keyword, so the re-test was false for EVERY
+#     loop expression. A/B'd against a `git worktree` build of HEAD:
+#       websocket/conn.mbt              blocked at 486 -> PARSES   (`let kind = for frame = .. {`)
+#       internal/event_loop/io.mbt      blocked at 364 -> PARSES   (a `while` expression)
+#       http/parser.mbt                 blocked at  80 -> blocked at 440
+#     and nothing else moved in either corpus; blocked-with-findings 21 -> 20.
+#     `notices` +30 with `unreliable` -40 is the expected pair, not two events: those two
+#     files used to be counted rather than reported, so they now report real notices.
+#     WHAT IT BUYS IS EXACTLY "the file parses". The loop-expression BODY is still parsed
+#     and thrown away (`parse_loop_as_expr` returns an opaque `EBigInt`), so an undefined
+#     name inside one is still not reported -- pinned in both directions in
+#     `pipeline_0474_test.mbt`. A gain in `parsed` is a gain in coverage, not in analysis.
 #   - `moonbit_image`'s `unreliable` fell 23 -> 15 at 0472 and 15 -> 13 at 0473 while its
 #     `notices` did NOT move, and that asymmetry is the whole explanation. `unreliable` is
 #     the findings at or after a file's FIRST READ FAILURE -- "derived from an already-wrong
@@ -574,7 +589,7 @@ $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=35 actionable=0 notices=738 unreliable=55 withheld=16 total=793'
   'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=13 withheld=0 total=220'
-  'async'           = 'files=419 parsed=394 actionable=0 notices=1698 unreliable=243 withheld=40 total=1941'
+  'async'           = 'files=419 parsed=396 actionable=0 notices=1728 unreliable=203 withheld=31 total=1931'
   'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=187 withheld=6 total=2068'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

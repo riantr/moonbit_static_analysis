@@ -57,6 +57,13 @@
 #      a gate. Those scripts rebuild between scans, so a concurrent gate also
 #      fights over `_build`.
 #
+#   8. AN ANCHOR MUST NOT BE SATISFIABLE BY PROSE. Presence and uniqueness cannot
+#      tell code from a comment that QUOTES it, and such an anchor is applied,
+#      unique, and behaviourally inert -- so the suite stays green and the gate
+#      reports a result for a mutation it never performed. Added 0474, after gate
+#      0465's M6 did exactly this: 0474 split one arm into two, the anchor survived
+#      only inside the comment explaining the split, and M6 rewrote the prose.
+#
 # Usage from a release gate:
 #
 #     . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
@@ -180,6 +187,19 @@ function Invoke-MutationGate {
 
   $absent = @()
   $ambiguous = @()
+  $prose = @()
+  # PROSE MAP, built once per file. A line is PROSE if it starts with `//` after trimming --
+  # which covers `//` and `///` and `///|` alike, since all three are comment markers.
+  $proseMap = @{}
+  foreach ($m in $live) {
+    if (-not $proseMap.ContainsKey($m.File)) {
+      $flags = New-Object 'System.Collections.Generic.List[bool]'
+      foreach ($ln in ($texts[$m.File] -split "`n")) {
+        $flags.Add($ln.TrimStart().StartsWith('//'))
+      }
+      $proseMap[$m.File] = $flags
+    }
+  }
   foreach ($m in $live) {
     $findText = ([string]$m.Find).Replace("`r`n", $nl)
     $hay = $texts[$m.File]
@@ -198,10 +218,39 @@ function Invoke-MutationGate {
     # diagnostic. The count is printed so it is in front of whoever reads the output.
     $count = 0
     $step = [Math]::Max(1, $findText.Length)
+    $first = -1
     $idx = $hay.IndexOf($findText, [System.StringComparison]::Ordinal)
     while ($idx -ge 0) {
+      if ($first -lt 0) { $first = $idx }
       $count++
       $idx = $hay.IndexOf($findText, $idx + $step, [System.StringComparison]::Ordinal)
+    }
+    if ($count -gt 0) {
+      # PROSE TEST, added 0474 after gate 0465 M6 caught it. Presence and uniqueness are the
+      # WRONG two properties to check when the only occurrence of an anchor is inside a
+      # COMMENT THAT QUOTES THE CODE. Such an anchor is satisfied, unique, and applied -- and
+      # it changes no behaviour at all, so the suite stays green and the gate reports a
+      # result for a mutation it never performed. That is rule 3's NO-OP wearing rule 6's
+      # clothes, and it is worse than an absent anchor because an absent one aborts loudly.
+      #
+      # The case was real: 0474 split `TName("for") | TName("while") =>` into two explicit
+      # arms, and 0465's M6 anchor survived in exactly one place -- a comment explaining the
+      # split. It rewrote the prose, passed pre-flight, and went green. Re-anchored, and the
+      # parser comment was reworded so it cannot satisfy an anchor again.
+      #
+      # => 判据: a match on a line beginning `//` is not a match on CODE. An anchor is a
+      # pointer to the line that decides behaviour; if the text it names is somewhere the
+      # compiler never reads, the pointer is decoration.
+      $flags = $proseMap[$m.File]
+      $startLine = 0
+      for ($k = 0; $k -lt $first; $k++) { if ($hay[$k] -eq "`n") { $startLine++ } }
+      $span = 0
+      for ($k = $first + $findText.Length - 1; $k -gt $first; $k--) { if ($hay[$k] -eq "`n") { $span++ } }
+      $allProse = $true
+      for ($l = $startLine; $l -le ($startLine + $span) -and $l -lt $flags.Count; $l++) {
+        if (-not $flags[$l]) { $allProse = $false; break }
+      }
+      if ($allProse) { $prose += $m.Name }
     }
     if ($count -eq 0) {
       $absent += $m.Name
@@ -219,6 +268,19 @@ function Invoke-MutationGate {
     Write-Output '      If the code a mutation targeted has since changed shape, mark it'
     Write-Output '      Retired = "<reason>" rather than inventing an anchor to match.'
     $script:MutationGateFailures += ($Name + ' (preflight)')
+    return
+  }
+  if ($prose.Count -gt 0) {
+    Write-Output ''
+    foreach ($pn in $prose) {
+      Write-Output ('PREFLIGHT PROSE: ' + $pn)
+      Write-Output '  the anchor matches only inside `//` comment lines, so the mutation'
+      Write-Output '  rewrites PROSE and leaves behaviour untouched. A green result for it'
+      Write-Output '  means nothing. Re-anchor onto the code it names.'
+    }
+    Write-Output ''
+    Write-Output ('ABORT: ' + $prose.Count + ' anchor(s) satisfied by a comment. No suite was run.')
+    $script:MutationGateFailures += ($Name + ' (preflight prose)')
     return
   }
   if ($ambiguous.Count -gt 0) {
