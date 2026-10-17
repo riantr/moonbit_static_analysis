@@ -1,4 +1,4 @@
-﻿# ONE local release entry point.
+# ONE local release entry point.
 #
 # WHY THIS FILE EXISTS. `.github/workflows/gate.yml` runs four commands -- fmt,
 # check, one test target, one build. That is the floor CI enforces, and it is not
@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -531,7 +531,7 @@ if ($SkipMutations) {
 # corpus moved -- and history at the top of the release script is what made the entry
 # point unreadable.
 #
-# SEVEN LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
+# EIGHT LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
 # they are claims about THESE numbers rather than about a past increment:
 #
 #   - the six SUMMARY lines carry ZERO signal about the behavior lens, which no pinned
@@ -555,8 +555,18 @@ if ($SkipMutations) {
 #     (settle_0443). Fixed, re-measured, `actionable` back to 0, and `mutate_0475` M4 is
 #     that regression with a corpus number attached: applied, it puts `actionable` back to 4.
 #     parsed 396 -> 399, `unreliable` 203 -> 161, `notices` +24. Five of six corpora are
-#     byte-identical. The other 0475 sites (`io/reader.mbt`) still do not parse: the header
-#     at reader.mbt:176 is read now, and the file stops LATER, at line 186.
+#     byte-identical. The other 0475 sites (`io/reader.mbt`) still did not parse: the header
+#     at reader.mbt:176 was read, and the file stopped LATER, at line 186.
+#   - `async` AT 0476, and this one CORRECTED A SETTLE. 0475's settle REJECTed a second
+#     `;`-clause on the evidence of one row (`n = 1` is REJECT 4106); reader.mbt:186 writes
+#     `for prefix in prefix_list; len = 0; len = len + prefix.length() { .. }` and `moon check`
+#     COMPILES it. The compiler's sentence says binders in the steps must be declared IN THE
+#     INITIALIZATION BLOCK, so 4106 was about WHERE A BINDER IS DECLARED and never about the
+#     number of clauses. Reading it -- `parsed` 399 -> 400 and `io/reader.mbt` parsing with zero
+#     defects, `unreliable` 161 -> 158, `notices` +2, `total` 1913 -> 1912, `actionable` still 0
+#     and the other five corpora byte-identical. The general lesson is in NARRATIVE.md: a settle
+#     row that passes BECAUSE the toolchain refused the fixture is evidence about the fixture,
+#     and the rows that decide a grammar are the ones the corpus already writes.
 #   - `async` AT 0473, attributed rather than asserted. Every one of async's C1-shaped
 #     headers -- `for <name> = .. {` with no `;` before `{` -- was enumerated across the
 #     tree and cross-referenced against the scanner's own PARTIAL list, then A/B'd against
@@ -604,7 +614,7 @@ $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=35 actionable=0 notices=738 unreliable=55 withheld=16 total=793'
   'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=13 withheld=0 total=220'
-  'async'           = 'files=419 parsed=399 actionable=0 notices=1752 unreliable=161 withheld=31 total=1913'
+  'async'           = 'files=419 parsed=400 actionable=0 notices=1754 unreliable=158 withheld=31 total=1912'
   'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=187 withheld=6 total=2068'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

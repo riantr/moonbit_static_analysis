@@ -2931,7 +2931,77 @@ fn Parser::parse_for_stmt(self : Parser, sp : @core.Span) -> @ast.Stmt {
   } else {
     None
   }
+  // A STEP, WHICH REQUIRES THE DECLARATION -- `for p in ps; len = 0; len = len + p.length() { .. }`
+  // at async/src/io/reader.mbt:186. `_verify/settle_0476_for_steps.ps1`, 2 controls + 7 rows,
+  // GATE OK:
+  //
+  //   for p in ps; len = 0; len = len + p.length() { .. }  ACCEPT   the corpus shape
+  //   for p in ps; len = 0; n = 1 { .. }                    REJECT(4106)
+  //   for p in ps; len = 0; len = p.length() { .. }         ACCEPT   the LOOP BINDER is in scope
+  //   a bare expression in a step                            REJECT(3002)
+  //   two steps                                              REJECT
+  //   for p in ps; len = len + p.length() { .. }            REJECT(4021, 4018) -- no declaration
+  //
+  // 0475's settle REJECTed the whole clause on the strength of `for p in ps; len = 0; n = 1 { }`
+  // and generalised "a second `;`-clause is steps". That was wrong, and reader.mbt:186 is what
+  // proved it. The compiler's own sentence says binders in the steps must be declared IN THE
+  // INITIALIZATION BLOCK -- so 4106 was about WHERE THE BINDER WAS DECLARED, never about the
+  // number of clauses. `n` is declared nowhere; `len` is declared two tokens earlier.
+  //
+  // The `decl is Some` half of the guard is the toolchain's own constraint rather than an
+  // inference from it: a step is impossible without a declaration, so the reader does not even
+  // look for one. And a `;` followed immediately by `{` is an EMPTY step list, which the
+  // settle records as ACCEPT -- skipping it there is what keeps `for p in ps; len = 0; { .. }`
+  // readable, which the earlier draft would have broken by reading the body's brace as a step.
+  let has_decl = match decl {
+    Some(_) => true
+    None => false
+  }
+  // The name the initialization block introduced. The step must assign THIS one -- that is
+  // precisely what 4106 refuses, and `peek_name` plus the declared name is how the reader says
+  // so rather than accepting every `name = expr` and reporting the disagreement afterwards.
+  let decl_name = match decl {
+    Some(d) =>
+      match d.kind {
+        @ast.SLet(n, _, _) => n
+        _ => ""
+      }
+    None => ""
+  }
+  let mut step : @ast.Stmt? = None
+  if has_decl && self.at(TSemi) {
+    let _ = self.bump()
+    // An EMPTY step list -- `;` immediately followed by `{` -- is ACCEPT per the settle,
+    // and it needs no guard of its own: `peek_name` returns "" for a brace, so the
+    // `target != ""` test below already refuses to read one as a step. An earlier
+    // draft carried an explicit `!self.at(TLBrace)` here and a comment claiming it was
+    // load-bearing; `mutate_0476` M1 showed the mutation SURVIVED, because the two
+    // conditions are equivalent. The guard was decoration and is deleted rather than
+    // kept with a proof it does not need -- the same call 0473 made on an unreachable
+    // predicate. The EMPTY STEP LIST row is in the test file all the same: it is what
+    // stops a reader that tries to parse the step unconditionally.
+    let target = self.peek_name()
+    // Two conditions, and both are the settle's refusals rather than an opinion:
+    //   `at_next(TAssign)`   -- a bare expression in a step is REJECT(3002)
+    //   `target == decl_name` -- a binder nothing declares is REJECT(4106)
+    // When either fails the cursor is deliberately LEFT on the step's first token and
+    // `parse_block` reports against it. That refuses the header in the same direction the
+    // toolchain does, which is the whole point: reading it anyway would be a false negative,
+    // and the two 0475 rows that guard exactly these shapes would have had to be deleted.
+    if target != "" && target == decl_name && self.at_next(TAssign) {
+      step = Some(self.parse_stmt())
+    }
+  }
   let (body, _) = self.parse_block(false)
+  // The step runs at the END of each iteration, so it is APPENDED to the body -- the same
+  // placement `parse_c_for` already gives the C-style update clause, and the settle is what
+  // makes it the right one. Appending here rather than at the two return sites also puts it
+  // AFTER the `$pair` destructuring on the multi-binder path, which is the order that path
+  // needs for its binder to be in scope.
+  match step {
+    Some(s) => body.push(s)
+    None => ()
+  }
   if names.length() == 1 {
     let loop_stmt : @ast.Stmt = {
       span: sp,

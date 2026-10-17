@@ -1802,3 +1802,79 @@ gets, and it only arrives because `actionable` is pinned to 0 rather than merely
 pin that only ever moves in one direction is not measuring anything. The same applies to the
 mechanism: 0475 did not create a false positive, it removed a wall in front of one, and the
 correct response was to fix the false positive -- not to leave the wall.
+
+## 0476: the STEP, and a settle that had to be overturned by the corpus
+
+0475 left a measured blocker -- `io/reader.mbt` read past line 176 and stopped at 186 -- and
+line 186 is:
+
+    for prefix in prefix_list; len = 0; len = len + prefix.length() { .. }
+
+0475'S SETTLE SAID THIS CLASS OF HEADER IS REJECT. Its C3 row answered REJECT(4106) for
+`for p in ps; len = 0; n = 1 { .. }` and the increment generalised "a second `;`-clause is
+steps". The corpus disagreed, and the settle was the thing that had to give.
+
+THE REASON IS IN THE COMPILER'S OWN SENTENCE, WHICH NEITHER HAND-WRITTEN PROGRAM SAID OUTRIGHT:
+
+    Unknown binder n in the for-loop steps.
+    Binders in the steps must be declared in the initialization block of the for-loop.
+
+4106 was never about the NUMBER OF CLAUSES. It was about WHERE THE BINDER WAS DECLARED. `n`
+is declared nowhere; `len` is declared two tokens earlier. `reader.mbt:186` was already
+settled by any compiler run -- 0475 generalised a grammar from one convenient fixture, and the
+corpus was carrying the verdict the whole time.
+
+SETTLED, `_verify/settle_0476_for_steps.ps1`, 2 controls + 7 rows, GATE OK:
+
+    for p in ps; len = 0; len = len + p.length() { .. }  ACCEPT   the corpus shape
+    for p in ps; len = 0; len = p.length() { .. }         ACCEPT   the LOOP BINDER is in scope
+    a step declaring a binder the init block does not declare REJECT(4106)
+    a bare expression in a step                           REJECT(3002)
+    two steps                                             REJECT
+    a step with no initialization clause                  REJECT(4021, 4018)
+    `;` immediately followed by `{` (an empty step list)  ACCEPT
+
+=> NO NEW NODE AGAIN. A step runs at the END of each iteration, which is where `parse_c_for`
+already puts the C-style update clause, so the step is APPENDED to the loop body -- and
+appending before the multi-binder path builds its `$pair` destructuring is what puts the step
+after it, which is the order that path needs.
+
+TWO THINGS THE GATE CAUGHT IN ME, both of which were about writing the reader honestly:
+
+1. **The first draft was too PERMISSIVE, and 0475's negative rows said so.** It accepted
+   `n = 1` and `len > 0`, both of which the toolchain REJECTs. Those two rows were kept at 0475
+   with the written admission that no mutation in that gate could turn them red -- this was the
+   risk they were naming, arriving one increment later. The fix went in the READER, not the
+   tests: a step must match the token shape AND assign the declared binder, and when either
+   fails the cursor is deliberately left for `parse_block` to report. Weakening the rows would
+   have bought a green suite and a false negative.
+
+2. **A MUTATION SURVIVED AND THE COMMENT WAS LYING.** The reader carried an explicit
+   `!self.at(TLBrace)` guard and a comment claiming it prevented the body's brace from being
+   read as a step. M1 showed the mutation SURVIVED: `peek_name` returns `""` for a brace, so
+   the `target != ""` test already does that, and the two conditions are equivalent. The guard
+   was decoration and was deleted rather than kept with a proof it did not need -- the same call
+   0473 made on an unreachable predicate, and the same one rule 8 makes about prose.
+
+MEASURED. Five of six corpora byte-identical; `actionable` 0 on all six.
+
+    async    parsed 399 -> 400, notices 1752 -> 1754, unreliable 161 -> 158,
+             withheld 31 unchanged, total 1913 -> 1912
+
+`io/reader.mbt` PARSES, with zero defects and nine notices. The increment is one file and one
+grammar clause, which is the honest size of what was wrong.
+
+Gate 0476: 4/4 KILLED, no declared survivors, every restore byte-identical. 938 tests.
+
+RECORDED, NOT WORKED AROUND: `for p in ps; len = len + p.length() { .. }` is REJECT(4021, 4018)
+by the toolchain -- the right-hand side names a binder that is not yet declared -- and the
+analyzer reads that single clause as the initialization declaration and accepts it. That is a
+consequence of the ALREADY-FILED scoping limitation rather than a decision taken here, and it
+is recorded against that increment.
+
+=> 判据: a settle row that passes BECAUSE the toolchain refused the fixture is evidence only
+about the fixture. 0475's C3 used `n = 1`, which nothing declares, and generalised from one
+program to a rule about clause COUNT. The rows that decide a grammar are the ones the corpus
+ALREADY WRITES -- and when a corpus file and a settle disagree, the corpus is the one carrying a
+compiler's verdict on real code. The cheapest possible check would have been to write the
+corpus line as a settle row from the start; it was four lines away in the same repository.
