@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -531,7 +531,7 @@ if ($SkipMutations) {
 # corpus moved -- and history at the top of the release script is what made the entry
 # point unreadable.
 #
-# SIX LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
+# SEVEN LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
 # they are claims about THESE numbers rather than about a past increment:
 #
 #   - the six SUMMARY lines carry ZERO signal about the behavior lens, which no pinned
@@ -540,8 +540,23 @@ if ($SkipMutations) {
 #   - `moonbit_labeler` moved 801 -> 800 at 0470 (the last `actionable` on any corpus) and
 #     800 -> 793 at 0471. `proton` moved at 0471: 122 -> 131 parsed, `unreliable`
 #     544 -> 187. `async` moved at 0472: 390 -> 392 parsed, `unreliable` 285 -> 264;
-#     at 0473, 392 -> 394 parsed; and at 0474, 394 -> 396 parsed, `notices` 1698 -> 1728,
-#     `unreliable` 243 -> 203, `withheld` 40 -> 31. `actionable` has been 0 on every one.
+#     at 0473, 392 -> 394; at 0474, 394 -> 396 with `notices` 1698 -> 1728 and `unreliable`
+#     243 -> 203; and at 0475, 396 -> 399 parsed, `notices` 1728 -> 1752, `unreliable`
+#     203 -> 161. `actionable` has been 0 on every one of them.
+#   - `async` AT 0475, and this one went through `actionable` 0 -> 4 and back, which is the
+#     only time in this cycle a corpus number has moved the WRONG way and been fixed rather
+#     than pinned. The binder head now accepts ONE declaration before the body, and reading
+#     it unblocked `process/unix.mbt` and `process/windows.mbt` -- which is when three
+#     `undefined name 'nobreak'` and one `undefined name 'acc'` appeared as ACTIONABLE
+#     findings on code `moon check` compiles. Root cause was a PRE-EXISTING defect the
+#     increment revealed rather than created: the multi-binder path never called
+#     `maybe_nobreak`, so the keyword stayed on the cursor and was re-read as an expression
+#     plus a block. `nobreak` is a postfix on a loop and is legal on all three forms
+#     (settle_0443). Fixed, re-measured, `actionable` back to 0, and `mutate_0475` M4 is
+#     that regression with a corpus number attached: applied, it puts `actionable` back to 4.
+#     parsed 396 -> 399, `unreliable` 203 -> 161, `notices` +24. Five of six corpora are
+#     byte-identical. The other 0475 sites (`io/reader.mbt`) still do not parse: the header
+#     at reader.mbt:176 is read now, and the file stops LATER, at line 186.
 #   - `async` AT 0473, attributed rather than asserted. Every one of async's C1-shaped
 #     headers -- `for <name> = .. {` with no `;` before `{` -- was enumerated across the
 #     tree and cross-referenced against the scanner's own PARTIAL list, then A/B'd against
@@ -589,7 +604,7 @@ $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=35 actionable=0 notices=738 unreliable=55 withheld=16 total=793'
   'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=13 withheld=0 total=220'
-  'async'           = 'files=419 parsed=396 actionable=0 notices=1728 unreliable=203 withheld=31 total=1931'
+  'async'           = 'files=419 parsed=399 actionable=0 notices=1752 unreliable=161 withheld=31 total=1913'
   'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=187 withheld=6 total=2068'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

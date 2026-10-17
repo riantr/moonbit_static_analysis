@@ -1628,9 +1628,16 @@ the header to `parse_c_for` instead, which builds a perfectly well-formed `SBloc
 it is thrown away. Both readers consume the identical token range. That is the worst shape a
 mutation can have: it does not crash, does not error, and is wrong.
 
-WHAT WOULD KILL IT is a real change rather than a missing fixture: analysing the loop-expression
-body. The moment a loop expression keeps its tree, M3 has something to be wrong about and the gate
-says so.
+WHAT WOULD KILL IT was stated as a real change rather than a missing fixture: analysing the
+loop-expression body. **That prediction was WRONG, and 0475 killed M3 without it.** 0475 added
+rows on a header the misroute cannot swallow -- `for p in ps; len = 0 { .. }` -- and M3 now
+fails them with `3 != 0`, because stepping the cursor forward sends the binder scan past the
+`in`, `is_c_style_for` returns true, and `parse_c_for` cannot read `p in ps` as an initializer.
+The two rows that kill it are `0475: the corpus loop-expression shape is read` and the inverted
+`0473: a binder head followed by a C-style clause is now READ`.
+
+Every binder head that existed at 0474 was a PLAIN one, and those survive the misroute. So M3
+was never harmless -- it was silent on the headers that happened to be written.
 
 => 判据: this project has already used "a mutation that cannot fail tests nothing" to DELETE a
 mutation. This is the same sentence pointing the other way, and both halves are needed: a green run
@@ -1639,7 +1646,15 @@ behind. Reach PAST the suite before declaring a survivor -- the corpus is a meas
 suite structurally cannot make, because a discarded subtree cannot fail an assertion and cannot
 move a finding count either.
 
-Gate 0474: 3 KILLED, 1 declared SURVIVED with its argument, every restore byte-identical. 924 tests.
+AND THE HALF THAT WAS MISSED: a declared survivor is a claim about the CURRENT suite and it
+EXPIRES THE MOMENT A ROW IS ADDED. The 0474 measurement was sound; the conclusion drawn from it
+was still wrong, because "no test covers this" and "nothing can distinguish this" were separated
+by evidence that did not yet exist. So the 58-gate run caught `mutate_0474` reporting M3 as
+KILLED where the gate file said SURVIVED -- neither of the two files had changed, and only the
+full run was looking. A `Prove` is an argument, not a constant, and the harness is what tells you
+when to write a new one.
+
+Gate 0474 at 0475: **4 KILLED, 0 survivors**, every restore byte-identical, 933 tests.
 
 ### The release gate caught a gate lying to itself, and that is the better story
 
@@ -1693,3 +1708,97 @@ ALONE first and was green; had the 57-gate run been the only check, the failure 
 have surfaced -- but the 0474 anchor split and the 0465 anchor were made in the SAME increment,
 and the gate that noticed was the older one. A new gate does not test the increment that added
 it. Only the gates that already existed can notice that adding it broke something.
+
+## 0475: a BINDER head carrying ONE declaration -- and the `nobreak` it turned up
+
+THE DEFECT is the one 0473 refused to claim as fixed. `for p in ps; len = 0 { .. }` is legal
+MoonBit; 0473 made the head route CORRECTLY to `parse_for_stmt`'s binder branch, and that
+branch stopped at the `;`, so the error moved from `expected ';'` to `expected 'in'` and five
+sites stayed unread. Moving an error is not removing it, which is why `parser_0473_test.mbt`
+pinned the failure as a FAILING test. That pin is now INVERTED, which is the only honest
+thing to do with it once the shape is read.
+
+THE GRAMMAR IS NOT THE C-STYLE ONE, and this is the part a "just reuse the list reader" fix
+gets wrong. `_verify/settle_0475_binder_clauses.ps1`, 2 controls and 9 rows, GATE OK:
+
+    for p in ps; len = 0 { .. }              ACCEPT
+    the declaration is readable in the body  ACCEPT
+    for p in ps; len = 0; n = 1 { .. }       REJECT(4106)  a second `;`-clause is STEPS
+    for p in ps; len = 0; len > 0 { .. }     REJECT(3002)  no condition after a binder head
+    for p in ps; n = p.length() { .. }       REJECT(4021)  the binder is NOT in scope here
+    for p in ps; len = 0 { .. } ignore(len)  REJECT(4021)  it does NOT outlive the loop
+    for k, v in m; n = 0 { .. }              ACCEPT
+
+The settle's FIRST DRAFT was wrong and aborted on it. It assumed the C-style variable-length
+clause list carries across the binder head, and two of three claims flipped. What the compiler
+volunteered is the sentence that settled it:
+
+    Unknown binder n in the for-loop steps.
+    Binders in the steps must be declared in the initialization block of the for-loop.
+
+4106 is a SEMANTIC error, which means the text parsed and was then refused. The initialization
+block after a binder head takes exactly ONE declaration; a second `;` introduces for-loop
+STEPS, which this increment does not model and records as a known limit.
+
+=> NO NEW NODE, and two REJECT(4021) rows are what say so. The declaration cannot see the
+binder, so it is evaluated OUTSIDE the binder's scope, and hoisting it BEFORE the loop is
+correct by construction rather than by argument. It does not outlive the loop either -- the
+same scoping 0470 measured for the C-style init clause -- so `c_for_init`'s conversion is
+reused unchanged. The desugar is the shape `parse_c_for` already builds.
+
+### `actionable` went 0 -> 4 and back, which is the part worth reading twice
+
+With the reader in place and `async` rescanned, the corpus reported **actionable 0 -> 4**:
+
+    undefined name 'nobreak'   x3   async/src/process/{unix,windows}.mbt
+    undefined name 'acc'            async/src/process/windows.mbt
+
+Both are FALSE POSITIVES on code `moon check` compiles, and the cause is a PRE-EXISTING defect
+this increment REVEALED rather than created. The multi-binder path never called
+`maybe_nobreak`; `nobreak` is a postfix on a loop and is legal on all three forms (settle_0443),
+so the multi-binder head is a loop like any other. Without the call the keyword stayed on the
+cursor and the next statement reader took `nobreak { acc }` as an ordinary expression plus a
+block -- and `acc` IS the loop binder, so reporting it out of scope there is the resolver being
+correct about a block that had stopped being the loop's body. The second finding is a knock-on
+of the first, not a separate defect.
+
+They were invisible while the header itself failed to parse. Reading the header revealed them,
+which is the same lesson 0464b and 0474 both turned on: UNBLOCKING A FILE DOES NOT CREATE
+FINDINGS, IT REVEALS ONES WHOSE REACH WAS BLOCKED, and the honest response is to fix the gap
+rather than give the reach back.
+
+`mutate_0475` M4 is this regression with a corpus number attached -- applied, `actionable` goes
+back to 4 and `parsed` 399 -> 396. That is the row that will catch it if it ever returns.
+
+MEASURED. Five of six corpora byte-identical; `actionable` 0 on all six.
+
+    async    parsed 396 -> 399, notices 1728 -> 1752, unreliable 203 -> 161,
+             withheld 31 unchanged, total 1941 -> 1913
+
+`notices` +24 with `unreliable` -42 is ONE event, not two: files that used to be counted
+rather than reported now report. And not everything recovered -- `io/reader.mbt`'s header at
+line 176 IS read now, and the file still stops, later, at line 186. That file is the next
+blocker, not this one.
+
+Gate 0475: 5/5 KILLED, no declared survivors, every restore byte-identical. 933 tests.
+
+AND THIS INCREMENT ALSO EXPIRED A SURVIVOR DECLARED BY THE LAST ONE. The full 58-gate run
+reported `mutate_0474` M3 as KILLED where 0474 had declared it SURVIVED with a measured proof,
+and neither file had changed. 0475 added rows on the one header the misroute cannot swallow, so
+M3 now fails them with `3 != 0`. The `Expect` is gone and a `MustRed` names the row; the proof
+stays in the gate as the record of what was true when it was written. The full account is in the
+0474 section above, and the lesson is the general one: A DECLARED SURVIVOR IS A CLAIM ABOUT THE
+CURRENT SUITE, NOT A CONSTANT, and the harness is what tells you when it has expired.
+
+TWO ROWS IN THE TEST FILE HAVE NO MUTATION, and the gate says so rather than implying coverage.
+They are the negative rows -- a condition after a binder head, and a second declaration clause
+-- and nothing in this increment can turn them red, because the refusal is not produced by a
+guard here: the reader takes the one declaration and hands the cursor to `parse_block`, which
+finds a `;` where it wants `{`. They are kept as a NAMED FUTURE RISK against an edit that
+hands the tail to `c_for_inits`, which would accept headers the toolchain refuses.
+
+=> 判据: a corpus number moving the WRONG way is the most informative reading this project
+gets, and it only arrives because `actionable` is pinned to 0 rather than merely recorded. A
+pin that only ever moves in one direction is not measuring anything. The same applies to the
+mechanism: 0475 did not create a false positive, it removed a wall in front of one, and the
+correct response was to fix the false positive -- not to leave the wall.

@@ -2896,12 +2896,53 @@ fn Parser::parse_for_stmt(self : Parser, sp : @core.Span) -> @ast.Stmt {
     let _ = self.bump()
   }
   let seq = self.parse_expr()
+  // A BINDER HEAD MAY CARRY ONE DECLARATION before the body: `for p in ps; len = 0 { .. }`,
+  // which is async/src/io/reader.mbt:176, :186, unix.mbt:66, windows.mbt:57 and
+  // http/parser.mbt:80. 0473 made this head route CORRECTLY -- to this reader -- and this
+  // reader stopped at the `;`, so the error moved from `expected ';'` to `expected 'in'` and
+  // all five sites stayed unread. Moving an error is not removing it.
+  //
+  // THE GRAMMAR IS NOT THE C-STYLE ONE, and that is the part worth having measured rather than
+  // assumed. `_verify/settle_0475_binder_clauses.ps1`, 2 controls and 9 rows:
+  //
+  //   for p in ps; len = 0 { .. }                 ACCEPT   the shape is legal MoonBit
+  //   the declaration is readable in the body     ACCEPT
+  //   for p in ps; len = 0; n = 1 { .. }          REJECT(4106)
+  //       "Unknown binder n in the for-loop steps. Binders in the steps must be declared
+  //        in the initialization block of the for-loop."
+  //   for p in ps; len = 0; len > 0 { .. }        REJECT(3002)  no condition after a binder
+  //   for p in ps; n = p.length() { .. }          REJECT(4021)  the binder is NOT in scope
+  //   for p in ps; len = 0 { .. } ignore(len)     REJECT(4021)  it does NOT outlive the loop
+  //   for k, v in m; n = 0 { .. }                 ACCEPT        two binders compose
+  //
+  // So: exactly ONE declaration, no condition, no update -- the C-style VARIABLE-LENGTH list
+  // does not extend across the binder head, which is the opposite of what this comment's first
+  // draft assumed and why the settle aborted before it settled.
+  //
+  // => NO NEW NODE, and the reject rows are what say so. `n = p.length()` cannot compile, so
+  // the declaration is evaluated OUTSIDE the binder's scope; hoisting it BEFORE the loop is
+  // therefore correct by construction rather than by argument. And it does not outlive the
+  // loop, which is the same scoping 0470 measured for the C-style init clause, so the
+  // existing `c_for_init` conversion is reusable unchanged. The result is the shape
+  // `parse_c_for` already builds: an SBlock holding the declaration and the ordinary SFor.
+  let decl : @ast.Stmt? = if self.at(TSemi) {
+    let _ = self.bump()
+    Some(self.c_for_init(sp))
+  } else {
+    None
+  }
   let (body, _) = self.parse_block(false)
   if names.length() == 1 {
-    return self.maybe_nobreak({
+    let loop_stmt : @ast.Stmt = {
       span: sp,
       kind: @ast.SFor(names[0], vsp, seq, body),
-    })
+    }
+    return self.maybe_nobreak(
+      match decl {
+        Some(d) => { span: sp, kind: @ast.SBlock([d, loop_stmt]), }
+        None => loop_stmt
+      },
+    )
   }
   // Multi-binder desugar. The lenses only know single-binder SFor, so
   // the sugar is expanded here rather than taught to every lens:
@@ -2918,7 +2959,37 @@ fn Parser::parse_for_stmt(self : Parser, sp : @core.Span) -> @ast.Stmt {
   for st in body {
     body2.push(st)
   }
-  { span: sp, kind: @ast.SFor("$pair", vsp, seq, body2), }
+  let pair_loop : @ast.Stmt = {
+    span: sp,
+    kind: @ast.SFor("$pair", vsp, seq, body2),
+  }
+  // The declaration goes in front of the WHOLE loop, including the desugared one -- it is
+  // scoped to the loop rather than to the binder, so `for k, v in m; n = 0` (unix.mbt:66)
+  // and `for k, v in entries { body }` take the same path here.
+  //
+  // AND `maybe_nobreak`, WHICH THIS PATH DID NOT CALL -- a latent defect that 0475 exposed
+  // rather than created. `nobreak` is a postfix ON A LOOP and it is legal on all three forms
+  // (settle_0443), so the multi-binder head is a loop like any other. Without the call the
+  // keyword stayed on the cursor and the next statement reader consumed it as an ordinary
+  // expression: `nobreak { acc }` became `EName("nobreak")` followed by a block, and the
+  // resolver reported
+  //
+  //     undefined name 'nobreak'   (x3, async/src/process/{unix,windows}.mbt)
+  //     undefined name 'acc'
+  //
+  // -- ACTIONABLE findings on code `moon check` compiles. The second one is a knock-on of the
+  // first rather than a separate defect: `acc` IS the loop binder, so it is legitimately out
+  // of scope in a block that is no longer the loop's. Both were invisible while the header
+  // itself failed to parse; reading the header revealed them, which is the same lesson 0464b
+  // and 0474 both turned on -- UNBLOCKING A FILE DOES NOT CREATE FINDINGS, IT REVEALS ONES
+  // WHOSE REACH WAS BLOCKED, and the honest response is to fix the gap rather than give the
+  // reach back.
+  self.maybe_nobreak(
+    match decl {
+      Some(d) => { span: sp, kind: @ast.SBlock([d, pair_loop]), }
+      None => pair_loop
+    },
+  )
 }
 
 ///|

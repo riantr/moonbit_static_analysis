@@ -17,11 +17,15 @@
 //| Settled in `_verify/settle_0473_for_header_forms.ps1`: 6 gated rows (2 controls,
 //! 4 claims), all ACCEPT against `moon check`.
 //!
-//| => 判据: THE SECOND FAILURE IS NOT FIXED HERE. The binder head with C-style clauses now
-//| routes CORRECTLY -- to the binder reader -- and that reader stops at the `;`, so
-//| reader.mbt:176 still fails, now with `expected 'in'` where it used to say
-//| `expected ';'`. Moving the error is not the same as removing it, and the gate below
-//| says so explicitly rather than leaving the improvement to be discovered later.
+//| => 判据: THE SECOND FAILURE WAS NOT FIXED HERE, and 0475 has since fixed it. The binder head with
+//| C-style clauses now
+//| routes CORRECTLY -- to the binder reader -- and that reader stopped at the `;`, so
+//| reader.mbt:176 still failed, with `expected 'in'` where it used to say `expected ';'`.
+//| Moving an error is not the same as removing it, and the gate below said so explicitly
+//| rather than leaving the improvement to be discovered later. 0475 settled the shape against
+//| the toolchain, taught the reader to read it, and INVERTED the pin -- the increment number
+//| moved 0474 -> 0475 once it was clear the blocker needed an AST decision rather than a
+//| discriminator: the grammar is ONE declaration and no condition, not the C-style list.
 
 ///|
 /// THE HEADER, ONE INITIALIZER AND NO SEMICOLON AT ALL. This is conn.mbt:486 in the
@@ -233,13 +237,22 @@ test "0473 control: a present update clause is appended to the body" {
 }
 
 ///|
-/// WHAT THIS INCREMENT DOES NOT FIX, pinned as a test so it cannot be mistaken later. The
-/// BINDER head with C-style clauses -- reader.mbt:176, unix.mbt:66, windows.mbt:57 -- now
-/// routes CORRECTLY, to the binder reader, and that reader stops at the `;`. The error
-/// moved from `expected ';'` to `expected 'in'` and the file is still unread.
-test "0473: a binder head followed by a C-style clause is STILL not read (0474)" {
+/// WHAT THIS INCREMENT DID NOT FIX, and what 0475 then DID. Pinned as a FAILING test rather
+/// than a note, so the improvement could not be mistaken for the fix later; the pin has now
+/// been INVERTED, which is the only honest thing to do with it once the shape is read.
+///
+/// 0473 made the BINDER head with C-style clauses -- reader.mbt:176, unix.mbt:66,
+/// windows.mbt:57 -- route CORRECTLY, to the binder reader, and that reader stopped at the
+/// `;`. The error moved from `expected ';'` to `expected 'in'` and the file stayed unread.
+/// 0475 settled the shape against the toolchain and taught the reader to read it, so this
+/// now PARSES. The name keeps the 0475 marker so the history stays readable from a failure
+/// report.
+///
+/// It is not merely "it parses": 0475's grammar is ONE declaration and no condition, which
+/// is NOT the C-style variable-length list, and `parser_0475_test.mbt` is what holds that.
+test "0473: a binder head followed by a C-style clause is now READ (fixed by 0475)" {
   let r = @parser.parse(
     "///|\nfn f(ps : Array[String]) -> Int {\n  let total = for p in ps; len = 0 {\n    continue len + p.length()\n  } nobreak {\n    len\n  }\n  total\n}\n",
   )
-  assert_true(r.first_error != 0)
+  assert_eq(r.first_error, 0)
 }

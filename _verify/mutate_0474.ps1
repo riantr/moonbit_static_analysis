@@ -73,10 +73,40 @@ Invoke-MutationGate -Name '0474' -Target 'wasm' -Mutations @(
   }
 
   # M3 THE CURSOR IS RESTORED IN THE WRONG DIRECTION. `-=` becomes `+=`, so the token after
-  # the keyword is skipped instead of the keyword being handed back. This is the row that
-  # says the loop consumes EXACTLY itself -- and it is the one that turned out to be
-  # unobservable, which is worth more as a declared fact than as a green row would be.
-  # The full argument, and the measurement behind it, is in Prove.
+  # the keyword is skipped instead of the keyword being handed back.
+  #
+  # DECLARED SURVIVED AT 0474 AND KILLED AT 0475, and the correction is the interesting part.
+  # At 0474 this survived, and the reason was measured rather than assumed: both trees were
+  # built and the 419-file async corpus scanned twice in one session, changing only this line,
+  # and got 924/924 green with a byte-identical summary either way and the 20 blocked files
+  # matching name for name. `_verify/measure_0474_m3.ps1` is that measurement, and it is
+  # committed so the verdict can be re-checked rather than taken on trust.
+  #
+  # 0475 THEN MADE IT OBSERVABLE, AND NOT FOR THE REASON 0474 PREDICTED. The 0474 Prove said
+  # this would become killable "the moment a loop expression keeps its tree" -- when the
+  # loop-expression BODY starts being analysed. That never happened. What happened is that
+  # 0475 added rows on a HEADER the misroute cannot swallow:
+  #
+  #     let total = for p in ps; len = 0 { .. } nobreak { len }
+  #
+  # Stepping the cursor forward sends the binder scan past the `in`, so `is_c_style_for`
+  # returns true and `parse_c_for` tries to read `p in ps` as a C-style initializer, which
+  # fails with three errors. Every binder head that existed at 0474 was a PLAIN one --
+  # `for x in xs { .. }` -- and those survive the misroute, which is exactly why M3 was
+  # unobservable then. THE MISROUTE WAS NOT HARMLESS; IT WAS SILENT ON THE HEADERS THAT
+  # HAPPENED TO BE WRITTEN.
+  #
+  # The two rows that kill it are `0475: the corpus loop-expression shape is read` and the
+  # inverted `0473: a binder head followed by a C-style clause is now READ`; both fail with
+  # `3 != 0`, measured by applying this mutation by hand and reading the red list.
+  #
+  # => 判据: a declared survivor is a claim about the CURRENT suite, and it expires the moment
+  # a row is added. The 0474 measurement was sound and the conclusion drawn from it was still
+  # wrong, because "no test covers this" and "nothing can distinguish this" were separated by
+  # evidence that did not yet exist. RE-RUN THE GATE RATHER THAN TRUSTING THE COMMENT: this
+  # row flipped verdict without either of its two files changing, and only the 58-gate run
+  # noticed -- `mutate_0474` run alone on the same tree would have failed identically, but a
+  # reader trusting the `Expect = 'SURVIVED'` line would not have looked.
   @{
     Name = 'M3 the cursor is stepped forward instead of restored'
     File = $PARSER
@@ -92,54 +122,7 @@ Invoke-MutationGate -Name '0474' -Target 'wasm' -Mutations @(
       self.parse_loop_as_expr(sp)
     }
 '@.Replace("`r`n", "`n")
-    Expect = 'SURVIVED'
-    Prove = @'
-MEASURED, and deliberately NOT searched for a row to kill it. The question "which test
-catches this" and the question "can any test catch this" have different answers and
-different verdicts, so the second one was measured instead of the first.
-
-`_verify/measure_0474_m3.ps1` builds and scans the async corpus twice in one session,
-changing only this line. Both columns:
-
-    correct   Total tests: 924, passed: 924, failed: 0
-              files=419 parsed=396 actionable=0 notices=1728 unreliable=203 withheld=31 total=1931
-              20 PARTIAL (blocked-file) lines
-    mutated   Total tests: 924, passed: 924, failed: 0
-              files=419 parsed=396 actionable=0 notices=1728 unreliable=203 withheld=31 total=1931
-              20 PARTIAL (blocked-file) lines
-
-and the two blocked-file lists are IDENTICAL NAME FOR NAME, not merely equal in length --
-the count alone would have hidden a file trading places with another. A 419-file corpus
-that contains the loop-expression sites this increment is about moves not one bit, so
-this is not a suite with a hole in it.
-
-THE MECHANISM, and it is one line of the increment's own code:
-
-    fn Parser::parse_loop_as_expr(self : Parser, sp : @core.Span) -> @ast.Expr {
-      if self.at_name("while") { let _ = self.parse_while_stmt(sp) }
-      else { let _ = self.parse_for_stmt(sp) }
-      ...
-      { span: sp, kind: @ast.EBigInt, }
-
-The statement is DISCARDED and the value is `EBigInt` unconditionally. M3 chooses the other
-reader by landing the cursor one token further on: for `for x in xs { .. }` the binder
-scan then starts past the `in`, `is_c_style_for` returns true, and `parse_c_for` reads
-`xs` as a C-style initializer and builds an `SBlock`+`SWhile` -- a well-formed tree that
-is simply thrown away. Both readers consume the identical token range and end on the same
-closing brace, so `first_error`, the statement count and the placeholder all match. That
-is the worst shape a mutation can have: it does not crash, does not error, and is wrong.
-
-WHAT WOULD KILL IT, and that is a real change rather than a missing fixture: analysing the
-loop-expression body. Today the body is parsed and discarded, which `pipeline_0474_test.mbt`
-pins in both directions -- an undefined name inside a loop expression's body is NOT
-reported, while the same name in a statement-position loop IS. The moment a loop expression
-keeps its tree, this mutation has something to be wrong about and this gate will say so.
-
-=> 判据: "cannot fail" has to be argued from the mechanism, not inferred from a green run.
-A green run is compatible with both "untested" and "unobservable", and only one of them is
-acceptable to leave behind. Reach past the suite before declaring a survivor: the corpus is
-a measurement the test suite structurally cannot make.
-'@
+    MustRed = '0475: the corpus loop-expression shape is read'
   }
 
   # M4 M2 AGAIN, PINNED ON A PIPELINE ROW. The parser rows say the tree is right; this says

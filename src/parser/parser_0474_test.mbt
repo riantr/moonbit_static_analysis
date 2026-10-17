@@ -111,10 +111,16 @@ test "0474 control: the same loops in statement position are still read" {
 /// in this file stayed green under it, and so did the `body.length()` row.
 ///
 /// That is the worst shape a mutation can have -- it does not crash, it does not error, and
-/// it is WRONG -- so the row below looks at the node instead. M3 is declared SURVIVED in the
-/// gate, and PROVED rather than assumed: 924/924 green AND the async corpus byte-identical
-/// (parsed 396, notices 1728, unreliable 203, withheld 31, total 1931), with the 20 blocked
-/// files identical name for name. Nothing observable moves, so no row here can kill it.
+/// it is WRONG -- so the row below looks at the node instead. At 0474 M3 was DECLARED
+/// SURVIVED, and proved unobservable rather than assumed: 924/924 green AND the async corpus
+/// byte-identical (parsed 396, notices 1728, unreliable 203, withheld 31, total 1931), with
+/// the 20 blocked files identical name for name.
+///
+/// THAT VERDICT EXPIRED AT 0475, which is why the claim lives here and not only in the gate.
+/// 0475 added rows on a header the misroute cannot swallow -- `for p in ps; len = 0` -- and M3
+/// now fails them with `3 != 0`. So M3 was never harmless; it was SILENT ON THE HEADERS THAT
+/// HAPPENED TO BE WRITTEN, and "no test covers this" turned out to be separable from
+/// "nothing can distinguish this" by evidence that did not exist yet.
 ///
 /// A loop expression yields the opaque `EBigInt` placeholder and nothing else, because the
 /// subset has no loop-valued expression. That is the claim worth pinning, and it is what
