@@ -2724,19 +2724,52 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
 }
 
 ///|
-/// Is the `for` at the current position the C-style three-clause form?
+/// Is the `for` at the current position the C-style form?
 ///
 /// Decided by scanning tokens, NOT by parsing: the two forms differ in what
 /// follows `for`, and the binder path is the one with a decade of tests behind
 /// it, so it must not be disturbed by a lookahead that guesses.
 ///
-/// Whichever of `;` and `{` arrives FIRST at depth 0 decides the form, and the
-/// scan STOPS there. That stop is the whole test: an earlier version kept
-/// scanning past the body's closing brace, so a plain `for entry in xs { ... }`
-/// followed anywhere later in the file by a `;` was misread as C-style and died
-/// on `expected ';'` further down. Measured on riantr/pyroduct 0.1.29, that
-/// turned a clean recovery into 4 files instead of 15 and moved the error rather
-/// than removing it.
+/// THE ONE QUESTION IS "IS THE HEAD A BINDER", and it needs exactly one token.
+/// `for x in xs` is the binder form; everything else is the initializer form,
+/// which may carry zero to three clauses. The previous test asked instead "which
+/// of `;` and `{` arrives FIRST at depth 0", and that is wrong in BOTH
+/// directions -- settled against the toolchain in
+/// `_verify/settle_0473_for_header_forms.ps1` (4 claims, 2 controls, all
+/// ACCEPT), with both failure modes measured on the analyzer:
+///
+///     for n = step() { break n + 1 }                  statement position, accepted
+///                                                    by the toolchain; no `;` before
+///                                                    `{`, so read as a binder and died
+///                                                    on `expected 'in'`.
+///                                                    async/src/websocket/conn.mbt:486.
+///
+///     for p in ps; len = 0 { continue .. } nobreak { len }
+///                                                    a `;` before `{`, so read as
+///                                                    C-style; `c_for_init` cannot read
+///                                                    `p in ps` and `expect(TSemi)`
+///                                                    failed. async/src/io/reader.mbt:176.
+///
+/// A delimiter is the wrong thing to look for precisely because the header is
+/// VARIABLE LENGTH: one initializer with no `;` at all is legal, and a binder
+/// with three clauses is legal.
+///
+/// NO SECOND LOOKAHEAD, and that is measured rather than assumed. An earlier draft
+/// also required the token before `in` to be able to end a pattern, to keep
+/// `for i = some.in; ..` out. `in` is a RESERVED word: a struct field cannot be
+/// named it. Settled -- `struct S { in : Int }` with `for i = s.in; ..` is
+/// REJECT(3002, 4041, 4091), so every input that guard would have rejected is a
+/// program the toolchain refuses anyway. A bare `in` at depth 0 in a header IS
+/// the binder keyword by definition, so the extra predicate was unreachable and
+/// has been removed rather than kept as decoration. If a future MoonBit allows a
+/// field named `in`, this is the line to revisit.
+///
+/// The scan still STOPS at the body's opening brace. That much was right: an
+/// earlier version kept scanning past the closing brace, so a plain
+/// `for entry in xs { ... }` followed anywhere later in the file by a `;` was
+/// misread as C-style and died on `expected ';'` further down. Measured on
+/// riantr/pyroduct 0.1.29, that turned a clean recovery into 4 files instead of
+/// 15 and moved the error rather than removing it.
 ///
 /// Called with `self.p` ON `for`.
 fn Parser::is_c_style_for(self : Parser) -> Bool {
@@ -2744,6 +2777,9 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
   let mut depth = 0
   while i < self.toks.length() {
     match self.toks[i] {
+      // The binder keyword. `in` is a reserved word, so a bare one at depth 0 in
+      // the header can only be this and not a name.
+      TName("in") => if depth == 0 { return false } else { i += 1 }
       TSemi => if depth == 0 { return true } else { i += 1 }
       TLParen | TLBracket => {
         depth += 1
@@ -2753,11 +2789,12 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
         depth -= 1
         i += 1
       }
-      // The body's opening brace, still at depth 0: the head had no `;`, so
-      // this is the binder form. Do not look past it.
+      // The body's opening brace, still at depth 0, with no binder `in` in front
+      // of it: the head is an initializer and there are no clauses after it. Do
+      // not look past it.
       TLBrace =>
         if depth == 0 {
-          return false
+          return true
         } else {
           depth += 1
           i += 1
@@ -2766,11 +2803,11 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
         depth -= 1
         i += 1
       }
-      TEOF => return false
+      TEOF => return true
       _ => i += 1
     }
   }
-  false
+  true
 }
 
 ///|
@@ -2967,20 +3004,41 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   let sp = self.span()
   let _ = self.bump() // for
   let stmts : Array[@ast.Stmt] = []
-  // init may be empty: `for ; i < n; i = i + 1`
-  if !self.at(TSemi) {
+  // An absent condition is a constant-true loop, not a missing one.
+  let mut cond : @ast.Expr = { span: sp, kind: @ast.EBool(true), }
+  let mut update : @ast.Stmt? = None
+  // THE CLAUSE LIST IS VARIABLE LENGTH, and a `;` only ever says that a further
+  // clause FOLLOWS -- none of them terminates the list. `moon check` accepts
+  //
+  //     for n = step() { .. }       an initializer and nothing else at all
+  //     for ; n > 0 { .. }         no initializer, a condition, no update
+  //     for i = 0; i < n; { .. }    an absent update
+  //
+  // so the two `expect(TSemi)` this used to carry were REJECTING LEGAL HEADERS,
+  // not describing the grammar. Settled in `_verify/settle_0473_for_header_forms.ps1`
+  // (`C1_single_clause_no_semicolons`, and the pre-existing note that the third
+  // clause is optional).
+  //
+  // The initializer is still read by the same `for d in ..` loop, unchanged and
+  // byte for byte, so the `mutate_0470` M1 anchor and `mutate_0472`'s header
+  // mutation stay pointed at what they name.
+  if !self.at(TLBrace) && !self.at(TSemi) {
     for d in self.c_for_inits(sp) {
       stmts.push(d)
     }
   }
-  self.expect(TSemi, "';'")
-  // An absent condition is a constant-true loop, not a missing one.
-  let mut cond : @ast.Expr = { span: sp, kind: @ast.EBool(true), }
-  if !self.at(TSemi) {
-    cond = self.parse_expr()
+  if self.at(TSemi) {
+    let _ = self.bump()
+    if !self.at(TSemi) && !self.at(TLBrace) {
+      cond = self.parse_expr()
+    }
+    if self.at(TSemi) {
+      let _ = self.bump()
+      if !self.at(TLBrace) {
+        update = Some(self.parse_stmt())
+      }
+    }
   }
-  self.expect(TSemi, "';'")
-  let update = if self.at(TLBrace) { None } else { Some(self.parse_stmt()) }
   let (body, _) = self.parse_block(false)
   let loop_body : Array[@ast.Stmt] = []
   for st in body {

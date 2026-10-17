@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -539,24 +539,42 @@ if ($SkipMutations) {
 #     block in NARRATIVE.md). A pin that cannot distinguish two states is not a pin.
 #   - `moonbit_labeler` moved 801 -> 800 at 0470 (the last `actionable` on any corpus) and
 #     800 -> 793 at 0471. `proton` moved at 0471: 122 -> 131 parsed, `unreliable`
-#     544 -> 187. `async` moved at 0472: 390 -> 392 parsed, `unreliable` 285 -> 264.
-#     `actionable` has been 0 on every one of them.
-#   - `moonbit_image`'s `unreliable` fell 23 -> 15 at 0472 while its `notices` did NOT
-#     move, and that asymmetry is the whole explanation. `unreliable` is the findings at
-#     or after a file's FIRST READ FAILURE -- "derived from an already-wrong tree, so
-#     reported only as a count, never as results" (`src/sa/main.mbt`). Reading `continue a, b`
-#     correctly CHANGES that already-wrong tree. bmp.mbt's failure is line 117, a
-#     multi-line C-style header, so everything after it lives in that bucket. Checked on a
-#     copy of bmp.mbt with the header repaired so the whole file parses: `notices` 14 vs 14
-#     and every shown finding byte-identical. No evidence-bearing number moved.
+#     544 -> 187. `async` moved at 0472: 390 -> 392 parsed, `unreliable` 285 -> 264,
+#     and again at 0473: 392 -> 394 parsed. `actionable` has been 0 on every one of them.
+#   - `async` AT 0473, attributed rather than asserted. Every one of async's C1-shaped
+#     headers -- `for <name> = .. {` with no `;` before `{` -- was enumerated across the
+#     tree and cross-referenced against the scanner's own PARTIAL list, then A/B'd against
+#     a `git worktree` build of HEAD so the two blocked-file sets could be diffed:
+#       io/buffered_reader.mbt       blocked at 57 -> PARSES           (`for searched = 0 {`)
+#       internal/event_loop/io.mbt   blocked at 202 -> blocked at 364   (`for rest = .., produced = 0 {`)
+#     Nothing else moved in either corpus. The second `+1` on the parsed count is a file
+#     that failed at HEAD with NO findings, so it prints no PARTIAL line and cannot appear
+#     in that diff at all; unparsed 27 -> 25 with blocked-with-findings 22 -> 21 accounts
+#     for it, and `http/utils.mbt` (`for input = input {`, `for rest = start {`) is the
+#     only candidate in that class. That is an inference from the arithmetic, not a
+#     measurement, and it is labelled as one.
+#   - `moonbit_image`'s `unreliable` fell 23 -> 15 at 0472 and 15 -> 13 at 0473 while its
+#     `notices` did NOT move, and that asymmetry is the whole explanation. `unreliable` is
+#     the findings at or after a file's FIRST READ FAILURE -- "derived from an already-wrong
+#     tree, so reported only as a count, never as results" (`src/sa/main.mbt`). bmp.mbt's
+#     failure is a multi-line C-style header at lines 117-119:
+#         for i = 0
+#             i < num_colors && .. < self.data.length()
+#             i = i + 1 {
+#     which `moon check` REJECTS [3002], so the analyzer's refusal is correct. What changed
+#     is WHERE it refuses: 0472 left `expected ';'` at line 117, and 0473 -- which stopped
+#     demanding the `;` -- leaves `expected '{'` at line 118. The A/B against HEAD shows
+#     exactly that move and nothing else. At 0472 this was additionally checked on a copy
+#     of bmp.mbt with the header repaired so the whole file parses: `notices` 14 vs 14 and
+#     every shown finding byte-identical. No evidence-bearing number moved.
 #   - `parse_block`'s parameter is named `value_block`, not `fn_body`. The old name is
 #     what let a real bug read as a decision.
 #
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=35 actionable=0 notices=738 unreliable=55 withheld=16 total=793'
-  'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=15 withheld=0 total=222'
-  'async'           = 'files=419 parsed=392 actionable=0 notices=1690 unreliable=264 withheld=48 total=1954'
+  'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=13 withheld=0 total=220'
+  'async'           = 'files=419 parsed=394 actionable=0 notices=1698 unreliable=243 withheld=40 total=1941'
   'proton'          = 'files=137 parsed=131 actionable=0 notices=1881 unreliable=187 withheld=6 total=2068'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

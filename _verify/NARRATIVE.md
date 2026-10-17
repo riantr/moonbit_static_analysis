@@ -1452,3 +1452,87 @@ with only the suppressed remainder moving 14 -> 6. No evidence-bearing number mo
 and the whole investigation cost about an hour of not shipping a mystery.
 
 Gate 0472: 5/5 KILLED, no declared survivors, every restore byte-identical.
+
+## 0473: the `for` HEADER is one grammar, not two
+
+THE DEFECT. `Parser::is_c_style_for` decided which of the two `for` forms it was looking at by
+scanning forward for whichever of `;` and `{` arrived FIRST at depth 0. The header is variable
+length, so that question has no right answer, and it was wrong in BOTH directions:
+
+    for n = step() { break n + 1 }              no `;` before `{`, so read as a BINDER and
+                                                died on `expected 'in'`.
+                                                async/src/websocket/conn.mbt:486
+
+    for p in ps; len = 0 { .. }                 a `;` before `{`, so read as C-STYLE;
+                                                `c_for_init` only converts `TName` + `TAssign`
+                                                and cannot read `p in ps`, so `expect(TSemi)`
+                                                failed. async/src/io/reader.mbt:176
+
+The second half is NOT FIXED here and must not be read as fixed. The binder head now routes
+CORRECTLY, to the binder reader, and that reader stops at the `;`. The error moved from
+`expected ';'` to `expected 'in'` and reader.mbt is still unread. Moving an error is not
+removing it, and `parser_0473_test.mbt` pins the failure so a later reader cannot mistake the
+improvement for the fix. That is 0474 and it is a different increment, because it needs an AST
+decision rather than a discriminator.
+
+THE SECOND DEFECT. `parse_c_for` carried two unconditional `expect(TSemi)`. They were not
+describing the grammar, they were REJECTING LEGAL HEADERS -- which is why they also stood in the
+way of `for ; n > 0 { .. }`, the optional-third-clause note that has been sitting on the todo
+list since 0470. Every `;` now only says that a further clause FOLLOWS; none of them terminates
+the list. That old item is closed by this increment.
+
+SETTLED, NOT INFERRED. `_verify/settle_0473_for_header_forms.ps1`, 6 gated rows (2 controls, 4
+claims) and 3 recorded, against `moon check`:
+
+    ctl_c_for_three_clause            ACCEPT       <- the form 0470 settled
+    ctl_binder_plain                  ACCEPT       <- the form 0470's control protects
+    C1_single_clause_no_semicolons    ACCEPT
+    C2_binder_then_one_clause         ACCEPT
+    C3_binder_then_two_clauses        ACCEPT
+    C4_two_binders_then_clause        ACCEPT
+    record_binder_empty_clauses       ACCEPT       <- `for x in xs; ; {` is legal
+    record_empty_single_clause        REJECT(4014,3002)  <- but `for ; {` is not
+    record_field_named_in             REJECT(3002,4041,4091)
+
+THE LAST ROW REMOVED CODE. The first draft of the new discriminator also required the token
+before `in` to be able to end a pattern, so that `for i = some.in; ..` would not be read as a
+binder head. `in` is a RESERVED word, so a struct field cannot be named it, and the settle says
+so in the toolchain's own words. Every input that guard would have rejected is a program the
+toolchain refuses anyway, so the predicate was unreachable and was deleted rather than kept as
+decoration. A bare `in` at depth 0 in a header IS the binder keyword by definition.
+
+THE SAME ARGUMENT IS WHY THERE IS NO MUTATION FOR THE DEPTH GUARD. `in` and `;` are reserved and
+cannot appear inside a group as names, so no token that can flip an arm of this scan sits at
+depth > 0 in a `for` header. A mutation that cannot fail tests nothing, and the gate says so
+rather than inventing one.
+
+MEASURED. Four of six corpora are byte-identical -- moui, moonbit_labeler, proton and
+proton_contract did not move by a single field. `actionable` is 0 on all six.
+
+    async           parsed 392 -> 394, notices 1690 -> 1698, unreliable 264 -> 243
+    moonbit_image   parsed 17 unchanged, notices 207 unchanged, unreliable 15 -> 13
+
+and both movements were ATTRIBUTED rather than waved through. Every C1-shaped header in async
+was enumerated across the tree, and the scanner's own PARTIAL lines were diffed against a
+`git worktree` build of HEAD:
+
+    io/buffered_reader.mbt       blocked at 57  -> PARSES          `for searched = 0 {`
+    internal/event_loop/io.mbt   blocked at 202 -> blocked at 364  `for rest = .., produced = 0 {`
+    bmp.mbt (moonbit_image)      blocked at 117 -> blocked at 118
+
+Nothing else moved in either corpus. bmp.mbt's header is the semicolon-less multi-line form at
+lines 117-119, which `moon check` REJECTS [3002], so the analyzer's refusal is correct and what
+changed is only WHERE it refuses: `expected ';'` at 117 became `expected '{'` at 118, because
+the header reader no longer demands the `;`.
+
+THE SECOND `+1` IS AN INFERENCE AND IS LABELLED AS ONE. Unparsed went 27 -> 25 while
+blocked-with-findings went 22 -> 21, so one file moved out of the unparsed set without ever
+printing a PARTIAL line -- it failed at HEAD with no findings. `http/utils.mbt`
+(`for input = input {`, `for rest = start {`) is the only candidate in that class. That is
+arithmetic, not measurement, and the pin comment in `release.ps1` says so in the same words.
+
+Gate 0473: 7/7 KILLED, no declared survivors, every restore byte-identical. 913 tests.
+
+AND A NOTE FOR ANYONE READING A GATE LOG. The test total is TARGET dependent: 899 on wasm and
+827 on js, so gates `0.4.23` onward report `of 827 red` and a mid-run drop from 899 to 827 is
+that, not a suite quietly losing 8% of its tests while reporting green.
