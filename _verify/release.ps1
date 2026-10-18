@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -635,20 +635,51 @@ if ($SkipMutations) {
 #         for i = 0
 #             i < num_colors && .. < self.data.length()
 #             i = i + 1 {
-#     which `moon check` REJECTS [3002], so the analyzer's refusal is correct. What changed
-#     is WHERE it refuses: 0472 left `expected ';'` at line 117, and 0473 -- which stopped
-#     demanding the `;` -- leaves `expected '{'` at line 118. The A/B against HEAD shows
-#     exactly that move and nothing else. At 0472 this was additionally checked on a copy
-#     of bmp.mbt with the header repaired so the whole file parses: `notices` 14 vs 14 and
-#     every shown finding byte-identical. No evidence-bearing number moved.
+#
+#     *** CORRECTED AT 0482. THE SENTENCE THAT USED TO SIT HERE WAS FALSE. *** It read:
+#
+#         which `moon check` REJECTS [3002], so the analyzer's refusal is correct.
+#
+#     `moon check` ACCEPTS that header. `_verify/settle_0482_for_header_no_semicolons.ps1`
+#     row `C1_three_clauses_newline_separated` is the measurement, and the analyzer's refusal
+#     was a MISSED FILE, not a correct complaint. Two increments reasoned about this header on
+#     the strength of the bad sentence -- 0473 kept the boundary where it was because the file
+#     "should not parse", and 0472's A/B was used to confirm a move within a region that was
+#     never wrong to begin with. The boundary did move, 117 -> 118, and the A/B was honest
+#     about the move; what it could not say was that the move was heading anywhere, because
+#     the destination was assumed to be a second error.
+#
+#     The line breaks ARE the clause separators -- settle C1 ACCEPT, and the one-line
+#     spelling of the same header is REJECT(3002), so the breaks are load-bearing rather than
+#     cosmetic. 0482 made the clause list POSITIONAL and moonbit_image is 18/18:
+#         parsed 17 -> 18, unreliable 13 -> 0, withheld 0, notices 207 -> 218,
+#         actionable 0 -> 0, total 220 -> 218
+#     The A/B against HEAD from 0472 is retained above because it still describes the move it
+#     measured; only the conclusion drawn from it was wrong.
+#
+#     => 判据: AN ARGUMENT IS A CLAIM AND CAN BE FALSIFIED LIKE ANY OTHER. This one was
+#     re-measured only because 0482's own settle needed a row about `for` headers and this
+#     was the header already sitting in the repository. A claim that has been carried for two
+#     increments is not thereby twice-checked, and "the toolchain agrees with us" is the most
+#     reassuring sentence available -- which is exactly why it needs a row of its own. Same
+#     shape as the falsified `--extern-iface-dir` claim in 0477 and the `no whitespace token`
+#     claim in 0470: third time the argument, not the code, was the defect.
+#   - `async` at 0482: `unreliable` 120 -> 122 with `parsed` UNCHANGED at 403 and `withheld`
+#     unchanged at 31. That is the boundary MOVING, not a new failure -- two files now read
+#     farther before their own first failure. `parsed` not moving is the load-bearing half:
+#     no file that read cleanly before is now refused. Distinct NOTPARSE reasons across the
+#     whole backlog fell 14 -> 9, and only async is still short at 403/419. Its five
+#     `expected '{'` files are a DIFFERENT construct from bmp.mbt's -- measured, not assumed,
+#     and worth knowing because two increments of ranking would otherwise have pointed the
+#     next one at this fix twice.
 #   - `parse_block`'s parameter is named `value_block`, not `fn_body`. The old name is
 #     what let a real bug read as a decision.
 #
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=37 actionable=0 notices=791 unreliable=0 withheld=0 total=791'
-  'moonbit_image'   = 'files=18 parsed=17 actionable=0 notices=207 unreliable=13 withheld=0 total=220'
-  'async'           = 'files=419 parsed=403 actionable=0 notices=1776 unreliable=120 withheld=31 total=1896'
+  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=218 unreliable=0 withheld=0 total=218'
+  'async'           = 'files=419 parsed=403 actionable=0 notices=1776 unreliable=122 withheld=31 total=1898'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=2131 unreliable=0 withheld=0 total=2131'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
 }

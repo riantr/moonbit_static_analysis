@@ -126,10 +126,25 @@ Invoke-MutationGate -Name '0470' -Target 'wasm' -Mutations @(
 
 # NO MUTATION FOR THE SEPARATOR STEP, and that is a measured decision rather than an
 # oversight. `c_for_init` steps over `TNewline`/`TSemi` before it discriminates, and no legal
-# MoonBit program can reach that step: the lexer emits no whitespace token between `for` and
-# its first name, and a header split across lines with no semicolon on the `for` line is
-# REJECTed [3002] by `moon check` -- measured, and recorded in `parser_0470_test.mbt`.
-# There is therefore no row that can kill it and no mutation that could be honest about it.
+# MoonBit program can reach that step: a header split across lines with the initializer on the
+# line AFTER the `for` is REJECTed [3002, 4021] by `moon check` -- measured, and recorded in
+# `parser_0470_test.mbt`. There is therefore no row that can kill it and no mutation that
+# could be honest about it.
+#
+# CORRECTED at 0482, and the DECISION STANDS while the REASON does not. The sentence this
+# replaced said "the lexer emits no whitespace token between `for` and its first name". That
+# was false: the lexer emits `TNewline` there like everywhere else, which is why `c_for_init`
+# steps over it at all and why `skip_seps` has existed since 0470. The real reason the step is
+# unreachable is narrower and is now measured rather than assumed -- MoonBit requires the head
+# on the `for` line.
+#
+# This was not cosmetic. 0482 taught the C-style header to read a LINE BREAK as a clause
+# separator, and the first draft of that fix gated on "is the cursor on a `;` or a `TNewline`".
+# It did not fire, because `parse_is` (parser.mbt:3779) had already swallowed the newline on
+# its way through the initializer. So the step this comment is about is live in a much more
+# important sense than "no program can reach it", and a reader who believed the old sentence
+# would not have looked there. `_verify/settle_0482_for_header_no_semicolons.ps1` row C4 is
+# the measurement; it was added here rather than left to be discovered later.
 # The step stays because a token-level discriminator that silently stops discriminating if
 # the lexer ever emits separators is worse than six lines that are currently unreachable.
 

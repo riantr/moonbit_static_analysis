@@ -208,7 +208,7 @@ test "0470: the two for forms are distinguishable in the tree" {
 // They are recorded here because the row was written, ran, and was WRONG -- and why it was
 // wrong is the interesting part. Asserting any of them would pin something unsettled.
 //
-// 1. A C-style `for` header spanning several lines with no semicolon on the `for` line:
+// 1. A C-style `for` header with the initializer on the line AFTER the `for`:
 //
 //        for
 //          i = 0;
@@ -216,12 +216,22 @@ test "0470: the two for forms are distinguishable in the tree" {
 //          i = i + 1
 //        { .. }
 //
-//    `moon check` REJECTs [3002] this. The analyzer also refuses to parse it -- so the two
-//    AGREE, and a row asserting `first_error == 0` would have been asserting that the
-//    analyzer accepts code the toolchain rejects. That is why `c_for_init` steps over
-//    separators before it discriminates: the step is DEFENSIVE, and this comment is the
-//    reason it is not dead. No positive row can cover it, because no legal MoonBit program
-//    reaches it.
+//    `moon check` REJECTs this [3002, 4021] -- RE-MEASURED at 0482 as
+//    `_verify/settle_0482_for_header_no_semicolons.ps1` row `C4_for_alone_on_its_line`,
+//    which was added for exactly this reason. The analyzer also refuses to parse it, and
+//    `parser_0482_test.mbt` pins that as a negative control after 0482 made the clause
+//    chain positional and permissive -- so the two AGREE, and a row asserting
+//    `first_error == 0` would have been asserting that the analyzer accepts code the
+//    toolchain rejects. That is why `c_for_init` steps over separators before it
+//    discriminates: the step is DEFENSIVE, and this comment is the reason it is not dead.
+//
+//    THE REASON WAS WRONG UNTIL 0482, and the correction matters. `mutate_0470.ps1` gave
+//    this same justification as "the lexer emits no whitespace token between `for` and its
+//    first name". That is false -- `TNewline` is emitted there like everywhere else, which
+//    is why this step exists. The real reason is the one above: MoonBit requires the head on
+//    the `for` line. Believing the old sentence would have been actively unhelpful in 0482,
+//    whose first draft gated the newline-separated header on `at_sep()` and did not fire
+//    because `parse_is` had already consumed the newline.
 //
 // 2. `for let i = 0; i < n; i = i + 1` -- the settle's claim 2 says the toolchain REJECTs
 //    [4015]. The parser ACCEPTS it: the clause reads as an ordinary `SLet` statement and

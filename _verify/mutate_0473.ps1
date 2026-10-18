@@ -178,29 +178,32 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
     MustRed = '0473: a for head with one initializer and no semicolons desugars to SLet + SWhile(true)'
   }
 
-  # M5 THE TWO SEMICOLONS ARE MANDATORY AGAIN. `parse_c_for` exactly as it shipped, minus
-  # the list. This is the defect that rejected `for ; n > 0 { .. }` and
-  # `for n = step() { .. }`, both ACCEPTED by `moon check`.
+  # M5 THE CLAUSE LIST IS MANDATORY AGAIN. `parse_c_for` exactly as it shipped, minus the
+  # list. This is the defect that rejected `for ; n > 0 { .. }` and `for n = step() { .. }`,
+  # both ACCEPTED by `moon check`.
+  #
+  # RE-ANCHORED at 0482, like M1..M4 were at 0472. The question is unchanged and so is the
+  # `MustRed`; only the text moved. 0482 rewrote this clause chain to be POSITIONAL -- it
+  # asks whether the next token can begin another clause rather than whether a separator was
+  # typed -- and this anchor pointed at the old spelling, so the 65-gate release run would have
+  # aborted on it with `PREFLIGHT MISS` and nothing else. The name lost its "both `;`" too,
+  # because 0482 settled that the separator may be a LINE BREAK and this mutation no longer
+  # describes the grammar it is supposed to restore.
   @{
-    Name = 'M5 the clause list is mandatory again: both `;` are demanded'
+    Name = 'M5 the clause list is mandatory again'
     File = $PARSER
     Find = @'
-  if !self.at(TLBrace) && !self.at(TSemi) {
-    for d in self.c_for_inits(sp) {
-      stmts.push(d)
-    }
+  if self.at(TSemi) {
+    let _ = self.bump()
+  }
+  if !self.at(TSemi) && !self.at(TLBrace) && !self.at(TEOF) {
+    cond = self.parse_expr()
   }
   if self.at(TSemi) {
     let _ = self.bump()
-    if !self.at(TSemi) && !self.at(TLBrace) {
-      cond = self.parse_expr()
-    }
-    if self.at(TSemi) {
-      let _ = self.bump()
-      if !self.at(TLBrace) {
-        update = Some(self.parse_stmt())
-      }
-    }
+  }
+  if !self.at(TLBrace) && !self.at(TEOF) {
+    update = Some(self.parse_stmt())
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
@@ -225,15 +228,21 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
   # further clause and this ignores the promise. It is the only mutation here that a corpus
   # number would be slow to catch, because the form it breaks -- `for i = 0; i < n; {` -- is
   # legal and was already read before this increment.
+  #
+  # RE-ANCHORED at 0482 with M5, for the same reason and with the same MustRed. 0482
+  # de-nested this guard (it is no longer inside an `if self.at(TSemi)`) and added the `TEOF`
+  # guard beside it, so the old indentation no longer appears anywhere in the function and the
+  # anchor matched nothing. M5 and M6 are the two mutations that name this chain; a fix that
+  # moved one and not the other would have looked like a half-done re-anchor.
   @{
     Name = 'M6 the update clause is read even when the header ends before it'
     File = $PARSER
     Find = @'
-      if !self.at(TLBrace) {
-        update = Some(self.parse_stmt())
-      }
+  if !self.at(TLBrace) && !self.at(TEOF) {
+    update = Some(self.parse_stmt())
+  }
 '@.Replace("`r`n", "`n")
-    Repl = '      update = Some(self.parse_stmt())'
+    Repl = '  update = Some(self.parse_stmt())'
     MustRed = '0473: an absent update clause leaves the body exactly as written'
   }
 

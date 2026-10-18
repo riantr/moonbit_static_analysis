@@ -2343,3 +2343,127 @@ came from that: the UNBOUNDED nesting, and the error message pointing at a worki
 settle row that is about the reported case will agree with you either way -- S2 would have
 passed against a two-bump reader. The rows that disagree are the ones about shapes nobody has
 written yet, and those are the only ones with any information in them.
+
+## 0482 -- a `for` HEADER SEPARATED BY LINE BREAKS, and the last file in moonbit_image
+
+    expected '{'
+    e.g. moonbit_image 0.3.7/bmp.mbt   read up to line 118, 13 after it not shown
+
+Lines 117-119 are a three-clause C-style `for` header with not one semicolon:
+
+    for i = 0
+        i < num_colors && i * 4 + palette_offset + 3 < self.data.length()
+        i = i + 1 {
+
+`parse_c_for` gated the condition and the update behind a single `if self.at(TSemi)`, so a
+header with no semicolon skipped the whole clause list, and the cursor -- sitting on the
+condition -- went to `parse_block`, which reported `expected '{'`.
+
+**`region_line` 118 RATHER THAN 117 IS THE RECEIPT THAT DECIDED WHERE THE FIX BELONGS.** 118
+is the condition token; 117 is the `for`. The head was READ and only the separator was missing,
+so this was a gate and not a head. Same shape as 0481, whose report landed eight tokens before
+its defect: a reported token is a claim about where the reader stopped, not about what stopped
+it. Third increment running, third time the reported position and the defect have been
+different things.
+
+MEASURED, and it closes a corpus.
+
+    moonbit_image  parsed 17 -> 18, unreliable 13 -> 0, withheld 0, notices 207 -> 218,
+                   actionable 0 -> 0, total 220 -> 218
+
+18/18 with an empty quarantine. FIVE of the six pinned corpora now parse every file: moui
+608/608, moonbit_labeler 37/37, moonbit_image 18/18, proton 137/137, proton_contract 4/4. Only
+async is short, at 403/419, and it is unchanged -- its five `expected '{'` files are a DIFFERENT
+construct, which is worth knowing because two increments' worth of ranking would otherwise have
+sent the next one after this one twice. Distinct NOTPARSE reasons across the whole backlog: 14
+-> 9. async's `unreliable` moved 120 -> 122 with `parsed` unchanged at 403: two files now read
+FARTHER before their boundary, so this is the boundary moving and not a new failure.
+
+Settled in `_verify/settle_0482_for_header_no_semicolons.ps1`, 3 controls + 3 claims + 6
+recorded, GATE OK:
+
+    ACCEPT  three clauses on three lines with no `;`
+    ACCEPT  init + condition, no update
+    ACCEPT  a `&&`/`<` chain spanning two comparisons
+    REJECT(3002)      all on ONE line
+    REJECT(3002)      a `;` before the condition and a line break before the update
+    REJECT(3002,4021) the head on the line after the `for`
+
+**THE NEWLINES ARE LOAD-BEARING, AND THAT IS THE ROW THAT SIZED THE FIX.** `for i = 0 i < n i =
+i + 1 {` on one line is REJECTed, and both mixed-separator rows REJECT too: it is all `;` or all
+line breaks, never a mixture. So the separator is not optional punctuation and the rule is not
+"be liberal about `;`".
+
+**THE NATURAL FIX DID NOT WORK, AND THE REASON IS A COUPLING THREE FUNCTIONS AWAY.** Gate on
+"is the cursor on a `;` or a `TNewline`" -- `at_sep` -- is the direct reading of the settle and
+it does not fire, because `parse_is` (parser.mbt:3779) consumes trailing newlines
+UNCONDITIONALLY before testing for its own `is` continuation, so that
+
+    guard (a, b, c)
+      is (x, y, z) && ...
+
+keeps working -- a 15-finding fix on `embedded_runtime_backend.mbt`. Every full expression ends
+there. By the time any clause reader looks, a newline-separated clause is INDISTINGUISHABLE
+from an adjacent one, and there is no separator token left to ask about. I found this by
+printing the cursor at four points rather than by reading, which is the third time this round
+that reading the code would have produced a confident wrong answer.
+
+**SO THE CLAUSE LIST IS POSITIONAL.** "Another clause exists" is asked of the TOKEN -- can this
+begin the body? -- and the two `at(TSemi)` bumps are what keep the slots aligned when a
+separator is spelled. The coupling is real and falsifiable, and it is written into `parse_c_for`
+rather than left to be inferred from a chain that looks like it should be testing `TNewline`: if
+`parse_is` ever stops eating newlines, every row in `parser_0482_test.mbt` goes red and this
+becomes a rewrite.
+
+**THE SECOND DRAFT BROKE A PASSING ROW, AND THAT IS M4.** `skip_seps` instead of one separator
+at a time collapses `for i = (0, 1); ; i = i + 1 {` -- 0472's `ctl_tuple_comma`, an ACCEPTed
+program whose MIDDLE slot is empty -- and shifts the update into the condition slot. One line of
+this increment turned that row red before the draft was replaced. An empty clause is legal; the
+`at(TSemi)` guard on the condition is the only thing holding it in place, and it looks redundant
+next to the `{` guard.
+
+Gate 0482: 4/4 KILLED, no declared survivors, every restore byte-identical. 980 tests.
+
+**AND ONE OF MY OWN MUTATIONS TESTED NOTHING AGAIN, IN THE SAME PLACE.** M2's first draft
+replaced the condition clause with `let _ = cond`, which leaves `cond` declared `mut` and never
+assigned, and `moon test --deny-warn` rejects the unused mutability as Error [0015]. COMPILE-ERR
+is a shape check, not a mutation. 0481's M3 failed to compile for a different reason and 0482's
+M2 for this one, which is twice in three increments -- worth remembering as a habit rather than a
+fluke: check that the mutated code still ASSIGNS what it declares before reading the verdict.
+
+**M3 IS THE MUTATION NO CORPUS SCAN COULD FIND, AND IT IS WHY THE TESTS ASSERT ON THE BODY.**
+The update clause is parsed, consumed, and then dropped on the floor: the file still parses,
+`parsed` stays 18/18, `actionable` stays 0, and the loop body is one statement shorter in every
+loop that has a step. "Parsed is not read" again, and the row that catches it asserts on the
+RENDERED loop body rather than on `first_error`.
+
+**A CLAIM I HAVE BEEN CARRYING SINCE 0470 WAS WRONG, AND 0482 IS WHY IT MATTERED.** Both
+`mutate_0470.ps1` and `parser_0470_test.mbt` justified a defensive step by saying "the lexer
+emits no whitespace token between `for` and its first name". It does -- `TNewline` is emitted
+there like everywhere else, which is why the step exists at all. The real reason the step is
+unreachable is narrower and is now measured: MoonBit requires the head on the `for` line
+(settle C4, REJECT 3002/4021). The decision stood; the reason did not, and believing it would
+have pointed 0482 away from `parse_is` -- exactly where the bug was. Both files carry the
+correction now, and the settle row that measures it was added rather than left to be found
+later. The same lesson as the falsified `--extern-iface-dir` claim in 0477, and the second time
+the argument itself was the defect.
+
+RECORDED, NOT ENFORCED: four shapes the toolchain REFUSES are now read -- the one-line header,
+both mixed-separator spellings, and a skipped clause. They are MISSED errors, not false
+positives, and the direction that matters is closed. Enforcing the rest needs a rule this
+increment has not measured (whether a wrapped `for i = 0;\n  i < n;` counts as a mixed
+separator), and a false error on legal code is the worse of the two. The one-line case is
+asserted in `parser_0482_test.mbt` as a known over-permissiveness rather than left in prose,
+because a comment does not fail when the behaviour changes. `parser_0470_test.mbt` recorded the
+same species for `for let` in prose only, because it had no measured toolchain row to point at;
+there is one here, so the bar is different.
+
+=> 判据: THE ROW ABOUT THE REPORTED CASE CANNOT TELL YOU HOW BIG THE RULE IS. C1 is the corpus
+line and C1 would have passed against almost any permissive fix -- including `skip_seps`, which
+is the draft that broke a passing row two steps later. The rows that carried the information
+were `record_all_on_one_line` (the separator is load-bearing, not optional) and the two mixed
+rows (all-or-nothing), and both of them are about a program nobody reported. 0479 said the same
+thing about a preamble, 0481 about a third `?`, and 0482 about a line break: three increments,
+three rules that turned out wider than the file that named them, and in all three cases the
+settle row that disagreed was free to write and easy to skip. The corpus tells you where to
+look; only a question outside it tells you how far to reach.

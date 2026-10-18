@@ -3227,6 +3227,64 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   // The initializer is still read by the same `for d in ..` loop, unchanged and
   // byte for byte, so the `mutate_0470` M1 anchor and `mutate_0472`'s header
   // mutation stay pointed at what they name.
+  //
+  // 0482 THE CLAUSE SEPARATOR MAY BE A LINE BREAK, and the reader cannot see one.
+  //
+  // The corpus line is `bmp.mbt:117-119`, the last file moonbit_image 0.3.7 could not read
+  // (17/18, `expected '{'`, PARTIAL at line 118):
+  //
+  //     for i = 0
+  //         i < num_colors && i * 4 + palette_offset + 3 < self.data.length()
+  //         i = i + 1 {
+  //
+  // Three clauses and not one semicolon. `region_line` 118 rather than 117 is the receipt
+  // that the head WAS read and only the separator was missing -- same shape as 0481, whose
+  // `unexpected token ':'` landed on `self : RuntimeEvent` eight tokens before the defect.
+  // A reported token is a claim about where the reader STOPPED.
+  //
+  // THE FIRST TWO DRAFTS WERE WRONG IN OPPOSITE DIRECTIONS, and both are worth naming.
+  //
+  //   * `at_sep()` -- "is the cursor on a `;` or a `TNewline`" -- is the natural gate and it
+  //     does not fire, because `parse_is` (parser.mbt:3779) already ate the newline. It does
+  //     so UNCONDITIONALLY, before testing for its own `is` continuation, so that
+  //     `guard (a, b, c)\n  is (x, y, z) && ...` keeps working -- a 15-finding fix on
+  //     `embedded_runtime_backend.mbt`. Every full expression ends there, so the initializer's
+  //     trailing newline is gone before `parse_c_for` ever looks at it.
+  //   * `skip_seps()` instead of one `;` at a time is wrong in the OTHER direction: it
+  //     collapses `for i = (0, 1); ; i = i + 1 {` -- 0472's `ctl_tuple_comma`, an ACCEPTed
+  //     program whose MIDDLE slot is empty -- and shifts the update into the condition slot.
+  //     One line of this increment turned that row red before the draft was replaced.
+  //
+  // => 判据: WHAT IS ACTUALLY VISIBLE AT THE CURSOR IS THE GATE. There is no separator token
+  // left to ask about, so the clause list is POSITIONAL: "another clause exists" is asked of
+  // the token as "this cannot begin the body", and the two `at(TSemi)` bumps are what keep the
+  // slots aligned when a separator IS spelled. The empty-slot guard on the condition is not
+  // redundant with the `{` guard -- it is the only thing holding `; ;` in place.
+  //
+  // THE COUPLING IS LOAD-BEARING AND FALSIFIABLE. If `parse_is` ever stops consuming
+  // trailing newlines, every row in `parser_0482_test.mbt` goes red, and the fix becomes a
+  // rewrite with a newline-aware gate rather than this. That is stated here rather than left
+  // for the next reader to infer from a chain that looks like it should be testing `TNewline`.
+  //
+  // Settled in `_verify/settle_0482_for_header_no_semicolons.ps1`, 12 rows, 3 controls. The
+  // rows that decide what the reader must NOT accept are RECORDED there, not gated:
+  //
+  //     C1  three clauses on three lines, no `;`      ACCEPT
+  //     C2  init + condition only                      ACCEPT
+  //     C3  a `&&`/`<` chain spanning two comparisons  ACCEPT
+  //     record_all_on_one_line                         REJECT(3002)
+  //     record_mixed_separators                        REJECT(3002)
+  //     record_mixed_separators_reversed               REJECT(3002,4014,3002)
+  //     record_init_and_update_no_cond                 REJECT(3002)
+  //     record_cond_and_update_no_init                 REJECT(3002,4015,3002)
+  //     C4  the `parser_0470_test.mbt` fixture 1       REJECT(3002,4021)
+  //
+  // THE NEWLINES ARE LOAD-BEARING: `for i = 0 i < n i = i + 1 {` on ONE line is REJECTed, so
+  // the separator is not optional punctuation. Four of those rows are programs the toolchain
+  // REFUSES and this reader now reads. They are a MISSED error, not a false positive, and the
+  // direction that matters is closed -- `bmp.mbt` is legal MoonBit. Enforcing the rest would
+  // need a rule this increment has not measured (whether a wrapped `for i = 0;\n  i < n;` is
+  // a "mixed separator"), and a false error on legal code is the worse of the two.
   if !self.at(TLBrace) && !self.at(TSemi) {
     for d in self.c_for_inits(sp) {
       stmts.push(d)
@@ -3234,15 +3292,15 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   }
   if self.at(TSemi) {
     let _ = self.bump()
-    if !self.at(TSemi) && !self.at(TLBrace) {
-      cond = self.parse_expr()
-    }
-    if self.at(TSemi) {
-      let _ = self.bump()
-      if !self.at(TLBrace) {
-        update = Some(self.parse_stmt())
-      }
-    }
+  }
+  if !self.at(TSemi) && !self.at(TLBrace) && !self.at(TEOF) {
+    cond = self.parse_expr()
+  }
+  if self.at(TSemi) {
+    let _ = self.bump()
+  }
+  if !self.at(TLBrace) && !self.at(TEOF) {
+    update = Some(self.parse_stmt())
   }
   let (body, _) = self.parse_block(false)
   let loop_body : Array[@ast.Stmt] = []
