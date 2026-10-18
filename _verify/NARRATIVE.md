@@ -2215,3 +2215,66 @@ compare it to `"\u{1234}"` or it is a comment with an assertion in it. The gener
 a mutation that survives is either a rule that is not load-bearing, which is worth knowing and
 worth writing down, or an instrument that is not measuring -- and the difference between those
 two is exactly one question, which is whether ANY input makes the two readers disagree.
+
+## 0479 -- U+FEFF, the BYTE-ORDER MARK
+
+One line, one file, and a refusal of code the toolchain accepts.
+
+    unexpected character '<U+FEFF>'
+    e.g. riantr/moonbit_labeler/0.2.13/app_moui/labeler_ui_test.mbt   (first three bytes EF BB BF)
+
+A sweep of every `.mbt` under `.repos` finds this is the ONLY file in the corpus that starts
+with a byte-order mark. One file is a reason to fix it rather than to skip it, because a
+refusal of valid code is never coverage and always wrong.
+
+MEASURED, and it is the whole corpus:
+
+    moonbit_labeler  parsed 36 -> 37, unreliable 16 -> 0, withheld 16 -> 0,
+                    notices 776 -> 791, actionable 0 -> 0, total 792 -> 791
+
+37/37 files parse and `unreliable` is 0 for the first time in this corpus: nothing sits in the
+quarantine. `actionable` staying at 0 is the number that matters, and the unblocked file
+reports 15 notices and zero defects.
+
+**THE ROW THAT DECIDED THE SIZE OF THE FIX IS S4, AND IT ACCEPTED.**
+
+    ACCEPT  the corpus's first three lines, byte for byte including the mark
+    ACCEPT  a mark before a declaration / before a `///|` / on an empty file
+    ACCEPT  a mark MIDFILE           `1 <mark> + 2` is `1 + 2`
+    ACCEPT  a mark inside a string literal
+
+So this is NOT a "strip a three-byte preamble" change. U+FEFF is legal wherever it appears, the
+lexer has to skip the character, and the fix reaches every position. A preamble-only fix would
+have passed every ACCEPT control, unblocked the one file anyone had seen fail, and left the
+rule wrong for every file a mark turns up in later -- the 0475 shape, and 0459's `b'\x00'`
+before it. `Lexer::run` skips it beside space, tab and carriage return, and nothing else.
+
+**STRING CONTENTS ARE UNAFFECTED BY WHERE THE SKIP LIVES, NOT BY A SECOND GUARD.** `run`
+dispatches to `lex_string` on `"` and that reader consumes the whole literal, so a mark inside
+one is never offered to the skip. A second guard would be a way to change a string's value by
+accident, and the test asserts the payload LENGTH for exactly that reason: if the skip ever
+moved inside `lex_string`, `"a<mark>b"` would lose a character and every program comparing
+that string would silently disagree with the compiler.
+
+**THE CONTROL IS THE CHARACTER IMMEDIATELY BESIDE IT.** The settle licenses exactly one
+character, so the nearest miss is the right probe: U+FFFE, one code point away, which a guard
+written as a range or one reaching for "the byte-order marks" swallows. `\u{FFFF}` is not used
+-- it is not adjacent to anything this change touches, so it would pass against a guard that
+widened to a whole block.
+
+Gate 0479: 4/4 KILLED, no declared survivors, every restore byte-identical -- and the first
+gate in three increments to pass on its first run, after 0478 and 0480 both arrived with
+anchors that two fixes had already moved. 967 tests.
+
+RECORDED, NOT SETTLED: the skip advances `col` like a space does, so a token after a midfile
+mark is reported one column further right than it appears. Whether the compiler does the same
+is not observable through `moon check` -- it reports line and column for its own diagnostics,
+not for a character it skips -- so there was nothing to settle and this is a judgement call.
+It affects only the COLUMN of findings that follow a midfile mark, of which the corpus has one.
+
+=> 判据: the corpus names one file at a time, and a fix sized to the file that was reported is
+a fix verified by its own symptom. The settle's job is to say how big the rule is, and here it
+said bigger than the defect: one file refused a PREAMBLE-shaped problem, and the grammar says
+the character is legal everywhere. The row that decides this is never the row about the
+reported case -- it is the one about a case nobody reported, and it is the row that costs
+nothing to write and everything to skip.

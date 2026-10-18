@@ -307,7 +307,24 @@ fn Lexer::run(self : Lexer) -> Unit {
   let mut last : Tok = TSemi
   while self.pos < self.chars.length() {
     let c = self.chars[self.pos]
-    if c == ' ' || c == '\t' || c == '\r' {
+    // 0479 -- U+FEFF, the BYTE-ORDER MARK, is skipped here beside the other characters that
+    // separate tokens. It reached `lex_op`'s catch-all before and came back as "unexpected
+    // character '<U+FEFF>'", refusing a file the toolchain accepts.
+    //
+    // This is NOT a "strip a three-byte preamble" change, and the settle row that decided it
+    // is S4. `moon check` ACCEPTS a mark at offset 0, before a declaration, before a `///|`,
+    // on an empty file, and -- the discriminator -- MIDFILE, where `1 <mark> + 2` is simply
+    // `1 + 2`. A preamble-only fix would have passed the corpus file and failed the corpus
+    // it was written for. A sweep of every `.mbt` under `.repos` finds exactly one file that
+    // starts with one, `riantr/moonbit_labeler/0.2.13/app_moui/labeler_ui_test.mbt`, and a
+    // refusal of valid code is never coverage and always wrong -- one file is a reason to fix
+    // it rather than to skip it.
+    //
+    // STRING CONTENTS ARE UNAFFECTED, and not by luck: `run` dispatches to `lex_string` when
+    // it sees `"`, and that reader consumes the whole literal, so a mark inside one is never
+    // offered to this branch. S5 is satisfied by where the skip lives rather than by a second
+    // guard, and a second guard would be a way to change a string's value by accident.
+    if c == ' ' || c == '\t' || c == '\r' || c == '\u{FEFF}' {
       self.pos += 1
       self.col += 1
       continue
