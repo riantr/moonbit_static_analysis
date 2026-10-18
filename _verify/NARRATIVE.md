@@ -2000,3 +2000,123 @@ true; an AST assertion is not a lens. The risk a survivor names is the risk that
 increment buys a different instrument, and this one did. The failure mode to watch is the
 opposite one: a gate that reads "KILLED" and moves on has told you the suite grew, and a gate
 that reads "SURVIVED" and leaves the note alone has told you nothing has.
+
+## 0478 -- the `<?` PAYLOAD
+
+26 sites across 7 files in proton 0.3.4, and four of those files were unreadable because of it:
+
+    @xlog.error(category="proton.command") <?
+      { "message": "command dispatch failed", "detail": detail }
+
+MEASURED, and it is the largest single drop in the backlog:
+
+    proton   parsed 131 -> 135, unreliable 186 -> 37, notices 1881 -> 2023,
+             withheld 6 unchanged, actionable 0 -> 0, total 2067 -> 2060
+
+`unreliable -149` against `parsed +4` is the expected PAIR and not two events: unblocking a file
+reveals findings whose reach was blocked, it does not create them. `actionable` staying at 0
+matters more than either -- this reader makes four whole files analysable and invents nothing
+against code the compiler accepts.
+
+**THE SHAPE WAS READ FROM THE INTERFACE, NOT PROBED.** `@xlog` 0.4.2's `pkg.generated.mbti`:
+
+    pub fn error(category? : String, loc~ : SourceLoc) -> Event?
+    type Event
+    pub fn Event::write_object_begin(Self) -> Unit
+    pub fn[T : ToJson] Event::write_object_field(Self, String, T) -> Unit
+    pub fn Event::write_object_end(Self) -> Unit
+
+so the payload is a JSON object literal DESUGARED TO METHOD CALLS ON THE RECEIVER -- `{` is
+`write_object_begin`, each `"key": value` is `write_object_field`, `}` is `write_object_end`.
+The receiver is an `Event?`, an OPTIONAL, and the subset has no `Event` to hang fields on.
+That is why this reader has no NODE: there is nothing in the analyzed subset for it to be.
+
+Settled in `_verify/settle_0478_log_payload.ps1`, 2 controls + 5 rows, GATE OK:
+
+    ACCEPT              the corpus shape
+    ACCEPT              a value may be an EXPRESSION (`"detail": detail`)
+    ACCEPT              a TRAILING COMMA is legal here, unlike a struct field (3800)
+    ACCEPT              `<? { }` with no field at all
+    REJECT(3002)        the KEY must be a string literal
+    REJECT(3002, 3002)  AT MOST ONE payload
+
+The last row is the one that shapes the reader rather than bounding it: a LOOP would consume
+the second `{` of `x <? {..} <? {..}` and carry on, so `had_payload` exists to stop at the
+closing brace and leave the rest for the statement reader to report.
+
+**MY OWN GATE WAS 4/4 KILLED AND THE RELEASE GATE STILL FOUND A REAL BUG.** M1 brace-not-required,
+M2 the flag never set, M3 the key not required to be a string literal, M4 the payload braces left
+in the stream -- 4/4 KILLED, every restore byte-identical, no declared survivors. All four
+mutations are correct questions and all four pass on synthetic fixtures. None of them can see
+that the corpus does not spell the brace where my lookahead expects it:
+
+    same-line brace : 12
+    next-line brace : 14
+
+The first version asked for `TLBrace` at `self.p + 2`. That refuses 14 of the corpus's own 26
+sites. The damage looked small because only the files whose FIRST error is a next-line brace go
+unparsed -- 5 of the 7 open that way -- and with the fix reverted the run came back with
+`3x unexpected token '?'`: three files gave back the ground 0478 had just gained for them, and
+every count that mattered moved the wrong way. A fix that is right in spirit and wrong in
+SPELLING, invisible to a gate that asks "does this rule still discriminate?" and answered only
+by a gate that asks "does this still read the corpus?".
+
+**AND THEN THE RELEASE GATE CAUGHT THE OPPOSITE ERROR, WHICH WAS NOT MYSELF.** With the lookahead
+fixed the run came back red on the proton pin: 2060 pinned, 2066 actual, `actionable` 0 -> 2.
+
+    NOW: SUMMARY  files=137 parsed=135 actionable=0 notices=2023 unreliable=37 withheld=6 total=2060
+
+The first version parsed the payload's values and then DISCARDED them. The corpus does not care --
+it parses either way -- but the walker never visited a value it was not handed, and a parameter
+used only inside a payload is then indistinguishable from an unused one:
+
+    facade_runtime.mbt:136    parameter `error`
+    facade_session.mbt:3413   parameter `detail`
+
+Two FALSE `UnusedParam` findings against code the compiler accepts. Worse, `actionable` 0 -> 2 is
+the direction that 0475 was investigated for and not accepted, so the run refused to pin.
+
+**AND THEY WERE INVISIBLE, WHICH IS A HARNESS FACT AND NOT A LUCK ONE.** `findings_shown_per_file
+= 40` in `sa/main.mbt` truncates both files -- 23 and 215 notices -- so the scan that changed the
+pin printed a summary whose two changed numbers were not on the screen. Raising the limit to 400
+is what made them visible; it was restored to 40 and the diff left clean. A truncation setting
+that hides the two lines a run failed on is a silent amplifier, and the pin is the only reason
+this was caught at all.
+
+**AND THEN THE GATE'S OWN ANCHORS ROTTED, WHICH MEANS THE "4/4 KILLED" ABOVE WAS TRUE AND WAS
+ABOUT CODE THAT NO LONGER EXISTS.** Gate 0478 first stood up 4/4 KILLED. Two fixes landed after
+that measurement, and each moved an anchor:
+
+- the newline fix replaced the inline `self.toks[self.p + 2] == TLBrace` with a call to
+  `at_log_payload_brace`, so M1 was pointing at a line that had been deleted;
+- making the function RETURN the values it keeps turned `_ => return` into `_ => return kept`
+  (M3) and a bare `self.skip_log_payload()` into `let kept = self.skip_log_payload()` (M4).
+
+The next full release said all of that in one second: `ABORT: 3 pattern(s) absent. No suite was
+run.` None of the three was retired -- retiring a mutation because its anchor moved is precisely
+how a rule stops being checked while the gate keeps reading OK -- and all three are re-anchored
+at the CURRENT spelling of the SAME three questions: the brace is still required (M1), the key is
+still required to be a string literal (M3), the payload is still consumed (M4). Re-measured from
+scratch: 4/4 KILLED, every kill naming its test, every restore byte-identical.
+
+=> PARSED IS NOT READ. A value consumed by the reader and dropped is syntactically accounted
+for and semantically invisible, and every lens that reports on USE will call its names dead. The
+fix is `@ast.ETuple([e] + kept)` -- not a payload node, but the receiver and the values in one
+tuple, so the walker visits what the program actually says. `skip_log_payload` now returns
+`Array[@ast.Expr]` and nothing is thrown away.
+
+=> 判据: the two instruments answered two different questions and only one of them had the corpus
+in it. A mutation gate asks whether a rule still DISCRIMINATES, on fixtures I wrote; the release
+gate asks whether the reader still AGREES with 26 sites of code I did not. Four mutations killed
+and a newline in the wrong place is not a contradiction -- it is the reason the release gate
+exists, and the reason "4/4 KILLED" was never going to be the sentence that ends an increment.
+
+The corollary cuts the other way too: `actionable` 0 -> 2 on a corpus the release gate had pinned
+is the pin WORKING, not the reader regressing. Pin it or do not ship it, and read the two changed
+numbers even when the screen truncates them.
+
+And the third instrument is the one I keep under-using. A mutation verdict is a CLAIM ABOUT A
+SPELLING, and two fixes later that spelling is gone. Pre-flight is not bureaucracy before the
+real work -- it is the only stage that notices when a number I already banked has stopped
+describing the code, and in this increment it fired on three mutations I would otherwise have
+reported as passing.

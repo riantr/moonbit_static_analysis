@@ -4268,6 +4268,123 @@ fn Parser::parse_unary(self : Parser) -> @ast.Expr {
 }
 
 ///|
+/// 0478 -- the `<?` PAYLOAD, `expr <? { "k": v, .. }`: no NODE, but the VALUES are KEPT.
+///
+/// WHY IT IS SKIPPED RATHER THAN PARSED INTO A NODE. `@xlog` 0.4.2's
+/// `pkg.generated.mbti` shows what the form means:
+///
+///     pub fn error(category? : String, loc~ : SourceLoc) -> Event?
+///     type Event
+///     pub fn Event::write_object_begin(Self) -> Unit
+///     pub fn[T : ToJson] Event::write_object_field(Self, String, T) -> Unit
+///     pub fn Event::write_object_end(Self) -> Unit
+///
+/// So the payload is a JSON object literal DESUGARED TO METHOD CALLS ON THE RECEIVER --
+/// `{` is `write_object_begin`, each `"key": value` is `write_object_field`, `}` is
+/// `write_object_end`. The receiver is an OPTIONAL, which is why `Event?` is the return
+/// type, and the subset has no `Event` to attach fields to. The VALUES are read with
+/// `parse_expr` and KEPT -- wrapped as an `ETuple` beside the receiver -- and keeping them is
+/// not a detail. `facade_bridge.mbt:11` writes
+/// `{ "message": "command dispatch failed", "detail": detail }` where `detail` is a lambda
+/// parameter. PARSED IS NOT READ: a first version parsed the values and threw them away, the
+/// walker never visited `detail`, and the result was two FALSE `UnusedParam` findings
+/// (`facade_runtime.mbt:136` parameter `error`, `facade_session.mbt:3413` parameter `detail`)
+/// -- both used ONLY inside a payload.
+///
+/// THE VALUES ARE PARSED AND THE KEYS ARE NOT, because that asymmetry is what the settle
+/// measured. `_verify/settle_0478_log_payload.ps1`, 2 controls + 5 rows, GATE OK:
+///   ACCEPT             the corpus shape
+///   ACCEPT             a value may be an EXPRESSION (`"detail": detail`)
+///   ACCEPT             a TRAILING COMMA is legal here, unlike a struct field (3800)
+///   ACCEPT             `<? { }` with no field at all
+///   REJECT(3002)       the KEY must be a string literal
+///   REJECT(3002, 3002) AT MOST ONE payload -- this is a single consumption, NOT a loop
+///
+/// S4 is the one that shapes this function rather than bounding it. A reader that looped
+/// would consume the second `{` of `x <? {..} <? {..}` and keep going; the settle says that
+/// is a parse error, so the loop must STOP at the closing brace and leave anything after it
+/// for the statement reader to report.
+///
+/// WHY A MISSING OR MALFORMED BRACE LEAVES THE CURSOR ALONE. The refusal rows refuse in the
+/// SAME DIRECTION the toolchain does rather than in the opposite one: a reader that accepted
+/// `<? k` and pushed on would report something about code the compiler rejects, which is the
+/// false negative 0475's negative rows exist to prevent. Leaving the cursor puts the report
+/// on the token that is actually wrong.
+///
+/// proton 0.3.4 is the only pinned corpus that carries this: 26 sites across 7 files.
+
+///|
+/// Is there a `{` after the `< ?` at the CURSOR, allowing for the NEWLINE the corpus puts
+/// there? The guard in `parse_postfix_from` asks this BEFORE consuming anything, because
+/// consuming the pair and finding no brace is what turned `a < ?flag` into a silently
+/// accepted file.
+fn Parser::at_log_payload_brace(self : Parser) -> Bool {
+  let mut j = self.p + 2
+  while j < self.toks.length() && self.toks[j] == TNewline {
+    j += 1
+  }
+  return j < self.toks.length() && self.toks[j] == TLBrace
+}
+
+///|
+fn Parser::skip_log_payload(self : Parser) -> Array[@ast.Expr] {
+  // THE BRACE IS USUALLY ON THE NEXT LINE. The corpus writes
+  //
+  //     @xlog.error(category="proton.command") <?
+  //       { "message": ..., "detail": detail }
+  //
+  // so the token after the pair is a NEWLINE and a lookahead that stops one token short
+  // refuses every one of the 26 sites. Measured: the first version of this reader used
+  // self.p + 2 == TLBrace and took proton from parsed 135 back to 132 with
+  // unexpected token ?` on the three largest <? files. A version that ACCEPTS everything
+  // also gave 132's neighbour only by accident -- it left the brace for parse_block, which
+  // read it as a block. Both readings were wrong about the same newline.
+  let kept : Array[@ast.Expr] = []
+  let mut j = self.p
+  while j < self.toks.length() &&
+        (self.toks[j] == TNewline || self.toks[j] == TLt) {
+    j += 1
+  }
+  if j >= self.toks.length() || self.toks[j] != TLBrace {
+    return kept
+  }
+  self.p = j
+  let _ = self.bump()
+  while !self.at(TRBrace) && !self.at(TEOF) {
+    // THE KEY IS A STRING LITERAL -- settle REJECT(3002) for anything else, and all 26
+    // corpus sites write one. Anything that is not a `TStr` leaves the cursor exactly
+    // where it is, so the refusal is reported against the offending token rather than
+    // swallowed here.
+    match self.peek() {
+      TStr(_, _) => {
+        let _ = self.bump()
+      }
+      _ => return kept
+    }
+    if self.at(TColon) {
+      let _ = self.bump()
+      // PARSED, NOT SKIPPED: the value is an ordinary expression and its names have to
+      // resolve. `parse_expr` also leaves the cursor after the value rather than at its
+      // internal commas, which is what makes the comma test below the top-level one.
+      kept.push(self.parse_expr())
+    }
+    // A TRAILING COMMA IS LEGAL (settle ACCEPT), so the comma is consumed and the loop
+    // simply sees `}` next and stops. This is the same `,` that is 3800 in a struct field
+    // -- one character, two grammars -- and a reader that refused it here would block a
+    // legal header for no measured reason.
+    if self.at(TComma) {
+      let _ = self.bump()
+    } else {
+      break
+    }
+  }
+  if self.at(TRBrace) {
+    let _ = self.bump()
+  }
+  kept
+}
+
+///|
 fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
   self.parse_postfix_from(self.parse_atom())
 }
@@ -4286,6 +4403,9 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr {
 /// `catch`, and every one of those is a shape real code writes.
 fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
   let mut e = start
+  // 0478: AT MOST ONE <? PAYLOAD PER CHAIN (settle REJECT(3002, 3002)). Without this the
+  // loop below would absorb x <? {..} <? {..} silently, and the refusal would vanish.
+  let mut had_payload = false
   while true {
     // `recv..name(args)` -- the `..` CHAIN LINK, 180 sites in 33 corpus files.
     //
@@ -4358,6 +4478,42 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       let (f, fsp) = self.expect_name("field name")
       e = { span: e.span, kind: @ast.EField(e, f), }
       ignore(fsp)
+      continue
+    }
+    // 0478 -- the `<?` PAYLOAD. `<` THEN `?` IS THE SOURCE'S ORDER, and `a < ?` is not
+    // MoonBit, so the adjacent pair can only be this operator -- the same argument
+    // `catch_group_has_log_payload` makes at parser.mbt:584, which is why that guard has
+    // always been right and this one was missing.
+    //
+    // The payload gets NO NODE of its own: it is a JSON object
+    // literal desugared to `write_object_begin` / `write_object_field` / `write_object_end`
+    // on an `Event` the subset does not have. See `skip_log_payload` for the settle.
+    //
+    // ONE CONSUMPTION, NOT A LOOP: settle REJECT(3002, 3002) on `x <? {..} <? {..}`, so
+    // the second `<?` is a parse error the statement reader must report, not something to
+    // absorb. A loop here would consume it and hide a refusal the toolchain makes.
+    // THE { IS CHECKED BEFORE A SINGLE TOKEN IS CONSUMED, and that ordering is the
+    // whole fix. `< ?` is this operator only when a BRACE FOLLOWS: `a < ?flag` is not
+    // MoonBit, and `x <? k` is not the payload form either. The settle's
+    // REJECT(3002, 3002) on a second payload and this guard together say the operator only
+    // exists when a brace FOLLOWS it. Consuming the pair and finding no brace would leave
+    // the flag to be read as a fresh statement and the file would parse -- a false negative
+    // on code the compiler rejects.
+    if !had_payload &&
+      self.at(TLt) &&
+      self.at_next(TQuestion) &&
+      self.at_log_payload_brace() {
+      had_payload = true
+      let _ = self.bump()
+      let _ = self.bump()
+      let kept = self.skip_log_payload()
+      if kept.length() > 0 {
+        let all = [e]
+        for v in kept {
+          all.push(v)
+        }
+        e = { span: e.span, kind: @ast.ETuple(all), }
+      }
       continue
     }
     if self.at(TLBracket) {
