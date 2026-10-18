@@ -2467,3 +2467,102 @@ thing about a preamble, 0481 about a third `?`, and 0482 about a line break: thr
 three rules that turned out wider than the file that named them, and in all three cases the
 settle row that disagreed was free to write and easy to skip. The corpus tells you where to
 look; only a question outside it tells you how far to reach.
+
+## 0483 -- a PACKAGE-QUALIFIED HOLDER, `@pkg.Type::method`, and the last three async files
+
+    tls/transport.mbt:36      read up to line 36, 6 after it not shown
+    http/parser.mbt:440       read up to line 440, 3 after it not shown
+    process/redirect.mbt:156  read up to line 156, 31 after it not shown
+
+All three stop on one line:
+
+    fn @io.ReaderBuffer::repr(buf : Self) -> @io_buffer.Buffer = "%identity"
+
+**THE LINE NAMES TWO CONSTRUCTS AND ONLY ONE OF THEM IS BROKEN.** It reads like a missing
+foreign-function body -- a `= "string"` where a `{ }` would go. A nine-case probe against this
+analyzer's OWN parser, not inference:
+
+    fn Buf::repr(b : Buf) -> Int = "%identity"       0   <- the body is already read
+    fn Buf::repr(b : Buf) -> Int { 1 }               0
+    extern "C" fn exit(code : Int) = "exit"          0
+    type @pkg.Buf                                   0   <- @pkg is fine in a TYPE
+    fn @pkg.Buf::repr(b : Buf) -> Int = "%identity"  2   <- HERE
+    fn @pkg.Buf::repr(b : Buf) -> Int { 1 }          2
+    fn @pkg.Buf::repr(b : Buf)                       2
+    extern "C" fn @pkg.Buf::repr(...) = "x"          2
+
+The body form is IRRELEVANT and the `@pkg.` is decisive. This is the THIRD boundary line in three
+increments carrying a construct that already worked, and the fourth time the reported line was
+read as the defect: 0481's `unexpected token ':'` named `self : RuntimeEvent`, eight tokens early;
+0482's `expected '{'` named a missing brace when the header was missing a separator rule. => 判据:
+the reported line is a place, and three places in a row have been a place that contained a
+working feature beside the broken one. Probe the neighbourhood before believing the address.
+
+`gzip/decoder.mbt:19` carries the IDENTICAL line and is not blocked -- it is platform-gated and
+outside the scanned source set, so "that file parses" could never have settled it either way.
+
+MEASURED.
+
+    async  parsed 403 -> 406, unreliable 122 -> 100, withheld 31 -> 25, notices 1776 -> 1783,
+           actionable 0 -> 0, total 1896 -> 1883
+
+Two files closed outright and `redirect.mbt` moved from line 156 to **229** -- it read 73 more
+lines and stopped at the next construct, `pub fn &ProcessInput::close(self : &ProcessInput)`.
+That is the `&Type::method` holder, which the ranking had measured at ONE file; it is now two,
+which is the ranking paying off without being re-derived. `actionable` stays 0, which is the
+number that says the fix did not trade a parse failure for a false positive.
+
+Settled in `_verify/settle_0483_pkg_qualified_holder.ps1`, 9 rows / 3 controls, GATE OK:
+
+    ACCEPT  `fn @other.Buf::m(...) = "%identity"` / `{ ... }` / `(self : @other.Buf)` / `async`
+    REJECT(4059)  `pub fn @other.Buf::m(...)`   "Cannot define method for foreign type"
+    REJECT(4156)  `extern "C" fn @other.Buf::m(...)`
+
+**`pub` IS NOT PART OF THIS GRAMMAR.** The analyzer reads it anyway, which is a MISSED error in
+the same direction as the `for let` and the one-line header, and it is recorded rather than
+fixed because the corpus has no instance and the corpus is what this project measures with.
+
+**THE FIX IS TWO EDITS AND ONLY ONE OF THEM WAS THE OBVIOUS ONE.** `parse_fn_signature` folds
+the path into the AST name; `declared_name_at` folds the same path to HARVEST it. Fixing the
+first alone is the worst outcome available -- the file PARSES, so `parsed` goes UP and a corpus
+scan calls it a fix, while the harvest still carries `@other` and every resolution of
+`@other.Buf::repr` misses. That is a loud failure traded for a quiet false positive.
+
+The shape of the token is worth recording because it cost a look: `@` is INSIDE the name. The
+lexer starts a name at `@`, so `@other` is ONE `TName("@other")` and the `.` is a separate
+`TDot`. There is no `TAt` in the token enum at all, and an earlier reading of that enum did not
+find the arm -- which would have sent the fix looking for a token that does not exist.
+
+**A POSITIVE ROW CAN BE VACUOUS, AND THIS IS THE SHARPEST VERSION OF THAT.** The first draft
+asserted that `b.repr()` on a foreign type is not reported as an undefined name. It passed. It
+would have passed on a harvest that named nothing whatsoever: a method call resolves through the
+type's interface table, and that table is EMPTY for a type from another package, so the
+structural lens never had a candidate to report. The second draft moved the same claim into the
+pipeline, which changed the LENS and not the question, and was equally vacuous. M1 and M4 both
+survived both drafts.
+
+What answers it is `collect_declared_names`, which is `pub` and returns an `IfaceSymTab`: ask the
+harvest what it contains instead of inferring it from whether a finding turned up downstream.
+=> 判据: a row is only as good as the mechanism that makes it red. 0470's rule was about NEGATIVE
+rows -- ask whether any mutation can turn it red. This is the same failure wearing the opposite
+sign: a POSITIVE row that passes because the thing it names is unreachable rather than correct,
+which no pre-flight can catch and which survives until a mutation is written that disagrees with
+it. The evidence that a row is vacuous is not that it is green. It is that you cannot say WHICH
+thing would make it red.
+
+**THE SCAFFOLD COST THREE DRAFTS AND EVERY ONE WAS CAUGHT BY A CONTROL, NOT BY A CLAIM.** A
+fixture that needs a second package must give it its OWN `moon.pkg` -- a directory with only a
+`.mbt` file in it is not a package -- and the import goes in `moon.pkg`, not in the source, and
+its path is `<module>/<dir relative to source>` and NOT `<module>/src/<dir>`. Each of the three
+failures reported itself in the shape of a grammar refusal: *"Cannot define method ... is
+undefined"*, *"Cannot find import"*, *"Package not found in the loaded packages"*. That is the
+`no work to do` lesson one level up, and it is why the header lists all three: a settle whose
+controls are red is measuring its fixture.
+
+Gate 0483: 4/4 KILLED, no declared survivors, every restore byte-identical. 990 tests. The 66-gate
+release PASSED with 6/6 pins MATCH.
+
+=> 判据: TWO READERS OF ONE GRAMMAR IS THE DEFAULT, NOT THE EXCEPTION. Reading is not harvesting,
+naming is not binding, and a fix to one of a pair can leave the file BETTER off than it found it
+-- parsed, counted as coverage, and wrong in the only place anyone was relying on. The corpus
+number that catches this does not exist, because the number moves the right way.

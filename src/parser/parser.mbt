@@ -1304,6 +1304,34 @@ fn declared_name_at(toks : Array[@lexer.Tok], i : Int32) -> String? {
   }
   match toks[i] {
     TName(n) => {
+      // 0483 THE PACKAGE-QUALIFIED HOLDER, and this is NOT OPTIONAL. `parse_fn_signature`
+      // folds `@other` `.` `Buf` `::` `repr` into the name `@other.Buf::repr`, and a harvest
+      // that stopped at `@other` would leave the two DISAGREEING -- which does not read as a
+      // parse error at all. It reads as `undefined name '@other.Buf::repr'` at every call
+      // site, ACTIONABLE, on code `moon check` compiles: trading a loud failure for a quiet
+      // false positive, the direction this project has never once taken.
+      //
+      // The dot is a SEPARATE token and the `@` is inside the name, exactly as in
+      // `parse_fn_signature` -- see the note there for why there is no `TAt`.
+      if n.has_prefix("@") && i + 1 < toks.length() {
+        match (toks[i + 1], toks[i + 2]) {
+          (TDot, TName(t)) => {
+            let base = n + "." + t
+            if i + 4 < toks.length() &&
+              toks[i + 3] == TColon &&
+              toks[i + 4] == TColon {
+              if i + 5 < toks.length() {
+                match toks[i + 5] {
+                  TName(m) => return Some(base + "::" + m)
+                  _ => ()
+                }
+              }
+            }
+            return Some(base)
+          }
+          _ => ()
+        }
+      }
       if i + 3 < toks.length() {
         match (toks[i + 1], toks[i + 2], toks[i + 3]) {
           (TColon, TColon, TName(m)) => return Some(n + "::" + m)
@@ -2041,6 +2069,23 @@ fn Parser::parse_fn_signature(
   self.skip_indexed()
   let (name, _) = self.expect_name("function name")
   let mut full = name
+  // 0483 A PACKAGE-QUALIFIED HOLDER, `@pkg.Type`. `@other.Buf::repr(...)` was read as the name
+  // `@other` and then died on the dot -- the parser reporting a token it had already consumed
+  // as part of a name.
+  //
+  // THE `@` IS INSIDE THE NAME TOKEN, which is why this arm is a DOT and not a prefix. The
+  // lexer starts a name at `@` (`Lexer::run`: `is_letter(c) || c == '@'`), so `@other` is ONE
+  // `TName("@other")` and the `.` is a separate `TDot`. There is no `TAt` token to match.
+  //
+  // GUARDED ON THE `@` rather than on the dot alone, because a declaration name is otherwise
+  // always followed by `(`, `[` or `{`. Accepting `fn f.bar` would be reading a shape the
+  // toolchain refuses, and this is the one place where being liberal would be a false negative
+  // rather than a missed error.
+  if full.has_prefix("@") && self.at(TDot) {
+    let _ = self.bump()
+    let (t, _) = self.expect_name("type name after '.'")
+    full = full + "." + t
+  }
   if self.at(TColon) && self.at_next(TColon) {
     let _ = self.bump()
     let _ = self.bump()
