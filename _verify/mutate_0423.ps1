@@ -130,38 +130,61 @@ $mutations = @(
 
   # M6 -- consuming the keyword without consuming its argument leaves the argument
   # at the cursor, and the reader then blames the body for it.
+  #
+  # RE-ANCHORED 0487. The anchor used to be the type read followed IMMEDIATELY by the
+  # closing `}`, because that call was the last statement of `parse_raise_effect`. 0487 added
+  # `eat_joined_effect(false)` after it -- the `raise E + nocancel` case, where the `+` is not
+  # visible until the error type has been read -- and inserting those lines between two
+  # pinned-adjacent lines is what made this anchor vanish. Same lesson as 0484's gate 0418 and
+  # 0486-A's gate 0466, THIRD time.
   @{
     Name = 'M6 the effect type never read'
     File = $PARSER
     Find = '  let _ = self.type_annotation()
-}'
-    Repl = '}'
+  // `raise E + nocancel`'
+    Repl = '  // `raise E + nocancel`'
   }
 
   # M7 -- the dangerous direction. A bare `raise` followed by `{` or `)` would be
   # treated as naming an error type, and the body block or the closing paren would
   # be read as part of the type. That is a SILENT misparse: no error, a wrong
   # signature.
+  #
+  # RE-ANCHORED 0487, AND THIS ONE MATTERS MORE THAN THE PREFLIGHT MISS. `eat_joined_effect`
+  # introduced a SECOND `type_head` guard with the same four lines, so the old three-line anchor
+  # became AMBIGUOUS -- it matched twice, and the harness removes the FIRST match, which is now the
+  # helper's guard rather than this one. The gate would have reported a clean kill for a mutation
+  # applied to the wrong site, which is the one failure mode a pre-flight cannot catch: it warns
+  # and continues. `if !type_head` is what distinguishes this guard from the helper's `if type_head`.
   @{
     Name = 'M7 type-head guard admits everything'
     File = $PARSER
-    Find = '    TName(_) | TLParen | TAmp => true
+    Find = '  let type_head = match self.peek() {
+    TName(_) | TLParen | TAmp => true
     _ => false
-  }'
-    Repl = '    _ => true
-  }'
+  }
+  if !type_head {'
+    Repl = '  let type_head = match self.peek() {
+    _ => true
+  }
+  if !type_head {'
   }
 
   # M8 -- the opposite direction, and the reason M7 is not the whole story:
   # over-strict reads nothing at all and every named effect stops being consumed.
+  # Re-anchored with M7, for the same reason.
   @{
     Name = 'M8 type-head guard admits nothing'
     File = $PARSER
-    Find = '    TName(_) | TLParen | TAmp => true
+    Find = '  let type_head = match self.peek() {
+    TName(_) | TLParen | TAmp => true
     _ => false
-  }'
-    Repl = '    _ => false
-  }'
+  }
+  if !type_head {'
+    Repl = '  let type_head = match self.peek() {
+    _ => false
+  }
+  if !type_head {'
   }
 
   # M9 -- a SECOND defect fixed in the same release, and the only mutation here

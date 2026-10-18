@@ -2830,3 +2830,92 @@ does not have to, it goes above the region. A gate that reports PREFLIGHT MISS i
 truth about the shape, not about the logic.
 
 Gate 0486: 3 KILLED, 1 declared survivor with a Prove, every restore byte-identical. 1013 tests.
+(That survivor is RETIRED by 0487 below -- not because it was wrong, but because it turned out to
+be observable.)
+
+## 0487 -- the WHOLE `+`-joined effect clause, and a survivor that turned out to be observable
+
+0486 shipped ONE spelling and declared `raise + nocancel` a survivor with a Prove: *"no legal
+MoonBit pair starts with a bare `nocancel`"*. That is the sentence that had to die.
+
+`_verify/settle_0487_combined_effect_order.ps1`, 21 rows / 6 controls, GATE OK:
+
+    ACCEPT    -> T noraise + nocancel        <- 0486's spelling
+    ACCEPT    -> T raise + nocancel          <- 0486's declared survivor
+    ACCEPT    -> T raise MyErr + nocancel
+    ACCEPT    -> T nocancel + noraise        <- 0486 REFUSED THIS LEGAL PROGRAM
+    ACCEPT    -> T nocancel + raise
+    ACCEPT    -> T nocancel + raise MyErr
+
+    REJECT 3002  -> T ! + nocancel
+    REJECT 3002  -> T noraise + raise MyErr
+    REJECT 3002  -> T raise MyErr + raise MyErr2
+    REJECT 3002  -> T noraise + nocancel + noraise    <- exactly two, never a chain
+    REJECT 4074  fn f() noraise + nocancel { () }     <- still needs an annotation
+
+=> THE GRAMMAR IS: EXACTLY TWO EFFECTS, EXACTLY ONE OF WHICH IS `nocancel`, THE OTHER BEING
+`noraise` OR `raise [E]`, IN EITHER ORDER.
+
+So 0486 was not merely incomplete, it was **refusing programs the toolchain accepts**. `mutate_0487`
+M3 is 0486's M4 -- the `was_noraise` test, forced false -- and it is now **KILLED** by
+`0487: nocancel + noraise reads`. 0486's M4 is `Retired`, with the reason recorded, rather than
+re-anchored: a retired row is not a weaker claim here, it is a claim that has been SUPERSEDED by a
+stronger pin, exactly as 0458's M4 was.
+
+*** THE ORDER IS A RULE AND THE ARITY BELONGS TO THE ORDER, NOT TO THE WORD. *** `noraise + raise
+MyErr` is REJECT 3002 and `nocancel + raise MyErr` is ACCEPT, differing by one token. Both failure
+directions are SILENT: reading an illegal program removes no blocker from any corpus, and skipping
+a legal error type parses it as code.
+
+`left_was_nocancel && right == "raise"` therefore had a conjunct that turned out to be REDUNDANT --
+`joins` can only be true with `right == "raise"` when the left operand was `nocancel`, because the
+else branch admits `"nocancel"` and nothing else. It is gone, the order is enforced in one place,
+and the reason is recorded in the source rather than tidied away.
+
+`0487: the error type belongs to the order, not the word` asserts the UNTYPED and the TYPED form
+together, and that pairing is load-bearing: the typed assertion alone PASSES on a reader whose
+arity is wrong and whose join is right, because the `MyErr` is never reached. Only the untyped one
+catches the join being widened. That was found by a mutation reporting `KILLED` with no
+`[named test confirmed]` -- a green kill that was green for the wrong reason.
+
+**MEASURED: NOT ONE PIN MOVED.** All six corpora are byte-identical to 0486 -- moui 4225, labeler
+791, image 218, async 1821/41/17, proton 2131, contract 34. Five of the six were already fully
+parsed and could not move; async has 6 files still unread and none of them is blocked on this
+clause.
+
+That is the finding, and it is the third time the same thing has shown up: **a correctness defect
+can be real, measured, and invisible to every number this repository pins.** Nothing in any pinned
+corpus writes `nocancel + <effect>`. So the instrument here is the settle and the rows -- a corpus
+would have reported this increment as a no-op, and correctly so.
+
+Gate 0487: 7 KILLED, 0 declared survivors, every restore byte-identical. Gate 0486: 3 KILLED, 1
+RETIRED (superseded by 0487 M3). Gate 0466: 3 KILLED / 3 declared survivors, re-anchored. 1024 tests.
+
+=> 判据: THE SAME ARM WAS RE-ANCHORED IN THREE GATES ACROSS TWO INCREMENTS, AND THE SECOND TIME
+IT WAS NOT MY FAULT. `parse_raise_effect`'s `noraise` / `nocancel` arm is a SHARED INTERFACE: gate
+0466 pins the effect SLOT, 0486 and 0487 pin the JOIN inside it, and each pins a contiguous SHAPE.
+So an edit there is never local -- it is a coordinated change across gates, and the two that break
+are always 0466's M1 and M4 because they are the two that SPAN the arm. Both times the symptom was
+PREFLIGHT MISS on exactly those two while 67 other gates passed, which reads like a one-gate flake
+and is not one. Budget the re-anchor, and prefer changes that leave the arm's line count and order
+alone.
+
+*** AND GATE 0423 IS THE MORE DANGEROUS VERSION OF THE SAME THING, SO IT IS WORTH ITS OWN NOTE. ***
+`eat_joined_effect` introduced a SECOND `type_head` guard with the same four lines as the one in
+`parse_raise_effect`. 0423's M6 anchored the type read followed IMMEDIATELY by the closing `}` --
+that adjacency died when `eat_joined_effect(false)` was added after the type, and M6 PREFLIGHT-MISSED.
+Loud, and therefore harmless.
+
+M7 and M8 anchored the guard's four lines alone. Those did not MISS -- they became AMBIGUOUS, which
+the harness only WARNS about, because it removes the FIRST match and that match had just moved
+into the new helper. So M7 and M8 would have reported clean kills for mutations applied to the
+WRONG SITE: green, meaningless, and invisible in every number this repository pins. `if
+!type_head` is what distinguishes the two guards (`if type_head` in the helper), and including it
+makes both anchors unique again. 0423 is GATE OK, 9/9 KILLED, no ambiguity warning.
+
+=> 判据: A PREFLIGHT MISS IS THE LUckY OUTCOME. An anchor that STOPS MATCHING aborts the gate and
+tells you. An anchor that starts matching TWICE is warned about and then used anyway, on whichever
+site comes first -- so when a change introduces a second copy of a shape, the question is not "did
+my anchors survive" but "did any of them become AMBIGUOUS, and does the first match still point at
+the code I meant". `grep` the whole `_verify` tree for every shape you duplicated before
+believing a green gate.

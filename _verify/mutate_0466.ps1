@@ -44,16 +44,29 @@ Invoke-MutationGate -Name '0466' -Target 'js' -Mutations @(
   # M1 THE INCREMENT ITSELF. The `noraise` / `nocancel` arm is gone, which is the
   # pre-0466 parser verbatim: both words stop the parse and the body reports.
   #
-  # RE-ANCHORED 0486. This `Find` used to be the 5-line `if` / bump / return / brace block.
-  # 0486-A inserted `let was_noraise = ...` and a comment block between the `if` and the
-  # `bump`, so the string no longer existed and the gate aborted with PREFLIGHT MISS on M1
-  # AND M4 -- the two mutations that pin those lines as ADJACENT. The arm is now contiguous
-  # and comment-free (the 0486 note moved above the `if`), so the anchor spans the whole
-  # current arm. The semantics are unchanged: removing it stops `noraise` / `nocancel`.
+  # RE-ANCHORED TWICE, and the reason is worth reading before editing this arm a third time.
+  #   1st (0486-A): the arm grew a `+ nocancel` join, so the 5-line block stopped existing.
+  #   2nd (0487):   the join moved into a helper call and `was_noraise` became
+  #                `left_was_nocancel`, so the block changed shape AGAIN.
+  # Both times the gate aborted with PREFLIGHT MISS on M1 and M4 -- the two mutations that pin
+  # these lines as ADJACENT -- while 67 other gates passed and the log read like a one-gate flake.
+  #
+  # => 判据: THIS ARM IS A SHARED INTERFACE. 0466 pins the effect SLOT, 0486/0487 pin the JOIN
+  # inside it, and every one of them pins a contiguous SHAPE. So an edit here is never local: it
+  # is a coordinated change across gates, and the two that will break are always M1 and M4
+  # because they are the two that span the arm. Budget the re-anchor, and prefer changes that
+  # leave the arm's line count and order alone.
   @{
     Name = 'M1 `noraise` and `nocancel` are not consumed as effects'
     File = $PARSER
-    Find = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let was_noraise = self.at_name(`"noraise`")`n    let _ = self.bump()`n    if was_noraise && self.at(TPlus) {`n      let pairs_with_nocancel = match self.peek2() {`n        TName(n) => n == `"nocancel`"`n        _ => false`n      }`n      if pairs_with_nocancel {`n        let _ = self.bump()`n        let _ = self.bump()`n      }`n    }`n    return`n  }`n"
+    Find = @'
+  if self.at_name("noraise") || self.at_name("nocancel") {
+    let left_was_nocancel = self.at_name("nocancel")
+    let _ = self.bump()
+    let _ = self.eat_joined_effect(left_was_nocancel)
+    return
+  }
+'@.Replace("`r`n", "`n")
     Repl = ''
     MustRed = '0466: `-> T noraise` and `-> T nocancel` parse'
   }
@@ -95,11 +108,26 @@ Invoke-MutationGate -Name '0466' -Target 'js' -Mutations @(
   # `parse_raise_effect` reads it with a careful guard. `-> T noraise E` is REJECTed
   # by the toolchain, so `noraise` must NOT read one -- and the mutation that shares
   # the tail eats the body's `{`, because a brace is not a type head.
+  #
+  # RE-ANCHORED 0487 (second time, see M1). The insertion point moved below the join call
+  # rather than above it, and the difference is measured rather than cosmetic: inserting
+  # `type_annotation()` BEFORE `eat_joined_effect` leaves `+ nocancel` for the helper to
+  # consume, which is the behaviour under test; inserting it AFTER would let the type
+  # reader see a `+`.
   @{
     Name = 'M4 `noraise` reads an error type the way `raise` does'
     File = $PARSER
-    Find = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let was_noraise = self.at_name(`"noraise`")`n    let _ = self.bump()`n"
-    Repl = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let was_noraise = self.at_name(`"noraise`")`n    let _ = self.bump()`n    let _ = self.type_annotation()`n"
+    Find = @'
+    let left_was_nocancel = self.at_name("nocancel")
+    let _ = self.bump()
+    let _ = self.eat_joined_effect(left_was_nocancel)
+'@.Replace("`r`n", "`n")
+    Repl = @'
+    let left_was_nocancel = self.at_name("nocancel")
+    let _ = self.bump()
+    let _ = self.type_annotation()
+    let _ = self.eat_joined_effect(left_was_nocancel)
+'@.Replace("`r`n", "`n")
     MustRed = '0466: `-> T noraise` and `-> T nocancel` parse'
   }
 

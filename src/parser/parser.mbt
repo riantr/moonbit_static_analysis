@@ -2129,6 +2129,81 @@ fn Parser::parse_fn_signature(
 }
 
 ///|
+
+///|
+/// The second half of a `+`-joined effect clause: `-> T <left> + <right>`.
+///
+/// 0487 GENERALISED 0486. Gate 0486 shipped `noraise + nocancel` and declared `raise +
+/// nocancel` an unobservable survivor, reasoning that no legal pair starts with a bare
+/// `nocancel`. Settle 0487 (21 rows / 6 controls, GATE OK) found that reasoning TRUE AND
+/// INCOMPLETE -- three more pairs are legal, and `nocancel` first is one of them:
+///
+///     ACCEPT   -> T noraise + nocancel
+///     ACCEPT   -> T raise + nocancel
+///     ACCEPT   -> T raise MyErr + nocancel
+///     ACCEPT   -> T nocancel + noraise
+///     ACCEPT   -> T nocancel + raise
+///     ACCEPT   -> T nocancel + raise MyErr
+///
+///     REJECT 3002  -> T ! + nocancel            <- `!` is TBang, so a NAME guard
+///                                                   excludes it STRUCTURALLY, with no
+///                                                   canary row to keep in step
+///     REJECT 3002  -> T noraise + raise MyErr   <- ORDER matters; see the arity note below
+///     REJECT 3002  -> T raise MyErr + raise MyErr2
+///     REJECT 3002  -> T noraise + nocancel + noraise   <- exactly two, never a chain
+///     REJECT 4074  fn f() noraise + nocancel { }        <- still needs an annotation
+///
+/// => THE GRAMMAR IS: EXACTLY TWO EFFECTS, EXACTLY ONE OF WHICH IS `nocancel`, THE OTHER BEING
+/// `noraise` OR `raise [E]`, IN EITHER ORDER. So `left_was_nocancel` is not a convenience
+/// flag -- it IS the rule, and dropping it (0486's M4, an unobservable survivor) becomes an
+/// observable defect the moment this helper lands: `nocancel + noraise` is a program the
+/// toolchain accepts and 0486's reader refused.
+///
+/// And the error type belongs to the ORDER, not to the word. `raise` alone takes an optional
+/// `E`, and that `E` is legal ONLY when `raise` is the SECOND effect -- `noraise + raise MyErr`
+/// is REJECT 3002 while `nocancel + raise MyErr` is ACCEPT. A reader that gave both `raise`s
+/// the same arity would either read a program the toolchain refuses or leave a legal `E` to be
+/// parsed as code. The two directions are both silent, which is why this is settled rather
+/// than discovered.
+fn Parser::eat_joined_effect(self : Parser, left_was_nocancel : Bool) -> Unit {
+  if !self.at(TPlus) {
+    return
+  }
+  let right = match self.peek2() {
+    TName(n) => n
+    _ => ""
+  }
+  let joins = if left_was_nocancel {
+    right == "noraise" || right == "raise"
+  } else {
+    right == "nocancel"
+  }
+  if !joins {
+    return
+  }
+  let _ = self.bump()
+  let _ = self.bump()
+  if right == "raise" {
+    // The `left_was_nocancel` conjunct that used to be here was REDUNDANT, and that is worth
+    // recording rather than tidying away silently: `joins` can only be true with `right == "raise"`
+    // when the left operand was `nocancel`, because the else branch admits `"nocancel"` and
+    // nothing else. So the arity rule is simply "a SECOND `raise` carries the optional error
+    // type", and the ORDER is enforced one line up in `joins` rather than repeated down here.
+    // mutate_0487 M2 widens that one line and turns `0487: the error type belongs to the order`
+    // red, which is where the order claim is actually pinned.
+    // The `type_head` shape is the same one the `raise` arm uses, for the same asymmetric reason:
+    // reading one token too many is a SILENT misparse and stopping one short is a loud `expected '{'`.
+    let type_head = match self.peek() {
+      TName(_) | TLParen | TAmp => true
+      _ => false
+    }
+    if type_head {
+      let _ = self.type_annotation()
+    }
+  }
+}
+
+///|
 /// The `raise` effect clause that may follow a function's return annotation:
 /// `-> T raise`, `-> T raise E`, and the short form `-> T!`. All three are
 /// settled valid MoonBit against `moon check` on 0.1.20261012.
@@ -2177,48 +2252,26 @@ fn Parser::parse_raise_effect(self : Parser) -> Unit {
   // `raise` is the control for the gap being two keywords and not one: proton has 781
   // `-> T raise` sites and is not blocked at any of them, while the 16 files here are
   // blocked at exactly these two words.
-  // 0486 A `+`-JOINED EFFECT, `-> T noraise + nocancel`, which is the boundary line of
-  // `src/internal/coroutine/async_primitive.mbt:16` -- a file that reads ZERO lines. The reader
+  // 0486 A / 0487, a `+`-JOINED EFFECT clause: `-> T <effect> + <effect>`. The boundary line was
+  // `src/internal/coroutine/async_primitive.mbt:16`, a file that read ZERO lines -- the reader
   // consumed `noraise` and returned, and the `+ nocancel` was left to be read as code.
   //
-  // *** THE PAIR IS MATCHED, NOT LOOPED, AND THE SETTLE IS WHY. ***
-  // `_verify/settle_0486_append_nextline_and_effects.ps1`, 16 rows / 5 controls, GATE OK:
-  //
-  //   ACCEPT      `fn f() -> Unit noraise + nocancel { () }`
-  //   REJECT(3002) `fn f() -> Unit noraise + raise { () }`
-  //   REJECT(3002) `fn f() -> Unit noraise + whatever { () }`
-  //   REJECT(3002) `fn f() -> Unit raise + noraise { () }`
-  //                 "unexpected token `noraise`, you may expect `nocancel`"
-  //   ACCEPT      `fn f() -> Unit raise + nocancel { () }`   <- NOT READ. Next increment.
-  //   REJECT(4074) `fn f() noraise + nocancel { () }`   -- the clause needs an annotation
-  //
-  // So `+` does join two effects, but NOT any two: the toolchain names `nocancel` as the only
-  // thing it will accept after the `+`. A `while at_name(anything)` loop would therefore be a
-  // MISSED error -- reading a program the compiler rejects -- which is the liberal direction
-  // this reader has never once taken. Two words is the grammar; a loop would be a guess.
-  //
-  // The returned value is discarded, exactly as for the single-word case above: nothing
-  // downstream reads an effect, and `SFunc` has no field for one.
+  // 0486 shipped ONLY `noraise + nocancel` and declared the rest an unobservable survivor.
+  // Settle 0487 then found three more legal pairs, all with `nocancel` FIRST, which makes that
+  // survivor OBSERVABLE: `nocancel + noraise` is ACCEPT, so 0486's `was_noraise` guard was not
+  // merely unobservable, it was REFUSING A LEGAL PROGRAM. The settled grammar, and the two
+  // asymmetries that make it a rule rather than a list, are documented on `eat_joined_effect`.
   //
   // *** THIS COMMENT SITS ABOVE THE `if`, NOT INSIDE THE ARM. ***
-  // 0486-A's first shape buried it between the `if` and the `bump`, which separated two lines
-  // gate 0466 pins as ADJACENT -- M1 and M4 `Find` the `if` / bump / return / brace block as one
-  // string, so the gate aborted with PREFLIGHT MISS on 2 mutations. An anchor is written against
-  // a code SHAPE, and a comment is part of that shape. Keeping the arm comment-free leaves the
-  // executable lines contiguous for the next gate that pins them.
+  // 0486-A's first shape buried a 21-line note between the `if` and the `bump`, which separated
+  // two lines gate 0466 pins as ADJACENT -- its M1 and M4 `Find` the `if` / bump / return /
+  // brace block as ONE string, so the gate aborted with PREFLIGHT MISS on 2 mutations while 67
+  // other gates passed. An anchor is written against a code SHAPE, and a comment is part of
+  // that shape. The arm below stays contiguous and comment-free for the next gate that pins it.
   if self.at_name("noraise") || self.at_name("nocancel") {
-    let was_noraise = self.at_name("noraise")
+    let left_was_nocancel = self.at_name("nocancel")
     let _ = self.bump()
-    if was_noraise && self.at(TPlus) {
-      let pairs_with_nocancel = match self.peek2() {
-        TName(n) => n == "nocancel"
-        _ => false
-      }
-      if pairs_with_nocancel {
-        let _ = self.bump()
-        let _ = self.bump()
-      }
-    }
+    let _ = self.eat_joined_effect(left_was_nocancel)
     return
   }
   if !self.at_name("raise") {
@@ -2243,6 +2296,11 @@ fn Parser::parse_raise_effect(self : Parser) -> Unit {
     _ => false
   }
   if !type_head {
+    // `raise + nocancel` carries NO error type, and `+` is not a type head, so the bare joined
+    // form lands HERE rather than after the `type_annotation()` below. Reading it only below
+    // would miss `raise + nocancel` while still reading `raise E + nocancel` -- two shapes that
+    // differ by one token and by nothing else.
+    let _ = self.eat_joined_effect(false)
     return
   }
   // No `skip_indexed()` here, and that is a measured decision rather than an
@@ -2254,6 +2312,10 @@ fn Parser::parse_raise_effect(self : Parser) -> Unit {
   // reader look responsible for a case it is not, and the next person to delete
   // it would have had no evidence that anything checked it.
   let _ = self.type_annotation()
+  // `raise E + nocancel`: the error type is read FIRST, so the `+` is not visible until after
+  // this line. A reader that only checked for the join before the type would read the bare form
+  // and miss this one.
+  let _ = self.eat_joined_effect(false)
 }
 
 ///|

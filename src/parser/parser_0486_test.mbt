@@ -23,6 +23,13 @@
 //| So `+` DOES join two effects, but not any two. A `while at_name(anything)` loop would read
 //! `raise + noraise`, which the compiler refuses -- a MISSED error, the liberal direction this
 //! reader has never once taken. Two words is the grammar; a loop would be a guess.
+//|
+//| *** 0487 FALSIFIED ONE CLAUSE IN THIS FILE, AND IT IS CORRECTED HERE RATHER THAN ONLY IN ITS
+//! OWN GATE. *** The row "the single-effect spellings are unaffected" used to carry the note "the
+//! toolchain licenses `noraise + nocancel`, not `nocancel + noraise`". Settle 0487 row B1 settled
+//! `nocancel + noraise` ACCEPT, so that was wrong: the order is symmetric. The assertion itself
+//! was only ever about the SINGLE-effect spellings and still holds; the claim in its comment did
+//! not. `mutate_0487` M4 now KILLS the `was_noraise` test that this gate declared unobservable.
 //
 //| ONE FIX COVERS THREE CALL SITES (parser.mbt:1633, :2127, :5875) -- the signature, a function
 //| type and a parameter position all route here, so there is one grammar and one reader.
@@ -104,8 +111,7 @@ test "0486: an arbitrary effect after the + is not read" {
 
 ///|
 /// THE SINGLE-EFFECT SPELLINGS STILL WORK, in both orders, so the pair did not cost the single
-/// word. `nocancel` leads here rather than `noraise`, which is the arm the fix must NOT extend --
-/// the toolchain licenses `noraise + nocancel`, not `nocancel + noraise`.
+/// word. `nocancel` leads here rather than `noraise`, which is the arm the fix must NOT extend.
 test "0486: the single-effect spellings are unaffected" {
   assert_eq(
     @parser.parse("///|\nfn f() -> Unit noraise {\n  ()\n}\n").first_error,
