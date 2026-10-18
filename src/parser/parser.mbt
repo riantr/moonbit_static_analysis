@@ -4135,6 +4135,91 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
     self.p = j
     return found
   }
+  // 0485 -- A BRACED STRUCT PATTERN, `x is { "cmd": [cmd], .. }`. There was NO `{` BRANCH HERE AT
+  // ALL, so a brace pattern fell to the `else { return [] }` at the bottom of this function and
+  // **consumed nothing**. That is the whole defect, and it produced two different failures rather
+  // than one:
+  //
+  //   caller        { "cmd": [cmd] }     { "cmd": [cmd], .. }
+  //   match arm     fe=0  undef=0        fe=0  undef=0     <- correct already (skip_pattern)
+  //   guard         fe=0  undef=2        fe=2  undef=0
+  //   bare `is`     fe=0  undef=2        fe=2  undef=0
+  //   if            fe=2  undef=0        fe=2  undef=0
+  //   while         fe=2  undef=0        fe=2  undef=0
+  //   let destr     fe=2  undef=0        fe=2  undef=0
+  //
+  // (fe = first_error, undef = UndefinedName findings, measured TOGETHER. Measuring them apart is
+  // what made `if` look unaffected when its first_error had never been measured at all.)
+  //
+  // *** THE QUIET HALF IS WORTH MORE THAN THE THREE FILES THAT STOP. *** `guard` and a bare `is`
+  // PARSE: the leftovers happen to re-read as a BLOCK, so nothing halts, and then the names the
+  // pattern was supposed to bind are reported undefined -- a FALSE POSITIVE on code `moon check`
+  // compiles. It moves no parse-coverage number in either direction, which is why it must be
+  // pinned by a test asserting the BINDING and never by a corpus count.
+  //
+  // ONE READER FIXES ALL OF `guard`, `if`, `while` AND a bare `is`: the toolchain ACCEPTS the
+  // braced pattern in every one of those positions (`_verify/settle_0485_is_struct_pattern.ps1`,
+  // 16 rows / 4 controls), and all four reach this function through `parse_is`. The five-column
+  // table above is therefore one fix rather than four, which is worth having measured first.
+  //
+  // `let { "cmd": [cmd], .. } = x` is REJECTED by the toolchain (0011 `partial_match` -- a `let`
+  // pattern must be irrefutable), so that row stays unread on purpose. It is a different reader
+  // anyway, and reading it would be a MISSED error.
+  //
+  // WHY VALUE POSITION IS TRACKED RATHER THAN "EVERY NAME": in `{ "cmd": [cmd] }` the key is a
+  // STRING and cannot be mistaken for a binding, but in the unquoted spelling `{ cmd: [cmd] }` it
+  // is a `TName`, and collecting it would INVENT a binding for a name the pattern never
+  // introduces -- a false finding manufactured out of a key. Only names in a value position are
+  // collected. (The unquoted spelling is itself REJECTED 4028 on a `Json` subject, so reading it
+  // at all is a recorded MISSED error, in the same direction as the 0482 gaps.)
+  if self.at(TLBrace) {
+    let found : Array[String] = []
+    let mut depth = 1
+    let mut bracket = 0
+    let mut in_value = false
+    let mut j = self.p + 1
+    while j < self.toks.length() {
+      match self.toks[j] {
+        TLBrace => depth += 1
+        TRBrace => {
+          depth -= 1
+          if depth == 0 {
+            j += 1
+            break
+          }
+        }
+        TEOF => break
+        TLBracket => {
+          bracket += 1
+          in_value = true
+        }
+        TRBracket => {
+          bracket -= 1
+          if bracket == 0 {
+            in_value = false
+          }
+        }
+        // Only at brace depth 1 AND outside any bracket. M3 found the missing half: guarding on
+        // `depth == 1` alone is not enough, because a COMMA INSIDE a nested `[ a, b ]` is still at
+        // brace depth 1, and it cleared the value flag, so `{ "m": [[a, b]], .. }` bound only `a`.
+        // Nothing in six corpora writes a two-element nested list -- the corpus binds a one-element
+        // list -- so no corpus number moved and only a synthetic row could see it.
+        TColon => if depth == 1 && bracket == 0 { in_value = true }
+        TComma => if depth == 1 && bracket == 0 { in_value = false }
+        // 0466b, unchanged: `.. rest` is a binding, and `pattern_binding_at` refuses any name
+        // preceded by a `TDot` -- correctly for `Foo.bar`, wrongly for `.. rest`, which is two
+        // dots. See `rest_binding_at`.
+        TName(n) =>
+          if in_value && (self.pattern_binding_at(j) || self.rest_binding_at(j)) {
+            found.push(n)
+          }
+        _ => ()
+      }
+      j += 1
+    }
+    self.p = j
+    return found
+  }
   let mut head = ""
   let mut qualified = false
   if self.peek_name() != "" {

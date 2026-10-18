@@ -2665,3 +2665,79 @@ exactly the two the ranking predicted, having been made by looking at what is ON
 rather than at the scanner's grouped message tally.
 
 Gate 0484: 5/5 KILLED, no declared survivors, every restore byte-identical. 998 tests.
+
+## 0485 -- a BRACED STRUCT PATTERN in `is` position, and the FALSE POSITIVE the ranking missed
+
+Three files stop on
+
+    guard matches.values is { "cmd": [cmd], .. } else { fail("no command specified") }
+
+at `examples/xargs/main.mbt:49`, `examples/curl/main.mbt:53` and
+`examples/tcp_server_benchmark/main.mbt:98`. The boundary line named two constructs AGAIN, and the
+second one was the expensive one: `is` on the next line reads fine (`first_error = 0`), and the
+3-vs-2 code difference in the first probe was a CONSEQUENCE of the rest failing, not a second
+defect.
+
+Measured with first_error AND UndefinedName TOGETHER, because measuring them apart is what made
+the `if` row look unaffected when its first_error had never been measured at all:
+
+    caller        { "cmd": [cmd] }     { "cmd": [cmd], .. }
+    match arm     fe=0  undef=0        fe=0  undef=0     <- ALREADY CORRECT
+    guard         fe=0  undef=2        fe=2  undef=0
+    bare `is`     fe=0  undef=2        fe=2  undef=0
+    if            fe=2  undef=0        fe=2  undef=0
+    while         fe=2  undef=0        fe=2  undef=0
+    let destr     fe=2  undef=0        fe=2  undef=0
+
+**TWO DISTINCT OUTCOMES, AND THE QUIET ONE IS WORTH MORE THAN THE THREE FILES THAT STOP.** `guard`
+and a bare `is` PARSE: the leftovers happen to re-read as a BLOCK, so nothing halts, and then the
+names the pattern was supposed to bind are reported undefined -- a FALSE POSITIVE on code
+`moon check` compiles. It moves no parse-coverage number in either direction, which is why it had
+to be found by a binding count and could not be found by the ranking.
+
+**MECHANISM, read from source rather than inferred.** `parse_is_pattern` has branches for a `(`
+tuple, a `[` array, a name head and literals -- and NO `{` BRANCH AT ALL. A brace pattern fell to
+`else { return [] }`, which CONSUMES NOTHING. The match-arm path reads arms through `skip_pattern`,
+a different reader that already handles `..`, which is why one caller was correct and four were
+not.
+
+`_verify/settle_0485_is_struct_pattern.ps1`, 16 rows / 4 controls, GATE OK:
+
+    ACCEPT  guard / if / while / bare `is`, with and without `..`, one key or several,
+            a plain value, a NESTED array pattern, `{ .. }` alone, `{}` alone
+    REJECT(4028)  `{ cmd: [cmd], .. }` -- unquoted key on a `Json` subject
+    REJECT(0011)  `let { "cmd": [cmd], .. } = x` -- `partial_match`, a `let` pattern must be
+                 irrefutable. Left UNREAD on purpose; a test pins the choice.
+
+ONE reader fixes all four callers, because all four reach `parse_is_pattern` through `parse_is`.
+Measured before implementing, not after.
+
+**WHY VALUE POSITION IS TRACKED RATHER THAN "EVERY NAME":** in `{ "cmd": [cmd] }` the key is a
+STRING and cannot be mistaken for a binding, but in the unquoted spelling it is a `TName`, and
+collecting it would INVENT a binding the pattern never introduces -- a false finding manufactured
+out of a key, in a construct whose whole purpose is to stop manufacturing findings.
+
+**A SETTLE THAT COULD NOT FAIL.** The first draft of this settle printed six MISMATCH rows and
+still ended `GATE OK`, because the `$fail++` was dropped in a restructure. A settle that cannot
+fail is worse than no settle: it reports the same verdict whether the grammar is legal or not. The
+abort path now has to be exercised, not merely present.
+
+**AND M3 FOUND A REAL GAP IN THE READER, NOT JUST A WEAK ROW.** The `TColon`/`TComma` guards
+tested `depth == 1` but not `bracket == 0`, so a comma INSIDE a nested `[ a, b ]` cleared the
+value flag and `{ "m": [[a, b]], .. }` bound only `a`. Nothing in six corpora writes a two-element
+nested list, so no corpus number moved and only a synthetic row could see it. The guards moved to
+`depth == 1 && bracket == 0` and the fixture moved to `[[a, b]]`.
+
+=> 判据: `first_error` measures only whether the reader STOPPED. It says nothing about whether the
+tree is right. A construct is handled when a BINDING survives, and for half of this defect nothing
+else would ever have shown. Measure `first_error` and the finding count in the SAME run, and never
+compare one against the other across different fixtures -- that is how the `if` row looked
+unaffected when it had never been measured on the axis that mattered.
+
+Measured: async `parsed 408 -> 411`, `unreliable 72 -> 65`, `notices 1807 -> 1812`,
+`total 1879 -> 1877`, `actionable 0 -> 0`. Three files closed outright, exactly the three the
+ranking predicted. The other FIVE corpora are UNCHANGED -- moui 4225, moonbit_labeler 791,
+moonbit_image 218, proton 2131, proton_contract 34 -- which is itself the finding: a grammar this
+general that moves exactly one corpus is not over-reaching.
+
+Gate 0485: 5/5 KILLED, no declared survivors, every restore byte-identical. 1006 tests.
