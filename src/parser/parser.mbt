@@ -2067,6 +2067,32 @@ fn Parser::parse_fn_signature(
   self : Parser,
 ) -> (String, Array[@ast.Param], String) {
   self.skip_indexed()
+  // 0484 THE `&` HOLDER, `fn &Trait::method`. `expect_name` was called with the cursor on a
+  // `TAmp` and reported "unexpected token", which ends the file.
+  //
+  // `&` IS A STANDALONE `TAmp`, not a glued prefix -- the opposite of 0483's `@pkg.`, which the
+  // lexer folds INTO the name because `Lexer::run` starts a name at `@`. `&` is not a name-start
+  // character at all: it falls through to `lex_op`, which maps `'&' => TAmp`. Assuming the 0483
+  // shape here would have produced a copy of that fix that silently does nothing.
+  //
+  // WHAT THE `&` MEANS, settled before it was written rather than read off the boundary line:
+  // `fn &Data::binary(self : &Data) -> Bytes` is a TRAIT's default method whose receiver is a
+  // reference. `moon check` answers 4100 "The type Data is not a trait" for the same declaration
+  // against a struct, and REFUSES every unqualified spelling -- `fn Data::binary(self : Data)`,
+  // `(self : &Data)`, `(self : Self)`, `(x : Int)` all 4032 -- so the `&` is part of the construct
+  // rather than a receiver annotation that could have been written another way.
+  //
+  // THE `&` IS DROPPED FROM THE NAME, and that is a decision with a falsification condition
+  // rather than a convenience. Two settled facts force it: there is no `Data::binary` declaration
+  // to collide with (all four unqualified spellings are refused), and there is no `Data::binary(d)`
+  // call form either -- 4099 "`Data` is a trait, not a type" -- so `binary()` through a value is
+  // the ONLY spelling on either side. Falsified if a `Trait::m(x)` call or an unqualified
+  // `Trait::m` declaration ever settles ACCEPT: then two names would be in play and a fold would
+  // be hiding one. What identifies the TYPE stays in the name; what describes the RECEIVER is
+  // already in `self : &Data`, which `parse_param_list` reads either way.
+  if self.at(TAmp) {
+    let _ = self.bump()
+  }
   let (name, _) = self.expect_name("function name")
   let mut full = name
   // 0483 A PACKAGE-QUALIFIED HOLDER, `@pkg.Type`. `@other.Buf::repr(...)` was read as the name
@@ -2469,22 +2495,43 @@ fn method_holder(kw : String) -> Bool {
 ///|
 fn declared_name_after_kw(toks : Array[@lexer.Tok], kw_i : Int32) -> String? {
   let mut i = kw_i + 1
-  if i < toks.length() && toks[i] is TLBracket {
-    let mut depth = 0
-    while i < toks.length() {
-      match toks[i] {
-        TLBracket => depth += 1
-        TRBracket => {
-          depth -= 1
-          if depth == 0 {
-            i += 1
-            break
-          }
-        }
-        TEOF => break
-        _ => ()
-      }
+  // 0484 THE `&` HOLDER, and this half is the QUIET one. `declared_name_at` was handed a `TAmp`,
+  // did not match `TName`, and returned `None` -- so `fn &Trait::m` harvested NOTHING while the
+  // declaration reader learned the name. Nothing goes red: the sibling table is simply missing an
+  // entry, and the cost lands later as `undefined name 'Trait::m'` at a call site, ACTIONABLE, on
+  // code `moon check` compiles. That is the 0483 trade one level down, and fixing only the
+  // declaration reader would have walked straight into it -- a file that PARSES BETTER and reports
+  // BETTER, which is the shape a corpus scan calls a fix.
+  //
+  // The two skips LOOP because `fn &T::m` and `fn[T] &T::m` put the `&` on either side of the
+  // type-parameter list, and a settle that fixed only the first would leave the second harvesting
+  // nothing with no error to show for it. The loop preserves the original rule -- the `[` is only
+  // skipped when it sits IMMEDIATELY after the keyword, or after an `&` -- because `moved` is set
+  // only when a skip actually happened.
+  let mut moved = true
+  while moved && i < toks.length() {
+    moved = false
+    if toks[i] is TAmp {
       i += 1
+      moved = true
+    } else if toks[i] is TLBracket {
+      let mut depth = 0
+      while i < toks.length() {
+        match toks[i] {
+          TLBracket => depth += 1
+          TRBracket => {
+            depth -= 1
+            if depth == 0 {
+              i += 1
+              break
+            }
+          }
+          TEOF => break
+          _ => ()
+        }
+        i += 1
+      }
+      moved = true
     }
   }
   declared_name_at(toks, i)

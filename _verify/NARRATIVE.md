@@ -2566,3 +2566,102 @@ release PASSED with 6/6 pins MATCH.
 naming is not binding, and a fix to one of a pair can leave the file BETTER off than it found it
 -- parsed, counted as coverage, and wrong in the only place anyone was relying on. The corpus
 number that catches this does not exist, because the number moves the right way.
+
+## 0484 -- `fn &Trait::method`, a trait default method whose receiver is a reference
+
+`pub fn &Data::binary(self : &Data) -> Bytes` sits at `io/data.mbt:77` and
+`process/redirect.mbt:229`, and `expect_name` was called with the cursor on a `TAmp`.
+`process/redirect.mbt` ARRIVED here during 0483 -- it stopped on `@fs.CreateMode::to_int` at line
+156, was fixed, read 73 more lines, and stopped again on the `&` holder 73 lines later. That is the
+second time a boundary line named more than one construct and only one of them was broken.
+
+A ten-case probe against this analyzer's own parser, not inference:
+
+    fn Data::binary(self : Data)            -> Bytes { }        first_error = 0  <- already works
+    impl Data with fn binary(_)             { }                  first_error = 0  <- already works
+    type Ref = &Data                                             first_error = 0  <- `&` is fine
+    fn @other.Buf::repr(b : @other.Buf)     -> Int = "%identity" first_error = 0  <- 0483 control
+    fn &Data::binary(self : &Data)          -> Bytes { }        first_error = 2  <- HERE
+    pub fn &Data::binary(self : &Data)      -> Bytes { }        first_error = 2
+    pub fn &Data::text(self : &Data)        -> String raise { } first_error = 2
+    fn &Data::binary(self : &Data)          -> Bytes = "%id"     first_error = 2
+    extern "C" fn &Data::binary(...)        = "x"                first_error = 2
+    fn &&Data::binary(self : &&Data)        -> Bytes { }        first_error = 2
+
+The body is IRRELEVANT and the `&` IN FRONT OF THE HOLDER is decisive. Same shape as 0483: reading
+the boundary line would have built an extern-body production for a body this parser already reads.
+
+**THE FIRST FRAMING OF THIS CONSTRUCT WAS WRONG, AND `moon check` SAID SO IN ONE LINE.** The obvious
+reading of `fn &Type::method` is "a method on Type, declared through a reference". It is a TRAIT's
+default method whose receiver is a reference. Both fixture drafts declared `Data` as a STRUCT and
+every row came back `4100 The type Data is not a trait`, at the holder AND at the `self : &Data`
+annotation. The corpus said so all along:
+
+    io/data.mbt:23            trait Data {
+    io/data.mbt:77            pub fn &Data::binary(self : &Data) -> Bytes
+    process/redirect.mbt:212  trait ProcessInput {
+    process/redirect.mbt:229  pub fn &ProcessInput::close(self : &ProcessInput) -> Unit
+
+A reader that got the tokens right and the meaning wrong would have passed every corpus number,
+because the number does not know what a trait is.
+
+**THE TOKEN SHAPE IS NOT 0483's, AND GETTING IT WRONG IS SILENT.** `Lexer::run` starts a name at
+`is_letter(c) || c == '@'`, so `@` glues INTO the name and `@other` is ONE `TName`. `&` is not a
+name-start character at all: it falls through to `lex_op`, which maps `'&' => TAmp`. So the `&`
+here is a STANDALONE token in front of an ordinary `TName`. Copying 0483's shape would have produced
+a fix that compiled, passed every existing test, and changed nothing.
+
+**TWO READERS AGAIN, AND THE QUIET ONE IS THE HARVEST.** `declared_name_after_kw` handed a `TAmp` to
+`declared_name_at`, which did not match `TName` and returned `None`. Nothing goes red: the sibling
+table is simply missing an entry, and the cost lands later as `undefined name 'Trait::m'` at a call
+site -- ACTIONABLE, on code `moon check` compiles. M1 is the only mutation here that no corpus
+number in either direction could have found.
+
+`_verify/settle_0484_ref_holder.ps1`, 19 rows / 3 controls, GATE OK:
+
+    ACCEPT  fn &Trait::m(self : &Trait)   with and without `pub`, with a `raise` tail
+    ACCEPT  called as `d.m()` through a `&Trait`   so `m` IS a method of the trait
+    ACCEPT  `= "%identity"` body, `async fn &Trait::m`, and `fn &@other.Trait::m`
+    REJECT(4100)  the same declaration on a STRUCT   <- the control that makes `trait` measured
+    REJECT(4032)  EVERY unqualified spelling         <- forces the `&` out of the AST name
+    REJECT(4099)  `Trait::m(x)` -- a trait is not a type, so there is no by-path call form
+    REJECT(4074)  `fn &&Trait::m`
+    REJECT(4156)  `extern "C" fn &Trait::m`
+
+`&` IS DROPPED FROM THE RECORDED NAME, and that is a decision with a falsification condition rather
+than a convenience. Two settled facts force it: there is no `Trait::m` declaration to collide with,
+and there is no `Trait::m(x)` call form either, so `m()` is the only spelling on BOTH sides and
+`&Data::binary` would be a name nothing could ever look up. What identifies the TYPE stays in the
+name; what describes the RECEIVER is already in `self : &Data`, which `parse_param_list` reads
+either way. Falsified if either call form ever settles ACCEPT. M3 is the mutation that would do it.
+
+`fn &@other.Trait::m` is the row with NO corpus instance anywhere: 0483 settled `@other.T::m` and
+this settles `&Trait::m`, and the two are adjacent in the source but on OPPOSITE sides of the
+reader's cursor -- the `&` is consumed before the name is read, the `@` lives inside the name token.
+Asserted on both readers, because a disagreement between them is neither a parse error nor a finding.
+
+**TWO OF MY OWN MUTATIONS WERE WRONG AND THE GATE REPORTED BOTH THE SAME WAY.** M3's first draft
+introduced `amp_prefix` and then still built the name from `name` -- a mutation that changes nothing,
+which is indistinguishable from a test that cannot fail. M5's first draft widened the `if` to a
+`while` over `TAmp`, on the assumption that `&&` lexes as two of them; it lexes as ONE `TAndAnd`, so
+no number of `TAmp` bumps can ever reach it.
+
+**AND THAT SECOND ONE EXPOSED A VACUOUS GUARD ROW, WHICH IS THE 0483 LESSON POINTED THE OTHER WAY.**
+The guard was `fn &&Data::deep(self : &&Data)`, carrying `&&` in TWO places. Widening the holder to
+the logical-and token left the suite green -- because the PARAMETER TYPE `&&Data` fails on its own
+whether or not the holder was read. The row was green for a reason that had nothing to do with what
+it claimed to guard. The parameter is `Int` now, so the only `&&` in the fixture is the one the row
+is about.
+
+=> 判据: a GUARD row is vacuous in exactly the way a positive row is -- not when it is green, but
+when it cannot be RED for a reason of its own. The evidence is the same question both times: which
+thing, specifically, would have to change? A mutation that "survived" may be reporting a broken
+mutation, a wrong lexing assumption, or a fixture that fails twice over, and those three are
+distinguishable only by reading what the mutation was supposed to do.
+
+Measured: async `parsed 406 -> 408`, `unreliable 100 -> 72`, `withheld 25 -> 25`,
+`notices 1783 -> 1807`, `actionable 0 -> 0`, `total 1883 -> 1879`. Two files closed outright --
+exactly the two the ranking predicted, having been made by looking at what is ON each boundary line
+rather than at the scanner's grouped message tally.
+
+Gate 0484: 5/5 KILLED, no declared survivors, every restore byte-identical. 998 tests.

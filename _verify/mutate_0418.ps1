@@ -121,15 +121,28 @@ let amp = if self.at(TQuestion) {
   }
 
   # --- M5: fn[T] type parameters no longer skipped --------------------------
+  # RE-ANCHORED by 0484, at the SAME question. This mutation used to find
+  #
+  #     self.skip_indexed()
+  #     let (name, _) = self.expect_name("function name")
+  #
+  # as two ADJACENT lines. 0484 inserted the `&`-holder arm between them -- with its doc comment
+  # in between -- so the pair no longer exists and the pre-flight correctly reported the pattern
+  # ABSENT and ran no suite. Nothing about the question changed: `fn[T] name` still has to get past
+  # the type-parameter list before `expect_name`, and `self.skip_indexed()` is still what does it.
+  # The anchor now includes the first line of the 0484 comment so it stays UNIQUE -- `skip_indexed()`
+  # is called from five places in this file, and a bare one-line Find would mutate whichever came
+  # first, which is not this one.
   @{
     Name = 'M5 fn[T] type params'
     File = 'src\parser\parser.mbt'
     Find = @'
   self.skip_indexed()
-  let (name, _) = self.expect_name("function name")
+  // 0484 THE `&` HOLDER, `fn &Trait::method`.
 '@
     Repl = @'
-  let (name, _) = self.expect_name("function name")
+  // M5: the fn[T] type-parameter list is no longer skipped.
+  // 0484 THE `&` HOLDER, `fn &Trait::method`.
 '@
   }
 
