@@ -2278,3 +2278,68 @@ said bigger than the defect: one file refused a PREAMBLE-shaped problem, and the
 the character is legal everywhere. The row that decides this is never the row about the
 reported case -- it is the one about a case nobody reported, and it is the row that costs
 nothing to write and everything to skip.
+
+## 0481 -- a NESTED optional type, and the last file in proton
+
+    unexpected token ':'
+    e.g. proton 0.3.4/internal/native/types.mbt   read up to line 1351, 31 after it not shown
+
+Line 1351 is `pub fn RuntimeEvent::notification_click(self : RuntimeEvent) -> String?? {`, and
+`String??` is `Option[Option[String]]`. The reader folded ONE `?` into the type and left the
+second in the stream, so the function reader met a `?` where it wanted a body.
+
+**THE REPORTED TOKEN WAS EIGHT TOKENS EARLIER THAN THE DEFECT.** `self : RuntimeEvent` holds
+the only colon on that line, and it is perfectly ordinary -- labelled parameters, which work,
+and which the settle's `ctl_labelled_param` row now pins with a name instead of my assuming
+it. Chasing the reported token would have meant rewriting labelled parameters, which is a
+class of change this project has already made and reversed twice. The report was not wrong
+about where it stopped; it was wrong about what stopped it.
+
+MEASURED, and it closes a corpus.
+
+    proton  parsed 136 -> 137, unreliable 31 -> 0, withheld 0, notices 2029 -> 2131,
+            actionable 0 -> 0, total 2060 -> 2131
+
+137/137 with an empty quarantine. Four of the six pinned corpora now parse every file:
+moui 608/608, moonbit_labeler 37/37, proton 137/137, proton_contract 4/4.
+
+Settled in `_verify/settle_0481_nested_optional_type.ps1`, 3 controls + 6 rows, GATE OK:
+
+    ACCEPT  `-> String?`   `-> String??`   `(x : String??)`   `let x : String??`
+    ACCEPT  `-> String???`      the nesting is UNBOUNDED
+    ACCEPT  `self : String`     so the reported `:` was a red herring
+
+**S5 IS WHY THIS IS A LOOP AND NOT A SECOND BUMP.** `-> String???` is ACCEPT beside
+`-> String??`, so the grammar has no cap and a two-bump fix would be right by luck: it would
+pass S1, S2 and the corpus -- which has exactly one doubly-optional type in it -- and would
+refuse the third for no reason the toolchain shares. The settle says UNBOUNDED and the reader
+is now a `while`.
+
+There is no ternary to confuse this with. A type annotation is not an expression, and the
+optional-ARGUMENT shorthand `?` is written before the parameter name, never after a type.
+
+**M2 IS "PARSED IS NOT READ" ONE LAYER DOWN, AND IT IS THE MUTATION THE CORPUS COULD NOT HAVE
+FOUND.** Dropping `n = n + "?"` leaves the loop eating every mark: the parse succeeds, nothing
+is reported, and the annotation comes back `String` for a program that says `String??`. The
+text of the type is simply lost. Nothing here renders annotations back out and nothing reports
+a type mismatch, so no scan of any corpus would ever have seen it -- the tests assert on the
+RENDERED annotation precisely because "the file parses" is not evidence about it.
+
+**AND ONE OF MY OWN MUTATIONS TESTED NOTHING, WHICH THE GATE SAID IN ONE LINE.** M3's first
+draft appended the extra `?` AFTER the loop's closing brace, so the function's value had
+already been produced by the `n` above it and the result was a type mismatch, not a mutation.
+The gate reported COMPILE-ERR and named the line. A mutation that fails to compile is not a
+mutation; it is a check that the code has a particular shape, and reading the compile error
+rather than the verdict is what told me which.
+
+Gate 0481: 3/3 KILLED, no declared survivors, every restore byte-identical. M3 kills 49 tests,
+which is the plain-type control turning out to be load-bearing far past this file. 973 tests.
+
+=> 判据: a reported token is a claim about where the reader STOPPED, not about what stopped it,
+and the two came eight tokens apart here. The corpus names a line; the grammar is wider than
+the line; and the difference between fixing the line and fixing the grammar is whether anyone
+asked a question outside the corpus before writing the fix. Both of this increment's surprises
+came from that: the UNBOUNDED nesting, and the error message pointing at a working feature. The
+settle row that is about the reported case will agree with you either way -- S2 would have
+passed against a two-bump reader. The rows that disagree are the ones about shapes nobody has
+written yet, and those are the only ones with any information in them.

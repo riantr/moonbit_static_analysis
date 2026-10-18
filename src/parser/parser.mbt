@@ -1731,7 +1731,24 @@ fn Parser::type_annotation(self : Parser) -> String {
   // `Int?` — an optional/nullable type. Folded into the name rather than
   // dropped: `ann_to_ty` maps it to Unknown either way, but dropping the `?`
   // would claim `Int?` was read as plain `Int`, which it was not.
-  if self.at(TQuestion) {
+  //
+  // 0481 -- AND IT REPEATS. This was an `if`, so `String??` consumed ONE `?` and left the
+  // second in the stream; the function reader then met a `?` where it wanted the body and the
+  // report landed on a `:` eight tokens EARLIER -- `self : RuntimeEvent` -- so the NOTPARSE
+  // reason named a token with nothing to do with the defect. proton
+  // `internal/native/types.mbt:1351` is the site, and after 0480 it was the only file left in
+  // that corpus.
+  //
+  // A LOOP rather than two bumps, because the settle says the nesting is UNBOUNDED and a
+  // two-bump fix would be right by luck: `_verify/settle_0481_nested_optional_type.ps1`,
+  // 3 controls + 6 rows, GATE OK, and `-> String???` is ACCEPT beside `-> String??`.
+  // `-> String?`, `(x : String??)` and `let x : String??` all ACCEPT too, so this is a rule
+  // about the TYPE reader rather than about the `->` spelling, and every site that reaches
+  // this function gets it.
+  //
+  // There is no ternary to confuse this with: a type annotation is not an expression, and the
+  // optional-argument shorthand `?` is written BEFORE the parameter name, never after a type.
+  while self.at(TQuestion) {
     let _ = self.bump()
     n = n + "?"
   }
