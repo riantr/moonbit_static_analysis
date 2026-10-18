@@ -2177,8 +2177,48 @@ fn Parser::parse_raise_effect(self : Parser) -> Unit {
   // `raise` is the control for the gap being two keywords and not one: proton has 781
   // `-> T raise` sites and is not blocked at any of them, while the 16 files here are
   // blocked at exactly these two words.
+  // 0486 A `+`-JOINED EFFECT, `-> T noraise + nocancel`, which is the boundary line of
+  // `src/internal/coroutine/async_primitive.mbt:16` -- a file that reads ZERO lines. The reader
+  // consumed `noraise` and returned, and the `+ nocancel` was left to be read as code.
+  //
+  // *** THE PAIR IS MATCHED, NOT LOOPED, AND THE SETTLE IS WHY. ***
+  // `_verify/settle_0486_append_nextline_and_effects.ps1`, 16 rows / 5 controls, GATE OK:
+  //
+  //   ACCEPT      `fn f() -> Unit noraise + nocancel { () }`
+  //   REJECT(3002) `fn f() -> Unit noraise + raise { () }`
+  //   REJECT(3002) `fn f() -> Unit noraise + whatever { () }`
+  //   REJECT(3002) `fn f() -> Unit raise + noraise { () }`
+  //                 "unexpected token `noraise`, you may expect `nocancel`"
+  //   ACCEPT      `fn f() -> Unit raise + nocancel { () }`   <- NOT READ. Next increment.
+  //   REJECT(4074) `fn f() noraise + nocancel { () }`   -- the clause needs an annotation
+  //
+  // So `+` does join two effects, but NOT any two: the toolchain names `nocancel` as the only
+  // thing it will accept after the `+`. A `while at_name(anything)` loop would therefore be a
+  // MISSED error -- reading a program the compiler rejects -- which is the liberal direction
+  // this reader has never once taken. Two words is the grammar; a loop would be a guess.
+  //
+  // The returned value is discarded, exactly as for the single-word case above: nothing
+  // downstream reads an effect, and `SFunc` has no field for one.
+  //
+  // *** THIS COMMENT SITS ABOVE THE `if`, NOT INSIDE THE ARM. ***
+  // 0486-A's first shape buried it between the `if` and the `bump`, which separated two lines
+  // gate 0466 pins as ADJACENT -- M1 and M4 `Find` the `if` / bump / return / brace block as one
+  // string, so the gate aborted with PREFLIGHT MISS on 2 mutations. An anchor is written against
+  // a code SHAPE, and a comment is part of that shape. Keeping the arm comment-free leaves the
+  // executable lines contiguous for the next gate that pins them.
   if self.at_name("noraise") || self.at_name("nocancel") {
+    let was_noraise = self.at_name("noraise")
     let _ = self.bump()
+    if was_noraise && self.at(TPlus) {
+      let pairs_with_nocancel = match self.peek2() {
+        TName(n) => n == "nocancel"
+        _ => false
+      }
+      if pairs_with_nocancel {
+        let _ = self.bump()
+        let _ = self.bump()
+      }
+    }
     return
   }
   if !self.at_name("raise") {

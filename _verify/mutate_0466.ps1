@@ -43,10 +43,17 @@ Invoke-MutationGate -Name '0466' -Target 'js' -Mutations @(
 
   # M1 THE INCREMENT ITSELF. The `noraise` / `nocancel` arm is gone, which is the
   # pre-0466 parser verbatim: both words stop the parse and the body reports.
+  #
+  # RE-ANCHORED 0486. This `Find` used to be the 5-line `if` / bump / return / brace block.
+  # 0486-A inserted `let was_noraise = ...` and a comment block between the `if` and the
+  # `bump`, so the string no longer existed and the gate aborted with PREFLIGHT MISS on M1
+  # AND M4 -- the two mutations that pin those lines as ADJACENT. The arm is now contiguous
+  # and comment-free (the 0486 note moved above the `if`), so the anchor spans the whole
+  # current arm. The semantics are unchanged: removing it stops `noraise` / `nocancel`.
   @{
     Name = 'M1 `noraise` and `nocancel` are not consumed as effects'
     File = $PARSER
-    Find = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let _ = self.bump()`n    return`n  }`n"
+    Find = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let was_noraise = self.at_name(`"noraise`")`n    let _ = self.bump()`n    if was_noraise && self.at(TPlus) {`n      let pairs_with_nocancel = match self.peek2() {`n        TName(n) => n == `"nocancel`"`n        _ => false`n      }`n      if pairs_with_nocancel {`n        let _ = self.bump()`n        let _ = self.bump()`n      }`n    }`n    return`n  }`n"
     Repl = ''
     MustRed = '0466: `-> T noraise` and `-> T nocancel` parse'
   }
@@ -91,8 +98,8 @@ Invoke-MutationGate -Name '0466' -Target 'js' -Mutations @(
   @{
     Name = 'M4 `noraise` reads an error type the way `raise` does'
     File = $PARSER
-    Find = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let _ = self.bump()`n    return`n  }"
-    Repl = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let _ = self.bump()`n    let _ = self.type_annotation()`n    return`n  }"
+    Find = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let was_noraise = self.at_name(`"noraise`")`n    let _ = self.bump()`n"
+    Repl = "  if self.at_name(`"noraise`") || self.at_name(`"nocancel`") {`n    let was_noraise = self.at_name(`"noraise`")`n    let _ = self.bump()`n    let _ = self.type_annotation()`n"
     MustRed = '0466: `-> T noraise` and `-> T nocancel` parse'
   }
 

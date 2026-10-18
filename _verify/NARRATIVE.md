@@ -2741,3 +2741,92 @@ moonbit_image 218, proton 2131, proton_contract 34 -- which is itself the findin
 general that moves exactly one corpus is not over-reaching.
 
 Gate 0485: 5/5 KILLED, no declared survivors, every restore byte-identical. 1006 tests.
+
+## 0486 -- a `+`-JOINED EFFECT clause, `-> T noraise + nocancel`
+
+Re-ranking the async backlog by MEASUREMENT rather than by the list carried between increments
+found the list had decayed: it named four files, the real backlog was EIGHT, and the two that read
+ZERO lines were not among them. The ranked boundary line was wrong too -- but that turned out to
+be the smaller of the two errors.
+
+    src/internal/coroutine/async_primitive.mbt:16   async fn[T] async_suspend(cb : ...) -> T
+                                                        noraise + nocancel = "%async.suspend"
+    examples/http_file_server/main.mbt:24            conn <+ with the operand on the NEXT line
+
+Construct A is this one. `parse_raise_effect` consumed `noraise` and returned, leaving
+`+ nocancel` to be read as code.
+
+*** THE CLAUSE IS NOT `noraise + nocancel`. IT IS `<any effect> + nocancel`. *** That correction
+came from a mutation that SURVIVED, which is the useful kind:
+
+    M2  accept ANY name after the `+`
+        SURVIVED
+
+M2 did not survive because the reader was wrong. It survived because the GUARD ROW was half
+vacuous: it used `raise + noraise`, which the `noraise`-first test rejects BEFORE the operand's
+name is ever examined. So the row pinned half the guard and was structurally unable to see the
+other half. Settling what nobody had asked changed the grammar:
+
+    ACCEPT       fn f() -> Unit noraise + nocancel { () }
+    REJECT(3002) fn f() -> Unit noraise + raise { () }
+    REJECT(3002) fn f() -> Unit noraise + whatever { () }
+    REJECT(3002) fn f() -> Unit raise + noraise { () }
+    ACCEPT       fn f() -> Unit raise + nocancel { () }      <- NOT READ. A missing construct.
+    REJECT(4074) fn f() noraise + nocancel { () }           -- the clause needs an annotation
+
+`_verify/settle_0486_append_nextline_and_effects.ps1`, 16 rows / 5 controls, GATE OK.
+
+`raise + nocancel` is recorded as gate 0486's DECLARED SURVIVOR rather than quietly retrofitted
+onto this gate: it is a different shape of clause, and half-implementing it on the back of a
+mutation gate is how the two drift. It is the next increment, with its own settle rows.
+
+One fix covers THREE call sites (parser.mbt:1633, :2127, :5875) -- a signature, a function type and
+a parameter position all route here, so there is one grammar and one reader.
+
+Measured: async `parsed 411 -> 413`, `unreliable 65 -> 41`, `withheld 25 -> 17`,
+`notices 1812 -> 1821`, `total 1877 -> 1862`, `actionable 0 -> 0`. TWO files closed, not one --
+`internal/coroutine/coroutine.mbt` and `async_primitive.mbt` -- which is the third time the
+carried list named the right construct and under-counted the sites.
+
+=> 判据: A ROW CAN BE HALF VACUOUS. `raise + noraise` is rejected by a guard one step EARLIER than
+the one the row was written to check, so the row passes without ever exercising the thing it
+names. The evidence is the same question as everywhere else -- which thing, specifically, would
+make it red -- and "which half" is part of the answer.
+
+*** COLLATERAL: gate 0466's M1 and M4 anchors, broken and re-anchored. ***
+
+The first 69-gate release FAILED on `mutate:0466` with PREFLIGHT MISS on exactly two mutations.
+0486-A had put its explanatory comment block INSIDE the arm, between the `if` and the `bump`:
+
+    0486-A shape                    what 0466 M1/M4 `Find`
+    if ... at_name("noraise") ... {   if ... at_name("noraise") ... {
+      // 19 lines of comment    <--     let _ = self.bump()
+      let was_noraise = ...          return
+      let _ = self.bump()         }
+      return
+    }
+
+Both anchors `Find` that block as ONE string, so inserting a line between the `if` and the
+`bump` made the string vanish. Same class as 0484's gate 0418 collateral, and it cost a second
+full release cycle.
+
+The fix is not a re-anchor in the narrow sense -- it is moving the comment ABOVE the `if`, so
+the arm is contiguous and comment-free:
+
+    // 0486 A `+`-JOINED EFFECT ... (the whole note, above the `if`)
+    if ... at_name("noraise") ... {
+      let was_noraise = ...
+      let _ = self.bump()
+      ...
+
+Re-anchored afterwards: 0466 M1 spans the whole current arm, M4 spans `if` / `was_noraise` /
+`bump`. 0466 is GATE OK again, 3 KILLED / 3 declared survivors, and its M1 kill count rose
+from 6 to 10 red tests because the arm it deletes is now the 0486 clause as well.
+
+=> 判据: AN ANCHOR IS WRITTEN AGAINST A CODE SHAPE, AND A COMMENT IS PART OF THAT SHAPE. The
+question to ask before inserting an explanatory block between two pinned-adjacent lines is not
+"does this comment belong here logically" but "does it belong between these two lines". When it
+does not have to, it goes above the region. A gate that reports PREFLIGHT MISS is telling the
+truth about the shape, not about the logic.
+
+Gate 0486: 3 KILLED, 1 declared survivor with a Prove, every restore byte-identical. 1013 tests.
