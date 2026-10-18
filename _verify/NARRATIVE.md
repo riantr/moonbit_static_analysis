@@ -2137,3 +2137,81 @@ SPELLING, and two fixes later that spelling is gone. Pre-flight is not bureaucra
 real work -- it is the only stage that notices when a number I already banked has stopped
 describing the code, and in this increment it fired on three mutations I would otherwise have
 reported as passing.
+
+## 0480 -- the UNBRACED escape, `'\uXXXX'`
+
+`character literal must hold exactly one character` -- one line, in two corpora, and the reason
+was a spelling 0459 had already settled the other side of.
+
+    proton  internal/native/configuration.mbt:4        c < '\u007f'
+    labeler extensions/labeler/labeler.mbt:2741        buf.write_char('\u000C')
+
+0459's guard required `\u` to be followed by `{`, so the unbraced spelling fell through to
+`other => other`, which wrote the letter `u`, and the four hex digits were appended by the
+ordinary character path. The payload became `u007f` -- five characters -- and the length check
+refused it. **A FALSE REFUSAL**: the corpus writes this form and the compiler accepts it.
+
+**IT IS NOT TWO FILES.** A sweep of every `.mbt` under `.repos` for single-quoted literals
+holding an unbraced escape finds the form in `moonbitlang/core` `builtin/char.mbt` about a
+hundred and fifty times, in `char/predicate_reference_test.mbt` as many again, and through
+`x/json5`, `x/unicode`, `svg` and `sqlite3`. The standard library's own source uses the
+spelling, which is what makes this a grammar clause rather than a local quirk.
+
+MEASURED.
+
+    moonbit_labeler  parsed 35 -> 36, unreliable 55 -> 16, notices 738 -> 776,
+                    withheld 16 unchanged, actionable 0 -> 0, total 793 -> 792
+    proton           parsed 135 -> 136, unreliable 37 -> 31, notices 2023 -> 2029,
+                    withheld 6 -> 0, actionable 0 -> 0, total 2060 unchanged
+
+`unreliable -39` and `-6` against `parsed +1` each is the expected PAIR: unblocking a file
+reveals findings whose reach was blocked. proton's `withheld 6 -> 0` is the whole increment in
+one number -- those six findings were being withheld because the file could not be read at all,
+and now every one of them is analysed.
+
+Settled in `_verify/settle_0480_unbraced_unicode_escape.ps1`, 3 controls + 6 rows, GATE OK:
+
+    ACCEPT        `'\u007f'`  the proton shape       ACCEPT  `'\u000C'`  the labeler shape
+    ACCEPT        `'\u{1F600}'`  the braced form, and the ONLY spelling for astral
+    REJECT(3001)  `'\u07f'`     three digits           REJECT(3001)  `'\u01F600'`  six, astral
+    REJECT(3001)  `'\u00007f'`  six, BMP               REJECT(3001)  `b'\u000C'`   the byte form
+
+**M2 IS A REAL BUG THE GATE FOUND, AND IT IS WHY THE READER TAKES A FLAG.** The first
+implementation widened the escape guard without a context flag, and `b'\u000C'` then lexed
+cleanly -- while the toolchain calls it REJECT(3001) with `b'\x0C'` ACCEPTing beside it. The
+byte-literal branch routes `b'...'` into the SAME reader, so a guard widened in one place is
+widened in both, and the file still parses. The test row caught it (`0 != 1`) before a corpus
+was scanned. Two literals, one reader, one flag.
+
+**AND TWO OF MY OWN TEST ROWS COULD NOT SEE THE MUTATIONS THEY WERE WRITTEN FOR.** Both were
+caught by `MustRed` rather than by reading them, which is the argument for that field existing:
+
+1. The six-digit row used `'\u01F600'`, which is ASTRAL. With the fourth-digit check removed
+   that literal lexes to U+01F600, whose LENGTH through this token is measured by the string
+   builder's astral handling -- so both the correct and the broken reader report one finding.
+   The fixture is now `'\u00007f'`: same six digits, BMP value, and the broken reader produces
+   one character and NO report. 0459's test file says this in its own words, and I repeated it
+   a hundred lines below the place it was written down.
+2. No row observed the VALUE. With `braced` reverted to `e == 'u'`, the branch consumes the
+   first hex digit as though it were a brace and `'\u1234'` becomes U+0234 -- one character,
+   zero reports, length correct. The corpus would never have found it: nothing in this project
+   compares characters.
+
+**M3 SURVIVES BY PROOF, and the proof is about the CURRENT guard.** Dropping the first two
+digit checks cannot change any well-formed literal, because the digit loop already stops at the
+first non-hex and writes nothing when it consumed none -- so an escape admitted by a weakened
+guard contributes no character, and the one-character check refuses the literal either way.
+That is stated in the gate rather than left implicit, and it expires the moment the guard is
+rewritten: if a future increment makes the escape write a character at `digits == 0`, the proof
+stops being true and has to be re-argued rather than inherited.
+
+Gate 0480: 3 killed, 1 declared survivor, every restore byte-identical. 962 tests.
+
+=> 判据: a rule can be right and a test can still be blind, and "both readers report one
+finding" is not agreement. The two blind rows failed for the same underlying reason -- each
+asserted a COUNT where the failure was in a VALUE -- and one shared fix: assert the thing the
+rule is actually about. `'\u1234'` is one character with or without the bug, so the row has to
+compare it to `"\u{1234}"` or it is a comment with an assertion in it. The general shape:
+a mutation that survives is either a rule that is not load-bearing, which is worth knowing and
+worth writing down, or an instrument that is not measuring -- and the difference between those
+two is exactly one question, which is whether ANY input makes the two readers disagree.

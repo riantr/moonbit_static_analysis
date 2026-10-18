@@ -343,7 +343,7 @@ fn Lexer::run(self : Lexer) -> Unit {
       // A character literal, lexed to a TStr. Before this branch existed the
       // quote fell to lex_op's catch-all, which reported "unexpected character"
       // and emitted TBang — so every file containing `'\n'` stopped there.
-      last = self.lex_char()
+      last = self.lex_char(false)
       continue
     }
     if c == '#' &&
@@ -395,7 +395,7 @@ fn Lexer::run(self : Lexer) -> Unit {
       if quoted {
         last = self.lex_string()
       } else {
-        last = self.lex_char()
+        last = self.lex_char(true)
       }
       continue
     }
@@ -1024,7 +1024,7 @@ fn hex_value(c : Char) -> Int32 {
 /// whose payload is not exactly one character is also reported, but the
 /// payload is still emitted: a report alone would leave the file's remaining
 /// code to be swallowed by the next quote.
-fn Lexer::lex_char(self : Lexer) -> Tok {
+fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
   let l = self.line
   let c0 = self.col
   self.pos += 1
@@ -1057,13 +1057,56 @@ fn Lexer::lex_char(self : Lexer) -> Tok {
       // 8/8): both are legal MoonBit, `'\u{1F600}'` is as legal as `'\u{0}'` so
       // the brace form is NOT "two hex digits", and `b'ab'` is REJECT(3001) so the
       // one-character rule still has teeth.
-      if e == 'x' ||
-        (
-          e == 'u' &&
-          self.pos + 1 < self.chars.length() &&
-          self.chars[self.pos + 1] == '{'
-        ) {
-        let braced = e == 'u'
+      // 0480 -- AND THE UNBRACED SPELLING, `'\uXXXX'`. 0459's guard required `\u` to be
+      // followed by `{`, so `'\u007f'` fell through to `other => other`, which wrote the
+      // letter `u`, and the four hex digits were then appended by the ordinary character
+      // path. The payload became `u007f` -- five characters -- and the length check refused
+      // it with "character literal must hold exactly one character". A FALSE refusal: the
+      // corpus writes this form and the compiler accepts it.
+      //
+      // This is not one file. `moonbitlang/core` `builtin/char.mbt` writes it about a
+      // hundred and fifty times and `char/predicate_reference_test.mbt` as many again, and
+      // two PINNED corpora are blocked by it -- proton `internal/native/configuration.mbt:4`
+      // (`'\u007f'`) and moonbit_labeler `extensions/labeler/labeler.mbt:2741` (`'\u000C'`).
+      // The standard library's own source uses the spelling, so this is a grammar clause.
+      //
+      // EXACTLY FOUR DIGITS, and the settle is what says so
+      // (`_verify/settle_0480_unbraced_unicode_escape.ps1`, 3 controls + 6 rows):
+      //   ACCEPT           `'\u007f'`  the proton shape        ACCEPT  `'\u000C'`  labeler
+      //   ACCEPT           `'\u{1F600}'`  the braced form, which has no unbraced spelling
+      //   REJECT(3001)     `'\u07f'`     three digits          REJECT(3001)  `'\u01F600'`
+      //   REJECT(3001)     `'\u00007f'`   six digits, BMP value
+      //   REJECT(3001)     `b'\u000C'`   a BYTE literal takes `b'\xNN'`, not this
+      //
+      // The fifth-character test is what makes six digits refuse rather than truncate:
+      // `'\u00007f'` must not lex as `'\u0000'` followed by the literal text `7f`. Both
+      // readings refuse it -- one character or seven -- so the choice is about which
+      // refusal, and requiring a NON-HEX follower keeps the digit count honest. The settle
+      // carries the same six digits with an ASTRAL value too (`'\u01F600'`); it is in the
+      // settle and not in the test because a test on an astral fixture measures how the
+      // string builder counts astral characters, which is 0459's trap written down and
+      // repeated once. See `lexer_0480_test.mbt`.
+      let braced_u = e == 'u' &&
+        self.pos + 1 < self.chars.length() &&
+        self.chars[self.pos + 1] == '{'
+      // The UNBRACED spelling is a CHARACTER literal escape and not a BYTE one. The byte
+      // branch above routes `b'...'` into this same reader, so without the context flag a
+      // guard widened here would silently widen it there as well -- and the toolchain
+      // disagrees: `b'\x0C'` ACCEPTs and `b'\u000C'` is REJECT(3001), measured, while
+      // `'\u000C'` ACCEPTs. Two literals, one reader, one flag.
+      let bare_u = !byte_form &&
+        e == 'u' &&
+        self.pos + 5 < self.chars.length() &&
+        hex_value(self.chars[self.pos + 1]) >= 0 &&
+        hex_value(self.chars[self.pos + 2]) >= 0 &&
+        hex_value(self.chars[self.pos + 3]) >= 0 &&
+        hex_value(self.chars[self.pos + 4]) >= 0 &&
+        hex_value(self.chars[self.pos + 5]) < 0
+      if e == 'x' || braced_u || bare_u {
+        // NOT `e == 'u'`: that was true for the unbraced form too, and this branch
+        // consumes a `{` when it is set. 0459 got away with it because the `u` arm was
+        // only reachable when a brace actually followed.
+        let braced = braced_u
         if braced {
           self.pos += 1
           self.col += 1

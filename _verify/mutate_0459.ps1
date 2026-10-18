@@ -25,6 +25,22 @@
 # constructs with two different readers. Routing the single-quoted form through
 # `lex_string` would have made the message disappear without making a single file
 # readable, which is the shape of a fix that is verified by its own symptom.
+# RE-ANCHORED 2026-10-18 by increment 0480, and this is now the SECOND time one increment
+# has silently invalidated another gate's anchors. 0480 gave `lex_char` a `byte_form`
+# parameter, and that one signature moved three of the four anchors below:
+#
+#   M1/M6  `self.lex_char()`  ->  `self.lex_char(true)` at the byte-literal call site
+#   M4     the inline `e == 'u' &&` inside the escape guard -> the named `braced_u` binding
+#
+# Pre-flight caught all three at once: `ABORT: 3 pattern(s) absent. No suite was run.`, in
+# one second, on a gate whose last recorded verdict was green. None of the three questions
+# stopped being live -- a single-quoted byte literal is still read as a character, a braced
+# escape is still decoded, a two-character byte literal is still refused -- so all three are
+# re-pointed at the CURRENT spelling of the SAME question rather than retired.
+#
+# => A mutation anchor is a claim about a SPELLING, and a refactor elsewhere in the same file
+# spends it. The gate that notices is the pre-flight, and the cost of not re-anchoring is a
+# rule that stops being checked while the gate keeps reading OK.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
@@ -38,7 +54,7 @@ Invoke-MutationGate -Name '0459' -Target 'js' -Mutations @(
   @{
     Name = 'M1 the single-quoted byte literal is read as a string'
     File = $LEXER
-    Find = "      if quoted {`n        last = self.lex_string()`n      } else {`n        last = self.lex_char()`n      }"
+    Find = "      if quoted {`n        last = self.lex_string()`n      } else {`n        last = self.lex_char(true)`n      }"
     Repl = "      if quoted {`n        last = self.lex_string()`n      } else {`n        last = self.lex_string()`n      }"
     MustRed = '0459: a single-quoted byte literal with a hex escape is one token'
   }
@@ -75,8 +91,8 @@ Invoke-MutationGate -Name '0459' -Target 'js' -Mutations @(
   @{
     Name = 'M4 the braced unicode escape is not decoded'
     File = $LEXER
-    Find = "          e == 'u' &&"
-    Repl = "          e == 'z' &&"
+    Find = "      let braced_u = e == 'u' &&"
+    Repl = "      let braced_u = e == 'z' &&"
     MustRed = '0459: a braced unicode escape is one character'
   }
 
@@ -99,7 +115,7 @@ Invoke-MutationGate -Name '0459' -Target 'js' -Mutations @(
   @{
     Name = 'M6 a two-character byte literal is accepted'
     File = $LEXER
-    Find = "        last = self.lex_char()"
+    Find = "        last = self.lex_char(true)"
     Repl = "        last = self.lex_string()"
     MustRed = '0459: a two-character byte literal is still reported (control)'
   }
