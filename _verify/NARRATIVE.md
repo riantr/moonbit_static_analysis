@@ -1961,12 +1961,29 @@ Two wrong turns are worth recording because both would have shipped a confident 
    is the ANALYSIS REGION boundary, not the parse cut. The arithmetic (`total = actionable +
    notices + unreliable`, with total findings fixed at 128) is what actually pins the move.
 2. The first `git worktree` A/B was CONFOUNDED. It reported HEAD 187 vs mine 186 -- the right
-   answer for entirely the wrong reason. `--extern-iface-dir` was being IGNORED: the extern
-   tree is taken from the process CWD's `.repos`, and the two runs sat in different
-   directories, so the HEAD build resolved against a different interface tree. Redone from one
-   CWD, with the `Info:` line confirming both runs used the same tree, the same 187-vs-186
-   stands -- now for the right reason. => an A/B that does not verify its own inputs agrees
-   with a broken one by coincidence, and the coincidence is indistinguishable from the result.
+   answer for entirely the wrong reason: the two runs sat in different directories, and
+   `auto_fetch_deps` materialises a target's imports with `moon fetch` into a path that is
+   RELATIVE to the process CWD (`sa/main.mbt:483`, `let base = ".repos/" + mod`), so the two
+   runs indexed different interface trees. The right answer re-measured from one CWD still
+   stands. => an A/B that does not verify its own inputs agrees with a broken one by
+   coincidence, and the coincidence is indistinguishable from the result.
+
+   **CORRECTED 2026-10-18: `--extern-iface-dir` is NOT ignored, and the sentence above that
+   said so was wrong.** It was wrong because the run passed the flag AND sat next to the tree
+   it names, so the flag and the CWD agreed and neither could be blamed. Measured directly, same
+   binary, same CWD, proton 0.3.4:
+
+                        IFACE types   values        dirs   actionable
+       with the flag        1490      11315            2           0
+       without it             205       1755            1          36
+
+   `sa/main.mbt:239-243` starts the list at `[root]` and PUSHES each `--extern-iface-dir` onto
+   it, so the flag is honoured and `dirs` reports exactly what it added. The CWD sensitivity is
+   real but it comes from `auto_fetch_deps`, not from the flag being skipped. And there is no
+   `Info:` line: the instrument that settles this is the `IFACE types=/values=/dirs=` triple
+   the scan prints at `sa/main.mbt:244-248`. => a claim about a flag's being ignored needs its
+   own run with the flag REMOVED; without that, "ignored" and "agreed by coincidence" are the
+   same observation.
 
 **AND A NAVIGATION TRAP THAT MADE ALL FIVE OF MY OWN TESTS FAIL, CONTROLS INCLUDED.** A
 function body is wrapped in `SBlock` only when it is a SINGLE statement. `parser_0476`
