@@ -155,6 +155,33 @@ unknown-returning call instead of calling it undefined. Names absent from the
 table still report, so the table never invents valid bindings — it only
 suppresses, never the other way around.
 
+## `--per-function`: the behavioral lens enters at each FUNCTION
+
+The behavioral lens normally enters at the **module**: a function body is
+executed only if something *calls* it from a top-level statement. A library
+module does not call its own functions at top level, so on a library the lens
+executed **zero** function bodies — measured, on the six pinned corpora every
+single finding was tagged `structural` and not one was tagged `behavior`.
+
+`--per-function` analyzes every function as if it were the program's entry
+point, with its parameters bound to fresh abstract values of their **declared**
+types. The declared type is the only sound choice for an entry point: the
+parameter's runtime value is unknown, so the lens must assume the declared
+type and nothing more. An *unannotated* parameter becomes "some value we know
+nothing about" and must not manufacture a finding.
+
+The two views are **separate, not additive**. The default (module) view is
+unchanged: the same corpora produce byte-identical numbers with and without
+the flag.
+
+> **The view is not yet sound — read this before using the numbers.** It
+> reports 265 `actionable` on `moui` 0.1.12 where the module view reports 0.
+> Those are not 265 defects; they are an inventory of what is still wrong with
+> the behavioral lens, which the entry made visible for the first time (an enum
+> constructor read as an undefined variable, a qualified constructor, a call to
+> a function-typed parameter). The classes that remain are named in the
+> source. Use the flag to *see* the lens; do not gate a build on it.
+
 ## What the numbers mean, and what they do not
 
 `.mbt.md` and `.mbtp` are audited properly: on a real project they report

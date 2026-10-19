@@ -63,10 +63,48 @@ fn lens_count(lens : @core.Lens, r : @report.Report) -> Int32 {
 /// binding" finding and the type lens returns the shape the rest of the
 /// pipeline needs to keep going. Pass an empty table to recover the
 /// single-file behavior.
+///
+/// The BEHAVIORAL lens enters at the MODULE: a function body is executed only
+/// if something calls it from a top-level statement. See `run_functions` for
+/// the per-function entry, and `Interp::analyze_functions` for why it exists.
 pub fn run(
   src : String,
   file : String,
   extern_iface : @core.IfaceSymTab,
+) -> PipelineResult {
+  run_core(src, file, extern_iface, false)
+}
+
+///|
+/// Run the full pipeline with the BEHAVIORAL lens entering at each FUNCTION.
+///
+/// Same pipeline, same structural and type lenses, one difference: the
+/// behavioral lens analyzes every function as if it were the program's entry
+/// point, with its parameters bound to fresh abstract values of their
+/// declared types. A function that nothing calls is still analyzed, which is
+/// the whole point -- on the pinned corpora the module entry never executed a
+/// single function body, because a library module does not call its own
+/// functions at top level.
+///
+/// The two views are SEPARATE, not additive: this entry reports the
+/// per-function findings and NOT the module entry's, so the two can be
+/// compared without either hiding the other.
+pub fn run_functions(
+  src : String,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+) -> PipelineResult {
+  run_core(src, file, extern_iface, true)
+}
+
+///|
+/// The pipeline itself, with the behavioral lens's entry point as the one
+/// thing that differs.
+fn run_core(
+  src : String,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  per_function : Bool,
 ) -> PipelineResult {
   let parsed = @parser.parse(src)
   let all : Array[@report.Report] = []
@@ -160,11 +198,36 @@ pub fn run(
   for r in tr.findings {
     all.push(r)
   }
-  let ir = @interp.analyze_module(parsed.tree, tr, wr, file, extern_iface)
+  let ir = if per_function {
+    @interp.analyze_functions(
+      parsed.tree,
+      tr,
+      wr,
+      file,
+      extern_iface,
+      parsed.enum_ctors,
+    )
+  } else {
+    @interp.analyze_module(
+      parsed.tree,
+      tr,
+      wr,
+      file,
+      extern_iface,
+      parsed.enum_ctors,
+    )
+  }
   for r in ir {
     all.push(r)
   }
-  let sigs = @interp.analyzed_sigs(parsed.tree, tr, wr, file, extern_iface)
+  let sigs = @interp.analyzed_sigs(
+    parsed.tree,
+    tr,
+    wr,
+    file,
+    extern_iface,
+    parsed.enum_ctors,
+  )
   let merged = merge_findings(all)
   let mut n1 = 0
   let mut n2 = 0

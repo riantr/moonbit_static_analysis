@@ -215,6 +215,7 @@ pub async fn scan(
   extern_iface_dirs : Array[String],
   auto_fetch_deps : Bool,
   mmd_out : String,
+  per_function : Bool,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -294,7 +295,7 @@ pub async fn scan(
       Some(t) => t
       None => iface_tab
     }
-    let v = analyze(f, tab)
+    let v = analyze(f, tab, per_function)
     verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
     let d = v.findings.length() - v.notices
@@ -666,7 +667,11 @@ fn kind_of(p : String) -> String {
 }
 
 ///|
-async fn analyze(p : String, extern_iface : @core.IfaceSymTab) -> Verdict {
+async fn analyze(
+  p : String,
+  extern_iface : @core.IfaceSymTab,
+  per_function : Bool,
+) -> Verdict {
   let src = read_or(p)
   let n = base_of(p)
   let k = kind_of(p)
@@ -747,7 +752,15 @@ async fn analyze(p : String, extern_iface : @core.IfaceSymTab) -> Verdict {
       }
     }
     _ => {
-      let r = @pipeline.run(src, n, extern_iface)
+      // The behavioral lens's ENTRY POINT. The module entry executes a
+      // function body only if something calls it from a top-level statement,
+      // so on a library module it never executes one at all. The per-function
+      // entry analyzes every function as if it were the program's entry.
+      let r = if per_function {
+        @pipeline.run_functions(src, n, extern_iface)
+      } else {
+        @pipeline.run(src, n, extern_iface)
+      }
       let total = r.reports.length()
       // The trusted region: everything before the first genuine read failure.
       //

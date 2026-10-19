@@ -198,6 +198,29 @@ priv struct Interp {
   /// as unknown-returning calls instead of being reported as undefined.
   /// Same fail-toward-silence trade as EMethodCall.
   local_fns : Map[String, Bool]
+  /// ENUM CONSTRUCTOR names, harvested from enum bodies this frontend did not
+  /// parse (`ParseResult::enum_ctors`).
+  ///
+  /// The structural and type lenses BOTH receive that list, and the type lens
+  /// seeds each name into the module frame as `TUnknown` -- "a value of unknown
+  /// type" -- so neither of them reports it. This lens had no such table, so
+  /// every constructor read was "undefined variable".
+  ///
+  /// MEASURED, the per-function entry surfaced it on the first corpus it
+  /// touched: `proton_contract 0.3.4 contract.mbt:261`,
+  ///
+  ///     ContractRoute::{ scope: Application, name, }
+  ///
+  /// reported `undefined variable 'Application'` (an ERROR) on code `moon
+  /// check` accepts. `Application` is a constructor of the `ContractScope`
+  /// enum, whose BRACED body this frontend skips -- so the name arrives in
+  /// `enum_ctors` and the lens simply never asked.
+  ///
+  /// It was invisible before because the lens never executed a function body
+  /// in a library module, and a library module's top level is definitions
+  /// only. The defect was in the lens, not in the entry; the entry only made
+  /// it visible.
+  ctors : Map[String, Bool]
   file : String
   /// signature cache: key -> return value
   cache : Map[String, AbsVal]
@@ -223,6 +246,7 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
     extern_iface,
     ambient,
     local_fns: Map([]),
+    ctors: Map([]),
     file,
     globals: Map([]),
     cache: Map([]),
@@ -296,18 +320,26 @@ fn widen_all(e : Map[String, AbsVal]) -> Map[String, AbsVal] {
 }
 
 ///|
-/// Analyze a whole module. Phase 1 registers methods (from the signature
-/// table — assembly point 2); phase 2 runs a dry top-level pass to populate
-/// the signature cache (fixpoint for recursion via partials); phase 3 is the
-/// report pass with complete virtual stacks.
-pub fn analyze_module(
+/// Build the interpreter and register every method (from the signature
+/// table -- assembly point 2) plus the local-function names.
+///
+/// SHARED by the module entry and the per-function entry. The two MUST agree
+/// about which names exist and what their parameters are: a per-function
+/// entry that dispatched against a different method table would report "no
+/// method matching" for a call the module entry accepts, and the
+/// contradiction would read as a finding.
+fn setup_interp(
   m : @ast.Module,
   tr : @types.TypeResult,
   wr : @walk.WalkResult,
   file : String,
   extern_iface : @core.IfaceSymTab,
-) -> Array[@report.Report] {
+  enum_ctors : Array[String],
+) -> Interp {
   let it = new_interp(file, extern_iface)
+  for c in enum_ctors {
+    it.ctors.set(c, true)
+  }
   // method table from the type lens's signatures (assembly point 2)
   for f in wr.fns {
     let sig : @types.Sig? = find_sig(tr, f.name)
@@ -337,15 +369,164 @@ pub fn analyze_module(
       line: f.span.start.line,
     })
   }
-  // phase 2 (dry): populate the cache. Local fn names are collected first:
-  // their bodies are not executed (they capture the enclosing frame), but
-  // their names must resolve and their calls must not report undefined.
+  // Local fn names are collected first: their bodies are not executed (they
+  // capture the enclosing frame), but their names must resolve and their
+  // calls must not report undefined.
   collect_local_fns(m.body, it.local_fns)
-  let itg = it
-  itg.run_top(m, true)
+  it
+}
+
+///|
+/// Analyze a whole module. Phase 1 registers methods (from the signature
+/// table -- assembly point 2); phase 2 runs a dry top-level pass to populate
+/// the signature cache (fixpoint for recursion via partials); phase 3 is the
+/// report pass with complete virtual stacks.
+pub fn analyze_module(
+  m : @ast.Module,
+  tr : @types.TypeResult,
+  wr : @walk.WalkResult,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  enum_ctors : Array[String],
+) -> Array[@report.Report] {
+  let it = setup_interp(m, tr, wr, file, extern_iface, enum_ctors)
+  // phase 2 (dry): populate the cache
+  it.run_top(m, true)
   // phase 3 (report): replay with complete stacks
-  itg.run_top(m, false)
-  itg.sink
+  it.run_top(m, false)
+  it.sink
+}
+
+///|
+/// THE PER-FUNCTION ENTRY: analyze each function AS IF it were the program's
+/// entry point.
+///
+/// WHY THIS EXISTS. `Interp::run_top` SKIPS `SFunc` items, so a function body
+/// is only ever executed if something CALLS it from a top-level statement.
+/// A library module does not call its own functions at top level, so this
+/// lens never executed a single body on any pinned corpus: moui 4152
+/// findings, proton 1062, async 1820 -- every one of them tagged
+/// `structural`, and not one tagged `behavior`.
+///
+/// MEASURED, the gap is the ENTRY and nothing else. The same defect, in the
+/// same body, three ways:
+///
+///   top     -- a top-level statement        -> [type+behavior]
+///   incall  -- in a function CALLED at top  -> [type+behavior]
+///   uncall  -- in a function NEVER called   -> [type]   <- behavior GONE
+///
+/// for every defect kind tried, and `unreachable code` is the cleanest case:
+/// `[behavior]` alone when the function is called, and nothing at all when it
+/// is not, because no other lens sees it.
+///
+/// The parameters are bound to fresh abstract values of their DECLARED types.
+/// The declared type is the only sound choice for an entry point: the
+/// parameter's runtime value is unknown, so the lens must assume the
+/// declared type and nothing more. An unannotated parameter becomes `AAny`,
+/// which every operation accepts -- an unannotated parameter must not
+/// manufacture a finding.
+pub fn analyze_functions(
+  m : @ast.Module,
+  tr : @types.TypeResult,
+  wr : @walk.WalkResult,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  enum_ctors : Array[String],
+) -> Array[@report.Report] {
+  let it = setup_interp(m, tr, wr, file, extern_iface, enum_ctors)
+  // The MODULE FRAME. A function body may read a module-level binding, and
+  // `analyze_fn` gives it a FRESH environment holding only the parameters --
+  // so without this pass every such read would be "undefined variable". The
+  // pass is DRY: the module entry reports the top-level findings, and this
+  // entry must not report them a second time.
+  it.run_top(m, true)
+  // dry, then report, exactly as the module entry does: the dry pass is what
+  // makes the report pass's virtual stacks complete.
+  let saved_sink = it.sink
+  it.sink = []
+  for f in wr.fns {
+    it.analyze_entry(f, tr)
+  }
+  it.sink = saved_sink
+  for f in wr.fns {
+    it.analyze_entry(f, tr)
+  }
+  it.sink
+}
+
+///|
+/// Analyze ONE function as an entry point: bind its parameters to fresh
+/// abstract values and execute its body.
+fn Interp::analyze_entry(
+  self : Interp,
+  f : @walk.FnInfo,
+  tr : @types.TypeResult,
+) -> Unit {
+  let sig : @types.Sig? = find_sig(tr, f.name)
+  let ptypes : Array[String] = []
+  let vals : Array[AbsVal] = []
+  // `sig.param_tys` is parallel to `f.params` BY CONSTRUCTION -- the type
+  // lens builds both from the same loop over `f.params` -- so the index
+  // alignment below is not an assumption. The `None` arms are there because
+  // `find_sig` can return None: a function the type lens did not infer.
+  //
+  // All three arrays are built from `f.params` and NOT from the signature, so
+  // `ptypes`, `vals` and the parameter NAMES always have the same length. A
+  // shorter `vals` would bind the trailing names to `ABottom` -- "no value" --
+  // and an unreachable value manufactures findings.
+  for i, _ in f.params {
+    let t = match sig {
+      Some(s) =>
+        match s.param_tys.get(i) {
+          Some(t) => t
+          None => @types.TUnknown
+        }
+      None => @types.TUnknown
+    }
+    let n = @types.ty_name(t)
+    ptypes.push(if n == "Unknown" { "" } else { n })
+    vals.push(abs_of(t))
+  }
+  let cycle_ret = match sig {
+    Some(s) =>
+      match s.declared_ret {
+        @types.TUnknown => AAny
+        t => AType(ret_name(t))
+      }
+    None => AAny
+  }
+  let def : MethodDef = {
+    name: f.name,
+    ptypes,
+    pnames: fn_pnames(f),
+    cycle_ret,
+    body: f.body,
+    line: f.span.start.line,
+  }
+  let _ = self.analyze_fn(def, vals)
+}
+
+///|
+/// A fresh abstract value for a parameter of the declared type `t`.
+///
+/// The names here are the LENS's value names, not the type lens's DISPLAY
+/// names: `ty_name` writes a list as `[int]` and a union as `Union[int, str]`,
+/// while the lens's values are `List` and `Any`. The two must not be mixed --
+/// `vmatches` compares a value name against a type name, and `AType("List")`
+/// does not equal `"[int]"`.
+fn abs_of(t : @types.Ty) -> AbsVal {
+  match t {
+    @types.TInt => AType("int")
+    @types.TFloat => AType("float")
+    @types.TBool => AType("bool")
+    @types.TStr => AType("str")
+    @types.TNone => AType("None")
+    @types.TList(_) => AType("List")
+    // A function value, a union and an unknown type are all "some value we
+    // know nothing about" here. `AAny` is the only sound choice: a concrete
+    // name would be a CLAIM, and a false one produces a finding.
+    _ => AAny
+  }
 }
 
 ///|
@@ -791,6 +972,22 @@ fn Interp::eval(
                 // a compiler constructor on the ambient list. That pair is
                 // what rules out "call handles it" as the explanation.
                 AAny
+              } else if self.ctors.contains(n) {
+                // An ENUM CONSTRUCTOR read as a value. Its type is unknown --
+                // the type lens seeds the same names as `TUnknown` -- so the
+                // honest answer is "a value of unknown type", exactly as for
+                // a cross-file name. The structural and type lenses both have
+                // this table and both stay silent on the same line.
+                AAny
+              } else if self.tail_bound(n, env) {
+                // A QUALIFIED name read as a value whose TAIL is bound:
+                // `PixelFormat::RGBA8`. The qualifier is a TYPE, so the name is
+                // a constructor -- and the harvest binds `RGBA8` but not the
+                // whole path. This is the structural lens's own rule (see
+                // `Interp::tail_bound`), and this lens had no such rule, so
+                // every qualified constructor read was reported here while the
+                // structural lens stayed silent on the same line.
+                AAny
               } else {
                 // UndefVarErrorReport (jetanalyzer.jl:862)
                 self.report(
@@ -823,6 +1020,35 @@ fn Interp::eval(
       let vals : Array[AbsVal] = []
       for a in args {
         vals.push(self.eval(a, env))
+      }
+      // A call to a name BOUND IN THIS FRAME -- a function-typed parameter, or
+      // a local `let f = fn(...)`. The name IS bound: the walk sees the
+      // binding, and the type lens types it. This lens used to dispatch only
+      // through the top-level method table, so a call to a callback parameter
+      // was reported as `undefined function 'on_select'` -- an ERROR, on code
+      // `moon check` accepts, and a finding the structural lens contradicted.
+      //
+      // The value of such a binding is unknown here (the fresh value for a
+      // function-typed parameter is `AAny`), so the honest answer for the
+      // call's RESULT is "a value of unknown type".
+      //
+      // The method table is consulted first, so a top-level function is still
+      // dispatched as one.
+      if !self.methods.contains(name) && env.contains(name) {
+        return AAny
+      }
+      // A qualified call whose TAIL is bound: `PixelFormat::RGBA8`. Same rule
+      // as the qualified READ above, and the same reason.
+      //
+      // NOT "any `@`-prefixed call is fine": the repository pins the opposite,
+      // because a cross-package CALL is a name the table must carry. With an
+      // empty table `@core.IfaceSymTab::empty()` is reported, and with the
+      // table carrying the full qualified name it is not
+      // (`pipeline_test.mbt`, "an extern_iface carrying the names removes the
+      // self-scan findings" and its negative control). The `@`-prefixed NAME
+      // read above is a different case, and it is not this one.
+      if !self.methods.contains(name) && self.tail_bound(name, env) {
+        return AAny
       }
       self.call(name, vals, e.span)
     }
@@ -1355,6 +1581,46 @@ fn Interp::call(
 }
 
 ///|
+/// True when the TAIL of a qualified `name` is bound somewhere.
+///
+/// THE SAME RULE THE STRUCTURAL LENS USES, and the reason the two lenses must
+/// agree: `walk.mbt`'s `tail_bound` says "a qualified path whose TAIL is bound
+/// is a real name -- `Layer::ReLU` is a unit enum variant, and the harvest
+/// binds `ReLU` but not the whole path". This lens had no such rule, so every
+/// qualified read of a constructor was `undefined variable 'PixelFormat::RGBA8'`
+/// while the structural lens -- which has the rule -- stayed silent on the same
+/// line. Two lenses, one line, opposite answers.
+///
+/// The rule is a TAIL rule and not a blanket "any qualified name is fine",
+/// because a blanket silences real findings the repository pins on purpose:
+/// `Array::mkae` (a builtin type with a method that does not exist) and
+/// `ZzMissing::nope` (an unknown head) must both still be reported. The tail
+/// of each is not bound, so the rule does not touch them.
+///
+/// Only consulted once the whole path has failed to resolve, so it can never
+/// turn a resolvable path into an unresolved one.
+fn Interp::tail_bound(
+  self : Interp,
+  name : String,
+  env : Map[String, AbsVal],
+) -> Bool {
+  let tail = @core.path_tail(name)
+  if tail == "" || tail == name {
+    return false
+  }
+  if self.ambient.contains(tail) ||
+    self.extern_iface.has_type(tail) ||
+    self.extern_iface.has_value(tail) ||
+    self.ctors.contains(tail) {
+    return true
+  }
+  if env.contains(tail) || self.globals.contains(tail) {
+    return true
+  }
+  false
+}
+
+///|
 fn Interp::analyze_fn(
   self : Interp,
   def : MethodDef,
@@ -1534,8 +1800,12 @@ pub fn analyzed_sigs(
   wr : @walk.WalkResult,
   file : String,
   extern_iface : @core.IfaceSymTab,
+  enum_ctors : Array[String],
 ) -> Array[String] {
   let it = new_interp(file, extern_iface)
+  for c in enum_ctors {
+    it.ctors.set(c, true)
+  }
   for f in wr.fns {
     let sig : @types.Sig? = find_sig(tr, f.name)
     let ptypes : Array[String] = []

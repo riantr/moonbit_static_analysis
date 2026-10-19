@@ -479,6 +479,33 @@ another package never hit.
   post-boundary findings of partial files whose pre-boundary finding count
   was zero), so it is intentionally not part of the sum.
 
+**`--per-function`: enter the behavioral lens at each FUNCTION** (new in
+0.4.30, not yet published — the released package is 0.4.29). The behavioral
+lens normally enters at the **module**: a function body is executed only if
+something *calls* it from a top-level statement. A
+library module does not call its own functions at top level, so on a library
+the lens executed **zero** function bodies — on the six pinned corpora every
+single finding was tagged `structural`, and not one was tagged `behavior`.
+
+`--per-function` analyzes every function as if it were the program's entry
+point, with its parameters bound to fresh abstract values of their **declared**
+types. The declared type is the only sound choice for an entry point: the
+parameter's runtime value is unknown, so the lens must assume the declared
+type and nothing more. An *unannotated* parameter becomes "some value we know
+nothing about" and must not manufacture a finding.
+
+The two views are **separate, not additive**, so they can be compared without
+either hiding the other. The default (module) view is unchanged: the same
+corpora produce byte-identical numbers with and without the flag.
+
+> **This view is not yet sound, and the flag is opt-in for that reason.** The
+> per-function view reports 265 `actionable` on `moui` 0.1.12, where the module
+> view reports 0. Those 265 are not 265 defects — they are an *inventory of
+> what is still wrong with the behavioral lens*, which the entry made visible
+> for the first time. The classes that remain are named in the source: a
+> `#cfg` duplicate-name method table, a `Unit`/`None` conflation, and arity
+> mismatches. Use it to see the lens, not to gate a build.
+
 **Measured** (before and after the trusted-region gate, same trees):
 
 | target | files | parsed | actionable (before → after) |

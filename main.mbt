@@ -31,6 +31,14 @@ async fn main {
   //                           `<label>-<version>_<stamp>.mmd` in the working
   //                           directory. Never inside the analysed tree: this
   //                           module only ever READS the target's files.
+  //   --per-function          Enter the BEHAVIORAL lens at each FUNCTION rather
+  //                           than at the module. By default a function body is
+  //                           executed only if something calls it from a
+  //                           top-level statement, so on a library module the
+  //                           behavioral lens never executes a body at all. This
+  //                           flag analyzes every function as if it were the
+  //                           program's entry point, with its parameters bound
+  //                           to fresh abstract values of their declared types.
   let mut target = ""
   let excludes : Array[String] = []
   let extern_iface_dirs : Array[String] = []
@@ -38,6 +46,7 @@ async fn main {
   // "" = off; "@" = on with an auto-named file in the working directory;
   // anything else = on, writing exactly here.
   let mut mmd_out = ""
+  let mut per_function = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -73,6 +82,8 @@ async fn main {
       mmd_out = args[i]
     } else if a == "--mmd-auto" {
       mmd_out = "@"
+    } else if a == "--per-function" {
+      per_function = true
     } else if a == "--no-auto-fetch-deps" {
       auto_fetch_deps = false
     } else if target == "" {
@@ -86,5 +97,7 @@ async fn main {
   if target == "" {
     target = "."
   }
-  @sa.scan(target, excludes, extern_iface_dirs, auto_fetch_deps, mmd_out)
+  @sa.scan(
+    target, excludes, extern_iface_dirs, auto_fetch_deps, mmd_out, per_function,
+  )
 }

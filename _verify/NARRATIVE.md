@@ -3061,3 +3061,116 @@ derivation finds nothing, the control says so rather than falling back to a hard
 planted row is now `async:src/http/utils.mbt:23`, unit `fn encode_int` -- real corpus code, and
 the construct in it is the for-header with a non-empty update clause, which is one of the four
 gaps left in the backlog.
+
+
+## 0489: the BEHAVIORAL LENS ENTERS AT EACH FUNCTION, and it turns out it was WRONG
+
+(NO VERSION PREFIX, and the reason is that the prefix was already taken: this file's counter reached
+`0.4.39` at 0450 and was dropped there, so every section from 0468 on is headed by its increment
+number alone. A `0.4.30, 0489:` header would have been a SECOND `0.4.30` in one file -- `0.4.30,
+0440:` is already there -- and a version label that means two different increments. The package
+version and this file's counter are not the same number either: the package is at `0.4.29`.)
+
+
+DIRECTION 2, AND THE QUESTION IT ASKED WAS "IS THE LENS OBSERVABLE AT ALL -- AND IF IT IS, WHAT
+DOES IT SAY?" The answer is: it was not observable, and once it was, it said several things that
+were wrong.
+
+THE LENS NEVER EXECUTED A FUNCTION BODY. `Interp::run_top` SKIPS `SFunc` items:
+
+    for s in m.body {
+      match s.kind {
+        SFunc(_, _, _, _, _) => ()
+        _ => { ...exec_stmt(s, self.globals)... }
+      }
+    }
+
+so a body ran only if something CALLED it from a top-level statement. A library module does not
+call its own functions at top level, so on every pinned corpus the lens executed ZERO bodies:
+
+    moui             4152 findings, ALL tagged `structural`
+    proton           1062 findings, ALL tagged `structural`
+    async            1820 findings, ALL tagged `structural`
+
+not one tagged `behavior`. MEASURED, the gap was the ENTRY and nothing else -- the same defect, in
+the same body, three ways:
+
+    top     -- a top-level statement        -> [type+behavior]
+    incall  -- in a function CALLED at top  -> [type+behavior]
+    uncall  -- in a function NEVER called   -> [type]      <- behavior GONE
+
+for every defect kind tried. `Unreachable` is the family the tests pin with, because it is the
+one NO OTHER LENS SEES: the structural and type lenses both walk the body and find nothing there,
+so a merged report carrying `behavior` is unambiguous evidence that the behavioral lens -- and
+only it -- executed the body.
+
+THE NEW ENTRY. `Interp::analyze_functions` binds each parameter to a fresh abstract value of its
+DECLARED type and executes the body. `Interp::setup_interp` is now SHARED by the two entries, so
+they cannot drift about which names exist; `PipelineResult::run_functions` is the pipeline-level
+door, and the scanner reaches it with `--per-function`.
+
+THE DECLARED TYPE IS THE ONLY SOUND CHOICE FOR AN ENTRY POINT: the parameter's runtime value is
+unknown, so the lens must assume the declared type and nothing more. An UNANNOTATED parameter
+becomes `AAny`, which every operation accepts -- an unannotated parameter must not manufacture a
+finding, and there is a row for that, with its opposite (a declared `Int` used as a condition IS
+a defect) as the control.
+
+*** AND THE ENTRY UNCOVERED FOUR LATENT DEFECTS IN THE LENS, WHICH IS THE PART THAT WAS WORTH
+THE INCREMENT. *** Each is a case where the lens INVENTED a finding the other two lenses
+contradicted -- the shape this lens has been corrected for before.
+
+  M2  AN ENUM CONSTRUCTOR was `undefined variable`. The lens never received
+      `ParseResult::enum_ctors` -- the list the structural and type lenses BOTH get. MEASURED on
+      the first corpus the entry touched: `proton_contract 0.3.4 contract.mbt:261`,
+      `ContractRoute::{ scope: Application, name, }` -> `undefined variable 'Application'`, an
+      ERROR, on code `moon check` accepts. `Application` is a constructor of the `ContractScope`
+      enum, whose BRACED body this frontend SKIPS -- so the name arrives in `enum_ctors` and the
+      lens simply never asked.
+  M3  A QUALIFIED CONSTRUCTOR (`PixelFormat::RGBA8`) was `undefined variable`. The STRUCTURAL
+      lens has the TAIL rule -- `walk.mbt`: "a qualified path whose TAIL is bound is a real name:
+      `Layer::ReLU` is a unit enum variant, and the harvest binds `ReLU` but not the whole path" --
+      and this lens had none. 200+ of these on moui alone.
+  M4  A CALL TO A FUNCTION-TYPED PARAMETER was `undefined function`. `Interp::call` dispatched
+      only through the top-level method table and never consulted the frame the parameter is
+      bound in, so `cb()` on a `cb : () -> Unit` parameter was an ERROR.
+  M5  and the fresh value IGNORED the declared type, which is M5 in the gate.
+
+MEASURED, THE FALSE POSITIVES FELL FROM 629 TO 265 ON moui, and the remaining classes are
+different ones: a `#cfg` duplicate-name method table (the walk fixed this in 0441 and the
+interp's table is still keyed by name), a `Unit`/`None` conflation, and arity mismatches.
+
+=> 判据: A BLANKET RULE IS NOT A RULE. The first attempt at M3 was "any qualified name is
+unresolvable, so stay silent" -- and it broke ELEVEN pinned tests, including `Array::mkae` (a
+builtin type with a method that does not exist) and `ZzMissing::nope` (an unknown head), which the
+repository pins ON PURPOSE. The precise rule is the TAIL rule the structural lens already uses,
+and it leaves both of those reported because the tail of each is not bound. Every blanket rule
+this lens has ever grown was one of these: `StringBuilder()`, `Int::max`, `Builder()` -- each one
+a table, never a shape.
+
+=> 判据: THE ENTRY AND THE DEFECT ARE SEPARATE, AND THE ENTRY IS WHAT MAKES THE DEFECT VISIBLE.
+Every one of the four defects above was in the lens, not in the entry, and every one of them was
+invisible because the lens never ran. The same is recorded at 0.4.16 -> 0.4.17, where a rule
+about qualified builtin calls was reverted as "unobservable" -- and the reason it was
+unobservable was THIS: the probe copied a function DEFINITION without ever calling it, so
+nothing ran. The 0.4.17 comment says so in as many words, and the fix was to restore the CALL.
+The per-function entry is the general form of that fix.
+
+MEASURED, AND THE DEFAULT VIEW DID NOT MOVE: the module entry's numbers are byte-identical to the
+0488 pins on all six corpora -- moui 4225, labeler 791, image 218, async 1829/23/0/1852, proton
+2131, contract 34. The per-function view is a SEPARATE, OPT-IN view (`--per-function`), so the
+pins measure what they measured.
+
+  corpus             module view (the pins)          per-function view
+  moui             actionable 0, notices 4225          actionable 265, notices 4225
+  moonbit_labeler  actionable 0, notices  791          actionable  95, notices  791
+  moonbit_image    actionable 0, notices  218          actionable  94, notices  218
+  async            actionable 0, notices 1829          actionable 279, notices 1829
+  proton           actionable 0, notices 2131          actionable 136, notices 2131
+  proton_contract  actionable 0, notices   34          actionable   0, notices   34
+
+THE PER-FUNCTION VIEW IS NOT YET SOUND, and the counts above are the reason it is opt-in. 265
+actionable on a corpus `moon check` accepts is not a finding rate, it is an inventory of what is
+still wrong with the lens. The remaining classes are named in the source and the next increment
+has them.
+
+GATE 0489: 6 KILLED, 0 declared survivors, every restore byte-identical. 1042 tests.
