@@ -77,11 +77,31 @@ pub fn ambient_names() -> Array[String] {
   let bare = [
     // --- read out of <toolchain>/lib/core/builtin/pkg.generated.mbti ---
     // types
+    //
+    // "Int32" AND "UInt32" are here BESIDE "Int" and "UInt" because the
+    // toolchain RENAMED the two unsuffixed integer types on 0.1.20261016:
+    // `Int` is now `Int32`, `UInt` is now `UInt32`, and the interfaces it
+    // generates say so. `Int16` and `UInt16` were NOT renamed -- the change is
+    // of the UNSUFFIXED names only, which is what makes it a rename rather
+    // than a widening.
+    //
+    // BOTH spellings are kept, and the reason is that they are the SAME type.
+    // `moon check` accepts `let x : Int32 = 1` and `let x : Int = 1`, and
+    // accepts either in either position -- `fn f(x : Int32) -> Int` and the
+    // reverse both compile. `moon fmt` rewrites `Int` into `Int32`, so the new
+    // spelling is the toolchain's own canonical form and the old one is what
+    // a user still has in their file until they format it. Settled with the
+    // toolchain, not inferred: `_verify/settle_0490_int32.ps1`, one package
+    // per row, with a control module that must be rejected.
+    //
+    // The cost of keeping a name the toolchain has renamed is a MISSED report.
+    // The cost of dropping one is a FALSE POSITIVE on a type the toolchain
+    // itself just wrote, and that is the direction this list does not take.
     "Array", "ArrayView", "ArgsLoc", "Bool", "Byte", "Bytes", "BytesView", "Char",
-    "Double", "Failure", "FixedArray", "Hasher", "Int", "Int64", "Iter", "Iter2",
-    "Json", "Map", "MutArrayView", "Option", "ReadOnlyArray", "Result", "SourceLoc",
-    "String", "StringBuilder", "StringView", "UInt", "UInt16", "UInt64", "UninitializedArray",
-    "Unit",
+    "Double", "Failure", "FixedArray", "Hasher", "Int", "Int32", "Int64", "Iter",
+    "Iter2", "Json", "Map", "MutArrayView", "Option", "ReadOnlyArray", "Result",
+    "SourceLoc", "String", "StringBuilder", "StringView", "UInt", "UInt16", "UInt32",
+    "UInt64", "UninitializedArray", "Unit",
     // --- not in `core/builtin`'s interface, but ambient all the same ---
     //
     // `Ref` is declared by `moonbitlang/core/ref` and reaches every package the

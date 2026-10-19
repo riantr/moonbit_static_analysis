@@ -14,7 +14,7 @@ pub fn is_coordinate(String) -> Bool
 
 pub fn is_module_coord(String) -> Bool
 
-pub fn mermaid_states(Array[Verdict], Summary, ScanProvenance, Int, Int) -> String
+pub fn mermaid_states(Array[Verdict], Summary, ScanProvenance, Int32, Int32) -> String
 
 pub fn moon_mod_version(String) -> String
 
@@ -26,7 +26,7 @@ pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool, String) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String, Bool) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
 
@@ -34,7 +34,7 @@ pub fn split_coord(String) -> (String, String)
 
 pub fn stamp_utc(Int64) -> String
 
-pub fn tally_partial_reasons(Array[Verdict]) -> (Map[String, Int], Map[String, Array[String]])
+pub fn tally_partial_reasons(Array[Verdict]) -> (Map[String, Int32], Map[String, Array[String]])
 
 pub fn target_version(String, String) -> String
 
@@ -50,13 +50,13 @@ pub(all) struct ScanProvenance {
 pub fn ScanProvenance::describe(Self) -> String
 
 pub struct Summary {
-  parsed_files : Int
-  partial_files : Int
-  actionable : Int
-  notices : Int
-  unreliable : Int
-  withheld : Int
-  total : Int
+  parsed_files : Int32
+  partial_files : Int32
+  actionable : Int32
+  notices : Int32
+  unreliable : Int32
+  withheld : Int32
+  total : Int32
 }
 
 pub(all) struct Verdict {
@@ -65,10 +65,10 @@ pub(all) struct Verdict {
   findings : Array[@report.Report]
   parsed : Bool
   reason : String
-  total : Int
-  notices : Int
-  region_line : Int
-  unreliable : Int
+  total : Int32
+  notices : Int32
+  region_line : Int32
+  unreliable : Int32
 }
 
 // Type aliases

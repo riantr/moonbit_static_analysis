@@ -11,9 +11,11 @@ import {
 }
 
 // Values
-pub fn analyze_module(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab) -> Array[@report.Report]
+pub fn analyze_functions(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String]) -> Array[@report.Report]
 
-pub fn analyzed_sigs(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab) -> Array[String]
+pub fn analyze_module(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String]) -> Array[@report.Report]
+
+pub fn analyzed_sigs(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String]) -> Array[String]
 
 pub fn val_name(AbsVal) -> String
 
@@ -30,7 +32,7 @@ pub fn widen(AbsVal) -> AbsVal
 // Types and methods
 pub(all) enum AbsVal {
   ABottom
-  AInt(Int)
+  AInt(Int32)
   ABool(Bool)
   AType(String)
   AUnion(Array[String])

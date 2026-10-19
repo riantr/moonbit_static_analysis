@@ -3174,3 +3174,393 @@ still wrong with the lens. The remaining classes are named in the source and the
 has them.
 
 GATE 0489: 6 KILLED, 0 declared survivors, every restore byte-identical. 1042 tests.
+
+
+## 0490: FIVE LENS DEFECTS THE PER-FUNCTION VIEW MADE VISIBLE, AND A RENAME THE TOOLCHAIN DID
+
+0489 shipped the per-function entry and left the view reporting 265 actionable findings on moui
+0.1.12 where the module view reports 0. That 265 was never 265 defects in the analysed code. It
+was an INVENTORY of what was still wrong with the BEHAVIORAL LENS, and this increment is the
+measurement of five of those classes -- each one a defect the lens INVENTED, on code `moon check`
+accepts, and each one with a minimal repro fixture that stands on its own.
+
+THE INVENTORY WAS TAKEN BEFORE ANY FIX, by grouping the actionable findings by family and by
+message, and the groups were the diagnosis: a group of ~20 rows that all said "no method matching
+<fn>(List, ...)", a group that said "no method matching <fn>(Any, Any, Any)" against functions that
+declare seven parameters, and a group that said "no method matching +/</>=(None, ...)".
+
+  M1  A LIST VALUE AGAINST A LIST PARAMETER. The TYPE lens writes a list type as `[int]`
+      (`ty_name`); the BEHAVIORAL lens writes a list VALUE as `List` (`abs_of`); and `vmatches`
+      compares a value name against a type name. So "List" was NEVER equal to "[int]", and every
+      call passing a list was reported `no method matching take(List)`.
+  M2/M3  THE ARITY RULE. The check compared the argument count against the DECLARED count, so a
+      call that omitted an omittable parameter was reported. Measured on moui: `control_state`
+      declares SEVEN parameters (`foreground~`, `background~`, and five `?` ones) and is called
+      with THREE arguments throughout the corpus -- eleven sites, every one reported.
+  M4  A FUNCTION WHOSE BODY IS AN `if` RETURNED "None". The `SIf` arm ran the branch, and the
+      branch's trailing expression was an `SExpr`, whose value the `SExpr` arm DISCARDED. So
+      `ret_vals` stayed empty, `join_vals([])` answered "None", and every operator applied to that
+      result was reported `no method matching +(None, int)`. `clamp_double` is an `if` body, and
+      every call site of it inherited the "None".
+  M5  A STRING CONCATENATION WAS THE TYPE "int". `bin_widen` had arms for `float`, for `Any`, and
+      the `int` fallback -- and none for two strings, so `"a" + "b"` evaluated to "int". The
+      consequence was a false positive on the OUTER `+`: `("a" + "b") + "c"` has an "int" left
+      operand and a "str" right one, and the operator check reported `no method matching
+      +(int, str)`. Measured on moui `render/common/provider_shell.mbt:10`.
+  M6  A STRING COMPARISON WAS A METHOD ERROR. The comparison operators accepted only
+      `numeric(l) && numeric(r)`, and `<=` on two Strings is legal MoonBit.
+
+THE OMITTABLE SPELLINGS ARE TWO, AND BOTH ARE SETTLED AGAINST THE TOOLCHAIN (`moon check`
+0.1.20261012, and RE-SETTLED on 0.1.20261016 -- see the toolchain-upgrade section below), not
+inferred:
+
+    ACCEPT   `fn opt(x : Int, y? : Int)` called as `opt(1)`
+    ACCEPT   `fn labelled_default(x : Int, y~ : Int = 0)` called as `labelled_default(1)`
+    REJECT 4080   `required()` against `fn required(x : Int)` -- omitting a REQUIRED parameter
+    REJECT 3010   `fn f(y : Int = 0)` -- "Only labelled arguments can have default value", so the
+                  default spelling is only legal on a `~`
+
+The third row is the one that makes the rule a RANGE and not a blanket: `declared - omittable
+<= arguments <= declared`. The floor is the REQUIRED count and the ceiling is the DECLARED count,
+and a rule with either half missing is wrong in a different direction. M2 and M3 are the two
+mutations that remove them, and each is killed by a CONTROL row rather than by a positive one.
+
+MEASURED, the per-function view, before and after:
+
+    corpus             0489                    0490
+    moui             actionable 265      ->    actionable  58
+    proton           actionable 136      ->    actionable  92
+    moonbit_image    actionable  94      ->    actionable  68
+    moonbit_labeler  actionable  95      ->    actionable  48
+
+AND THE PINS DID NOT MOVE. The module view's numbers are byte-identical to the 0488 pins on all
+six corpora -- moui 4225, labeler 791, image 218, async 1829/23/0/1852, proton 2131, contract 34
+-- because every fix above is in the BEHAVIORAL lens and the module entry does not execute a
+function body. That is the property the 0489 split was built for, and this increment is the
+first thing that has exercised it: a change of this size in the lens, and the pinned numbers did
+not move.
+
+WHAT IS LEFT, and it is ONE class now rather than five. On moui, 35 of the remaining 58 are
+`undefined variable 'Constant'` -- an enum VARIANT of `DeclarationChannel` used in a SIBLING file
+of the same package -- and the rest are the same shape: `MoveEnd`, `MoveStart`, `Up`,
+`FIM_HEADER_BYTES`, `QOI_OP_RGB`, `Rect`, `proton_err_buffer_too_small`. These are the SAME-PACKAGE
+CROSS-FILE resolution gap, and the per-file `enum_ctors` limitation that the repository has
+recorded since 0432. The behavioral lens is single-file, exactly as the other two lenses are, and a
+library package is where that shows.
+
+AND A COLLATERAL DEFECT, and it is one 0489 SHIPPED: the four `pkg.generated.mbti` files were
+STALE. 0489 changed the public signature of `analyze_module` and `analyzed_sigs` (they take the
+`enum_ctors` list now) and of `scan` (it takes the `per_function` flag), and added
+`analyze_functions` and `run_functions` -- and did not regenerate the interface files that
+DECLARE those signatures. `src/interp/pkg.generated.mbti` still said `analyze_module(...,
+@core.IfaceSymTab)` with five parameters, and `src/sa/pkg.generated.mbti` still said `scan(String,
+Array[String], Array[String], Bool, String)`. The header of each file says "Generated using
+`moon info`, DON'T EDIT IT", and the repository's own history shows them being regenerated with
+the source (0468 and 0469 each touched `src/ast/pkg.generated.mbti`). So the published interface
+of four packages did not match their own source.
+
+The cost of the staleness is small but the class is not: the scanner reads a `.mbti` for the
+NAMES it declares, and a package whose interface is stale is a package that describes itself
+wrongly to every consumer. Regenerated with `moon info` in `src/ast`, `src/interp`, `src/pipeline`
+and `src/sa`.
+
+GATE 0490 (the five lens defects): 7 KILLED, 0 declared survivors, every restore byte-identical. 1055 tests.
+
+=> 判据: TWO LENSES SPELL THE SAME THING DIFFERENTLY, AND A COMPARISON BETWEEN THEM IS A
+COMPARISON BETWEEN VOCABULARIES. `vmatches` compares a VALUE name against a TYPE name, and the
+two lenses do not share a spelling for a list: `[int]` on one side, `List` on the other. The
+defect was invisible because a list against a list is a MATCH in every language the lens speaks,
+so the mismatch could only ever be found by a call. The fix is not a third spelling -- it is the
+one place that has to know about both (`is_list_name`), and the element type is deliberately not
+compared, because this lens models no list element types at all.
+
+=> 判据: A LENS THAT HAS NEVER RUN IS NOT A LENS, IT IS A HYPOTHESIS. Four of these five defects
+(`bin_widen`'s missing string arm, the comparison arm, the `if` value, the arity rule) were in
+place since before the behavioral lens existed, and the corpus never showed them because the
+module entry does not execute a function body. The per-function entry did not find them by being
+smarter -- it found them by RUNNING, and every one of them is a false positive on code the
+toolchain accepts. An instrument that has never been exercised is not an instrument.
+
+=> 判据: A MEASUREMENT NEEDS A CONTROL, OR IT IS A NUMBER. "The list rule is gone" and "the list
+rule was replaced by a blanket that silences every call whose parameter is a list" are the same
+observation. Every row in `pipeline_0490_test.mbt` is paired with one that must STILL report: a
+non-list value against a list parameter, a call that omits a REQUIRED parameter, a call that
+passes too MANY arguments, a function whose body's last statement is a `let` (which returns
+UNIT, and using that as a number IS an error), an `Int` added to a `String`, and an `Int`
+compared with a `String`.
+
+THE RELEASE GATE THEN FOUND THREE ANCHORS THAT 0490 HAD MADE STALE, and it found them LOUDLY
+rather than silently -- which is the only reason the next paragraph exists at all.
+
+    GATE FAILED: 0.4.25 mutation gate   PREFLIGHT MISS: M7 exec_alt missing else stops falling
+    GATE FAILED: 0.4.26 mutation gate   PREFLIGHT MISS: M1 the tail value is not recorded
+                                        PREFLIGHT MISS: M2 the tail pushes Bottom instead of the value
+    GATE FAILED: 0431                   PREFLIGHT MISS: M4 an ORDINARY default value is not consumed
+
+All three are the same shape, and the shape is the thing worth recording: 0490 changed the CODE
+AROUND a decision, not the decision.
+
+  0.4.25 M7  `exec_alt`'s unknown-condition arm grew two lines, because 0490 gave the else-if
+              chain a VALUE (`val = vjoin(val, self.last_value)`) and published it
+              (`self.last_value = val`). The decision under test -- `None => falls = true` -- is
+              unchanged.
+  0.4.26 M1/M2  the `STail` arm became a three-line block, because 0490 gave the interpreter a
+              `last_value` and the tail's value now has TWO homes. The decision under test --
+              "is the tail's value recorded, and is it the value that is pushed?" -- is unchanged.
+  0431 M4  the pushed `Param` grew a field (`omittable`), so the anchor's LAST line stopped
+              matching. The decision under test -- `ignore(self.parse_expr())` on the ordinary
+              default path -- is unchanged.
+
+A PREFLIGHT MISS IS THE LUCKY OUT. The harness had three ways to answer an anchor that no longer
+matches: abort loudly (what it did), mutate the FIRST of several matches (what it would have
+done with a short anchor that happened to occur twice), or retire the row. All three of these
+anchors were ABSENT rather than AMBIGUOUS -- the pre-flight counts occurrences and reports the
+two cases separately -- so the abort was the only thing that could happen. What the abort bought is
+the time to notice that the decision under test had not moved. The alternative, a short anchor
+that silently matched a different site, would have reported a clean kill for a question nobody
+asked.
+
+THE REPAIR IS A RE-ANCHOR, NOT A RETIREMENT, and the difference is worth spelling out because the
+repository has already made this repair twice: 0449 re-anchored 0.4.26 M7 after a line was
+inserted between two adjacent lines, and 0468 re-pointed 0.4.26 M3/M4 after a RENAME. A
+retirement deletes a question; a re-anchor re-points the question at the same decision in the new
+shape. What must NOT happen is the third option: inventing an anchor that merely MATCHES --
+pointing M7 at some other `match els` because it also happens to contain the word `falls` -- and
+that is how a gate ends up green while meaning nothing.
+
+MEASURED, the three re-anchored gates, standalone, on the same tree:
+
+    0.4.25   8 KILLED, 0 survivors   (M7 among them)
+    0.4.26   7 KILLED, 0 survivors   (M1 and M2 among them)
+    0431     3 KILLED, 1 declared survivor with its proof   (M4 among them)
+
+Every restore byte-identical, every baseline green.
+
+=> 判据: A PREFLIGHT MISS ASKS "DID THE CODE CHANGE SHAPE?" BEFORE IT ASKS "DID THE TEXT CHANGE?".
+Get that order wrong and a RENAME looks like a DELETION -- which is exactly what `mutate_lib.ps1`'s
+literal `IndexOf` matching did to 0443's M4 in 0467, where a DEDENT was indistinguishable from a
+deletion. The text moved here and the code did not, and the honest repair is the one that KEEPS
+ASKING: a re-anchor, and the prose in the gate script saying WHICH decision it still asks.
+
+THE TOOLCHAIN WAS UPGRADED IN THE MIDDLE OF THE RELEASE GATE, and it is the second thing the gate
+found, and the more interesting one.
+
+The second run of the 73-gate release gate failed THIRTY gates -- 0459 through 0487 -- and every
+one of them failed the same way, at one second each, with a message that was not about the code at
+all:
+
+    GATE FAILED: 0465
+      ABORT: baseline did not run (no `Total tests:` line). The suite does not compile.
+        what moon test actually printed:
+          | moon.exe : Error: Failed to resolve the module dependency graph
+          | Caused by:
+          |     Cannot inject the standard library `moonbitlang/core`: Cannot load the core file
+
+and, in another of them:
+
+    Error: Sys_error("C:\\Users\\31379\\.moon\\lib\\core\\_build\\wasm\\release\\bundle\\prelude\\prelude.mi:
+    No such file or directory")
+
+The CAUSE was not in this repository. `C:\Users\31379\.moon\lib\core` and `...\bin` were REWRITTEN
+at 2026-10-20 00:54:16, and the whole standard library was rebuilt between 00:54:32 and 00:54:38
+-- while the gate was running. The toolchain went from **0.1.20261012** to **0.1.20261016** in the
+middle of the run. The gates that failed are exactly the ones that happened to be executing during
+that window, and the ones after it -- 0488, 0489, 0490 -- passed, because the standard library was
+whole again by then.
+
+Nothing in this repository asked for that upgrade. The registry index was refreshed at 00:52:29 and
+`riantr/moonbit_doubleML 0.163.9` was cached at 00:45:12, so another project on this machine was
+installing from mooncakes.io at the same time, and the toolchain went with it.
+
+AND THE UPGRADE HAD TWO CONSEQUENCES FOR THE WORK, one mechanical and one substantive.
+
+THE MECHANICAL ONE: THE TOOLCHAIN NOW REGENERATES THE `.mbti` INTERFACE FILES ITSELF. Under
+0.1.20261012 `moon check` and `moon fmt` left `src/*/pkg.generated.mbti` alone, which is why 0490
+had to regenerate four of them by hand and why this repository's own history notes the header
+"Generated using `moon info`, DON'T EDIT IT". Under 0.1.20261016 the build writes them, and FIVE
+MORE changed on their own -- `core`, `lexer`, `moonfiles`, `types`, `walk` -- every one of them the
+same shape:
+
+    -  pub fn pos(Int, Int) -> Pos
+    +  pub fn pos(Int32, Int32) -> Pos
+    -  line : Int
+    +  line : Int32
+
+That is the SAME defect 0490 fixed in four files, in the five files 0490 did not touch: 0.1.20261012
+renamed the default integer type, `moon fmt` rewrote this repository's SOURCE to `Int32`, and the
+committed interface files kept the old spelling. They were stale, and the new toolchain noticed.
+Measured, not assumed: `_verify/_mbti_regen_probe.ps1` restores `src/core/pkg.generated.mbti` from
+`HEAD` (the `Int` spelling) and runs `moon check` -- and the file comes back with `Int32`. The
+toolchain regenerates it.
+
+THE SUBSTANTIVE ONE: **A SETTLED FACT IS A CLAIM ABOUT A TOOLCHAIN VERSION, AND ONE OF 0490's WAS
+INVERTED.** 0490's `n_omittable` comment said:
+
+    the toolchain settles that: `fn f(x~ : Int)` called as `f(1)` is accepted, but `f(x=1)` is
+    rejected with 4085, "This function has no parameter with label x~"
+
+That is WRONG ON BOTH HALVES, and the toolchain says the opposite:
+
+    ACCEPT         `fn f(x~ : Int)` called as `f(x=1)`   -- BY LABEL
+    REJECT 4086   `fn f(x~ : Int)` called as `f()`       -- "The labels x~ are required by this
+                                                          function, but not supplied."
+    REJECT 4086   `fn f(x~ : Int)` called as `f(1)`     -- a POSITIONAL pass fails too, with 4080
+                                                          as well: "requires 0 positional arguments,
+                                                          but is given 1"
+    REJECT 4085   `fn f(x : Int)` called as `f(x=1)`     -- and 4085 belongs to THIS row: a label
+                                                          on a POSITIONAL parameter, not on a `~` one
+
+The CONCLUSION the wrong evidence was offered for -- "`~` alone does not make a parameter
+omittable" -- was RIGHT, and so was the CODE, because the parser sets `omittable` only for `?` and
+for a default value. So this was a false STATEMENT in a comment, not a false rule in the analyzer.
+The `omittable` flag is set for exactly the two spellings the toolchain allows to be omitted, and
+the arity floor is exactly the required count.
+
+WHAT MAKES IT WORTH THE SPACE is that the repository ALREADY HAD THE CORRECT VERSION OF IT, in a
+different file, written earlier: `src/lexer/lexer.mbt`'s `TTilde` note (0.4.18) says a `~`
+parameter "must be supplied BY LABEL" and that the compiler "rejects a positional pass with 'The
+labels f~ are required by this function, but not supplied.'" That is EXACTLY right, and it was
+there before 0490. So the defect was not a missing measurement -- it was a SECOND, contradictory
+copy of a measurement the repository already held, and a reader who went to the lexer would have
+found the truth.
+
+THE RE-SETTLE that caught it is `_verify/_settle_0490_resettle.ps1`: EIGHTEEN rows, ONE PACKAGE
+EACH, on the installed toolchain. One package per row because a single package cannot hold two
+rows -- one row's error would mask another's -- and the whole point of a settle is to see each
+verdict separately. All eighteen agree with 0490's conclusions, and the two the old comment got
+backwards are among them.
+
+And the settle script itself had a bug worth recording, because it produced four false REJECTs on
+its first run: **`moon.mod` IS NOT JSON.** It is `key = "value"`, and a JSON body is a PARSE ERROR
+-- "unexpected token { at line 1, column 1" -- which the toolchain reports as "Failed to calculate
+build plan". A build failure that looks like a settle verdict is neither. The four rows that came
+back REJECT for the wrong reason were exactly the four that were supposed to be ACCEPT.
+
+=> 判据: A SETTLED FACT IS A CLAIM ABOUT A TOOLCHAIN, AND THE CLAIM HAS TO NAME THE VERSION. Every
+fact 0490 settled cited `moon check` 0.1.20261012 by number, and the toolchain moved to
+0.1.20261016 in the middle of the release gate -- so every one of them had to be re-checked against
+what is actually installed, and one was found INVERTED. The number in the citation is not
+decoration: it is what makes the claim checkable. And a fact that is settled ONCE and then quoted
+in a second file is a fact with two copies and no owner, and the second copy is where the
+inversion went.
+
+THE THIRD RUN OF THE GATE FAILED ON THE SELF-SCAN, and it is the most interesting of the three
+failures, because what it found was not a lens defect at all. It was a TOOLCHAIN RENAME that the
+analyzer's own tables had not followed.
+
+    GATE FAILED: self-scan (own source)
+      files=159 parsed=159 actionable=37 notices=1749 unreliable=0 withheld=0 total=1786
+      FAIL: actionable is not 0.
+
+Thirty-seven findings, and EVERY ONE of them was the same line:
+
+    unknown type 'Int32' in interface signature (not declared here, not builtin, not in any scanned interface)
+
+-- in the analyzer's OWN `src/*/pkg.generated.mbti` files, the ones the new toolchain had just
+rewritten. The `.mbti` frontend resolves a signature's type names against the ambient list, and the
+ambient list carried `Int` and not `Int32`.
+
+THE TOOLCHAIN RENAMED TWO BUILTIN TYPES. On 0.1.20261016 `Int` is `Int32` and `UInt` is `UInt32`,
+and the interfaces it generates say so:
+
+    -  pub fn pos(Int, Int) -> Pos
+    +  pub fn pos(Int32, Int32) -> Pos
+
+`Int16` and `UInt16` were NOT renamed -- the change is of the UNSUFFIXED names only, which is what
+makes it a rename rather than a widening. And the rename is not confined to the interfaces: the
+toolchain declares ALL FORTY-FOUR of the integer type's methods under `Int32::` and NONE under
+`Int::`,
+
+    44   Int32::abs, Int32::add, Int32::asr, ... Int32::unsafe_to_char
+    0    Int::...                                   <- the same forty-four, under the old name
+
+-- so the defect has TWO faces, and the second is the more expensive one:
+
+  M8  THE AMBIENT TYPE LIST did not learn the new names, so every interface the new toolchain
+      generates reported `unknown type 'Int32' in interface signature`. Thirty-seven findings on
+      this repository's own files -- and in the DEFAULT view, so every user on the new toolchain
+      was getting them too.
+  M9  THE METHOD TABLE did not learn them either. `Int32::popcnt(x)` is legal MoonBit -- and it is
+      what `moon fmt` rewrites `Int::popcnt(x)` into, because the new spelling is the toolchain's
+      canonical form -- and it was reported `undefined function 'Int32::popcnt'`.
+
+BOTH SPELLINGS ARE KEPT, and the reason is that they are the SAME type. Settled with the toolchain,
+one package per row, with a control module that must be rejected
+(`_verify/settle_0490_int32.ps1`, NINETEEN rows):
+
+    ACCEPT   `let x : Int32 = 1`            ACCEPT   `let x : Int = 1`
+    ACCEPT   `fn f(x : Int32) -> Int`       ACCEPT   `fn f(x : Int) -> Int32`
+    ACCEPT   `Array[Int32]`, `Map[String, Int32]`, `type MyInt = Int32`
+    REJECT 4032   a type that cannot exist                  <- the CONTROL
+
+and `_verify/settle_0490_intrinsic.ps1`, TEN rows, for the names NO interface declares -- the
+`T::to_json` family and `unsafe_to_char`, which the generator keeps in a HAND-WRITTEN list and which
+therefore no extraction can reach and no carrying-forward can supply:
+
+    ACCEPT   Int32::to_json      ACCEPT   UInt32::to_json      ACCEPT   Int32::unsafe_to_char
+    REJECT 4015  UInt32::unsafe_to_char     REJECT 4015  Int32::to_jsonnope    <- the CONTROL
+
+A PROBE THAT DECLARES THE WRONG RETURN TYPE LOOKS EXACTLY LIKE A MISSING METHOD. `T::to_json`
+returns `Json`, not `String`, and a probe that says `-> String` gets 4014 "Expr Type Mismatch" --
+which reads as "the method does not exist" and is a PROBE BUG, not a toolchain fact. It cost one
+round of settling and it is worth recording, because the wrong reading would have removed eighteen
+LIVE names from the table.
+
+THE TABLE IS A SUPERSET, AND THE RENAME IS WHY THAT RULE HAD TO BE WRITTEN DOWN. The generator's own
+header already said "It can never invent a false alarm, because the table only ever suppresses" --
+and the rename is the case that sentence did not cover. Running the generator on the new toolchain
+produced 1163 names against the committed 1265: 102 LOST, 0 gained, because the new interfaces no
+longer declare the old spellings.
+
+Those 102 are NOT all dropped names. One module per name, with a control module that must be
+rejected (`_verify/_settle_0490_builtins_alive.ps1`): 33 are DEAD -- the call is rejected, so
+reporting it would be CORRECT -- and 69 are ALIVE, the call is accepted, and dropping them turns
+valid code into `undefined function`. Measured on the analyzer itself, in the per-function view:
+`Int::popcnt`, `Int::next_power_of_two`, `UInt::trunc_double`, `Int::reinterpret_as_uint`,
+`Int::to_char`, `Int::to_byte` and `UInt::add` all became REPORTS on code `moon check` accepts, and
+the last two are CALLED by moui 0.1.12.
+
+    keeping a name the toolchain has DROPPED  -> a MISSED report   (accepted)
+    dropping a name the toolchain still HAS    -> a FALSE POSITIVE (not accepted)
+
+AND THE SIX PINS STILL MATCHED WITH THE REGENERATED TABLE, which is worth a sentence of its own
+because it is what a pin that cannot distinguish two states looks like. The pins are measured in the
+MODULE view, which never executes a function body, and the false positives live in the per-function
+view -- so the table could have been wrong and the pins could not have said so.
+
+THE REPAIR IS THE UNION, and it is the same repair the generator already applies to its intrinsic
+list. The previous table is read back and unioned in, so the table is the union of what the current
+interfaces declare, what the intrinsics add, and what the previous table held. Measured on
+0.1.20261016 with the committed table in place:
+
+    declared in .mbti         1143
+    carried forward            102      <- the names the new interfaces dropped
+    intrinsics                  32      (12 of them are ALSO declared in an interface)
+    total                      1265      <- the committed count, with NOTHING lost
+
+and with the rename applied -- "Int32" and "UInt32" added to the bare type list, so the extraction
+picks up the new spellings -- the table is 1344 names across 40 heads, carrying BOTH spellings of
+every renamed method.
+
+A SECOND COUNT WAS ALSO WRONG. The header said `$declared + $intrinsic.Count`, which double-counts
+the intrinsics an interface ALSO declares -- twelve of the thirty-two, so every version of the file
+was 12 too high (1277 against 1265). The overlap is now COMPUTED rather than assumed, and the
+header counts the set.
+
+GATE 0490, IN FULL: 9 KILLED, 0 declared survivors, every restore byte-identical. 1061 tests. The
+self-scan is 0 actionable, and the six corpus pins are byte-identical to the 0488 numbers on all
+six corpora -- moui 4225, labeler 791, image 218, async 1829/23/0/1852, proton 2131, contract 34.
+
+=> 判据: A TOOLCHAIN RENAME IS A CHANGE TO THE ANALYZER'S TABLES, AND NO AMOUNT OF READING THE
+ANALYZER'S OWN SOURCE WILL FIND IT. Every one of these tables is a list of names the TOOLCHAIN
+publishes, and the analyzer is the only thing that knows they can change. The self-scan found it in
+twelve seconds, because the analyzer's OWN regenerated interfaces were among the files it scanned.
+The corpus -- frozen at the old toolchain, and green on all six -- would never have shown it. A
+green corpus is not a green analyzer.
+
+=> 判据: A TABLE THAT ONLY SUPPRESSES HAS ASYMMETRIC FAILURE DIRECTIONS, AND THE ASYMMETRY IS THE
+RULE. "The table is a MIRROR of the toolchain" and "the table is a SUPERSET of the toolchain" look
+like the same sentence until the toolchain renames something. Then one of them loses sixty-nine
+live names and the other loses nothing. The direction the repository already accepted -- a missed
+report is cheaper than a false positive -- was written into the generator's header as a warning, and
+the rename is what turned the warning into a rule.

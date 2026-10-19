@@ -34,7 +34,7 @@ pub(all) struct Sig {
   param_tys : Array[Ty]
   ret : Ty
   declared_ret : Ty
-  line : Int
+  line : Int32
 } derive(Eq)
 
 pub(all) enum Ty {

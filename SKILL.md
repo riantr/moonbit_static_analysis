@@ -175,12 +175,15 @@ unchanged: the same corpora produce byte-identical numbers with and without
 the flag.
 
 > **The view is not yet sound — read this before using the numbers.** It
-> reports 265 `actionable` on `moui` 0.1.12 where the module view reports 0.
-> Those are not 265 defects; they are an inventory of what is still wrong with
-> the behavioral lens, which the entry made visible for the first time (an enum
-> constructor read as an undefined variable, a qualified constructor, a call to
-> a function-typed parameter). The classes that remain are named in the
-> source. Use the flag to *see* the lens; do not gate a build on it.
+> reports 58 `actionable` on `moui` 0.1.12 where the module view reports 0.
+> Those are not 58 defects; they are an inventory of what is still wrong with
+> the behavioral lens, which the entry made visible for the first time. Five
+> classes of lens defect were fixed along with it (a list value against a
+> list parameter, a call that omitted an omittable parameter, a function
+> whose body is an `if`, a string concatenation, and a string comparison).
+> What remains is **one** class: a name used from a sibling file of the same
+> package, which the single-file lens cannot see. Use the flag to *see* the
+> lens; do not gate a build on it.
 
 ## What the numbers mean, and what they do not
 
@@ -191,8 +194,7 @@ the flag.
 that was wrong — measured, not suspected. On `moonbitlang/core` (1029 files,
 which `moon check --target all` accepts with 0 errors and 1 warning across 716
 tasks) the 80 generated `pkg.generated.mbti` files produced **93** actionable
-findings, every one of them false. Three causes, and the first two are now
-fixed:
+findings, every one of them false. Three causes, and all three are now fixed:
 
 - the lens had **its own** builtin list, 33 names, while the `.mbt` walk had a
   different one of **three** (`print`, `len`, `abs`) and no type names at all.
@@ -206,10 +208,23 @@ fixed:
 - a `const`'s default value used to be scanned for type references, so
   `pub const MAX_VALUE : Byte = b'\xFF'` reported `unknown type 'b'` and
   `unknown type 'xFF'`. Fixed;
-- **still open**: the lens has no cross-file awareness — it consults neither
-  the cross-file symbol table nor the packages a `.mbti` imports. So the
-  remaining **13** (`Show` 5, `InspectError` 3, `SnapshotError` 2, `Logger`,
-  `ToJson`, `BenchError`) are types genuinely declared in a sibling file.
+- the lens had no cross-file awareness — it consulted neither the cross-file
+  symbol table nor the packages a `.mbti` imports. The remaining **13**
+  (`Show` 5, `InspectError` 3, `SnapshotError` 2, `Logger`, `ToJson`,
+  `BenchError`) were types genuinely declared in a sibling file. Fixed in
+  0.4.11, which gave the `.mbti` audit a module-wide interface symbol table.
+
+MEASURED on that same tree today: **0** `unknown type ... in interface
+signature` findings, out of 1029 files and 80 generated interfaces. The 93 and
+the 13 above are the HISTORY of the defect, not its current size.
+
+ONE MORE CLASS OF THE SAME SHAPE, and it is the one a toolchain upgrade
+creates. The toolchain RENAMED the two unsuffixed integer types — `Int` is now
+`Int32`, `UInt` is now `UInt32` — and every interface it generates says so. The
+ambient list has to carry BOTH spellings: they are the same type (`moon check`
+accepts `let x : Int32 = 1` and `let x : Int = 1`, and accepts either in
+either position), and `moon fmt` rewrites `Int` into `Int32`, so the old
+spelling is what a user has in their file until they format it.
 
 So an `unknown type ... in interface signature` finding on a `.mbti` should
 be treated as **unverified**, the same way a `.mbt` finding past the

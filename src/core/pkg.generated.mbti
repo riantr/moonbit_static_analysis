@@ -8,11 +8,11 @@ pub fn builtin_method_names() -> Array[String]
 
 pub fn path_tail(String) -> String
 
-pub fn pos(Int, Int) -> Pos
+pub fn pos(Int32, Int32) -> Pos
 
 pub fn snapshot_vst(Array[Frame]) -> Array[Frame]
 
-pub fn span_at(Int, Int, Int) -> Span
+pub fn span_at(Int32, Int32, Int32) -> Span
 
 pub fn unqualified(String) -> String
 
@@ -47,7 +47,7 @@ pub fn Family::severity(Self) -> Severity
 pub(all) struct Frame {
   func : String
   file : String
-  line : Int
+  line : Int32
 } derive(Eq)
 
 pub struct IfaceSymTab {
@@ -61,8 +61,8 @@ pub fn IfaceSymTab::has_type(Self, String) -> Bool
 pub fn IfaceSymTab::has_value(Self, String) -> Bool
 pub fn IfaceSymTab::is_const(Self, String) -> Bool
 pub fn IfaceSymTab::merge(Self, Self) -> Self
-pub fn IfaceSymTab::n_types(Self) -> Int
-pub fn IfaceSymTab::n_values(Self) -> Int
+pub fn IfaceSymTab::n_types(Self) -> Int32
+pub fn IfaceSymTab::n_values(Self) -> Int32
 pub fn IfaceSymTab::union(Self, Self) -> Self
 
 pub(all) enum Lens {
@@ -72,11 +72,11 @@ pub(all) enum Lens {
 } derive(Eq)
 pub fn Lens::lower(Self, Self) -> Bool
 pub fn Lens::name(Self) -> String
-pub fn Lens::rank(Self) -> Int
+pub fn Lens::rank(Self) -> Int32
 
 pub(all) struct Pos {
-  line : Int
-  col : Int
+  line : Int32
+  col : Int32
 } derive(Eq)
 
 pub(all) enum Severity {

@@ -16,20 +16,22 @@ pub fn render_result(PipelineResult) -> String
 
 pub fn run(String, String, @core.IfaceSymTab) -> PipelineResult
 
+pub fn run_functions(String, String, @core.IfaceSymTab) -> PipelineResult
+
 // Errors
 
 // Types and methods
 pub(all) struct PipelineResult {
   reports : Array[@report.Report]
   sigs : Array[String]
-  n_structural : Int
-  n_type : Int
-  n_behavior : Int
+  n_structural : Int32
+  n_type : Int32
+  n_behavior : Int32
   imports : Array[@ast.ImportSpec]
-  n_parse : Int
+  n_parse : Int32
   parse_reason : String
-  n_subset : Int
-  first_error_line : Int
+  n_subset : Int32
+  first_error_line : Int32
 }
 
 // Type aliases

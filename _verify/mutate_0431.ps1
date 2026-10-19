@@ -31,6 +31,16 @@
 # MustRed on all four. "Killed" alone does not say the right thing went red, and
 # M3 in particular is the kind of mutation a count-only gate would report as
 # SURVIVED rather than as a lie.
+#
+# M4 RE-ANCHORED BY 0490, and the reason is the one the 0468 header in
+# `mutate_0426.ps1` already states: a preflight MISS asks "did the code change
+# SHAPE?" before it asks "did the text change?". 0490 made the parser record
+# whether a parameter may be OMITTED, so the pushed `Param` grew a field --
+# `omittable` -- and the last line of M4's anchor no longer matched. The code
+# under test, `ignore(self.parse_expr())` on the ordinary-default path, is
+# UNCHANGED, so the anchor is re-pointed at the same decision in the new shape.
+# It is not retired, and it is not re-pointed at some other `} else {`: the
+# anchor still names the ordinary-default branch and only it.
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
@@ -118,13 +128,13 @@ why the verdict is declared with its argument instead.
         ignore(self.parse_expr())
       }
     }
-    params.push({ name: pname, tyann: ann, span: psp, })
+    params.push({ name: pname, tyann: ann, omittable, span: psp, })
 '@.Replace("`r`n", "`n")
     Repl = @'
       } else {
       }
     }
-    params.push({ name: pname, tyann: ann, span: psp, })
+    params.push({ name: pname, tyann: ann, omittable, span: psp, })
 '@.Replace("`r`n", "`n")
     MustRed = 'an ordinary default value still parses'
   }

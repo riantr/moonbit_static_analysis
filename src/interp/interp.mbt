@@ -99,6 +99,37 @@ pub fn widen(v : AbsVal) -> AbsVal {
 }
 
 ///|
+/// Is `name` a LIST name, in EITHER of the two spellings this repository uses?
+///
+/// The TYPE lens writes a list type as `[int]` -- `ty_name`'s `TList` arm -- and
+/// the BEHAVIORAL lens writes a list VALUE as `List` -- `abs_of`'s `TList` arm and
+/// `eval`'s `EList`. `vmatches` compares a VALUE name against a TYPE name, so the
+/// two spellings have to MEET, or every list is a type error.
+///
+/// MEASURED, they did not meet, and the cost was a false positive on every call
+/// that passes a list: a fresh `Array[Int]` parameter bound to `AType("List")`
+/// and passed to an `Array[Int]` parameter spelled `[int]` was reported
+///
+///     no method matching take(List)
+///
+/// on code `moon check` accepts, because "List" is not "[int]".
+///
+/// THE ELEMENT TYPE IS NOT COMPARED, and that is the right side to err on: this
+/// lens models no list element types at all (a list LITERAL is `List` whatever
+/// its elements are), so claiming that one list is not another would be a CLAIM
+/// the lens cannot support. The same reasoning the `AAny` arm already uses.
+fn is_list_name(name : String) -> Bool {
+  if name == "List" {
+    return true
+  }
+  let chars = name.to_array()
+  if chars.length() < 2 {
+    return false
+  }
+  chars[0] == '[' && chars[chars.length() - 1] == ']'
+}
+
+///|
 /// Can value `v` be an argument for a parameter declared `ty`?
 /// Bottom is vacuously applicable; Any matches everything (keep
 /// inferring under Any — conservative).
@@ -108,7 +139,7 @@ pub fn vmatches(v : AbsVal, ty : String) -> Bool {
     AAny => true
     AInt(_) => ty == "int" || ty == "float" || ty == "Any"
     ABool(_) => ty == "bool" || ty == "Any"
-    AType(t) => t == ty || ty == "Any"
+    AType(t) => t == ty || ty == "Any" || (is_list_name(t) && is_list_name(ty))
     AUnion(xs) => {
       let mut any = false
       for x in xs {
@@ -149,6 +180,9 @@ priv struct MethodDef {
   ptypes : Array[String]
   /// parameter names, in order (from the walk table)
   pnames : Array[String]
+  /// how many of the parameters a call may OMIT (declared `name? : T`, or
+  /// declared `name~ : T = default`). See `n_omittable`.
+  nopt : Int32
   /// the partial return used on recursive cycles (from the signature)
   cycle_ret : AbsVal
   body : Array[@ast.Stmt]
@@ -221,6 +255,17 @@ priv struct Interp {
   /// only. The defect was in the lens, not in the entry; the entry only made
   /// it visible.
   ctors : Map[String, Bool]
+  /// THE VALUE OF THE STATEMENT LAST EXECUTED, if it has one.
+  ///
+  /// This is how a function whose body's last statement is an `if` gets the
+  /// BRANCH's value: the branch's trailing expression is an `SExpr`, and the
+  /// `SExpr` arm used to throw the value away. `ret_vals` -- the other route to
+  /// a function's value -- only carries a `return` and a `STail`, so an `if`
+  /// body left it empty and `join_vals([])` answered "None".
+  ///
+  /// It is reset at the top of every `exec_stmt`, so a statement with no value
+  /// leaves ABottom rather than a stale value from the statement before it.
+  mut last_value : AbsVal
   file : String
   /// signature cache: key -> return value
   cache : Map[String, AbsVal]
@@ -247,6 +292,7 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
     ambient,
     local_fns: Map([]),
     ctors: Map([]),
+    last_value: ABottom,
     file,
     globals: Map([]),
     cache: Map([]),
@@ -364,6 +410,7 @@ fn setup_interp(
       name: f.name,
       ptypes,
       pnames: fn_pnames(f),
+      nopt: n_omittable(f),
       cycle_ret,
       body: f.body,
       line: f.span.start.line,
@@ -499,6 +546,7 @@ fn Interp::analyze_entry(
     name: f.name,
     ptypes,
     pnames: fn_pnames(f),
+    nopt: n_omittable(f),
     cycle_ret,
     body: f.body,
     line: f.span.start.line,
@@ -514,6 +562,12 @@ fn Interp::analyze_entry(
 /// while the lens's values are `List` and `Any`. The two must not be mixed --
 /// `vmatches` compares a value name against a type name, and `AType("List")`
 /// does not equal `"[int]"`.
+/// THE WAY OUT IS `is_list_name`, NOT A DIFFERENT SPELLING HERE: a value that is
+/// spelled `AType("[int]")` would no longer be the `List` the lens's own
+/// `EList` / `EIndex` / `len` arms recognise, so the two vocabularies would
+/// still disagree -- just with the disagreement moved. `is_list_name` is where
+/// the two spellings MEET, and it is the only place that has to know about
+/// both.
 fn abs_of(t : @types.Ty) -> AbsVal {
   match t {
     @types.TInt => AType("int")
@@ -614,10 +668,24 @@ fn Interp::exec_stmt(
   s : @ast.Stmt,
   env : Map[String, AbsVal],
 ) -> Unit {
+  // THE VALUE OF THIS STATEMENT, if it has one. Reset FIRST, so a statement
+  // with no value leaves ABottom rather than a stale value from the statement
+  // before it.
+  //
+  // WHY IT EXISTS. A function whose body's last statement is an `if` returns
+  // the BRANCH's value, and the branch's value was being evaluated and
+  // DISCARDED: the `SIf` arm ran the branch, and the branch's trailing
+  // expression was an `SExpr`, whose value nothing kept. So `ret_vals` stayed
+  // empty and `join_vals([])` answered "None" -- and every operator applied
+  // to that result was reported as a method error:
+  //
+  //     no method matching +(None, int)
+  //
+  // on code `moon check` accepts. Measured on moui 0.1.12: `clamp_double` is
+  // an `if` body, and every call site of it inherited the "None".
+  self.last_value = ABottom
   match s.kind {
-    SExpr(e) => {
-      let _ = self.eval(e, env)
-    }
+    SExpr(e) => self.last_value = self.eval(e, env)
     SLet(n, _, init) => {
       let v = self.eval(init, env)
       env.set(n, v)
@@ -687,12 +755,17 @@ fn Interp::exec_stmt(
           // branch starts from FNormal and the results are joined at the end.
           self.flow = FNormal
           self.exec_block(then, env_then)
+          // THE VALUE OF THE `if`. Every branch is explored (the condition is
+          // unknown), so the value is their JOIN -- the same join the bindings
+          // get, applied to the value instead of the environment.
+          let mut val = self.last_value
           let mut falls = self.flow == FNormal
           let acc = env_then
           for ei in elseifs {
             let env_ei = copy_env(acc)
             self.flow = FNormal
             self.exec_block(ei.body, env_ei)
+            val = vjoin(val, self.last_value)
             if self.flow == FNormal {
               falls = true
             }
@@ -707,6 +780,7 @@ fn Interp::exec_stmt(
               let env_e = copy_env(acc)
               self.flow = FNormal
               self.exec_block(e, env_e)
+              val = vjoin(val, self.last_value)
               if self.flow == FNormal {
                 falls = true
               }
@@ -725,6 +799,7 @@ fn Interp::exec_stmt(
           for k, v in acc {
             env.set(k, v)
           }
+          self.last_value = val
           // The join. Falls through if ANY branch does, which is the standard
           // join and the whole point: a terminating `else` can no longer make
           // the statements after the `if` unreachable when the then-branch
@@ -810,7 +885,10 @@ fn Interp::exec_stmt(
     //
     // Unlike a raise, the expression IS evaluated: it is the return value, not
     // an operand after the end of the frame.
-    STail(e) => self.ret_vals.push(self.eval(e, env))
+    STail(e) => {
+      self.last_value = self.eval(e, env)
+      self.ret_vals.push(self.last_value)
+    }
     // A raise terminates the frame exactly as a return does, so the flow is
     // `FReturn` -- there is deliberately no separate `FRaise`, because from
     // inside this frame the two are indistinguishable and a third state would
@@ -882,6 +960,9 @@ fn Interp::exec_alt(
         // Same join as the then/elseif arms: fall through if ANY branch does.
         self.flow = FNormal
         self.exec_block(elseifs[idx].body, env)
+        // The VALUE of the chain, joined across the branches -- the same join
+        // the `if` arm does, for the same reason.
+        let mut val = self.last_value
         let mut falls = self.flow == FNormal
         let mut j = idx + 1
         // A `while` and not `for j in (idx + 1)..elseifs.length()`: the range
@@ -890,6 +971,7 @@ fn Interp::exec_alt(
         while j < elseifs.length() {
           self.flow = FNormal
           self.exec_block(elseifs[j].body, env)
+          val = vjoin(val, self.last_value)
           if self.flow == FNormal {
             falls = true
           }
@@ -899,6 +981,7 @@ fn Interp::exec_alt(
           Some(e) => {
             self.flow = FNormal
             self.exec_block(e, env)
+            val = vjoin(val, self.last_value)
             if self.flow == FNormal {
               falls = true
             }
@@ -907,6 +990,7 @@ fn Interp::exec_alt(
           // nothing runs and control continues.
           None => falls = true
         }
+        self.last_value = val
         falls
       }
     }
@@ -1363,7 +1447,19 @@ fn Interp::binop(
             ABottom
           }
         OpLt | OpLe | OpGt | OpGe =>
-          if numeric(l) && numeric(r) {
+          // TWO STRINGS COMPARE. The arm accepted only `numeric(l) &&
+          // numeric(r)`, and a String comparison is legal MoonBit -- settled
+          // with the toolchain: `fn cmp_string(a : String, b : String) -> Bool
+          // { a <= b }` COMPILES, with no error.
+          //
+          // MEASURED, the corpus paid for the missing case: proton 0.3.4
+          // reported `no method matching <=(str, str)` and
+          // `>=(str, str)` -- eight findings, on code `moon check` accepts.
+          //
+          // The `strv(l) && strv(r)` test is the same one the `OpAdd` arm
+          // uses, and it is as narrow: a MIXED comparison (`int <= str`) still
+          // fails both halves and is still reported.
+          if (numeric(l) && numeric(r)) || (strv(l) && strv(r)) {
             AType("bool")
           } else {
             self.report(
@@ -1434,6 +1530,28 @@ fn bin_widen(op : @ast.BOp, l : AbsVal, r : AbsVal) -> String {
   if lname == "Any" || rname == "Any" {
     return "Any"
   }
+  // A STRING CONCATENATION IS A STRING. The arm was missing, and the `+` on
+  // two strings fell through to the "int" below -- so `"a" + "b"` evaluated to
+  // the type "int".
+  //
+  // MEASURED, and the consequence was a false positive on the OUTER `+` of a
+  // concatenation: `("a" + "b") + "c"` has an "int" left operand and a "str"
+  // right one, and the operator check reported
+  //
+  //     no method matching +(int, str)
+  //
+  // on code `moon check` accepts. moui 0.1.12
+  // `render/common/provider_shell.mbt:10` is one of the sites.
+  //
+  // The arm is placed HERE, after the "Any" arm and before the "int" fallback,
+  // and that position is the point: `bin_widen` is reached with two STRINGS
+  // only from the `OpAdd` arm's `strv(l) && strv(r)` test, so this arm cannot
+  // touch the arithmetic path. It is not a general "strings are not ints" rule
+  // -- it is the one missing case of a function whose every other case was
+  // already there.
+  if lname == "str" && rname == "str" {
+    return "str"
+  }
   "int"
 }
 
@@ -1499,7 +1617,23 @@ fn Interp::call(
           ok = false
         }
       }
-      if vals.length() != def.ptypes.length() {
+      // THE ARITY RULE. A call may OMIT the parameters the function declares
+      // optional, and it may not supply more arguments than the function
+      // declares:
+      //
+      //     declared - nopt  <=  arguments  <=  declared
+      //
+      // The rule used to be `arguments == declared`, which rejected every
+      // call that omitted an optional parameter -- measured on moui 0.1.12:
+      // `control_state` declares SEVEN parameters and is called with THREE
+      // arguments, and `wire_string` declares two and is called with one.
+      //
+      // It is NOT a blanket "any count is fine": supplying MORE arguments than
+      // the function declares is still an error, and the floor is the number
+      // of REQUIRED parameters, so a call that omits a required one is still
+      // reported.
+      let declared = def.ptypes.length()
+      if vals.length() > declared || vals.length() < declared - def.nopt {
         ok = false
       }
       if !ok {
@@ -1668,7 +1802,25 @@ fn Interp::analyze_fn(
   // body uses parameter names; map them from the stored def body params
   self.bind_params(def, vals, env)
   self.exec_block(def.body, env)
-  let ret = join_vals(self.ret_vals)
+  // THE FUNCTION'S VALUE. `ret_vals` carries the `return`s and the body's
+  // trailing expression, and it is the right answer whenever it is not empty.
+  //
+  // When it IS empty, the body's last statement had no value of its own --
+  // and the one case that HAS a value the `ret_vals` route cannot see is an
+  // `if`, whose branch's value `exec_stmt` records in `last_value`. Without
+  // that, `join_vals([])` answered "None" and every operator applied to the
+  // result was reported as a method error.
+  //
+  // ABottom is NOT substituted for "None" here: a function whose body's last
+  // statement is a `let` returns UNIT, and "None" says that, while ABottom
+  // says "no value at all" -- a different claim, and a stronger one.
+  let ret = if self.ret_vals.length() > 0 {
+    join_vals(self.ret_vals)
+  } else if self.last_value != ABottom {
+    self.last_value
+  } else {
+    join_vals(self.ret_vals)
+  }
   let _ = self.vst.pop()
   self.sink = saved_sink
   self.ret_vals = saved_ret
@@ -1724,6 +1876,87 @@ fn fn_pnames(f : @walk.FnInfo) -> Array[String] {
     out.push(p.name)
   }
   out
+}
+
+///|
+/// How many of a function's parameters a call may OMIT -- the ones declared
+/// `name? : T`, and the ones declared `name~ : T = default`.
+///
+/// MEASURED, the arity check used to compare the argument count against the
+/// DECLARED count, so every call that omitted an omittable parameter was
+/// reported as a method error. `fn control_state(foreground~ : @core.Color,
+/// background~ : @core.Brush, border? : @core.BorderStyle, radius? : Double = 0.0,
+/// ...)` declares SEVEN parameters and is called with THREE arguments
+/// throughout moui 0.1.12, and every one of those calls was reported `no
+/// method matching control_state(Any, Any, Any)` -- on code `moon check`
+/// accepts.
+///
+/// The count is of OMITTABLE parameters wherever they sit, not of a trailing
+/// run: a parameter that may be omitted reduces the floor by one, and a
+/// parameter that may not raises it by one. The rule is therefore
+///
+///     required <= arguments <= declared
+///
+/// which is the whole of what the AST can say.
+///
+/// THE `~` MARKER ON ITS OWN IS NOT OMISSIBLE, and the toolchain settles it.
+/// A `~` parameter is a LABEL: it must be supplied BY LABEL, and a call that
+/// omits it is rejected -- so it is REQUIRED, and it does not reduce the floor.
+///
+///     REJECT 4086   `fn f(x~ : Int)` called as `f()`
+///                    "The labels x~ are required by this function, but not
+///                     supplied."
+///     REJECT 4086   `fn f(x~ : Int)` called as `f(1)` -- a POSITIONAL pass
+///                    also fails, with 4080 as well: the function "requires 0
+///                    positional arguments, but is given 1".
+///     ACCEPT         `fn f(x~ : Int)` called as `f(x=1)` -- by LABEL.
+///
+/// So `~` alone contributes NOTHING to the omittable count, and the two
+/// spellings that do are `name? : T` (the `?` marker) and `name~ : T = default`
+/// (a default value, which the toolchain allows only on a `~` -- a default on
+/// a POSITIONAL parameter is rejected with 3010).
+///
+/// THIS COMMENT WAS WRONG AND SAID SO, and the wrongness is worth keeping.
+/// It used to read: "`fn f(x~ : Int)` called as `f(1)` is accepted, but
+/// `f(x=1)` is rejected with 4085, 'This function has no parameter with label
+/// x~'." That is INVERTED on both halves, and the 4085 belongs to a different
+/// row entirely -- it is the error for a label on a POSITIONAL parameter
+/// (`fn f(x : Int)` called as `f(x=1)`), not for a label on a `~` one.
+///
+/// The conclusion the wrong evidence was offered for -- "`~` does not make a
+/// parameter omittable" -- was RIGHT, and the code was right with it, because
+/// the parser sets `omittable` only for `?` and for a default value. So this
+/// was a false STATEMENT in a comment, not a false rule in the analyzer.
+///
+/// It survived because it was read as a settled fact rather than as a
+/// measurement, and the repository already had the CORRECT version of it in a
+/// different file: `src/lexer/lexer.mbt`'s `TTilde` note (0.4.18) says a `~`
+/// parameter "must be supplied BY LABEL" and that the compiler "rejects a
+/// positional pass with 'The labels f~ are required by this function, but not
+/// supplied.'" That is exactly right, and it was written before 0490.
+///
+/// The toolchain was UPGRADED (0.1.20261012 -> 0.1.20261016) in the middle of
+/// the 0490 release gate, which is what forced every settled fact to be
+/// re-checked against what is actually installed -- and this one was found
+/// inverted by that re-check rather than by the upgrade: the old toolchain
+/// agrees with the new one on all eighteen rows of
+/// `_verify/_settle_0490_resettle.ps1`.
+///
+/// => 判据: A SETTLED FACT IS A CLAIM ABOUT A TOOLCHAIN, AND THE CLAIM HAS TO NAME
+/// THE VERSION. A comment that says "the toolchain settles that" and then
+/// states the OPPOSITE of what the toolchain says is worse than no comment at
+/// all, because the next reader inherits it as a premise. And the two ways a
+/// fact like this rots are BOTH live here: the toolchain moves, and the
+/// evidence gets written down backwards. The re-settle that caught it was
+/// fifteen rows and one package each -- cheap.
+fn n_omittable(f : @walk.FnInfo) -> Int32 {
+  let mut n = 0
+  for p in f.params {
+    if p.omittable {
+      n += 1
+    }
+  }
+  n
 }
 
 ///|
@@ -1829,6 +2062,7 @@ pub fn analyzed_sigs(
       name: f.name,
       ptypes,
       pnames: fn_pnames(f),
+      nopt: n_omittable(f),
       cycle_ret,
       body: f.body,
       line: f.span.start.line,

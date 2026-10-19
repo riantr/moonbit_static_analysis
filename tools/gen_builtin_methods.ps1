@@ -32,6 +32,56 @@
 # stale list omits new names, which puts the analyzer back to reporting them.
 # It can never invent a false alarm, because the table only ever suppresses.
 #
+# THE MAINTENANCE PATH WAS UNSAFE, and the fix is measured. 0490's release gate
+# ran while the toolchain was upgraded 0.1.20261012 -> 0.1.20261016, and the
+# new core's interfaces declare 102 FEWER type-qualified names: `Int::abs` is
+# now a bare `int::abs` in a package, `Buffer::write` is `Buffer::write_bytes`
+# and `Buffer::write_string_utf8`, and so on. Running this script on the new
+# toolchain produced 1163 names against the committed 1265 -- 102 LOST, 0
+# gained -- and the header's own warning does not cover that direction.
+#
+# The table only ever SUPPRESSES, so its two failure directions are not
+# symmetric, and the repo already settled which one it accepts:
+#
+#   keeping a name the toolchain has DROPPED  -> a MISSED report
+#   dropping a name the toolchain still HAS    -> a FALSE POSITIVE
+#
+# And the 102 are NOT all dropped names. Measured one module per name against
+# the new toolchain (`_verify/_settle_0490_builtins_alive.ps1`, with a control
+# module that must be rejected): 33 are DEAD -- the call is rejected, so
+# reporting it would be CORRECT -- and 69 are ALIVE, the call is accepted, and
+# dropping them turns valid code into `undefined function`. Measured on the
+# analyzer itself: `Int::popcnt`, `Int::next_power_of_two`,
+# `UInt::trunc_double`, `Int::reinterpret_as_uint`, `Int::to_char`,
+# `Int::to_byte` and `UInt::add` all became REPORTS on code `moon check`
+# accepts, and the last two are CALLED by moui 0.1.12.
+#
+# So the extraction reads a WEAKER source than the compiler's own resolution:
+# the .mbti interfaces do not declare every name the compiler accepts. The
+# repair is the SAME one this script already applies to the intrinsic list --
+# keep the names that were in the table, and only ever ADD:
+#
+#     THE TABLE IS A SUPERSET. It is the union of what the current interfaces
+#     declare and what the previous table held, so running this on a newer
+#     toolchain cannot turn a valid call into a report.
+#
+# THE REPAIR IS IMPLEMENTED -- section 4 reads the previous table back and
+# unions it in. Measured on 0.1.20261016 with the committed 1265-name table in
+# place: the extraction alone reaches 1163, the union reaches 1265, and not
+# one name is lost. The 102 the new interfaces no longer declare come back
+# through the union, 33 of them dead and 69 still callable, and the live ones
+# keep the analyzer quiet on code `moon check` accepts.
+#
+# A SECOND COUNT WAS ALSO WRONG, and the union is not what fixed it. The
+# header said `$declared + $intrinsic.Count` names, which double-counts the
+# intrinsics that an interface ALSO declares -- twelve of the thirty-two, so
+# every version of this file was 12 too high (1277 against 1265). The overlap
+# is now computed, and the header counts the set.
+#
+# The consequence is that the table only ever GROWS, and the dead names
+# accumulate. That is the direction the table already accepts -- a missed
+# report is a smaller cost than a false positive, and the header says so.
+#
 # The script runs `moon fmt` over the tree at the end. moonfmt reflows the
 # array literal and this script does not try to imitate that — its line filling
 # differs, and a generator that guessed at it would emit a file `moon fmt
@@ -139,24 +189,110 @@ $declared = $set.Count
 # type-correct case next to it.
 $intrinsic = @(
   'Array::copy', 'Array::from_iter', 'Array::make', 'Array::makei',
-  'Array::sort', 'Float::NaN', 'Int::unsafe_to_char', 'Map::each',
+  'Array::sort', 'Float::NaN', 'Int::unsafe_to_char', 'Int32::unsafe_to_char',
+  'Map::each',
   'Map::from_array', 'Map::new', 'Option::None', 'Ref::new',
   'String::starts_with', 'StringBuilder::new',
   # T::to_json -- declared by no interface, present on the builtin types.
-  # Preserved from the pre-0.4.35 table rather than re-derived, because the
-  # failure direction of keeping a name the toolchain has since dropped is a
-  # MISSED report, which this table already accepts, while the direction of
-  # dropping one it still has is a FALSE POSITIVE, which it does not.
-  # The list is transcribed, not composed: the first version of it guessed
-  # `UInt32::to_json` into existence and dropped `Unit::to_json`, which the
-  # superset check caught immediately. Read it out of the old table instead.
+  #
+  # BOTH SPELLINGS ARE KEPT, for the reason the whole table keeps both: a
+  # name the toolchain has RENAMED is a MISSED report, and a name the toolchain
+  # still has is a FALSE POSITIVE. Only the second is acceptable.
+  #
+  # THE RENAME, AND THE THREE NAMES IT ADDS. The toolchain renamed the two
+  # unsuffixed integer types on 0.1.20261016 -- `Int` is now `Int32`, `UInt` is
+  # now `UInt32` -- and this list is HAND-WRITTEN, so it is the one part of the
+  # table that no extraction can repair and no carrying-forward can reach: the
+  # old table never had `Int32::to_json`, because `Int32` did not exist.
+  #
+  # The three names below are therefore SETTLED, not composed. A probe per
+  # name, one package each, with a control module that must be rejected
+  # (`_verify/settle_0490_intrinsic.ps1`):
+  #
+  #   ACCEPT   Int32::to_json        ACCEPT   UInt32::to_json
+  #   ACCEPT   Int32::unsafe_to_char
+  #   REJECT 4015  UInt32::unsafe_to_char   <- the intrinsic is signed-only
+  #   REJECT 4015  Int32::to_jsonnope      <- the CONTROL
+  #
+  # `UInt32::to_json` is worth a note. An earlier version of this list GUESSED
+  # it into existence and the superset check caught it and removed it, because
+  # the old table did not hold it and a guessed name is a guess. On this
+  # toolchain it is a real, settled name -- the guess was right for the wrong
+  # reason, and it is back because it was MEASURED.
+  #
+  # `Int32::to_json` returns `Json`, not `String`. A probe that declares the
+  # return type as `String` gets 4014 "Expr Type Mismatch" and reads as a
+  # missing method, which is a probe bug that looks exactly like a toolchain
+  # fact.
   'ArgsLoc::to_json', 'Bool::to_json', 'Byte::to_json', 'Bytes::to_json',
   'BytesView::to_json', 'Char::to_json', 'Double::to_json', 'Error::to_json',
-  'Failure::to_json', 'Float::to_json', 'Int::to_json', 'Int64::to_json',
-  'String::to_json', 'StringView::to_json', 'UInt::to_json', 'UInt16::to_json',
+  'Failure::to_json', 'Float::to_json', 'Int::to_json', 'Int32::to_json',
+  'Int64::to_json',
+  'String::to_json', 'StringView::to_json', 'UInt::to_json', 'UInt32::to_json',
+  'UInt16::to_json',
   'UInt64::to_json', 'Unit::to_json'
 )
-foreach ($n in $intrinsic) { $set[$n] = 1 }
+#
+# TWELVE OF THESE ARE ALSO DECLARED IN AN INTERFACE, and that is the whole
+# explanation for a count that was 12 too high in every version of this file:
+# the header said `$declared + $intrinsic.Count`, which counts a name twice
+# when the interface already declared it. The overlap is COMPUTED here rather
+# than transcribed, so it cannot go stale the way a hand-written list of the
+# twelve would.
+$intrinsicOverlap = @()
+foreach ($n in $intrinsic) {
+  if ($set.ContainsKey($n)) { $intrinsicOverlap += $n }
+  $set[$n] = 1
+}
+$intrinsicDeclared = $intrinsicOverlap.Count
+
+# --- 4. carry the PREVIOUS table forward --------------------------------
+# THE TABLE IS A SUPERSET, and this step is what makes it one.
+#
+# The extraction above reads a WEAKER source than the compiler's own
+# resolution: the .mbti interfaces do not declare every name the compiler
+# accepts. So a toolchain upgrade can REMOVE names from the extraction while
+# the calls stay valid. Measured on the 0.1.20261012 -> 0.1.20261016 upgrade:
+# the new interfaces declare 102 fewer names, and a probe per name (one module
+# each, with a control module that must be rejected) settled 33 of them DEAD
+# and 69 still ALIVE. Dropping those 69 turned valid calls -- two of them
+# called by moui 0.1.12 -- into `undefined function`.
+#
+# The two failure directions are not symmetric, and this repo settled which one
+# it accepts:
+#
+#     keeping a name the toolchain has DROPPED  -> a MISSED report   (accepted)
+#     dropping a name the toolchain still HAS    -> a FALSE POSITIVE (not accepted)
+#
+# So the previous table is read back and UNIONED IN. The table then only ever
+# grows and dead names accumulate -- the same trade the intrinsic list already
+# makes, and the direction the header has always accepted.
+#
+# The previous table is read from the file this script is about to overwrite.
+# That is deliberate: the file IS the accumulated state, and it is the only
+# copy of the carried names that exists anywhere. If it is absent the union
+# has nothing to read, and the report below says so out loud rather than
+# letting a reader assume a superset it did not get.
+$prevPath = "$repo\src\core\builtin_methods.mbt"
+$carried = 0
+$hadPrev = $false
+$prevNames = @{}
+if (Test-Path $prevPath) {
+  $hadPrev = $true
+  foreach ($line in [IO.File]::ReadAllLines($prevPath, $enc)) {
+    $s = $line.Trim()
+    # Comment lines carry prose, and prose carries backticked names. Only the
+    # array body is data.
+    if ($s.StartsWith('//')) { continue }
+    foreach ($m in [regex]::Matches($s, '"([A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*)"')) {
+      $prevNames[$m.Groups[1].Value] = 1
+    }
+  }
+  foreach ($n in $prevNames.Keys) {
+    if (-not $set.ContainsKey($n)) { $carried += 1 }
+    $set[$n] = 1
+  }
+}
 
 # DERIVED, not copied. The provenance line written into the generated file used to
 # carry a version typed in by hand, so it went stale the moment the toolchain moved
@@ -203,18 +339,36 @@ $sb = [Text.StringBuilder]::new()
 [void]$sb.AppendLine('//')
 [void]$sb.AppendLine('// Provenance. Read out of the toolchain''s own generated interfaces,')
 [void]$sb.AppendLine("// <toolchain>/lib/core/**/pkg.generated.mbti, at the toolchain this was")
-[void]$sb.AppendLine("// last run against -- the version below is WRITTEN BY THE GENERATOR and")
-[void]$sb.AppendLine("// was typed in by hand until 0.4.35, which is how a stale table could")
-[void]$sb.AppendLine("// not be told apart from a current one.        toolchain: $verdict")
+[void]$sb.AppendLine("// last run against, PLUS the previous table for the names that")
+[void]$sb.AppendLine("// toolchain no longer declares -- see the SUPERSET note below. The")
+[void]$sb.AppendLine("// version below is WRITTEN BY THE GENERATOR and was typed in by hand")
+[void]$sb.AppendLine("// until 0.4.35, which is how a stale table could not be told apart from")
+[void]$sb.AppendLine("// a current one.                    toolchain: $verdict")
 [void]$sb.AppendLine("//")
-[void]$sb.AppendLine("// Of the $(($declared + $intrinsic.Count)) names below, $aliasesKept come from an")
+[void]$sb.AppendLine("// Of the $($set.Count) names below, $aliasesKept come from an")
 [void]$sb.AppendLine("// #alias DIRECTIVE rather than from a declaration: #alias(from_array)")
 [void]$sb.AppendLine("// above [type Set[K]] is what makes Set::from_array a real callable")
 [void]$sb.AppendLine("// name. The rest are plain declarations, of which every GENERIC one")
 [void]$sb.AppendLine("// ([pub fn[K : Eq] Set::add]) was invisible to this generator until")
 [void]$sb.AppendLine("// 0.4.35, because its pattern demanded the name come straight after")
-[void]$sb.AppendLine("// fn. The last $($intrinsic.Count) are compiler builtins that no")
-[void]$sb.AppendLine("// interface declares, settled with [moon check].")
+[void]$sb.AppendLine("// fn.")
+[void]$sb.AppendLine("//")
+[void]$sb.AppendLine("// THE LIST IS A SUPERSET, and it is BUILT as one: the union of what the")
+[void]$sb.AppendLine("// current interfaces declare, what the compiler intrinsics add, and")
+[void]$sb.AppendLine("// what the PREVIOUS table held. $carried names are carried forward from")
+[void]$sb.AppendLine("// the table this run replaces. The two failure directions are not")
+[void]$sb.AppendLine("// symmetric -- keeping a name the toolchain has DROPPED is a MISSED")
+[void]$sb.AppendLine("// report, dropping a name the toolchain still HAS is a FALSE POSITIVE")
+[void]$sb.AppendLine("// -- and only the second is unacceptable. Measured on the")
+[void]$sb.AppendLine("// 0.1.20261012 -> 0.1.20261016 upgrade: the new interfaces declare 102")
+[void]$sb.AppendLine("// fewer names, 69 of them still callable, and dropping those 69 turned")
+[void]$sb.AppendLine("// valid calls into `undefined function`. The cost of the union is that")
+[void]$sb.AppendLine("// the list only grows and dead names accumulate -- the direction this")
+[void]$sb.AppendLine("// table already accepts.")
+[void]$sb.AppendLine("//")
+[void]$sb.AppendLine("// Of the $($intrinsic.Count) compiler intrinsics settled with")
+[void]$sb.AppendLine("// [moon check], $intrinsicDeclared are ALSO declared in an interface, so")
+[void]$sb.AppendLine("// they are counted once and not twice.")
 [void]$sb.AppendLine('//')
 [void]$sb.AppendLine('// The bare TYPE names themselves live in builtins.mbt. This file is sliced to')
 [void]$sb.AppendLine('// those heads, so the two cannot drift: adding a type to the bare list without')
@@ -259,7 +413,16 @@ Pop-Location
 Write-Host "wrote src/core/builtin_methods.mbt"
 Write-Host "  declared in .mbti : $declared"
 Write-Host "  via #alias        : $aliasesKept"
-Write-Host "  intrinsics        : $($intrinsic.Count)"
+Write-Host "  intrinsics        : $($intrinsic.Count)  ($intrinsicDeclared of them are ALSO declared in an interface)"
+Write-Host "  carried forward   : $carried  (from the previous table)"
 Write-Host "  total             : $($set.Count)"
 Write-Host "  heads             : $($groups.Count)"
 Write-Host "  toolchain         : $verdict"
+if ($intrinsicDeclared -gt 0) {
+  Write-Host "  intrinsic overlap :"
+  foreach ($n in ($intrinsicOverlap | Sort-Object)) { Write-Host "                      $n" }
+}
+if (-not $hadPrev) {
+  Write-Host "  WARNING: no previous table at $prevPath -- the output is the"
+  Write-Host "           extraction alone, NOT a superset of anything."
+}

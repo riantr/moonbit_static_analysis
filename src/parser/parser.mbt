@@ -2339,14 +2339,36 @@ fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
     // `name~` (must be passed BY LABEL) and `name?` (optional) are
     // independent modifiers written tight against the name. Either order is
     // accepted, and so is both at once (`name~? : T`). Neither changes the
-    // parameter's NAME, so the binding table and the arity check are
-    // unchanged — `f~ : T` is still one parameter called `f`.
+    // parameter's NAME, so the binding table is unchanged -- `f~ : T` is still
+    // one parameter called `f`.
+    //
+    // The `?` DOES change one thing, and it is recorded now: an optional
+    // parameter may be OMITTED by a call, so the arity check has to know which
+    // parameters it may leave out. It used to be discarded here, and the
+    // arity check compared the argument count against the DECLARED count, so
+    // every call that omitted an optional parameter was reported.
+    //
+    // THE `~` ALONE DOES NOT SET THE FLAG, and that is settled rather than
+    // assumed: a `~` parameter is a LABEL, it must be supplied BY LABEL, and a
+    // call that omits it is REJECTED with 4086 ("The labels x~ are required
+    // by this function, but not supplied."). A positional pass is rejected
+    // too, with 4080 as well. So a bare `~` parameter is REQUIRED, it does
+    // not reduce the arity floor, and `omittable` stays false for it.
+    //
+    // The two spellings that DO set the flag are the `?` marker above, and a
+    // `= default` below -- and a default is legal only on a `~`, since a
+    // default on a POSITIONAL parameter is rejected with 3010.
+    //
+    // Settled in `_verify/_settle_0490_resettle.ps1`, 18 rows, one package
+    // each, on `moon check` 0.1.20261016.
     let mut more_mods = true
+    let mut omittable = false
     while more_mods {
       more_mods = false
       if self.at(TQuestion) {
         let _ = self.bump()
         more_mods = true
+        omittable = true
       } else if self.at(TTilde) {
         let _ = self.bump()
         more_mods = true
@@ -2359,6 +2381,13 @@ fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
     }
     if self.at(TAssign) {
       let _ = self.bump()
+      // A DEFAULT VALUE also makes the parameter omittable. Settled against
+      // the toolchain: `fn labelled_default(x : Int, y~ : Int = 0)` is called
+      // as `labelled_default(1)` and COMPILES. The `= default` on a POSITIONAL
+      // parameter is rejected by the toolchain (3010, "Only labelled
+      // arguments can have default value"), so the flag is set here and the
+      // positional case is the toolchain's business, not the analyzer's.
+      omittable = true
       // `= <lambda>` — a function-typed parameter whose default is a lambda.
       // `parse_expr` reads `(` as a parenthesised expression and then dies on the
       // `=>`, so the whole file stopped with `expected ')'`.
@@ -2401,7 +2430,7 @@ fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
         ignore(self.parse_expr())
       }
     }
-    params.push({ name: pname, tyann: ann, span: psp, })
+    params.push({ name: pname, tyann: ann, omittable, span: psp, })
     if self.at(TComma) {
       let _ = self.bump()
     } else {

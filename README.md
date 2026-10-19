@@ -353,7 +353,7 @@ and [`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.
 |---|---|
 | `.mbt` | three-inspection program analysis |
 | `.mbtx` | three-inspection program analysis + import-block audit (entry grammar `"path" [@alias] [*]`; duplicate paths report FParse; the import list is echoed in the report) |
-| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so a generated file raises no *malformed line* — but its **unknown-type** check has no cross-file awareness and does raise false positives on generated files (measured: 93 on `moonbitlang/core`, a tree `moon check --target all` accepts with 0 errors). Treat those as unverified, not as defects |
+| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so a generated file raises no *malformed line*. The **unknown-type** check used to raise false positives on generated files — it had no cross-file awareness (measured: 93 on `moonbitlang/core`, a tree `moon check --target all` accepts with 0 errors); it consults the module-wide interface table now, and measures **0** on that same tree. A residual finding can still name a type declared outside the scan — treat it as unverified, not as a defect |
 | `.mbt.md` | literate: only fences the toolchain actually **compiles** — `mbt check` / `mbt test` and the `moonbit` spellings; a second word of `check` or `test` is what makes a block live code. Line numbers align to the `.md` file's real lines. A bare `mbt`, a bare `moonbit` and `nocheck` are display blocks and are skipped — measured against the toolchain, see EXTENSIONS.md |
 | `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis (configuration is not code — upstream puts both in the parser's separate `moon_config` subpackage, alongside `syntax` and `mbti_parser` rather than inside them; see the config-boundary section of EXTENSIONS.md) |
@@ -499,12 +499,14 @@ either hiding the other. The default (module) view is unchanged: the same
 corpora produce byte-identical numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** The
-> per-function view reports 265 `actionable` on `moui` 0.1.12, where the module
-> view reports 0. Those 265 are not 265 defects — they are an *inventory of
-> what is still wrong with the behavioral lens*, which the entry made visible
-> for the first time. The classes that remain are named in the source: a
-> `#cfg` duplicate-name method table, a `Unit`/`None` conflation, and arity
-> mismatches. Use it to see the lens, not to gate a build.
+> per-function view reports 58 `actionable` on `moui` 0.1.12, where the module
+> view reports 0. Those 58 are not 58 defects — they are an *inventory of
+> what is still wrong with the behavioral lens*. Five classes of lens defect
+> were fixed alongside it (a list value against a list parameter, a call that
+> omitted an omittable parameter, a function whose body is an `if`, a string
+> concatenation, and a string comparison); what remains is **one** class:
+> a name used from a *sibling file of the same package*, which the
+> single-file lens cannot see. Use it to see the lens, not to gate a build.
 
 **Measured** (before and after the trusted-region gate, same trees):
 

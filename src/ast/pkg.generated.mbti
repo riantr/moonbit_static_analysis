@@ -40,7 +40,7 @@ pub(all) struct CatchArm {
 } derive(Eq)
 
 pub(all) enum EKind {
-  EInt(Int)
+  EInt(Int32)
   EBigInt
   EFloat(Double)
   EBool(Bool)
@@ -59,7 +59,7 @@ pub(all) enum EKind {
   EBlock(Array[Stmt])
   ETuple(Array[Expr])
   ERange(Expr, Expr)
-  ETupleField(Expr, Int)
+  ETupleField(Expr, Int32)
   EIs(Expr, Array[String])
   ECast(Expr)
   ECatch(Expr, Array[CatchArm])
@@ -99,6 +99,7 @@ pub(all) struct Module {
 pub(all) struct Param {
   name : String
   tyann : String
+  omittable : Bool
   span : @core.Span
 } derive(Eq)
 

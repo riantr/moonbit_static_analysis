@@ -47,6 +47,24 @@
 # change?". Get that order wrong and a rename looks like a deletion -- which is exactly what
 # `mutate_lib.ps1`'s literal `IndexOf` matching did to 0443's M4 in 0467, where a DEDENT
 # was indistinguishable from a deletion.
+#
+# M1 AND M2 RE-ANCHORED BY 0490, and this one IS a shape change, so the header rule above
+# has to be applied rather than assumed. 0490 gave the interpreter a `last_value` -- a
+# function whose body's last statement is an `if` has its value in the BRANCH, not in
+# `ret_vals` -- and the `STail` arm became a three-line block:
+#
+#     STail(e) => {
+#       self.last_value = self.eval(e, env)
+#       self.ret_vals.push(self.last_value)
+#     }
+#
+# The DECISION both mutations remove is unchanged, and the replacement anchors are shaped
+# to remove exactly that decision and no more. M2 keeps the evaluation and changes only the
+# pushed value, which is what the one-line original did. M1 has to drop the whole block,
+# because the value now has TWO homes and removing only the `push` would leave `last_value`
+# set -- which `analyze_fn` reads -- so it would have survived while claiming to test the
+# same thing. A wider mutation is fine; a mutation that quietly stops asking the question
+# is not.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -62,10 +80,33 @@ $muts = @(
   # Written against the ONE-LINE form `moon fmt` leaves behind. The first version
   # of this gate assumed a braced three-line arm and the pre-flight rejected it
   # in milliseconds -- which is the whole reason the pre-flight exists.
+  #
+  # RE-ANCHORED BY 0490, and this is a SHAPE change rather than a rename, so the
+  # standing rule needed saying out loud. 0490 gave the interpreter a
+  # `last_value`, because a function whose body's last statement is an `if` has
+  # its value in the BRANCH and not in `ret_vals`. The `STail` arm therefore
+  # became a block:
+  #
+  #     STail(e) => {
+  #       self.last_value = self.eval(e, env)
+  #       self.ret_vals.push(self.last_value)
+  #     }
+  #
+  # The DECISION this mutation removes is still "the tail's value is recorded".
+  # Dropping the whole three-line block is the honest way to remove it now: the
+  # value has two homes, and a mutation that removed only the `push` would leave
+  # `last_value` set, which `analyze_fn` reads -- so it would have survived
+  # while claiming to test the same thing. The mutation got WIDER, not weaker,
+  # and it still asks the same question.
   @{
     Name = 'M1 the tail value is not recorded'
     File = $INTERP
-    Find = '    STail(e) => self.ret_vals.push(self.eval(e, env))'
+    Find = @'
+    STail(e) => {
+      self.last_value = self.eval(e, env)
+      self.ret_vals.push(self.last_value)
+    }
+'@
     Repl = @'
     STail(e) => {
       let _ = self.eval(e, env)
@@ -78,11 +119,27 @@ $muts = @(
   # instead of the value. The expression is the RESULT, not an operand after
   # the end of the frame, so this is the one place the raise rule must NOT
   # apply -- and it is the mistake the shared node shape invites.
+  #
+  # RE-ANCHORED BY 0490 for the same reason as M1, and the shape of the
+  # replacement is the point: the EVALUATION is kept, exactly as the original
+  # one-line mutation kept it (`push(self.eval(e, env))` -> `push(ABottom)`),
+  # and only the pushed value changes. Removing the evaluation as well would
+  # have been a second mutation wearing one name.
   @{
     Name = 'M2 the tail pushes Bottom instead of the value'
     File = $INTERP
-    Find = '    STail(e) => self.ret_vals.push(self.eval(e, env))'
-    Repl = '    STail(e) => self.ret_vals.push(ABottom)'
+    Find = @'
+    STail(e) => {
+      self.last_value = self.eval(e, env)
+      self.ret_vals.push(self.last_value)
+    }
+'@
+    Repl = @'
+    STail(e) => {
+      self.last_value = self.eval(e, env)
+      self.ret_vals.push(ABottom)
+    }
+'@
   }
 
   # --- M3: `value_block` ignored -- every block has a tail ---------------------

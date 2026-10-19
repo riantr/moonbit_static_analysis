@@ -380,6 +380,35 @@ pub(all) struct Expr {
 pub(all) struct Param {
   name : String
   tyann : String
+  /// True when a call may OMIT this parameter.
+  ///
+  /// TWO SPELLINGS MAKE A PARAMETER OMITTABLE, and both are settled against
+  /// the toolchain (`moon check` 0.1.20261012, re-settled on 0.1.20261016 --
+  /// see `_verify/_settle_0490_resettle.ps1`):
+  ///
+  ///   - `name? : T` -- the OPTIONAL spelling. Settled ACCEPT: a call that
+  ///     omits it compiles.
+  ///   - `name~ : T = default` -- a LABELLED parameter with a DEFAULT value.
+  ///     Settled ACCEPT: a call that omits it compiles. (The `= default` on a
+  ///     POSITIONAL parameter is a different thing: the toolchain REJECTS it
+  ///     with 3010, "Only labelled arguments can have default value".)
+  ///
+  /// The `~` on its own does NOT make a parameter omittable -- it changes HOW
+  /// the parameter is passed, not WHETHER it is passed. A `~` parameter is a
+  /// LABEL: it must be supplied BY LABEL, and a call that omits it is
+  /// REJECTED with 4086, "The labels x~ are required by this function, but
+  /// not supplied." A POSITIONAL pass is rejected too, with 4080 as well --
+  /// the function "requires 0 positional arguments, but is given 1". Only
+  /// `f(x=1)` is accepted.
+  ///
+  /// The `?` used to be consumed and discarded, and so was the default value,
+  /// and the consequence was that the arity check could not tell "the call
+  /// passed too few arguments" from "the call omitted the ones it may omit".
+  /// Those are different things, and only the second one is legal MoonBit:
+  /// `fn wire_string(value : Json?, allow_empty? : Bool = false)` is called
+  /// as `wire_string(value)` throughout moui 0.1.12, and the check reported it
+  /// as `no method matching wire_string(Any)`.
+  omittable : Bool
   span : @core.Span
 } derive(Eq)
 

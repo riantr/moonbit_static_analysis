@@ -194,7 +194,21 @@ $muts = @(
 
   # --- M7: exec_alt's missing else stops falling through ---------------------
   # The same statement one level down, inside exec_alt's own unknown-condition
-  # arm -- a chain that still HAS an else-if. Indent 8/10/12/12/12/14/12/10/10/10/10/8/8.
+  # arm -- a chain that still HAS an else-if. Indent 8/10/12/12/12/12/14/12/10/10/10/10/8/8/8.
+  #
+  # RE-ANCHORED BY 0490, and the reason is the 0468/0449 rule again: the code
+  # under test -- `None => falls = true` in exec_alt's unknown-condition arm --
+  # is UNCHANGED. 0490 gave the else-if chain a VALUE (`val = vjoin(...)`) and
+  # published it (`self.last_value = val`), so the block grew by two lines and
+  # the old thirteen-line anchor stopped matching. The release gate reported it
+  # as a PREFLIGHT MISS, which is the loud failure and the right one: the
+  # alternative -- a mutation that silently matched a DIFFERENT `match els` --
+  # is the failure this harness exists to prevent.
+  #
+  # So the anchor is re-pointed at the SAME decision in the NEW shape, which is
+  # what "re-anchored, not retired" means. It is not retired: the question
+  # ("does a missing else fall through, one level down?") is still asked and
+  # still has an answer.
   @{
     Name = 'M7 exec_alt missing else stops falling'
     File = $F
@@ -203,6 +217,7 @@ $muts = @(
           Some(e) => {
             self.flow = FNormal
             self.exec_block(e, env)
+            val = vjoin(val, self.last_value)
             if self.flow == FNormal {
               falls = true
             }
@@ -211,6 +226,7 @@ $muts = @(
           // nothing runs and control continues.
           None => falls = true
         }
+        self.last_value = val
         falls
 '@
     Repl = @'
@@ -218,6 +234,7 @@ $muts = @(
           Some(e) => {
             self.flow = FNormal
             self.exec_block(e, env)
+            val = vjoin(val, self.last_value)
             if self.flow == FNormal {
               falls = true
             }
@@ -226,6 +243,7 @@ $muts = @(
           // nothing runs and control continues.
           None => falls = false
         }
+        self.last_value = val
         falls
 '@
   }

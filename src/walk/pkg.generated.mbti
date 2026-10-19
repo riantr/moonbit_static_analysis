@@ -10,7 +10,7 @@ import {
 // Values
 pub fn const_eval(@ast.Expr) -> Const?
 
-pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int, Array[String], Array[String], Array[@core.Span]) -> WalkResult
+pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int32, Array[String], Array[String], Array[@core.Span]) -> WalkResult
 
 // Errors
 
@@ -23,7 +23,7 @@ pub(all) struct Binding {
 } derive(Eq)
 
 pub(all) enum Const {
-  CInt(Int)
+  CInt(Int32)
   CBool(Bool)
 } derive(Eq)
 

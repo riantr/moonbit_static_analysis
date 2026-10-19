@@ -19,7 +19,7 @@ pub(all) struct ParseResult {
   tree : @ast.Module
   reports : Array[@report.Report]
   skips : Array[String]
-  first_error : Int
+  first_error : Int32
   enum_ctors : Array[String]
   extern_fns : Array[String]
 }

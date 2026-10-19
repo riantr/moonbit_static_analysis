@@ -29,18 +29,36 @@
 //
 // Provenance. Read out of the toolchain's own generated interfaces,
 // <toolchain>/lib/core/**/pkg.generated.mbti, at the toolchain this was
-// last run against -- the version below is WRITTEN BY THE GENERATOR and
-// was typed in by hand until 0.4.35, which is how a stale table could
-// not be told apart from a current one.        toolchain: moon 0.1.20261012 (748b63c 2026-10-12)
+// last run against, PLUS the previous table for the names that
+// toolchain no longer declares -- see the SUPERSET note below. The
+// version below is WRITTEN BY THE GENERATOR and was typed in by hand
+// until 0.4.35, which is how a stale table could not be told apart from
+// a current one.                    toolchain: moon 0.1.20261016 (1af328f 2026-10-16)
 //
-// Of the 1277 names below, 140 come from an
+// Of the 1344 names below, 140 come from an
 // #alias DIRECTIVE rather than from a declaration: #alias(from_array)
 // above [type Set[K]] is what makes Set::from_array a real callable
 // name. The rest are plain declarations, of which every GENERIC one
 // ([pub fn[K : Eq] Set::add]) was invisible to this generator until
 // 0.4.35, because its pattern demanded the name come straight after
-// fn. The last 32 are compiler builtins that no
-// interface declares, settled with [moon check].
+// fn.
+//
+// THE LIST IS A SUPERSET, and it is BUILT as one: the union of what the
+// current interfaces declare, what the compiler intrinsics add, and
+// what the PREVIOUS table held. 102 names are carried forward from
+// the table this run replaces. The two failure directions are not
+// symmetric -- keeping a name the toolchain has DROPPED is a MISSED
+// report, dropping a name the toolchain still HAS is a FALSE POSITIVE
+// -- and only the second is unacceptable. Measured on the
+// 0.1.20261012 -> 0.1.20261016 upgrade: the new interfaces declare 102
+// fewer names, 69 of them still callable, and dropping those 69 turned
+// valid calls into undefined function. The cost of the union is that
+// the list only grows and dead names accumulate -- the direction this
+// table already accepts.
+//
+// Of the 35 compiler intrinsics settled with
+// [moon check], 12 are ALSO declared in an interface, so
+// they are counted once and not twice.
 //
 // The bare TYPE names themselves live in builtins.mbt. This file is sliced to
 // those heads, so the two cannot drift: adding a type to the bare list without
@@ -225,6 +243,17 @@ pub fn builtin_method_names() -> Array[String] {
     "Int16::reinterpret_as_uint16", "Int16::reinterpret_from_uint16", "Int16::shl",
     "Int16::shr", "Int16::sub", "Int16::to_byte", "Int16::to_int", "Int16::to_int64",
     "Int16::to_string",
+    // Int32
+     "Int32::abs", "Int32::add", "Int32::asr", "Int32::clamp", "Int32::clz", "Int32::compare",
+    "Int32::ctz", "Int32::div", "Int32::equal", "Int32::hash", "Int32::Int", "Int32::is_leading_surrogate",
+    "Int32::is_neg", "Int32::is_non_neg", "Int32::is_non_pos", "Int32::is_pos", "Int32::is_surrogate",
+    "Int32::is_trailing_surrogate", "Int32::land", "Int32::lnot", "Int32::lor", "Int32::lsl",
+    "Int32::lsr", "Int32::lxor", "Int32::max", "Int32::min", "Int32::mod", "Int32::mul",
+    "Int32::neg", "Int32::next_power_of_two", "Int32::popcnt", "Int32::reinterpret_as_uint",
+    "Int32::shl", "Int32::shr", "Int32::sub", "Int32::to_byte", "Int32::to_char",
+    "Int32::to_double", "Int32::to_int64", "Int32::to_json", "Int32::to_string",
+    "Int32::to_uint", "Int32::to_uint16", "Int32::to_uint64", "Int32::unsafe_to_char",
+    "Int32::until",
     // Int64
      "Int64::abs", "Int64::add", "Int64::asr", "Int64::clamp", "Int64::clz", "Int64::compare",
     "Int64::ctz", "Int64::div", "Int64::equal", "Int64::from_int", "Int64::hash",
@@ -385,6 +414,14 @@ pub fn builtin_method_names() -> Array[String] {
     "UInt16::sub", "UInt16::to_byte", "UInt16::to_char", "UInt16::to_int", "UInt16::to_int64",
     "UInt16::to_json", "UInt16::to_string", "UInt16::to_uint", "UInt16::to_uint64",
     "UInt16::UInt16",
+    // UInt32
+     "UInt32::add", "UInt32::clamp", "UInt32::clz", "UInt32::compare", "UInt32::ctz",
+    "UInt32::div", "UInt32::equal", "UInt32::hash", "UInt32::land", "UInt32::lnot",
+    "UInt32::lor", "UInt32::lsl", "UInt32::lsr", "UInt32::lxor", "UInt32::max", "UInt32::min",
+    "UInt32::mod", "UInt32::mul", "UInt32::popcnt", "UInt32::reinterpret_as_int",
+    "UInt32::shl", "UInt32::shr", "UInt32::sub", "UInt32::to_byte", "UInt32::to_double",
+    "UInt32::to_int", "UInt32::to_int64", "UInt32::to_json", "UInt32::to_string",
+    "UInt32::to_uint16", "UInt32::to_uint64", "UInt32::trunc_double", "UInt32::UInt",
     // UInt64
      "UInt64::add", "UInt64::clz", "UInt64::compare", "UInt64::ctz", "UInt64::div",
     "UInt64::equal", "UInt64::extend_uint", "UInt64::hash", "UInt64::land", "UInt64::lnot",
