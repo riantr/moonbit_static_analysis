@@ -219,6 +219,21 @@ fn is_letter(c : Char) -> Bool {
 /// unaffected -- suppression drops the `TNewline` TOKEN, `TBar` itself still reaches
 /// the stream, and match bodies are skipped whole so no pattern parser can be
 /// confused by the missing line break.
+///
+/// `TAppendPlus` joined the set in 0488, and the settle is what says it belongs here AND what
+/// says nothing else does. `_verify/settle_0488_append_nextline.ps1`, 16 rows / 4 controls:
+///
+///     ACCEPT      sb <+ NEWLINE "x"      <- the corpus shape, at TWO sites
+///     REJECT 4139 a NEWLINE + b
+///     REJECT 4139 a NEWLINE - b
+///     REJECT 4139 a NEWLINE * b
+///     REJECT 4139 a NEWLINE == b
+///
+/// => THE BREAK IS LEGAL *AFTER* THE OPERATOR AND NOT BEFORE IT, and this function looks only at
+/// the PRECEDING token -- so listing `TAppendPlus` grants `a +\n b` and leaves `a\n + b` refused.
+/// That is why the fix is one line rather than a general "continue across line breaks" rule: this
+/// reader's `first_error 3` on `a\n + b` was CORRECT, and a general rule would have made it accept
+/// four programs the toolchain rejects. The measured corpus reach is what argued against it.
 fn newline_suppressed_after(prev : Tok) -> Bool {
   match prev {
     TPlus
@@ -249,6 +264,7 @@ fn newline_suppressed_after(prev : Tok) -> Bool {
     | TLParen
     | TLBracket
     | TLBrace
+    | TAppendPlus
     | TSemi => true
     _ => false
   }
@@ -372,6 +388,17 @@ fn Lexer::run(self : Lexer) -> Unit {
       // own divide-by-zero guard in Interp.binop panicked — killing the whole
       // scan. Found by reducing a real crash in moonbitlang/async's test files.
       last = self.lex_block_string()
+      continue
+    }
+    if c == '$' &&
+      self.pos + 1 < self.chars.length() &&
+      self.chars[self.pos + 1] == '|' {
+      // A `$|...` template string is a STRING LITERAL, not code, and it is a
+      // GENERAL one -- settled in `_verify/settle_0488_append_nextline.ps1` that `let x = $|<a>`
+      // and `a + $|<b>` both ACCEPT, so this is not a slot only `<+` can fill. Without this
+      // branch the `$` fell to lex_op's catch-all and reported "unexpected character", which is
+      // what made moonbitlang/async `examples/http_file_server/main.mbt` read ZERO lines.
+      last = self.lex_template_string()
       continue
     }
     // An attribute (`#cfg(...)`, `#borrow(...)`, `#[derive(...)]`, `#deprecated`).
@@ -769,6 +796,64 @@ fn Lexer::lex_string(self : Lexer) -> Tok {
 }
 
 ///|
+/// A TEMPLATE STRING, `$|...`, lexed as `TStr`. 0488.
+///
+/// Settled in `_verify/settle_0488_append_nextline.ps1` (16 rows / 4 controls, GATE OK) to be a
+/// GENERAL EXPRESSION rather than a slot only `<+` can fill:
+///
+///     ACCEPT      let x = $|<a>             <- bare, so it belongs to the expression grammar
+///     ACCEPT      a + $|<b>                 <- and is an operand of an ordinary operator too
+///     ACCEPT      sb <+ $|<h1>\{name}</h1>   <- and it is the operand `<+` asks for
+///     ACCEPT      sb <+ $|                  <- empty is legal
+///     REJECT 3002 let x = $| NEWLINE <a> NEWLINE $|</a>   <- ONE interpolant does NOT span lines
+///
+/// That last row is why this stops at the newline: the corpus writes SEVERAL one-line `$|` lines
+/// joined by a single `<+`, so a multi-line reading would swallow the rest of the file.
+///
+/// THE BODY IS COPIED RAW, and only `\{` is treated structurally. Every other character --
+/// including a backslash that does not open an interpolation -- is content. Nothing here
+/// interprets `\n` or any other escape, because that was NOT settled, and inventing an escape
+/// table is how a reader starts claiming string VALUES it cannot justify. The one thing that IS
+/// claimed is the same thing `lex_string` claims: the names referenced inside `\{...}`, as READS.
+fn Lexer::lex_template_string(self : Lexer) -> Tok {
+  let l = self.line
+  let c0 = self.col
+  // Step past the opening `$|`, which is NOT part of the payload.
+  self.pos += 2
+  self.col += 2
+  let buf = StringBuilder()
+  self.interp_names = []
+  while self.pos < self.chars.length() {
+    let c = self.chars[self.pos]
+    if c == '\n' {
+      // Leave it for run(): it still has to advance the line, and it separates this
+      // statement from the next one. An UNTERMINATED `$|` is therefore not a report here --
+      // an empty one is legal (settle row C4), so there is no "missing closer" to complain about.
+      break
+    }
+    if c == '\\' &&
+      self.pos + 1 < self.chars.length() &&
+      self.chars[self.pos + 1] == '{' {
+      // Same contract as `lex_string`: step onto the `{` and hand it to copy_interp, which
+      // returns just past the matching `}`. The `continue` is load-bearing -- it skips this
+      // loop's own `pos += 1`, which would otherwise step one character past the body.
+      self.pos += 1
+      self.col += 1
+      self.copy_interp(buf)
+      continue
+    }
+    buf.write_char(c)
+    self.pos += 1
+    self.col += 1
+  }
+  let s = buf.to_string()
+  let names = self.interp_names
+  self.interp_names = []
+  self.emit(TStr(s, names), l, c0, self.col - c0)
+  TStr(s, names)
+}
+
+///|
 /// Consume one `\{ ... }` interpolation body, copying it RAW into the string
 /// payload. Called with `pos` ON the opening `{`; returns with `pos` just
 /// past the matching `}`, which the caller's own loop consumes from there.
@@ -859,6 +944,29 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       cur = ""
       cur_is_member = false
       after_dot = true
+    } else if c == '=' &&
+      self.pos < self.chars.length() &&
+      self.chars[self.pos] != '=' &&
+      self.chars[self.pos] != '>' {
+      // A LABEL, NOT A READ. 0488. `\{value.to_string(radix=16)}` supplies 16 to the
+      // parameter named `radix` -- MoonBit's labelled-argument call syntax, the
+      // counterpart of the `protocol~ : Protocol` declaration this same corpus writes
+      // at `http/request.mbt:56`. Nothing named `radix` is ever bound there, and the
+      // identifier was being flushed by the generic `else` below exactly as if it were.
+      //
+      // WHAT IT COST: `no visible binding for 'radix'` at moonbitlang/async
+      // `src/socket/addr_utils.mbt:291`. That finding sat WITHHELD for as long as the
+      // file stopped at line 297 -- findings on a partial file are withheld, not
+      // reported -- and became ACTIONABLE the moment 0488 read the file whole. So the
+      // inventory hid a real false positive, and shipping the increment without
+      // fixing it would have pinned `actionable=1` as though the finding were correct.
+      //
+      // THE `==` AND `=>` CARVE-OUTS ARE SETTLED, NOT GUESSED --
+      // `_verify/settle_0488_append_nextline.ps1` rows F3 and F4: `\{a == b}` must
+      // still record both names, and `\{xs.map(x => x + 1).length()}` must still
+      // record `x`. Only a BARE `=` names a label. `self.pos` already points PAST
+      // this `=`, so the lookahead sees the character after it.
+      cur = ""
     } else {
       self.flush_interp_name(cur, cur_is_member, after_at)
       cur = ""

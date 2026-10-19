@@ -2891,6 +2891,81 @@ would have reported this increment as a no-op, and correctly so.
 Gate 0487: 7 KILLED, 0 declared survivors, every restore byte-identical. Gate 0486: 3 KILLED, 1
 RETIRED (superseded by 0487 M3). Gate 0466: 3 KILLED / 3 declared survivors, re-anchored. 1024 tests.
 
+## 0488 -- `<+` across a newline, the `$|...` template string, and a false positive the inventory had been hiding
+
+The backlog was re-derived from the scanner rather than taken from the list carried between
+increments, because that list has been wrong three separate ways. Every unread file's BOUNDARY LINE
+was read directly:
+
+    src/http/utils.mbt:23                    for-header with a NON-EMPTY update clause
+    examples/http_file_server/main.mbt:24     `conn <+` , operand NEXT line      <- read ZERO
+    src/http/request.mbt:59                  `host =~ (re"^" + ...)`, regex literals
+    src/fs/watch_kqueue.mbt:240               `let { identity, .. } = ...`
+    src/socket/addr_utils.mbt:297             `logger <+` , operand NEXT line
+    src/fs/watch_windows.mbt:320              `>..` range, `break path[:i]`
+
+Ranked by measured REACH rather than depth, `<+` wins: **TWO** files, one of them reading zero lines.
+And `addr_utils.mbt:297` is a SECOND SITE for the same construct that the carried list never named --
+the same "named the construct, under-counted the sites" failure as 0486, on that settle's other half.
+
+*** THREE DEFECTS THAT LOOK LIKE ONE CONSTRUCT IN THE SOURCE. *** `settle_0488_append_nextline.ps1`,
+20 rows / 4 controls, GATE OK.
+
+    ACCEPT   sb <+ NEWLINE "x"           REJECT 4139  a NEWLINE + b   /  - b  /  * b  /  == b
+    ACCEPT   let x = $|<a>  /  a + $|<b> REJECT 3002  let x = $| NEWLINE <a> NEWLINE $|</a>
+    ACCEPT   sb <+ $|<h1>\{name}</h1>
+
+    A. `newline_suppressed_after` did not list `TAppendPlus`. ONE LINE.
+    B. `$|...` had NO lexer production at all -- the `$` fell to lex_op's catch-all. It is a GENERAL
+       expression, not a slot only `<+` can fill, which is why the fix belongs in the expression
+       grammar rather than in `parse_pipe`.
+    C. `copy_interp` flushed a LABEL as a name READ.
+
+=> THE BREAK IS LEGAL *AFTER* THE OPERATOR AND NOT BEFORE IT. The obvious "be helpful" fix is a
+general rule letting expressions continue across line breaks. That would accept four programs the
+toolchain REJECTs. Suppression looks only at the PRECEDING token, so listing `TAppendPlus` grants
+`sb <+` NEWLINE `"x"` and leaves `a` NEWLINE `+ b` refused. mutate_0488 M2 pins that narrowness by
+swapping `TStar` in for `TAppendPlus`.
+
+*** READING A FILE FOR THE FIRST TIME IS A FALSE-POSITIVE DISCOVERY EVENT. *** `addr_utils.mbt` used
+to stop at line 297, and findings on a PARTIAL file are WITHHELD rather than reported -- so the
+inventory said `actionable=0` while a defect sat inside the file. The moment the append fix let it be
+read whole, `no visible binding for 'radix'` appeared at `addr_utils.mbt:291`, and async went 0 -> 1
+actionable on an increment whose stated job was to add no findings at all.
+
+It is a false positive: `value.to_string(radix=16)` supplies 16 to the parameter named `radix`, which
+is MoonBit's labelled-argument call syntax -- the counterpart of the `protocol~ : Protocol`
+declaration this same corpus writes at `http/request.mbt:56`. `copy_interp` had no notion of a label,
+so it recorded one as a READ. Fixed in this increment rather than the next, because pinning
+`actionable=1` would have asserted the finding correct. The carve-out is settled, not guessed:
+`==` and `=>` are still reads (rows F3/F4, both ACCEPT).
+
+*** TWO ROWS I WROTE WERE WRONG AND ARE NOT IN THE TREE. *** `"a" NEWLINE `"+ b"` asserted
+`first_error > 0`; it is 0 and that is CORRECT -- `first_error` measures whether the reader STOPPED,
+and `+ b` is a second statement, so nothing fails to parse. The toolchain rejects the program too,
+but with 4139 "its value cannot be implicitly ignored", a TYPE error at `a`. There is no
+`first_error` observable for a token-stream question, so M1/M2 pin it by mutating the SET.
+
+*** AND A POSITIVE CONTROL TOOK TWO ATTEMPTS, BOTH WRONG IN AN INSTRUCTIVE WAY. *** M6 treats every
+`=` as a label. It SURVIVED against `\{a == b}` -- because `b` is still read -- and then against
+`\{a == 1}` -- because the SPACE flushed `a` before the `=` arrived. Only the UNSPACED `\{a==1}`
+leaves the identifier pending when the operator comes, which is exactly the shape the defect lives
+in. Spacing is not cosmetic: it decides whether the identifier reaches the guard under test at all.
+
+*** TWO GATE RUNS HUNG, AND BOTH WERE MY MUTATIONS, NOT THE READER. *** M3 replaced `break` with
+`continue` where the cursor step sits BELOW the branch; M4 deleted only the body of the dispatch
+branch, leaving a bare `continue`. `run()` advances `pos` inside each branch's lexer call, so neither
+mutation ever moved it. A hung mutation produces no `Total tests:` line and is indistinguishable
+from a slow one, and the harness does NOT restore the file when a run is killed.
+
+Gate 0488: 6 KILLED, 0 declared survivors, every restore byte-identical. 1032 tests.
+
+=> 判据: A MUTATION'S `Repl` IS A PROGRAM, NOT A DELETION. What it compiles to has to TERMINATE, and
+the two shapes to check first are `break` -> `continue` inside a cursor loop and a branch reduced to
+a bare `continue`. Before killing a gate that has run long past its siblings, work out WHY it is slow
+-- and after killing one, read the mutated region back. `git diff --stat` will not tell you: the
+mutation had replaced five lines with three and the file still read as clean.
+
 => 判据: THE SAME ARM WAS RE-ANCHORED IN THREE GATES ACROSS TWO INCREMENTS, AND THE SECOND TIME
 IT WAS NOT MY FAULT. `parse_raise_effect`'s `noraise` / `nocancel` arm is a SHARED INTERFACE: gate
 0466 pins the effect SLOT, 0486 and 0487 pin the JOIN inside it, and each pins a contiguous SHAPE.
@@ -2919,3 +2994,70 @@ site comes first -- so when a change introduces a second copy of a shape, the qu
 my anchors survive" but "did any of them become AMBIGUOUS, and does the first match still point at
 the code I meant". `grep` the whole `_verify` tree for every shape you duplicated before
 believing a green gate.
+
+
+*** AND THE RELEASE GATE FAILED ON THE GRAMMAR-PROBE CONTROL, AND THE FAILURE WAS IN THE
+CONTROL'S OWN PLANTED-ROW DERIVATION. ***
+
+The 0488 release run stopped at `grammar-probe-control`. The control's planted row is not
+hand-written: it is DERIVED at run time from a file in the pinned corpora that this frontend
+genuinely cannot read, because the row has been moved four times as increments closed it. The
+derivation returned NOTHING, and its log was:
+
+    async     PARTIAL files = 4
+    async     skip file   MOON-BAD    src/http/utils.mbt:23
+
+ONE skip line for FOUR files. The other three were dropped by a `continue` that carried no log
+line, so the log read like "one file was tried" when in fact three had vanished without a trace.
+That is the same defect the control exists to catch, wearing the control's own clothes: a search
+that stops looking and leaves no mark.
+
+AND THE ONE THAT WAS TRIED FAILED FOR A REASON THE OLD METHOD COULD NOT SEE. The whole file
+mentions `BadRequest`, which is defined in a SIBLING file of the same package, so the file is not
+a legal standalone program and `moon check` rejects it. The file-level candidate was rejected for
+a reason that has nothing to do with the gap inside it -- the unreadable for-header with a
+non-empty update clause, at `src/http/utils.mbt:23`, inside `fn encode_int`.
+
+THE METHOD IS NOW A DESCENT, NOT A CHOICE. The old code PICKED one granularity by a textual test
+(`import` or `@pkg`? take the item, else take the file) and never tried the other. The new code
+walks the units that CONTAIN the blocker and tries each on its own merits: the whole file, the
+enclosing top-level item, a definition NESTED inside that item lifted to column 0, then the other
+top-level items -- after the blocker first, because a PARTIAL file means the reader STOPPED there
+and everything past it is an UNVERIFIED region that may still hold a gap once the enclosing item
+is fixed.
+
+=> MEASURED YIELD PER LAYER, on all 107 candidates in the four unreadable `async` files, every
+one scored MOON-OK AND SELF-FAIL:
+
+    file  --  0 usable of   4
+    item  --  1 usable of  56      src/http/utils.mbt:16-31, fn encode_int
+    sub   --  0 usable of  47
+
+So the layer that pays is the ENCLOSING ITEM, and the reason is the same in every file: the
+unreadable construct lives in an item that happens to be self-contained, inside a file that is
+not. The `sub` layer -- "plant from a self-contained sub-item even when the enclosing item is
+not" -- is implemented because it is the only layer that can find a gap in an item that references
+an external package, and it contributes nothing today. That is a MEASUREMENT, not an assumption:
+a nested definition lifted to column 0 refers to the enclosing item's locals, so it is never a
+legal standalone program on its own.
+
+=> 判据: A CANDIDATE IS REJECTED ON ITS OWN MERITS, AND EVERY REJECTION IS LOGGED. A skip that
+prints nothing is indistinguishable from a candidate that was never generated. The log now
+carries one line per candidate with its reason (HAS-AT / HAS-IMPORT / MOON-BAD / SELF-OK), and
+the 0488 run's own log is the proof that this was needed: it showed 14 candidates where the
+failing run had shown 1.
+
+AND A LATENT WRONG-UNIT BUG CAME OUT OF THE SAME MEASUREMENT. The item-opener pattern did not
+match `async fn`, so `pub async fn request(` at `async 0.22.4 src/http/request.mbt:84` was not
+recognised as an item opener at all. The item enclosing the blocker at line 59 was therefore
+computed as lines 55-212 -- everything to the end of the file -- instead of 55-72. It changed
+nothing today, because `resolve_host` mentions `@string` either way, but an item extent that runs
+to the end of the file is exactly the kind of unit whose "@-test" ends up answering a question
+nobody asked.
+
+THE CONTROL'S FIVE ASSERTIONS ARE UNCHANGED. Same five checks, same strings, and the
+`-SimulateExhaustion` branch still FAILS with exit 1, which is the honest endpoint: when the
+derivation finds nothing, the control says so rather than falling back to a hardcoded row. The
+planted row is now `async:src/http/utils.mbt:23`, unit `fn encode_int` -- real corpus code, and
+the construct in it is the for-header with a non-empty update clause, which is one of the four
+gaps left in the backlog.

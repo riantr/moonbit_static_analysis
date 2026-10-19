@@ -105,6 +105,7 @@ $gap = Get-DerivedPlantedGap
 if ($SimulateExhaustion) {
   $gap = [pscustomobject]@{
     Found = $false; Text = ''; Provenance = ''; Checks = 0; CorporaScanned = @()
+    Unit = ''; Mode = ''
     Log = @('SIMULATED exhaustion: the derivation was short-circuited on purpose', '         so the "no usable planted row" path can be exercised')
   }
 }
