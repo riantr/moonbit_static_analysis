@@ -307,6 +307,32 @@ if ($SkipMutations) {
 # outside the repo on purpose -- `moonx` materialises into `.repos/` relative to the
 # current directory, and writing the analyzer into that tree would change every
 # corpus baseline measured since.
+#
+# THIS STAGE IS A POST-PUBLISH CHECK, and the ORDER of the release is what makes that
+# true. `selfscan_published.ps1` asks the registry for the version in `moon.mod` and
+# asserts the tree it read IS that version -- because a scan of a DIFFERENT package
+# would still be able to print `actionable=0`. So once `moon.mod` names a version
+# that has not been published yet, this stage CANNOT pass: the registry has nothing
+# to serve, `moonx` prints nothing, and the stage aborts with "moonx produced no
+# output. That is not a clean scan."
+#
+# Measured 2026-10-20, cutting 0.4.30: the stage aborted exactly that way. The
+# diagnosis was one command -- `selfscan_published.ps1 -Coordinate @0.4.29` scanned
+# the PUBLISHED tree clean (68 files, actionable=0) and failed ONLY the version
+# assertion, because 0.4.30 was not on the registry yet. A registry that serves
+# nothing and a broken scan print the same line, and only the coordinate run tells
+# them apart.
+#
+# So the release order is:
+#   1. the local gate -- and `-SkipMutations` runs the corpus pins and the own-source
+#      self-scan, which is what has to be green BEFORE the version is bumped;
+#   2. bump `moon.mod`, sync the READMEs, commit, tag, push the tag -- CI publishes;
+#   3. THIS STAGE, against the version that was just published.
+#
+# And a run that aborts here before step 2 has NOT found a defect: it has found an
+# ordering fact. The corpus comparison after it is gated on `$failed`, so an aborted
+# run leaves the pins UNMEASURED -- run them with `-SkipMutations` rather than
+# reading the abort as a regression.
 $SP = Join-Path $root '_verify\selfscan_published.ps1'
 if ($SkipMutations) {
   Write-Output ''

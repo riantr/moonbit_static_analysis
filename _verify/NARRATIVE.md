@@ -3763,8 +3763,15 @@ MEASURED, the per-function view, before and after:
 
 AND THE SIX MODULE-VIEW PINS DID NOT MOVE: moui 4225, labeler 791, image 218, async 1829/23/0/1852,
 proton 2131, contract 34 -- byte-identical to the 0488 numbers, because the module entry never
-executes a function body and so never reached the read path this fix touches. The self-scan is 160/160
-parsed, actionable 0, notices 1755.
+executes a function body and so never reached the read path this fix touches. The self-scan is 161/161
+parsed, actionable 0, notices 1761.
+
+AND THE FIRST DRAFT OF THAT SENTENCE SAID 160/160 AND 1755, WHICH ARE THE **0490** NUMBERS. They were
+measured on a tree that did not yet contain this increment's own test file: the 0491 run measured 161
+files and 1761 notices (`_verify/release_0491_run.txt`), and the 160/1755 pair is the earlier
+`-SkipMutations` run, from before that file existed. A number quoted from a run that PREDATES the
+increment it describes is the same defect as a fact quoted into a second file -- the copy has no
+owner, and the OLDER copy is the one that was true.
 
 THE SEVEN THAT REMAIN on moui are the other classes, and they are named here so that the next
 increment does not have to rediscover them:

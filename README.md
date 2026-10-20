@@ -28,7 +28,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.29
+moon add riantr/moonbit_static_analysis@0.4.30
 ```
 
 ```moonbit
@@ -410,7 +410,7 @@ The module is published through the following channels (one source, three syncs)
 | GitHub (mirror) | <https://github.com/riantr/moonbit_static_analysis> |
 | mooncakes.io (package registry) | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
 
-- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.29` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
+- **mooncakes.io**: `moon publish` (after publishing, `riantr/moonbit_static_analysis@0.4.30` can be imported by any MoonBit module; `src/cli` ships a SKILL.md and is listed on [skills.mooncakes.io](https://skills.mooncakes.io)).
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
 
 ## Analyze another project (without pulling this one in)
@@ -480,12 +480,11 @@ another package never hit.
   was zero), so it is intentionally not part of the sum.
 
 **`--per-function`: enter the behavioral lens at each FUNCTION** (new in
-0.4.30, not yet published — the released package is 0.4.29). The behavioral
-lens normally enters at the **module**: a function body is executed only if
-something *calls* it from a top-level statement. A
-library module does not call its own functions at top level, so on a library
-the lens executed **zero** function bodies — on the six pinned corpora every
-single finding was tagged `structural`, and not one was tagged `behavior`.
+0.4.30 — this release). The behavioral lens normally enters at the **module**: a
+function body is executed only if something *calls* it from a top-level
+statement. A library module does not call its own functions at top level, so on
+a library the lens executed **zero** function bodies — on the six pinned corpora
+every single finding was tagged `structural`, and not one was tagged `behavior`.
 
 `--per-function` analyzes every function as if it were the program's entry
 point, with its parameters bound to fresh abstract values of their **declared**
@@ -572,7 +571,7 @@ The root package is a thin forwarder; the implementation is `src/sa`, a
 is deprecated by the toolchain. Both `src/sa` and the root declare
 `supported_targets = "+wasm+native"`, because file IO and subprocesses come from
 `moonbitlang/async` and only some backends have a working async runtime (js has
-none, wasm-gc wants a `run_async_main` that async 0.22.4 does not export); the
+none, wasm-gc wants a `run_async_main` that async 0.22.5 does not export); the
 other backends SKIP those two packages instead of failing.
 
 ## DeepSeek Harness plugin
@@ -736,6 +735,114 @@ Tests: 220 js / 292 wasm / 220 wasm-gc. Seven guards mutation-verified, and one
 of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
+
+### 0.4.30 — the last 89 findings went to zero, and the behavioral lens turned out to be WRONG
+
+At 0.4.29 the six pinned corpora carried **89 actionable** findings between them: async 19,
+proton 68, proton_contract 2, and 0 on the other three. This release takes that to **0 on all
+six** — over **the same 1081 `.mbt` files** (moui 551, labeler 35, image 17, async 362, proton
+114, contract 2 — counted again this release, and unchanged). The self-scan reads **161 files**
+now against 68 then, `actionable = 0` throughout, and the suite went from **514 wasm tests to
+1067**.
+
+#### The frontend read nineteen more grammar forms
+
+Most of that cycle's work was the frontend's. A form the reader cannot read leaves a
+**provably incomplete** module frame behind, so every name in it looks unbound and every
+operator looks mismatched — the 0.4.7 lesson, *"a clean 0 can be partly obtained by not
+looking"*, pointed the other way. Each form was settled against the toolchain before it was
+written; the history carries a `settle` commit ahead of every increment whose rule the
+compiler had a verdict on.
+
+| the form | the increment |
+|---|---|
+| a C-style `for` init clause is a **declaration** | 0470 |
+| an anonymous `fn`'s tail between `)` and `{` | 0471 |
+| a `for` header is ONE grammar, not two | 0473 |
+| a loop in **expression** position went to the wrong reader | 0474 |
+| a binder head carrying ONE declaration | 0475 |
+| the step after a binder head's initialisation clause | 0476 |
+| a constructor pattern on the left of a `let` | 0477 |
+| the `<?` payload, `expr <? { "k": v, .. }` | 0478 |
+| the UTF-8 BOM is skipped, not refused | 0479 |
+| the unbraced escape, `'\uXXXX'` | 0480 |
+| a nested optional type | 0481 |
+| a `for` header separated by line breaks | 0482 |
+| a package-qualified holder, `@pkg.Type::method` | 0483 |
+| a trait method whose receiver is a reference | 0484 |
+| a braced struct pattern in `is` position | 0485 |
+| a `+`-joined effect clause | 0486–0487 |
+| a `<+` with a next-line operand, a `$|` interpolant | 0488 |
+
+0481 closed the last unread file in proton, 0482 the last in moonbit_image, 0483 the async
+files that were last at the time. **Four async files are still not read whole**, and they are
+the standing backlog: `re"..."` regex literals, `let { .. } = x` rest destructuring, a `for`
+header with a non-empty update clause, and `>..` with `break <value>`.
+
+#### `--per-function`: the behavioral lens enters at each FUNCTION
+
+0.4.29 measured the behavior lens on real code and the number was brutal: across **1081 `.mbt`
+files on six corpora** its entire readable contribution was **3 actionable findings**, 3.4% of
+the 89, and its own families — `Unreachable`, `NonBooleanCond`, `MethodError` — counted
+**0 / 0 / 0**. The mechanism was not a defect: the lens enters at the **module**, so a function
+body is executed only if something *calls* it from a top-level statement, and a library module
+calls none of its own functions.
+
+`--per-function` gives it a second entry: every function is analysed as if it were the
+program's entry point, with its parameters bound to fresh abstract values of their **declared**
+types — the only sound choice for an entry point, because the runtime value is unknown. The
+default view is untouched, and the two views are **separate, not additive**.
+
+And the new view showed the lens was **wrong**, not merely quiet. On moui 0.1.12 it reported
+**265 actionable** where the module view reports 0 — an inventory of the lens's own defects, on
+code `moon check` accepts. 0490 fixed a list value against a list parameter, an arity rule
+that had to become a RANGE, a function whose body is an `if`, a string concatenation, a string
+comparison, and a parser that never recorded `omittable`; 0491 fixed the last class — the
+**read** path never consulted the cross-file symbol table, while the structural lens and the
+lens's own **call** path both had since 0.4.3.
+
+| corpus | 0489 | 0490 | 0491 |
+|---|---:|---:|---:|
+| moui | 265 | 58 | **7** |
+| proton | 136 | 92 | **5** |
+| moonbit_image | 94 | 68 | **44** |
+| moonbit_labeler | 95 | 48 | **40** |
+
+Seven remain on moui, in four named classes: a name bound by an `is`-pattern, a `None`
+receiver, a cross-file constructor's arity, and unreachable code.
+
+#### The toolchain renamed the two unsuffixed integer types, and the tables had not followed
+
+0.1.20261012 changed the **canonical spelling** of `Int`/`UInt` to `Int32`/`UInt32`. The types
+were not renamed — `Int` remains an accepted alias — but `moon fmt` rewrites to the explicit
+names, and the analyzer's ambient type list and method table still carried the old spelling:
+**37 findings on this repository's own generated interfaces**, in the DEFAULT view, so every
+user on the new toolchain got them too.
+
+The repair is a **union**, not a mirror: the builtin-methods table is what the current
+interfaces declare, what the intrinsics add, **and** what the previous table held. 102 names
+the new interfaces dropped are carried forward; a probe per name settled 33 of them dead and 69
+still callable, and dropping those 69 would have turned valid calls into `undefined function`.
+
+#### Two corrections, in place
+
+0490 wrote the wrong toolchain version in seven files and the right one in an eighth place in
+the same commit, while the repository had it right in three places since 0.4.22. The
+correction is a follow-up commit, not a rewrite.
+
+And a `Get-Content -Raw` round trip on this CP936 box rewrote `—` as `鈥?` **and ate the
+newline after it**, merging two comment lines in two places. 19 sites across five files, every
+repaired line checked against the PARENT of the commit that introduced the corruption. The two
+deliberate ones are left alone — the READMEs show the mojibake on purpose, as the record of
+the defect.
+
+#### The dependency moves
+
+`moonbitlang/async` 0.22.4 → **0.22.5**, and the whole gate was re-run under it before this
+release was cut. The claim that wasm-gc wants a `run_async_main` that async does not export
+was re-verified against the new version and still holds: `integration.mbt` guards it with
+`#cfg(target="native")` and `#cfg(target="js")`, and `integration.wasm.mbt` — the `wasm`
+target only, not `wasm-gc` — is the other half.
 
 ### 0.4.29 — `expr as &Trait` is an operator, and the parser had no production for it
 
