@@ -4286,6 +4286,50 @@ the twenty-one expectations in this one were wrong, and the toolchain was right 
 settle whose rows are all ACCEPTED on the first run has told you nothing about the analyzer. The
 settle now carries 25 rows and 11 controls that REJECT.
 
+## DIRECTION 4: THE ONE RELEASE ENTRY POINT, AND WHAT THE README DID NOT SAY
+
+The question was whether this repository has more than one way in, and whether the release path
+covers the gates. It was measured rather than assumed, and the answer is that the single entry
+point has existed all along -- what was missing was the DOCUMENTATION of it.
+
+MEASURED. `_verify/` holds 247 `.ps1` scripts. 76 of them are mutation gates --
+`mutate_<NNNN>.ps1`, one per increment that pinned a defect. `release.ps1` carries a `$gates`
+list of 76 four-digit numbers, and the two sets are EQUAL IN BOTH DIRECTIONS: no mutation gate
+is outside the release path, and no entry in the list names a script that does not exist. The
+other 171 scripts are one-off settles, probes and evidence, plus four authoring tools
+(`mutate_lib.ps1`, `named_claims.ps1`, `prove_mustred.ps1`, `preflight_compile.ps1`) and the
+three scripts the release path drives as stages rather than as gates
+(`grammar_probe_control.ps1`, `selfscan_published.ps1`, `selftest_selfscan_published.ps1`).
+
+So the gap was never "a gate is outside the release path". It was that the README never NAMED
+the entry point: a search for `release.ps1` in README.md had no matches, while LOOP.md named
+it. A reader of the README would find the CI floor -- fmt, check, one test target, one build
+-- and nothing above it, and the CI floor is not the gate.
+
+THE README'S VERIFICATION COUNTS WERE STALE BY THREE RELEASES. It said `683/683 on wasm;
+611/611 on js and wasm-gc`, a line last touched by commit 9163955 and still stale in the
+0.4.30 release commit 825c506, against an actual 1085 / 1013 / 1013. A count three releases out
+of date is not a stale detail; it is a claim about the project that is false, and the README is
+where a reader looks to check one.
+
+THE README'S PUBLISHING SECTION SAID `moon publish`, which is wrong in the direction that costs
+the most. The publish is driven by the GitHub TAG push: `.github/workflows/publish.yml` triggers
+on `v*`, resolves the registry index (`moon update`), checks that `moon.mod`'s version equals
+the tag and that the repository holds exactly one `moon.mod`, runs the gate, runs `moon publish`
+with the `MOONCAKES_RIANTR_TOKEN` secret, and creates the GitHub Release. A reader who believed
+the README would publish from a local checkout -- with the wrong credential shape, because the
+secret's VALUE is the whole contents of `~/.moon/credentials.json` and not a bare token -- and
+would publish a tag that CI then publishes AGAIN.
+
+The README now names the entry point, states its coverage and its two switches
+(`-SkipMutations`, `-SelfTest`), carries the current counts, and records the release order the
+CI-driven publish implies: dependencies up first, the gate green under the NEW dependency, then
+the version bump and the README sync, and only then the tag.
+
+=> 判据: A GATE IS NOT A GATE IF NOBODY CAN FIND IT. The single entry point existed and covered
+every mutation gate from the first increment; what was missing was a README that named it, and a
+README that claimed "the" verification numbers while carrying numbers three releases old.
+
 
 
 
