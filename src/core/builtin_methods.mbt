@@ -1,4 +1,4 @@
-// GENERATED FILE 鈥?do not edit by hand. See tools/gen_builtin_methods.ps1.
+// GENERATED FILE — do not edit by hand. See tools/gen_builtin_methods.ps1.
 //
 // The METHODS of the builtin types, as bare qualified names.
 //
@@ -11,7 +11,7 @@
 // was reported as `undefined function 'Array::make'` by the behavioral
 // lens, on a line `moon check` accepts. Across the four sibling corpora
 // (933 files) this family is 42 distinct names over 4450 call sites; the
-// other 41 are latent, masked rather than absent 鈥?see the note at the
+// other 41 are latent, masked rather than absent — see the note at the
 // bottom of this file.
 //
 // Why a TABLE and not a rule. The obvious one-line fix is "a call
@@ -63,7 +63,7 @@
 // The bare TYPE names themselves live in builtins.mbt. This file is sliced to
 // those heads, so the two cannot drift: adding a type to the bare list without
 // regenerating this one leaves its methods unresolved, which is the failure
-// direction 鈥?a report the user can see 鈥?not a silent hole.
+// direction — a report the user can see — not a silent hole.
 
 ///|
 /// Every builtin type method a `.mbt` file may call bare, qualified.

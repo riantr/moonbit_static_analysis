@@ -527,7 +527,7 @@ answer for the wrong reason.
 GATE 0447: 4 KILLED + 1 declared SURVIVED (M5, the redundant bare form: both
 callers apply `unqualified` to every candidate and `unqualified("@cond_var.Cond::Cond")`
 IS `Cond::Cond`, so the extra entry cannot be reached). wasm 662/662, js and
-wasm-gc 590/590 (up 5 on each 鈥?the five 0447 tests live in `moonfiles`, which is
+wasm-gc 590/590 (up 5 on each — the five 0447 tests live in `moonfiles`, which is
 not a `src/sa` package, so they run on every target). Self-scan 88/88 actionable 0,
 up one file and six notices over 0.4.36: the new test file.
 

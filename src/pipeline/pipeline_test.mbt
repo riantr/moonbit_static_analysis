@@ -4,14 +4,14 @@
 //               one finding whose lens tag is the union
 //   tables:     lens 2 consumes lens 1's binding tables; lens 3 consumes
 //               lens 2's signatures (no stage rediscovers bindings)
-//   pruning:    constant folding appears twice 鈥?structural
+//   pruning:    constant folding appears twice — structural
 //               (walk) and lattice (ABool in interp)
 //   traces:     behavioral findings carry virtual stacks (entry first)
 
 /// test inputs (mirror src/samples; inlined to keep the import graph simple)
 
 ///|
-/// Tests pass an empty cross-file symbol table 鈥?they assert pipeline
+/// Tests pass an empty cross-file symbol table — they assert pipeline
 /// behavior, not cross-file resolution, so the only fix needed is to
 /// keep the third argument present in the signature.
 fn empty_iface() -> @core.IfaceSymTab {
@@ -82,7 +82,7 @@ test "merge: arg-type echoes unify under MethodError" {
 ///|
 test "assembly 1: type lens consumes walk's binding tables" {
   // the module binds z = 1 (untyped) and n: int = 2 (annotated); the type
-  // lens never re-parses 鈥?re-assigning a str to n reports AssignType with
+  // lens never re-parses — re-assigning a str to n reports AssignType with
   // the ANNOTATION'S type, taken from lens 1's table
   let src = "z = 1\nlet n: int = 2\nn = \"x\"\nz = \"y\"\n"
   let r = @pipeline.run(src, "a1.mbt", empty_iface())
@@ -105,7 +105,8 @@ test "assembly 1: type lens consumes walk's binding tables" {
 
 ///|
 test "assembly 2: behavior lens dispatches on type lens signatures" {
-  // f accepts int only; only the behavior lens can reject f(true) 鈥?  // dispatch against the signature table lens 2 produced
+  // f accepts int only; only the behavior lens can reject f(true) —
+  // dispatch against the signature table lens 2 produced
   let src = "fn f(x: int) -> int {\n  return x\n}\nf(true)\n"
   let r = @pipeline.run(src, "a2.mbt", empty_iface())
   let mut hits = 0
@@ -121,7 +122,7 @@ test "assembly 2: behavior lens dispatches on type lens signatures" {
 ///|
 test "pruning appears twice: structural fold and lattice ABool" {
   // dead branch: the walk prunes it structurally, the interp prunes it in
-  // the lattice 鈥?typo_fn exists NOWHERE, yet no lens reports it
+  // the lattice — typo_fn exists NOWHERE, yet no lens reports it
   let r = @pipeline.run(SAMPLE_DEADBRANCH, "d.mbt", empty_iface())
   assert_eq(r.reports.length(), 0)
   assert_eq(r.sigs[0], "h(int) -> int")
@@ -284,7 +285,8 @@ test "a defect below an unmodelled declaration is still reported" {
 /// fall through and lex its contents as ordinary tokens, so a bare `%` in prose
 /// ("ownership of fifty percent (50%) or more") became a binary operator with
 /// no right operand; MoonBit's own divide-by-zero guard in Interp.binop then
-/// panicked and killed the entire scan. Reduced from a real file 鈥?/// moonbitlang/async's `src/fs/read_all_test.mbt` 鈥?down to one comment line.
+/// panicked and killed the entire scan. Reduced from a real file —
+/// moonbitlang/async's `src/fs/read_all_test.mbt` — down to one comment line.
 test "a bare % inside a block string is text, not an operator" {
   // The closer is a line-leading `#|`, measured against the toolchain, so this
   // block has to span two lines.
@@ -296,7 +298,7 @@ test "a bare % inside a block string is text, not an operator" {
 }
 
 ///|
-/// Same, with the block string spanning lines 鈥?the line counter has to
+/// Same, with the block string spanning lines — the line counter has to
 /// advance inside it or every span after it would be wrong. The block opens on
 /// line 2, closes at the line-leading `#|` on line 4, and the injected call is
 /// therefore on line 5, not line 3.
@@ -390,7 +392,7 @@ test "a real parse failure still counts next to a skip" {
 
 ///|
 /// The trusted-region boundary: `first_error_line` is where the frontend gave
-/// up READING, and it must not move for a deliberate exclusion 鈥?skipping a
+/// up READING, and it must not move for a deliberate exclusion — skipping a
 /// `test` block leaves everything after it perfectly readable, so a file whose
 /// only complaint is a skip has no boundary at all.
 test "first_error_line marks the read failure, not the skip" {

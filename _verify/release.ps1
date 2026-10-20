@@ -398,7 +398,7 @@ if ($SkipMutations) {
 # 15 come back parsed, because their site sits inside a skipped `test` block, and
 # exactly one -- `backend/macos/macos_services.mbt` -- is blocked. That file is
 # also one of the four that print no `PARTIAL` line, so cross-referencing it
-# against `blockers.ps1` gives OVERLAP 0 and the gap reads as free. 鈬?鍒ゆ嵁: a
+# against `blockers.ps1` gives OVERLAP 0 and the gap reads as free. ⇒ 判据: a
 # lower bound that agrees with "no problem" is not evidence of no problem. Pinned
 # as a KNOWN LIMIT in `parser_0436_test.mbt`, not fixed here.
 #
@@ -490,7 +490,7 @@ if ($SkipMutations) {
 # FIXED, in 0439: the postfix `catch` arm parses its handler arms instead of
 # consuming them with `skip_braces`, so a parameter read ONLY inside a handler is
 # seen. The finding named above is gone, and the same fix removed proton's
-# `facade_paths.mbt:473` `parameter 'label' may not be used` 鈥?the second
+# `facade_paths.mbt:473` `parameter 'label' may not be used` — the second
 # measured instance of the identical defect, recorded since 0432.
 #
 #   moui     actionable  1 -> 0    parsed 590 UNCHANGED
@@ -506,7 +506,7 @@ if ($SkipMutations) {
 #     }
 #
 # That is the per-file `enum_ctors` harvest limitation already recorded in the
-# hex.mbt rows above 鈥?a suberror variant used in a DIFFERENT file from its
+# hex.mbt rows above — a suberror variant used in a DIFFERENT file from its
 # declaration. Reading the body makes the `raise` visible to the resolver, and
 # the resolver does not have the variant. It is the same trade the README
 # describes, in the same direction it has gone before, paid in false positives

@@ -236,7 +236,7 @@ fn name_at(s : String, i : Int32) -> String {
 /// How many NAME tokens the source produces. This is the invariant that
 /// matters: a literal the lexer does not understand does not fail, it SPLITS,
 /// and every fragment it leaves behind is then reported as an unbound binding.
-/// Token counts are deliberately not asserted 鈥?they are an implementation
+/// Token counts are deliberately not asserted — they are an implementation
 /// detail, and a whitespace change would make the test lie about the bug.
 fn count_names(s : String) -> Int32 {
   let (toks, _, _) = @lexer.lex(s)
@@ -264,7 +264,7 @@ test "hex, binary and octal all carry their value" {
 /// The base prefix needs a digit of that base IMMEDIATELY after it. The
 /// toolchain agrees: `0x_1F` does not compile, and reading the `_` as the first
 /// digit would accept a literal the compiler rejects. A leading `0` followed
-/// by a variable named `x` is the other side of the same rule 鈥?the variable
+/// by a variable named `x` is the other side of the same rule — the variable
 /// must survive, which it does not if `0x` is taken as a prefix.
 test "a base prefix needs a digit immediately after it" {
   assert_eq(count_names("0x1F_"), 0)
@@ -278,7 +278,7 @@ test "a base prefix needs a digit immediately after it" {
 
 ///|
 /// The bound is fixed, not the target's `Int`, so the same source gives the
-/// same answer on wasm and on js. Past it the literal still lexes 鈥?it just
+/// same answer on wasm and on js. Past it the literal still lexes — it just
 /// carries no value, which is what stops a dead branch being folded on a
 /// number the analyzer could not read.
 test "a literal past the bound carries no value but still lexes" {
@@ -296,7 +296,7 @@ test "the L, U and UL suffixes are consumed, not read as names" {
   // This is the exact shape that used to yield `no visible binding for 'UL'`.
   assert_eq(count_names("0xffffffffUL\n"), 0)
   let (_, spans, _) = @lexer.lex("0xffffffffUL\n")
-  // 12 characters from column 1, so the span ends at column 13 鈥?the suffix
+  // 12 characters from column 1, so the span ends at column 13 — the suffix
   // is inside the token, not trailing past it.
   assert_eq(spans[0].end.col, 13)
 }
