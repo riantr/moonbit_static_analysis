@@ -178,10 +178,11 @@ test "the module view is unchanged by the per-function fixes" {
 }
 
 ///|
-/// A BUILTIN METHOD UNDER THE RENAMED TYPE SPELLING IS NOT UNDEFINED.
+/// A BUILTIN METHOD UNDER THE NEW SPELLING IS NOT UNDEFINED.
 ///
-/// The toolchain renamed `Int` to `Int32` on 0.1.20261016 and declares ALL
-/// FORTY-FOUR of the integer type's methods under the new spelling --
+/// The toolchain changed the CANONICAL SPELLING of the integer type on
+/// 0.1.20261012 -- `Int` is now `Int32` -- and declares ALL FORTY-FOUR of the
+/// integer type's methods under the new spelling --
 /// `Int32::popcnt`, `Int32::to_char`, `Int32::next_power_of_two` -- and NONE
 /// under the old one. The analyzer's builtin-method TABLE is the only thing
 /// that decides whether a qualified call is a builtin or an undefined name, and
@@ -192,7 +193,12 @@ test "the module view is unchanged by the per-function fixes" {
 /// spelling is the toolchain's canonical form -- got `undefined function
 /// 'Int32::popcnt'` on code `moon check` accepts. Settled with the toolchain:
 /// `Int32::popcnt(x)` COMPILES.
-test "0490: a builtin method under the renamed type spelling is not undefined" {
+///
+/// THE TYPE DID NOT CHANGE, and that is what the official wording says: "Int
+/// and UInt remain accepted as aliases of Int32 and UInt32. The formatter uses
+/// the explicit-width names Int32 and UInt32."
+/// (https://docs.moonbitlang.com/en/latest/language/fundamentals.html)
+test "0490: a builtin method under the new spelling is not undefined" {
   let src = "fn f(x : Int32) -> Int32 {\n  Int32::popcnt(x)\n}\n"
   let perfn = @pipeline.run_functions(src, "x.mbt", @core.IfaceSymTab::empty())
   assert_eq(count_family(perfn, "UndefinedName"), 0)
@@ -215,7 +221,7 @@ test "0490: the old spelling of the same builtin method still resolves" {
 /// not a rule that stopped reporting qualified calls, and the table's own
 /// header records why: it only ever suppresses, so a name it misses is noise
 /// and a name it invents is a false alarm.
-test "0490: a method that does not exist under the renamed spelling is still reported" {
+test "0490: a method that does not exist under the new spelling is still reported" {
   let src = "fn f(x : Int32) -> Int32 {\n  Int32::popcntnope(x)\n}\n"
   let perfn = @pipeline.run_functions(src, "x.mbt", @core.IfaceSymTab::empty())
   assert_eq(count_family(perfn, "UndefinedName"), 1)

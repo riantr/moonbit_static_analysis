@@ -219,12 +219,20 @@ signature` findings, out of 1029 files and 80 generated interfaces. The 93 and
 the 13 above are the HISTORY of the defect, not its current size.
 
 ONE MORE CLASS OF THE SAME SHAPE, and it is the one a toolchain upgrade
-creates. The toolchain RENAMED the two unsuffixed integer types — `Int` is now
-`Int32`, `UInt` is now `UInt32` — and every interface it generates says so. The
-ambient list has to carry BOTH spellings: they are the same type (`moon check`
-accepts `let x : Int32 = 1` and `let x : Int = 1`, and accepts either in
-either position), and `moon fmt` rewrites `Int` into `Int32`, so the old
-spelling is what a user has in their file until they format it.
+creates. On **0.1.20261012** the toolchain changed the **canonical spelling**
+of the two unsuffixed integer types — `Int` is now `Int32`, `UInt` is now
+`UInt32` — and every interface it generates says so. The **type did not
+change**: MoonBit's own documentation says so, in these words
+([Language Fundamentals](https://docs.moonbitlang.com/en/latest/language/fundamentals.html)):
+
+> Int and UInt remain accepted as aliases of Int32 and UInt32. The formatter
+> uses the explicit-width names Int32 and UInt32.
+
+So the ambient list has to carry BOTH spellings: `moon check` accepts
+`let x : Int32 = 1` and `let x : Int = 1`, and accepts either in either
+position, and `moon fmt` rewrites `Int` into `Int32` — so the old spelling is
+what a user has in their file until they format it, and dropping it would be
+a false positive on a name the toolchain still accepts.
 
 So an `unknown type ... in interface signature` finding on a `.mbti` should
 be treated as **unverified**, the same way a `.mbt` finding past the

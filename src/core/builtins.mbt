@@ -79,20 +79,31 @@ pub fn ambient_names() -> Array[String] {
     // types
     //
     // "Int32" AND "UInt32" are here BESIDE "Int" and "UInt" because the
-    // toolchain RENAMED the two unsuffixed integer types on 0.1.20261016:
-    // `Int` is now `Int32`, `UInt` is now `UInt32`, and the interfaces it
-    // generates say so. `Int16` and `UInt16` were NOT renamed -- the change is
-    // of the UNSUFFIXED names only, which is what makes it a rename rather
-    // than a widening.
+    // toolchain CHANGED THE CANONICAL SPELLING of the two unsuffixed integer
+    // types on 0.1.20261012: `Int` is now `Int32`, `UInt` is now `UInt32`, and
+    // the interfaces it generates say so. `Int16` and `UInt16` were NOT
+    // changed -- it is the UNSUFFIXED names only, which is what makes it a
+    // change of spelling rather than a widening.
     //
-    // BOTH spellings are kept, and the reason is that they are the SAME type.
-    // `moon check` accepts `let x : Int32 = 1` and `let x : Int = 1`, and
-    // accepts either in either position -- `fn f(x : Int32) -> Int` and the
-    // reverse both compile. `moon fmt` rewrites `Int` into `Int32`, so the new
-    // spelling is the toolchain's own canonical form and the old one is what
-    // a user still has in their file until they format it. Settled with the
-    // toolchain, not inferred: `_verify/settle_0490_int32.ps1`, one package
-    // per row, with a control module that must be rejected.
+    // THE OFFICIAL WORDING, because "the type was renamed" is the wrong way to
+    // put it, and the wrong way round is what makes a fix wrong. MoonBit's own
+    // Language Fundamentals page says:
+    //
+    //     Int and UInt remain accepted as aliases of Int32 and UInt32.
+    //     The formatter uses the explicit-width names Int32 and UInt32.
+    //
+    // (https://docs.moonbitlang.com/en/latest/language/fundamentals.html)
+    //
+    // So the TYPE did not change -- `Int` is still `Int`, as an alias, and both
+    // spellings compile -- but the CANONICAL spelling did, and `moon fmt`
+    // enforces it. The core library says the same thing in its commit subject
+    // on every package at once: "Update for moon 0.1.20261012 (Int32/UInt32,
+    // new deprecations)".
+    //
+    // BOTH spellings are kept, and the reason is exactly that the type did not
+    // change. Settled with the toolchain, not inferred:
+    // `_verify/settle_0490_int32.ps1`, one package per row, with a control
+    // module that must be rejected.
     //
     // The cost of keeping a name the toolchain has renamed is a MISSED report.
     // The cost of dropping one is a FALSE POSITIVE on a type the toolchain

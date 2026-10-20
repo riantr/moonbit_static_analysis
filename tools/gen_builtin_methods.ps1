@@ -34,11 +34,21 @@
 #
 # THE MAINTENANCE PATH WAS UNSAFE, and the fix is measured. 0490's release gate
 # ran while the toolchain was upgraded 0.1.20261012 -> 0.1.20261016, and the
-# new core's interfaces declare 102 FEWER type-qualified names: `Int::abs` is
-# now a bare `int::abs` in a package, `Buffer::write` is `Buffer::write_bytes`
-# and `Buffer::write_string_utf8`, and so on. Running this script on the new
-# toolchain produced 1163 names against the committed 1265 -- 102 LOST, 0
-# gained -- and the header's own warning does not cover that direction.
+# new core's interfaces declare 102 FEWER type-qualified names. The 102 SPLIT
+# cleanly once it was measured, and the two halves are different upgrades:
+#
+#   84  the SPELLING CHANGE of 0.1.20261012. `Int::abs` is now `Int32::abs` and
+#       `UInt::to_json` is now `UInt32::to_json` -- the same declarations, under
+#       the explicit-width names, moved from the (now deprecated) `int` and
+#       `uint` packages into `builtin`. The TYPE did not change: `Int` remains
+#       accepted as an alias, which is what MoonBit's own documentation says.
+#   18  0.1.20261016's own changes. The `Buffer::write` family was renamed
+#       (`Buffer::write` is `Buffer::write_bytes` and friends), the deprecated
+#       `Bool::to_int16` was removed (`#4409`), and a few more.
+#
+# Running this script on the new toolchain produced 1163 names against the
+# committed 1265 -- 102 LOST, 0 gained -- and the header's own warning does not
+# cover that direction.
 #
 # The table only ever SUPPRESSES, so its two failure directions are not
 # symmetric, and the repo already settled which one it accepts:
@@ -199,11 +209,22 @@ $intrinsic = @(
   # name the toolchain has RENAMED is a MISSED report, and a name the toolchain
   # still has is a FALSE POSITIVE. Only the second is acceptable.
   #
-  # THE RENAME, AND THE THREE NAMES IT ADDS. The toolchain renamed the two
-  # unsuffixed integer types on 0.1.20261016 -- `Int` is now `Int32`, `UInt` is
-  # now `UInt32` -- and this list is HAND-WRITTEN, so it is the one part of the
-  # table that no extraction can repair and no carrying-forward can reach: the
-  # old table never had `Int32::to_json`, because `Int32` did not exist.
+  # THE SPELLING CHANGE, AND THE THREE NAMES IT ADDS. The toolchain changed
+  # the CANONICAL SPELLING of the two unsuffixed integer types on 0.1.20261012
+  # -- `Int` is now `Int32`, `UInt` is now `UInt32` -- and this list is
+  # HAND-WRITTEN, so it is the one part of the table that no extraction can
+  # repair and no carrying-forward can reach: the old table never had
+  # `Int32::to_json`, because `Int32` did not exist.
+  #
+  # THE TYPE DID NOT CHANGE, and the official wording is the authority -- from
+  # MoonBit's own Language Fundamentals page:
+  #
+  #     Int and UInt remain accepted as aliases of Int32 and UInt32.
+  #     The formatter uses the explicit-width names Int32 and UInt32.
+  #
+  # (https://docs.moonbitlang.com/en/latest/language/fundamentals.html) The
+  # core library says the same in its commit subject, on every package at once:
+  # "Update for moon 0.1.20261012 (Int32/UInt32, new deprecations)", Oct 13 2026.
   #
   # The three names below are therefore SETTLED, not composed. A probe per
   # name, one package each, with a control module that must be rejected

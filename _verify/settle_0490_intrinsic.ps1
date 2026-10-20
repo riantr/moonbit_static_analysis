@@ -1,7 +1,15 @@
-# 0490 -- the INTRINSIC FAMILY under the RENAME. The generator's intrinsic list
-# is HAND-WRITTEN, and the toolchain renamed two of the types it names.
+# 0490 -- the INTRINSIC FAMILY under the RE-SPELLING. The generator's intrinsic
+# list is HAND-WRITTEN, and the toolchain re-spelled two of the type names it
+# names.
 #
-# WHY. The rename is not confined to the interfaces. The generator keeps a
+# THE SPELLING CHANGE, AND ITS VERSION. The canonical spelling of the two
+# unsuffixed integer types changed on 0.1.20261012 -- `Int` is now `Int32`,
+# `UInt` is now `UInt32` -- and the TYPE did not change: MoonBit's own Language
+# Fundamentals page says "Int and UInt remain accepted as aliases of Int32 and
+# UInt32. The formatter uses the explicit-width names Int32 and UInt32."
+# (https://docs.moonbitlang.com/en/latest/language/fundamentals.html)
+#
+# WHY. The re-spelling is not confined to the interfaces. The generator keeps a
 # hand-written list of the compiler intrinsics -- the names no `pkg.generated.mbti`
 # declares, so no extraction can find them: `Array::make` among them, and the
 # whole `T::to_json` family. That list is spelled with the OLD type names:
@@ -83,8 +91,8 @@ fn f(x : UInt32) -> Char {
   UInt32::unsafe_to_char(x)
 }
 '@ }
-  # The other intrinsics name types the rename did NOT touch, so they are
-  # here as the CONTROL that the rename is NARROW: a list of names that must
+  # The other intrinsics name types the re-spelling did NOT touch, so they are
+  # here as the CONTROL that the re-spelling is NARROW: a list of names that must
   # keep working exactly as they did.
   @{ Name = 't10_untouched_intrinsics'; Expect = '?'; Note = 'Array::make / Map::new / Option::None / StringBuilder::new'
      Body = @'

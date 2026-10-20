@@ -29,11 +29,25 @@
 #       omittable parameter was invisible to the arity rule.
 #
 # M8 AND M9 COME FROM A DIFFERENT SOURCE, and the difference is worth stating.
-# The toolchain was upgraded 0.1.20261012 -> 0.1.20261016 in the middle of this
-# release, by another process on the same machine, and the new toolchain RENAMED
-# the two unsuffixed integer types: `Int` is now `Int32`, `UInt` is now
-# `UInt32`. `Int16` and `UInt16` were not renamed -- the change is of the
-# UNSUFFIXED names only.
+# The toolchain CHANGED THE CANONICAL SPELLING of the two unsuffixed integer
+# types on 0.1.20261012: `Int` is now `Int32`, `UInt` is now `UInt32`. `Int16`
+# and `UInt16` were not changed -- it is the UNSUFFIXED names only.
+#
+# THE TYPE DID NOT CHANGE, and the official wording is the authority -- from
+# MoonBit's own Language Fundamentals page:
+#
+#     Int and UInt remain accepted as aliases of Int32 and UInt32.
+#     The formatter uses the explicit-width names Int32 and UInt32.
+#
+# (https://docs.moonbitlang.com/en/latest/language/fundamentals.html) The
+# repository already had this settled in 0.4.22 -- `src/types/types_0422_test.mbt`
+# says "0.1.20261012 renamed the default integer type to `Int32`" -- and that is
+# the version this change landed in.
+#
+# 0.1.20261016 is the version that started REWRITING this repository's own
+# `src/*/pkg.generated.mbti`, which is what put the stale `Int` spelling in
+# front of the analyzer's self-scan and turned the defect into a red gate. The
+# upgrade was done by ANOTHER process on this machine, mid-release.
 #
 #   M8  THE AMBIENT TYPE LIST did not learn the new names, so every
 #       interface the new toolchain generates reported `unknown type 'Int32'
@@ -226,7 +240,7 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
   # self-scan stage requires `actionable` to be 0, so this mutation is what
   # keeps the gate's own green light honest.
   @{
-    Name = 'M8 the ambient type list does not know the renamed integer types'
+    Name = 'M8 the ambient type list does not know the integer types under the new spelling'
     File = $BUILT
     Find = @'
     "Double", "Failure", "FixedArray", "Hasher", "Int", "Int32", "Int64", "Iter",
@@ -238,7 +252,7 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
     "Iter2", "Json", "Map", "MutArrayView", "Option", "ReadOnlyArray", "Result",
     "SourceLoc", "String", "StringBuilder", "StringView", "UInt", "UInt16",
 '@.Replace("`r`n", "`n")
-    MustRed = 'a .mbti that names the renamed integer types has no findings'
+    MustRed = 'a .mbti that names the integer types under the new spelling has no findings'
   }
 
   # M9 THE METHOD TABLE. The other face of the same rename: the toolchain
@@ -252,7 +266,7 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
   # renamed is a MISSED report, and dropping one it still has is a FALSE
   # POSITIVE, and only the second is acceptable.
   @{
-    Name = 'M9 the method table does not know the renamed type''s methods'
+    Name = 'M9 the method table does not know the methods under the new spelling'
     File = $METHOD
     Find = @'
     "Int32::neg", "Int32::next_power_of_two", "Int32::popcnt", "Int32::reinterpret_as_uint",
@@ -260,7 +274,7 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
     Repl = @'
     "Int32::neg", "Int32::next_power_of_two", "Int32::reinterpret_as_uint",
 '@.Replace("`r`n", "`n")
-    MustRed = 'a builtin method under the renamed type spelling is not undefined'
+    MustRed = 'a builtin method under the new spelling is not undefined'
   }
 )
 

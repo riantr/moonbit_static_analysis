@@ -3460,16 +3460,89 @@ Thirty-seven findings, and EVERY ONE of them was the same line:
 rewritten. The `.mbti` frontend resolves a signature's type names against the ambient list, and the
 ambient list carried `Int` and not `Int32`.
 
-THE TOOLCHAIN RENAMED TWO BUILTIN TYPES. On 0.1.20261016 `Int` is `Int32` and `UInt` is `UInt32`,
-and the interfaces it generates say so:
+THE TOOLCHAIN CHANGED THE CANONICAL SPELLING OF TWO BUILTIN TYPES, and the version that did it is
+**0.1.20261012**, not the 0.1.20261016 this section first blamed. The repository ALREADY SAID SO, in
+THREE places -- and all three are in ONE commit, `1c6de6e5` ("Match named arguments by NAME, and
+read Int32 as Int", 2026-10-12), whose `moon.mod` reads `version = "0.4.22"`:
 
-    -  pub fn pos(Int, Int) -> Pos
-    +  pub fn pos(Int32, Int32) -> Pos
+    src/types/types_0422_test.mbt:20       0.1.20261012 renamed the default integer type to `Int32`.
+    src/pipeline/pipeline_0422_test.mbt:6   `Int32` reads as `Int` (0.1.20261012 renamed the default
+                                            integer type)
+    src/pipeline/pipeline_0422_test.mbt:492  0.1.20261012 renamed the default integer type. The
+                                            formatter rewrote this
+
+AND 0490 SAID IT BOTH WAYS IN ITS OWN COMMIT. `6138f34` wrote the RIGHT version into this same
+file, in the toolchain-upgrade section above, at line 3390:
+
+    That is the SAME defect 0490 fixed in four files, in the five files 0490 did not touch: 0.1.20261012
+    renamed the default integer type, `moon fmt` rewrote this repository's SOURCE to `Int32`, and the
+    committed interface files kept the old spelling. They were stale, and the new toolchain noticed.
+
+-- and the WRONG version right here. The same commit, the same file, both numbers, seventy-three lines
+below it in that commit. The file was not uniformly wrong, and that is exactly why the error
+survived: a reader who checks the claim finds a correct answer and stops looking.
+
+So the version was settled in 0.4.22 and written down THREE times, and 0490 wrote it EIGHT more
+times -- SEVEN wrong, in seven files, and ONE right, in one of those same seven files:
+
+    _verify/NARRATIVE.md                      src/core/builtins.mbt
+    _verify/mutate_0490.ps1                   src/moonfiles/moonfiles_0490_test.mbt
+    _verify/settle_0490_int32.ps1             src/pipeline/pipeline_0490_test.mbt
+    tools/gen_builtin_methods.ps1
+
+That is the same defect this section records about the `~` marker a few paragraphs up: a fact
+settled once and then quoted in a second file is a fact with two copies and no owner, and the
+second copy is where the inversion goes. When the second copy lands in the SAME FILE as the first,
+the inversion is invisible to the reader who checks.
+
+THE OFFICIAL DOCUMENTATION SETTLES WHAT CHANGED, and it is not quite a RENAME. From MoonBit's own
+Language Fundamentals page (https://docs.moonbitlang.com/en/latest/language/fundamentals.html):
+
+    Int and UInt remain accepted as aliases of Int32 and UInt32. The formatter uses the
+    explicit-width names Int32 and UInt32.
+
+and the type table on the same page lists `Int16`, `Int32`, `Int64`, `UInt16`, `UInt32`, `UInt64`,
+`Double`, `Float` and `BigInt` -- `Int` and `UInt` are no longer IN the table, only mentioned as
+aliases. So:
+
+  - the TYPE did not change. `Int` is still `Int`, as an ALIAS. Both spellings compile, and
+    `moon check` accepts either in either position -- which is what 0490's settle measured.
+  - the CANONICAL SPELLING did change, to the explicit-width name, and `moon fmt` enforces it.
+  - the DECLARATION moved. The `moonbitlang/core` library used to declare the integer type in its
+    own `int` and `uint` packages -- now `#deprecated` -- and the new toolchain declares it in
+    `builtin` under the new names.
+
+Measured on the installed core, `builtin/pkg.generated.mbti` carries 76 `Int32::`/`UInt32::`
+declarations and ZERO `Int::`/`UInt::`, and `int/pkg.generated.mbti` says
+`pub const MAX_VALUE : Int32 = 2147483647` where the September copy said `pub const MAX_VALUE : Int
+= 2147483647`. The core library's own commit history says the same thing in its subject line, on
+every package at once: `Update for moon 0.1.20261012 (Int32/UInt32, new deprecations)`, Oct 13 2026.
+
+SO THE TWO VERSIONS DID TWO DIFFERENT THINGS, and 0490's first account merged them:
+
+  0.1.20261012 (Oct 13)  renamed the default integer type. From that day the analyzer's ambient
+                         type list and its method table were BOTH stale: the `.mbti` frontend
+                         reported `unknown type 'Int32'` on any interface the toolchain generated,
+                         and the behavioral lens reported `undefined function 'Int32::popcnt'` on a
+                         call that compiles. The repository's TYPE lens had been taught in 0.4.22
+                         (`ann_to_ty`'s `"Int32"` arm); the other two places were never taught, and
+                         the corpus is frozen at the old toolchain, so nothing else would have
+                         shown it.
+  0.1.20261016 (Oct 16)  started REWRITING this repository's own `src/*/pkg.generated.mbti`, which
+                         is what put the stale `Int` spelling in front of the analyzer's self-scan
+                         and turned a seven-day-old defect into a RED GATE. It also removed the
+                         deprecated `Bool::to_int16` (`chore(builtin): remove deprecated
+                         Bool::to_int16 (#4409)`, Oct 16) -- measured: that name is in the September
+                         copy of `builtin/pkg.generated.mbti` and gone from the installed one, and
+                         it is one of the 33 DEAD names the regenerated table dropped.
+
+The defect window is therefore 0.1.20261012 -> 0490, and every user on a toolchain from Oct 13 was
+getting both false positives. The upgrade did not CAUSE it; it EXPOSED it, in our own tree.
 
 `Int16` and `UInt16` were NOT renamed -- the change is of the UNSUFFIXED names only, which is what
-makes it a rename rather than a widening. And the rename is not confined to the interfaces: the
-toolchain declares ALL FORTY-FOUR of the integer type's methods under `Int32::` and NONE under
-`Int::`,
+makes it a change of canonical spelling rather than a widening. And the change is not confined to
+the interfaces: the toolchain declares ALL FORTY-FOUR of the integer type's methods under `Int32::`
+and NONE under `Int::`,
 
     44   Int32::abs, Int32::add, Int32::asr, ... Int32::unsafe_to_char
     0    Int::...                                   <- the same forty-four, under the old name
@@ -3506,11 +3579,21 @@ which reads as "the method does not exist" and is a PROBE BUG, not a toolchain f
 round of settling and it is worth recording, because the wrong reading would have removed eighteen
 LIVE names from the table.
 
-THE TABLE IS A SUPERSET, AND THE RENAME IS WHY THAT RULE HAD TO BE WRITTEN DOWN. The generator's own
-header already said "It can never invent a false alarm, because the table only ever suppresses" --
-and the rename is the case that sentence did not cover. Running the generator on the new toolchain
-produced 1163 names against the committed 1265: 102 LOST, 0 gained, because the new interfaces no
-longer declare the old spellings.
+THE TABLE IS A SUPERSET, AND THE SPELLING CHANGE IS WHY THAT RULE HAD TO BE WRITTEN DOWN. The
+generator's own header already said "It can never invent a false alarm, because the table only ever
+suppresses" -- and the spelling change is the case that sentence did not cover. Running the
+generator on the new toolchain produced 1163 names against the committed 1265: 102 LOST, 0 gained,
+because the new interfaces no longer declare the old spellings.
+
+AND THE 102 SPLIT CLEANLY ONCE IT WAS MEASURED, into two different upgrades:
+
+    84   the SPELLING CHANGE of 0.1.20261012 -- `Int::abs` is now `Int32::abs`, and the
+         `UInt::` family is now `UInt32::`. The same declarations, under the explicit-width
+         names, moved from the (now deprecated) `int` and `uint` packages into `builtin`.
+    18   0.1.20261016's own changes -- the `Buffer::write` family was renamed
+         (`Buffer::write` is `Buffer::write_bytes` and friends), the deprecated `Bool::to_int16`
+         was removed (`#4409`, measured: present in the September copy of
+         `builtin/pkg.generated.mbti`, gone from the installed one), and a few more.
 
 Those 102 are NOT all dropped names. One module per name, with a control module that must be
 rejected (`_verify/_settle_0490_builtins_alive.ps1`): 33 are DEAD -- the call is rejected, so

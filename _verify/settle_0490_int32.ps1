@@ -7,13 +7,27 @@
 #     unknown type 'Int32' in interface signature
 #
 # in the analyzer's OWN `src/*/pkg.generated.mbti` files. The cause is not the
-# analyzer's source -- it is that the toolchain was upgraded
-# 0.1.20261012 -> 0.1.20261016 MID-GATE (see the NARRATIVE), and the new
-# toolchain writes `Int32` into a generated interface where the old one wrote
-# `Int`:
+# analyzer's source -- it is that the toolchain CHANGED THE CANONICAL SPELLING
+# of the two unsuffixed integer types, and the interfaces it generates say so:
 #
 #     -pub fn pos(Int, Int) -> Pos
 #     +pub fn pos(Int32, Int32) -> Pos
+#
+# THE VERSION THAT DID IT IS 0.1.20261012, not 0.1.20261016 -- a distinction
+# this file's own first draft got wrong, and the repository already had right
+# in `src/types/types_0422_test.mbt`: "0.1.20261012 renamed the default integer
+# type to `Int32`". The type did NOT change; the CANONICAL SPELLING did, and
+# `Int` remains accepted as an alias. MoonBit's own Language Fundamentals page
+# says so:
+#
+#     Int and UInt remain accepted as aliases of Int32 and UInt32.
+#     The formatter uses the explicit-width names Int32 and UInt32.
+#
+# (https://docs.moonbitlang.com/en/latest/language/fundamentals.html)
+# 0.1.20261016 is the version that started REWRITING this repository's own
+# `src/*/pkg.generated.mbti` -- the upgrade was done by ANOTHER process on this
+# machine at 2026-10-20 00:54:16, mid-gate (see the NARRATIVE) -- and that is
+# what put the stale `Int` spelling in front of the analyzer's self-scan.
 #
 # The analyzer's `.mbti` frontend resolves a signature's type names against the
 # builtin list, and that list carries `Int` and not `Int32`. So every interface
