@@ -87,9 +87,52 @@
 $ErrorActionPreference = 'Continue'
 
 # --- the pinned corpora, in the order they are tried -------------------------
-# async first: it held 3 of the 4 usable rows when this was measured, and the most
-# unreadable files. Order is FIXED so a failure is reproducible.
+# `core` first, and the reason is measured rather than guessed. The six corpora
+# below were fully readable by 0494 -- `async` reached 419/419 and the other five
+# had no PARTIAL file at all -- so the derivation searched them and found
+# NOTHING, and the grammar probe control FAILED with its own designed message:
+#
+#   - no corpus file is both legal MoonBit and unread by this frontend, so there
+#     is no row left that can prove the REAL GAP tally fires.
+#
+# That is the control working. It says the honest endpoint is a FAILURE, and it
+# is not a licence to weaken the assertions or to hardcode a replacement row.
+# The control names the other option itself: "pin a NEW corpus that still
+# contains a gap this frontend cannot read". So `moonbitlang/core` was added,
+# and it is pinned by VERSION (0.1.20260920+7d59c7ec9 -- a build-stamped
+# version, so it cannot drift under you the way a `@latest` would).
+#
+# MEASURED YIELD OF THE NEW CORPUS, on the 0494 tree: 74 PARTIAL files, and the
+# FIRST candidate that survives the descent is `string/quickcheck_test.mbt:138`,
+# the top-level
+#
+#     let qc_boundary_chars : Array[Char] = [
+#       ..., '\u{7F}', ..., '\u{FFFF}', '\u{10000}', '\u{1F600}', '\u{10FFFF}',
+#     ]
+#
+# The WHOLE FILE is rejected first (it mentions `@quickcheck`), and the ITEM is
+# accepted: it is a `let` of nothing but char literals, so `moon check` calls it
+# legal MoonBit with 0 errors, and the frontend cannot read it. The gap is
+# PRECISE and was measured on the construct itself, not inferred from the file:
+#
+#     '\u{7F}'      (2 hex digits)  read
+#     '\u{FFFF}'    (4 hex digits)  read
+#     '\u{FFFE}'    (4 hex digits)  read
+#     '\u{10000}'   (5 hex digits)  NOT read -> "character literal must hold exactly one character"
+#     '\u{1F600}'   (5 hex digits)  NOT read
+#     '\u{10FFFF}'  (6 hex digits)  NOT read
+#     '\u{1FFFF}'   (5 hex digits)  NOT read
+#     '\u{20000}'   (5 hex digits)  NOT read
+#
+# So the escape reader takes at most FOUR hex digits, which is the BMP. A
+# supplementary-plane escape -- U+10000 and above, the range that needs a
+# surrogate pair in UTF-16 -- is past the end of what it reads. `moon check`
+# accepts all of them.
+#
+# The other corpora stay in the list, in the order they were tried, because a
+# corpus that gains a gap later must be found without touching this file.
 $script:GP_CORPORA = [ordered]@{
+  'core'     = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
   'async'    = 'moonbitlang\async\0.22.4'
   'proton'   = 'moonbit-community\proton\0.3.4'
   'moui'     = 'wzzc-dev\moui\0.1.12'

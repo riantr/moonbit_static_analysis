@@ -245,7 +245,15 @@ pub fn ty_assignable(v : Ty, target : Ty) -> Bool {
 pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
   // an unknown operand stays silent (operator errors are suppressed
   // for Unknown — the undefined-name finding already covers it)
-  if l is TUnknown || r is TUnknown {
+  //
+  // THE REGEX MATCH IS THE ONE EXCEPTION. Its result is a Bool -- settled
+  // against the toolchain (`_verify/settle_0494_parse_backlog.ps1`, row `a3`,
+  // with the control `a4` REJECTing the same expression against an Int) -- and
+  // its RIGHT operand is a Regex, a type this model does not have, so that
+  // operand IS unknown and the rule above would answer "unknown" for an
+  // expression whose result is a Bool. The operand types are therefore NOT
+  // checked for this operator, and the answer is the result type alone.
+  if op != @ast.OpMatch && (l is TUnknown || r is TUnknown) {
     return Some(TUnknown)
   }
   match op {
@@ -303,6 +311,11 @@ pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
       }
     }
     OpAnd | OpOr => if l is TBool && r is TBool { Some(TBool) } else { None }
+    OpMatch =>
+      // The REGEX MATCH. The result is a Bool, and the operand types are NOT
+      // checked -- the right operand is a Regex and this model has no Regex
+      // type. See the note at the top of this function.
+      Some(TBool)
     OpPipe =>
       // The PIPE IS A CALL, so the result is the callee's return type, which this
       // analyzer does not model: `1 |> inc` has an Int LEFT and a FUNCTION right,

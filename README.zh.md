@@ -308,7 +308,7 @@ src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器�
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 1085/1085；js 与 wasm-gc 1013/1013
+moon test --deny-warn                # wasm 1096/1096；js 与 wasm-gc 1024/1024
 moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
 ```
 
@@ -336,16 +336,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 本仓源码自扫描；已发布包自扫描的 self-test；对**已发布**那个包的扫描；与固定基线的语料比对；
 然后是**全部变异门禁**。
 
-最后一条是重点，而且是量出来的而不是断言的：`_verify/` 下有 247 个 `.ps1` 脚本，其中
-**76 个是变异门禁**——每个钉住一个缺陷的增量对应一个 `mutate_<NNNN>.ps1`——而
-**这 76 个全部在 `release.ps1` 的门禁清单**（`$gates`）里：没有一个变异门禁落在发布路径之外，
-清单里也没有任何一条指向不存在的脚本。其余 171 个是一次性的 settle、探针与证据，加上四个
+最后一条是重点，而且是量出来的而不是断言的：`_verify/` 下有 249 个 `.ps1` 脚本，其中
+**77 个是变异门禁**——每个钉住一个缺陷的增量对应一个 `mutate_<NNNN>.ps1`——而
+**这 77 个全部在 `release.ps1` 的门禁清单**（`$gates`）里：没有一个变异门禁落在发布路径之外，
+清单里也没有任何一条指向不存在的脚本。其余 172 个是一次性的 settle、探针与证据，加上四个
 写作工具（`mutate_lib.ps1`、`named_claims.ps1`、`prove_mustred.ps1`、`preflight_compile.ps1`）；
 它们是输入，不是发布阶段。
 
 两个开关会改变它的行为：
 
-- `-SkipMutations` 跑除 76 个变异门禁以外的全部内容——语料 pin 与本仓自扫描，约 8 分钟。
+- `-SkipMutations` 跑除 77 个变异门禁以外的全部内容——语料 pin 与本仓自扫描，约 8 分钟。
   当问题是「语料动了吗」而不是「哪个门禁红了」时用它。
 - `-SelfTest` 拿一个失败体、一个抛异常体和一个通过体去跑脚本自身的阶段函数。
   **没被证明过会变红的守卫不算守卫**，这里就是证明它的地方。
@@ -409,7 +409,7 @@ moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/al
 
 1. **依赖先升。**先去 mooncakes.io 查最新版本，`moon update`，然后在**新依赖**下把整套门禁
    再跑一遍。在旧 pin 上跑绿不算数：那样 README 描述的依赖集就不是被测代码实际用的那一组。
-2. **`_verify/release.ps1` 全绿**——76 个变异门禁、语料 pin、本仓自扫描与已发布包自扫描。
+2. **`_verify/release.ps1` 全绿**——77 个变异门禁、语料 pin、本仓自扫描与已发布包自扫描。
 3. **改 `moon.mod` 的版本号**，并把 `README.md`、`README.zh.md`、`SKILL.md` 里所有引用该版本号的
    地方同步过去。
 4. **提交，然后推**：master 推 Gitee，tag 推 Gitee，再把 master 与 tag 推 GitHub。

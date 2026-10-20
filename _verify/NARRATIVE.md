@@ -1228,6 +1228,28 @@ states is not a pin. Six corpus lines that stay identical whatever `interp.mbt` 
 the same confident zero as a broken reader, and the only defence against both is a
 control that proves the counter can see a thing it is reporting as absent.
 
+MEASURED 2026-10-21, AFTER `moonbit_core` WAS PINNED (see the 0494 section below). The six
+older corpora carry 7798 findings and NOT ONE is tagged `behavior`; core carries 7960 and
+FIVE are. The seven carry 15758 in all. So the statement above is now true of six corpora
+and no longer true of the pin table as a whole:
+
+    corpus             findings   behaviour-tagged   files with a `fn main`
+    moui                  4152              0                   0
+    moonbit_labeler        510              0                   1
+    moonbit_image          213              0                   0
+    async                 1827              0                   0
+    proton                1062              0                   1
+    proton_contract         34              0                   0
+    moonbit_core          7960              5                   0
+
+The five are all consequences of the reader gaps the new corpus exposes -- three
+`undefined variable 'N'`, one `undefined variable 'declare'`, one
+`F6A8885A308CA8A54` -- and none of them is a behaviour-lens finding about a BEHAVIOUR: the
+lens reports the name it could not resolve. So the honest statement is not "the lens is
+now covered" but "the lens now contributes 5 findings to a pin, and 5 is thin". The
+`fn main` column is the reason the lens is reached at all in core: a library with no
+entry point still has TOP-LEVEL STATEMENTS, and core's bigint package has them.
+
 NOT CHANGED HERE. Making the lens analyze every function rather than only main-reachable
 ones is a SEMANTIC change to what the third lens means, and it is a decision rather than
 a defect fix: the honest options are to give it per-function entry, to say plainly that
@@ -4329,6 +4351,313 @@ the version bump and the README sync, and only then the tag.
 => 判据: A GATE IS NOT A GATE IF NOBODY CAN FIND IT. The single entry point existed and covered
 every mutation gate from the first increment; what was missing was a README that named it, and a
 README that claimed "the" verification numbers while carrying numbers three releases old.
+
+## 0494: THE FOUR SHAPES THAT STOPPED THE ASYNC CORPUS, AND THE FIFTH THE FIX EXPOSED
+
+Direction 5 is the standing ParseError backlog: the async corpus was 415/419 readable, and the
+four files it could not read each stopped on a shape this frontend did not read. This increment
+reads all four, and the corpus is 419/419 with `actionable=0`.
+
+THE BLOCKER LIST I STARTED FROM WAS WRONG IN ONE PLACE, and the way it was found is that the
+list was MEASURED instead of trusted. The standing note named `async/src/websocket/utils.mbt:24`
+as the fourth blocker -- a `for` header with a non-empty update clause. That file PARSES: it is
+`FOUND`, not `PARTIAL`, and its `for i = 0; i < len; i = i + 1` is a shape 0472 had already
+settled. The fourth blocker is `async/src/http/utils.mbt:23`, and it is a `for` header whose
+UPDATE clause is a LIST of assignments:
+
+    for x = value, i = len - 1; i >= 0; x = x / base, i = i - 1 {
+
+The INITIALIZER could already be a list (0472); the UPDATE could not, and the reader took one
+statement and left the comma in the token stream -- "expected '{'".
+
+THE FOUR, as the scanner reports them:
+
+    async 0.22.4 src/http/request.mbt:59       expected ')'        re"..." AND `=~`
+    async 0.22.4 src/http/utils.mbt:23          expected '{'        a `for` UPDATE LIST
+    async 0.22.4 src/fs/watch_kqueue.mbt:240    expected binding name  let { identity, .. } = x
+    async 0.22.4 src/fs/watch_windows.mbt:320   unexpected token `.`  `>..` AND `break <value>`
+
+TWO OF THEM ARE TWO CONSTRUCTS EACH, which is what a per-file blocker list cannot show. The
+regex file needs the LITERAL and the OPERATOR; the windows file needs the DESCENDING RANGE and a
+`break` that CARRIES A VALUE. Settling one of each pair would have left the file unreadable for
+a second reason, and the second reason would have looked like a new blocker.
+
+THE SETTLE CAME FIRST: `_verify/settle_0494_parse_backlog.ps1`, 22 rows with TEN that REJECT.
+And TWO OF MY OWN EXPECTATIONS WERE WRONG, and the toolchain was right in both:
+
+  - `break path[:i]` was expected to be ACCEPTed and it was REJECTed with 4014, "Expr Type
+    Mismatch": the corpus's `path` is a StringView, and `path[:i]` on a String is a StringView.
+    The row now says StringView, and the row beside it REJECTs the same program with a String.
+  - `re"[0-9]+"` was written as a CONTROL that must be REJECTed, and it was ACCEPTed -- because
+    it is a perfectly good regex. That was a bad expectation rather than a toolchain
+    disagreement, and the row is now an ACCEPT row.
+
+THE KEYED `let` PATTERN IS STILL REFUSED, and that is a choice rather than an oversight. The
+toolchain REJECTs `let { "cmd": [cmd], .. } = x` (0011, a `let` pattern must be irrefutable),
+and 0485 pinned that refusal on purpose, in the row "0485: a let destructuring rest pattern is
+still not read". So the two spellings are TOLD APART before the pattern is read -- a shorthand
+field is a bare name, a key is a string or a name followed by a colon -- and the keyed one still
+reports. The 0485 row is still green, and 0494 states the pair beside each other: the shorthand
+IS read, and the keyed one is NOT.
+
+THE FIRST VERSION OF THIS INCREMENT PRODUCED A FALSE POSITIVE, and it is worth recording in
+full because reading a file is not the same as reading it CORRECTLY. With the regex literal and
+the operator in place, `async/src/http/request.mbt` became readable -- and reported:
+
+    66:34 - error: undefined name 'port_str' (UndefinedName)
+
+`port_str` is bound by `(re"[0-9]+" as port_str)`: a REGEX CAPTURE, the fifth shape, and the
+one the first version did not know about. The parser read the `as` as a CAST, so the name was
+consumed as a TYPE and the binding was lost. The fix is a node of its own -- `EAsBind` -- and
+the name is bound in the WALK's frame, the TYPE lens's frame and the INTERPRETER's environment,
+exactly as an `is` binding is. The capture is told from a cast by its OPERAND: a capture's
+operand is a regex literal, and a cast's is not.
+
+=> 判据: READING A FILE IS NOT THE SAME AS READING IT CORRECTLY. The corpus went from 415/419 to
+419/419 and the FIRST number that moved was a new actionable finding -- one false positive on
+code `moon check` compiles. A parse-coverage number is a coverage number and nothing else.
+
+=> 判据: A SETTLE THAT ONLY CONFIRMS WHAT ITS AUTHOR EXPECTED IS NOT MEASURING ANYTHING. Twice
+over now: two of the twenty-two rows in this settle were wrong, and in both the toolchain was
+right. One of them was not even a disagreement about the toolchain -- it was a bad control I had
+written, and the toolchain accepting the program was the honest answer to a broken question.
+
+=> 判据: A BLOCKER LIST IS A HYPOTHESIS. The standing note named the wrong file for one of the
+four, and the error it named -- a `for` header with a non-empty update clause -- was a shape that
+had been settled and working since 0472. What the corpus actually reported was a list of
+PARTIAL files, and the reader that named them was the scanner, not the note.
+
+THE CORPUS, after: async 419/419 parsed, `actionable=0`, `notices` 1829 -> 1836, `unreliable`
+23 -> 0. The other five pins did not move -- moui 4225, labeler 791, image 218, proton 2131,
+contract 34 -- and the moui PER-FUNCTION view is unchanged at 4225. The 23 findings that were
+`unreliable` are GONE rather than restated: they were the readings of the four files this
+increment could not read.
+
+GATE 0494: 6 KILLED, 0 declared survivors, every restore byte-identical, every named test
+confirmed. One mutation per shape -- the regex literal, the descending range, the update list,
+the shorthand pattern, the break value, the capture.
+
+THE ELEVEN NEW ROWS are in `src/parser/parser_0494_test.mbt`, and every one of them asserts the
+NODE and not merely that the file parses: the operator is `OpMatch` and the literal is an
+`ERegex`, the capture is an `EAsBind` carrying the name, the descending range is an `ERange`
+and not a comparison, the shorthand pattern binds `identity`, the update list puts BOTH
+assignments in the loop body, and the break's value is in the tree beside the break. The
+controls are the other half: a bare `re` is a NAME, the KEYED `let` pattern is still refused, a
+bare `..` is still not a range, and a bare `break` is still a bare break.
+
+## 0494b: THE CONTROL THAT SAID "NO WITNESS LEFT", AND THE CORPUS THAT STILL HAD ONE
+
+The full release gate on the 0494 tree FAILED, and it failed at stage 3b -- the grammar
+probe control -- with its own designed message:
+
+    grammar probe control: FAIL
+      - no corpus file is both legal MoonBit and unread by this frontend, so there is
+        no row left that can prove the REAL GAP tally fires.
+
+That is not a bug in the increment. It is the control doing the one thing it exists to
+do. `derive_planted_gap.ps1` derives the planted gap at RUN TIME from the pinned
+corpora, and 0494 made all six of them fully readable: async reached 419/419, and the
+other five had no PARTIAL file at all. The derivation searched them and found nothing,
+and the control refused to invent something.
+
+The control's own header names the two honest options, and this section takes the FIRST
+one -- "pin a NEW corpus that still contains a gap this frontend cannot read". It must
+never take the second without writing it down, and it must never weaken the assertions or
+hardcode a replacement row.
+
+**THE SWEEP.** Every package under `.repos/` was scanned for PARTIAL files, so the choice
+of corpus was made on a measurement and not on a guess. Twenty owner/name directories,
+every version fetched in each:
+
+    moonbitlang/core            74 PARTIAL files      actionable 48
+    moonbitlang/x               24 PARTIAL files      actionable  2   (12 in each of 0.5.1, 0.5.5)
+    wzzc-dev/window              5 PARTIAL files      actionable  8
+    moonbit-community/sqlite3    2 PARTIAL files      actionable  0
+    mizchi/svg                   1 PARTIAL file       actionable  0
+    moonbitlang/lexer            1 PARTIAL file       actionable  0
+    everything else (11 dirs)    0 PARTIAL files
+
+`moonbitlang/pdf2md` scanned 0 files -- its source could not be materialised here -- so it
+is not evidence of anything either way.
+
+**THE THREE CLEAN CORPORA WERE TRIED FIRST, AND THEY YIELD NOTHING.** The three with
+`actionable=0` are the ones a reader would pick, so the derivation was run over exactly
+them and every candidate's rejection was read. Not one usable row:
+
+    lexer   whole file           HAS-AT      the file mentions an external package
+    lexer   item 1360-1519       MOON-BAD    `scan_interpolation_source` names
+                                                      `interpolation_write_view`, `env`
+    lexer   item 2-4             SELF-OK     a `let` of a Bool -- this frontend reads it
+    svg     item 17-4284         HAS-AT      `wpt_svg_cases` mentions `@svg`
+    svg     item 6-16            SELF-OK     `struct WptCase` -- read
+    sqlite3 item 74-88           HAS-AT      `@lexbuf.StringScanner::{ ... }`
+    sqlite3 item 11-13           SELF-OK     `const SQLITE_NOMEM = 7` -- read
+
+Every one of them was rejected on its own merits, and the log says which. Not one gap
+survived, and the control would have gone on failing.
+
+**THE CHOSEN CORPUS.** `moonbitlang/core` 0.1.20260920+7d59c7ec9 -- the MoonBit standard
+library, pinned by a BUILD-STAMPED version, so it cannot drift under you the way
+`@latest` would. Its 74 PARTIAL files yield a usable row on the SECOND candidate:
+
+    core   PARTIAL files = 74
+    core   skip file  whole file               HAS-AT     string/quickcheck_test.mbt:138
+    core   USE  item  item 135-141 let qc_boundary_chars : Array[Char] = [  MOON-OK/SELF-FAIL
+
+The witness is REAL corpus code, and it is a `let` of nothing but char literals:
+
+    let qc_boundary_chars : Array[Char] = [
+      '@', 'A', 'B', ..., '\u{7F}', ..., '\u{FFFE}', '\u{FFFF}',
+      '\u{10000}', '\u{1F600}', '\u{10FFFF}',
+    ]
+
+`moon check` calls it legal MoonBit with 0 errors. The frontend cannot read it.
+
+**THE GAP IS PRECISE, AND IT WAS MEASURED ON THE CONSTRUCT.** Not inferred from the
+file -- eight single-literal programs, each one its own probe package, each one `moon
+check`ed and then scanned:
+
+    '\u{7F}'      (2 hex digits)  read
+    '\u{FFFF}'    (4 hex digits)  read
+    '\u{FFFE}'    (4 hex digits)  read
+    '\u{10000}'   (5 hex digits)  NOT read -> "character literal must hold exactly one character"
+    '\u{1F600}'   (5 hex digits)  NOT read
+    '\u{10FFFF}'  (6 hex digits)  NOT read
+    '\u{1FFFF}'   (5 hex digits)  NOT read
+    '\u{20000}'   (5 hex digits)  NOT read
+
+So the escape reader takes at most FOUR hex digits, which is exactly the BMP. A
+supplementary-plane escape -- U+10000 and above, the range that needs a surrogate pair
+in UTF-16 -- is past the end of what it reads. `moon check` accepts every one of them.
+
+**THE PIN.** `moonbit_core` is now the SEVENTH corpus in `_verify/release.ps1`'s pin
+table, and the FIRST with a non-zero `actionable`: 48. Those 48 are not corpus defects
+and not analyzer defects -- they are NAMED CONSTRUCTS THE READER DOES NOT READ, and the
+accounting reconciles exactly (43 in fully-parsed files, from the per-file `defects=`
+headers, which are not truncated; plus 5 pre-boundary findings in the two partial files
+that have any):
+
+    10  `undefined name 'rl'` / `'lr'`      the `is` pattern `(Node(..) as rl)` -- a
+                                                REST pattern bound to a name
+    10  a type mismatch                    `==` on two array-typed operands (6),
+                                                `+` on 'int' and 'str' (2), `*` on a fn
+                                                whose signature was not read (1), `abs`
+                                                handed a 'float' (1)
+    9   `undefined name 'p'` / `'p1023'` / a HEX-FLOAT literal: `0x1.0p97`, and
+        `'P'` / `'F6A8885A308CA8A54'`       `0x3.243F6A8885A308CA8A54`
+    7   `undefined name 'N'`               the `N` suffix on an integer literal
+    4   `undefined name 'lexmatch'`        the `lexmatch` keyword
+    4   `no visible binding for ...`       a package-private or associated name
+    2   UnusedLocal                        `i1` / `i2` in diff/diff.mbt
+    1   `undefined variable 'declare'`    the `declare` keyword
+    1   `undefined name 'strconv'`         `@internal/strconv.parse_double(s)` -- an
+                                                absolute package path with a `/`
+
+Six of these families are the SAME gap this increment already half-closed: a pattern
+that binds a name (`(Node(..) as rl)`) is the same shape as the regex capture
+`(re"..." as port_str)`, and `EAsBind` exists for that one but not for this one.
+
+=> 判据: A CONTROL THAT PASSES BECAUSE IT STOPPED LOOKING IS THE EXACT DEFECT THE CONTROL
+EXISTS TO CATCH, WEARING THE CONTROL'S OWN CLOTHES. The control did not go quiet, and it
+did not get an exemption: it FAILED, it said why, and it named the two ways forward. The
+first one was taken -- a corpus that still holds a gap -- and the corpus was CHOSEN BY
+MEASUREMENT (a sweep of twenty directories) rather than by hope, and the gap inside it was
+then MEASURED ON THE CONSTRUCT rather than inferred from the file that contained it.
+
+=> 判据: A BLOCKER LIST IS A HYPOTHESIS, AND SO IS "THE CLEAN CORPORA ARE THE ONES TO
+USE". `actionable=0` looked like a reason to prefer `lexer`, `svg` and `sqlite3` over
+`core`, and it was not: those three yield nothing, and the corpus with the most
+actionable findings is the one with a real gap in it. The two properties are unrelated,
+and picking by the wrong one costs a whole release-gate round trip.
+
+## 0494c: FOUR MUTATION GATES THAT 0494's PARSER CHANGES MOVED OUT FROM UNDER
+
+With the witness in place the gate ran again, and it failed again -- this time at FOUR
+mutation gates, all of them the same way:
+
+    PREFLIGHT MISS: M1 revert: the parser has no production for `as`  (src\parser\parser.mbt)
+    ABORT: 2 pattern(s) absent. No suite was run.
+
+`PREFLIGHT MISS` is the harness doing the right thing: the anchor text is no longer in the
+file, so the mutation cannot be applied, so no suite is run and the gate says so. 0494 grew
+the `as` production, the `for` update clause and the braced-pattern reader, and six anchors in
+four gates pointed at the OLD shape of those three places:
+
+    mutate_0429  M1  the whole `as` production        M5  the cast target type
+    mutate_0473  M5  the clause list is mandatory     M6  the update clause
+    mutate_0482  M3  the update is read and discarded
+    mutate_0485  M2  every name in the braces binds
+
+THE RULE IS ALREADY WRITTEN DOWN and it is the whole of this section: a mutation whose anchor
+moved is RE-ANCHORED to the current shape, with the SAME mutation. Not retired while its
+target is still live, and not replaced by an invented anchor that matches something else.
+Each of the six was re-anchored to the CURRENT text, and each was MEASURED to still kill the
+same thing:
+
+    mutate_0429  4 killed, 1 declared survivor (M4), every restore byte-identical
+    mutate_0473  7 killed, every one [named test confirmed]
+    mutate_0482  4 killed, every one [named test confirmed]
+    mutate_0485  5 killed, every one [named test confirmed]
+
+**THE RE-ANCHORS ARE NOT MECHANICAL**, and two of them needed a measurement that would have
+been wrong to reason about.
+
+**0429 M1 -- the `as` production.** The old anchor was the whole `as` branch, and 0494 put
+the REGEX CAPTURE inside it, so the branch is longer now and the anchor has to be the whole
+branch again -- capture and cast both. The mutation's NAME is "the parser has no production
+for `as`", and after 0494 the production IS the whole branch, so deleting all of it is the
+same question: after the mutation `as` is in the token stream again and the parser reports
+`undefined name 'as'`. Re-anchored on the current 35 lines.
+
+**0473 M5 and M6, 0482 M3 -- the `for` header.** 0494 replaced the single update statement
+with a LIST (`updates = self.c_for_updates()`), so three anchors that named
+`update = Some(self.parse_stmt())` matched nothing. The re-anchors name the current reader.
+
+0482 M3 needed more than that. The old mutation discarded the update at the push site
+(`Some(u) => loop_body.push(u)` became `Some(_) => ()`), and the new shape has a `for` loop
+over an array instead -- so "the update is read and then discarded" has to be expressed
+against the array, and the expression has to be a PROGRAM rather than a deletion: a `Repl`
+that leaves a variable unused is a WARNING, and `--deny-warn` turns a warning into a build
+failure, which the harness scores as COMPILE-ERR rather than KILLED. The candidates were
+settled against the toolchain rather than guessed:
+
+    for _ in updates { () }      ACCEPT, no warning
+    let _ = updates              ACCEPT, no warning
+    let _ = updates.length()     ACCEPT, no warning
+
+and the chosen form empties the array before the loop that pushes it, so the clause is still
+READ and still CONSUMED and the statement still does not reach the tree -- which is the
+defect the mutation names.
+
+**0485 M2 -- the key that must not bind.** The old anchor was one line:
+`if in_value && (self.pattern_binding_at(j) || self.rest_binding_at(j)) {`, and dropping
+`in_value &&` made every name in the braces bind, key included. 0494 SPLIT that site in two
+-- a value position and a shorthand field position -- so the single line is gone.
+
+The obvious re-anchor -- drop the `in_value` gate from the new shape -- DOES NOT WORK, and
+the reason is a toolchain fact that was measured rather than assumed:
+
+    let mut flag = false
+    flag = true                 =>  Warning: unused variable 'flag'  (error under --deny-warn)
+
+MoonBit DOES warn about a `mut` variable that is assigned and never READ. So removing the
+only read of `in_value` would have turned M2 into a COMPILE-ERR -- a green-looking gate that
+proves nothing, which is the failure mode this repo keeps measuring. The re-anchor instead
+adds `pattern_binding_at(j)` to the FIELD branch, so a KEY binds -- which is the defect M2
+names -- while `in_value` stays read and the mutation stays a program that compiles.
+
+=> 判据: A MUTATION THAT DOES NOT COMPILE IS NOT A KILL. The harness scores COMPILE-ERR as
+"the suite never ran", which is the truth, but a mutation that cannot compile proves nothing
+about the code it meant to break -- and the warning that causes it is a WARNING, which
+`--deny-warn` promotes to an error. Two of the six re-anchors turned on a form that has to
+compile clean, and both forms were settled against the toolchain rather than chosen by
+taste.
+
+=> 判据: A MOVED ANCHOR IS A FACT ABOUT THE INCREMENT, NOT A TYPO TO FIX. Six anchors moved
+because 0494 changed the code they named. Re-anchoring them is not busywork: it is the record
+that 0494 did not silently retire four gates' worth of protection. The alternative -- retiring
+them -- would have been cheaper and would have left the four defects unguarded while the gate
+still reported green.
 
 
 

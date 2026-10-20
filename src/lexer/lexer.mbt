@@ -28,6 +28,15 @@ pub(all) enum Tok {
   /// here is it known that a `{` came from an interpolation rather than being
   /// an ordinary brace in the string content.
   TStr(String, Array[String])
+  /// A REGEX LITERAL, `re"..."`. Its own token rather than a `TStr`, because a
+  /// Regex is NOT a String: `let r : String = re"^a"` is REJECTed by the
+  /// toolchain with 4014 while `let r : Regex = re"^a"` is ACCEPTed
+  /// (`_verify/settle_0494_parse_backlog.ps1`, rows `a2` and `a5`).
+  ///
+  /// The prefix is the WHOLE identifier `re` and the quote must follow it with
+  /// nothing between: `re"^a"` is a literal and `re` alone is an ordinary name
+  /// (the same settle, row `a7`, REJECTs `re` used as a value).
+  TRegex(String)
   TName(String)
   TPlus
   TMinus
@@ -46,6 +55,14 @@ pub(all) enum Tok {
   TSlashEq
   TPercentEq
   TEqEq
+  /// `=~` — the REGEX MATCH operator. One token, because `=` and `~` are two
+  /// tokens otherwise and the statement reader would read the `=` as an
+  /// ASSIGNMENT: `host =~ re"^"` became `host =` followed by a stray `~`, and
+  /// the `~` died in the expression reader.
+  ///
+  /// Its result is a Bool -- settled in `_verify/settle_0494_parse_backlog.ps1`,
+  /// row `a3`, with the control `a4` REJECTing the same expression against an Int.
+  TEqTilde
   TNe
   TLt
   TLe
@@ -119,6 +136,17 @@ pub(all) enum Tok {
   /// tree, and the difference between iterating `n` and `n+1` times is not
   /// something to lose silently.
   TRangeIncl
+  /// `>..` — the DESCENDING range operator, three characters, one token.
+  ///
+  /// It is its own token rather than a `TGt` followed by two dots, because the
+  /// parser reads `TGt` as a COMPARISON and `a>..b` would die in the comparison
+  /// reader with "unexpected token `.`" -- which is the error the corpus file
+  /// `async 0.22.4 src/fs/watch_windows.mbt:320` reported.
+  ///
+  /// There is NO inclusive descending spelling: `n>..=0` is REJECTed by the
+  /// toolchain (`_verify/settle_0494_parse_backlog.ps1`, row `d5`), so this
+  /// three-character form is the whole of it.
+  TRangeDesc
   /// `<|` — the PIPE operator. One token, because two tokens is what the corpus
   /// trips over: `f <| x` lexed as `f`, `<`, `|`, `x` and the parser then reported
   /// the `|` -- "unexpected token `|`", 22 sites, a message that names neither the
@@ -446,6 +474,16 @@ fn Lexer::run(self : Lexer) -> Unit {
     if is_letter(c) || c == '@' {
       // '@' starts a package alias token ("@q") so `.mbtx` import blocks lex
       let (t, l, cl, len) = self.lex_name()
+      // THE REGEX LITERAL, `re"..."`. The prefix is the WHOLE identifier `re`,
+      // so `re` on its own stays an ordinary name -- the toolchain REJECTs it
+      // used as a value (`_verify/settle_0494_parse_backlog.ps1`, row `a7`) --
+      // and the quote must follow it with nothing between.
+      if t == TName("re") &&
+        self.pos < self.chars.length() &&
+        self.chars[self.pos] == '"' {
+        last = self.lex_regex(l, cl)
+        continue
+      }
       last = t
       self.emit(t, l, cl, len)
       continue
@@ -793,6 +831,64 @@ fn Lexer::lex_string(self : Lexer) -> Tok {
   self.interp_names = []
   self.emit(TStr(s, names), l, c0, self.col - c0)
   TStr(s, names)
+}
+
+///|
+/// A REGEX LITERAL, `re"..."`. 0494.
+///
+/// The body is read RAW -- no escape table and no interpolation -- because a
+/// regex body is not a MoonBit string: the escape meanings belong to the
+/// string lexer, and a second table here would be claiming VALUES the analyzer
+/// does not have. The one thing that IS handled is the escaped quote, so that
+/// `\"` cannot end the literal early; the backslash and the character after it
+/// are both carried.
+///
+/// The literal also STOPS at a newline, like a string: a regex that ran to the
+/// end of the file would swallow every file after it, and "unterminated" is a
+/// report the reader can make honestly.
+///
+/// The pattern TEXT is carried, not analysed. The lenses treat the literal as a
+/// leaf of unknown type, because this model has no Regex type -- and the
+/// honest answer for a type it cannot name is "unknown", not "String".
+fn Lexer::lex_regex(self : Lexer, start_line : Int32, start_col : Int32) -> Tok {
+  self.pos += 1 // the opening quote
+  self.col += 1
+  let buf = StringBuilder()
+  let mut terminated = false
+  while self.pos < self.chars.length() {
+    let c = self.chars[self.pos]
+    if c == '\\' && self.pos + 1 < self.chars.length() {
+      buf.write_char(c)
+      buf.write_char(self.chars[self.pos + 1])
+      self.pos += 2
+      self.col += 2
+      continue
+    }
+    if c == '"' {
+      self.pos += 1
+      self.col += 1
+      terminated = true
+      break
+    }
+    if c == '\n' {
+      break
+    }
+    buf.write_char(c)
+    self.pos += 1
+    self.col += 1
+  }
+  if !terminated {
+    self.reports.push(@report.Report::{
+      family: @core.FParse,
+      lenses: [@core.LStructural],
+      message: "unterminated regex literal",
+      span: @core.span_at(start_line, start_col, 1),
+      vst: [],
+    })
+  }
+  let s = buf.to_string()
+  self.emit(TRegex(s), start_line, start_col, self.col - start_col)
+  TRegex(s)
 }
 
 ///|
@@ -1552,12 +1648,42 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
     self.emit(TRange, l, c0, 3)
     return TRange
   }
+  // `>..` — the DESCENDING range, three characters, one token.
+  //
+  // It belongs with the other range operators and it is tested BEFORE the
+  // two-char `>=` below, because the two-char section would otherwise read the
+  // `>` as a comparison and leave the two dots behind -- which is exactly the
+  // "unexpected token `.`" the corpus reported at
+  // `async 0.22.4 src/fs/watch_windows.mbt:320`.
+  //
+  // The two forms are disjoint by their second character (`=` against `.`), so
+  // the order between them is a readability choice rather than a correctness
+  // one; what IS load-bearing is that this test comes before the single-char
+  // `>` at the bottom of this function.
+  if c == '>' &&
+    next == Some('.') &&
+    self.pos + 2 < self.chars.length() &&
+    self.chars[self.pos + 1] == '.' &&
+    self.chars[self.pos + 2] == '.' {
+    self.pos += 3
+    self.col += 3
+    self.emit(TRangeDesc, l, c0, 3)
+    return TRangeDesc
+  }
   // two-char operators first
   if c == '=' && next == Some('=') {
     self.pos += 2
     self.col += 2
     self.emit(TEqEq, l, c0, 2)
     return TEqEq
+  }
+  // `=~` — the REGEX MATCH. Tested next to `==` because both start with `=`,
+  // and disjoint from it by their second character.
+  if c == '=' && next == Some('~') {
+    self.pos += 2
+    self.col += 2
+    self.emit(TEqTilde, l, c0, 2)
+    return TEqTilde
   }
   if c == '!' && next == Some('=') {
     self.pos += 2

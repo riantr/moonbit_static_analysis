@@ -1403,6 +1403,24 @@ fn Interp::eval(
       let _ = self.eval(b, env)
       AType("Range")
     }
+    // A REGEX LITERAL, `re"^a"`. The pattern text is carried, not analysed, and
+    // this lattice has no Regex value -- so the answer is AAny, "a value of a
+    // type this lens does not name". It is deliberately NOT AType("None"):
+    // "None" is a claim that the value is Unit, and a Regex is not Unit.
+    ERegex(_) => AAny
+    // A REGEX CAPTURE, `re"..." as name`. The base is evaluated and the name
+    // is BOUND in the environment, exactly as an `is` binding is -- the captured
+    // text is a value the body reads, and the corpus reads it ten lines later
+    // (`async 0.22.4 src/http/request.mbt:66`).
+    //
+    // The value bound is AAny: this lattice has no String-view value for a
+    // captured group, and the name's USE is what matters -- whether the read
+    // resolves, not what it holds.
+    EAsBind(base, name) => {
+      let _ = self.eval(base, env)
+      env.set(name, AAny)
+      AAny
+    }
     // `pair.0`: the base is evaluated (an undefined name inside it is a real
     // undefined name); there is no tuple value in the lattice, so the result
     // is unknown.
@@ -1641,6 +1659,17 @@ fn Interp::binop(
             )
             ABottom
           }
+        OpMatch =>
+          // THE REGEX MATCH. Its result is a Bool -- settled against the
+          // toolchain (`_verify/settle_0494_parse_backlog.ps1`, row `a3`, with
+          // the control `a4` REJECTing the same expression against an Int) --
+          // and its RIGHT operand is a Regex, which this lattice cannot name.
+          //
+          // So the operand types are NOT checked, and the result is the answer.
+          // A method error here would be a claim about a Regex this lens does
+          // not have, and every arm above would report one against code
+          // `moon check` compiles.
+          AType("bool")
       }
     }
   }

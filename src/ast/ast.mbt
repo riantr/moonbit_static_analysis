@@ -50,6 +50,15 @@ pub(all) enum BOp {
   /// settled (`_verify/settle_0464_pipe_operators.ps1`, 14/14) rather than assumed
   /// from the symbol. See `Parser::parse_pipe`.
   OpPipe
+  /// The REGEX MATCH, `string =~ regex`. Its result is a Bool -- settled against
+  /// the toolchain in `_verify/settle_0494_parse_backlog.ps1`, row `a3`, with the
+  /// control `a4` REJECTing the same expression assigned to an Int.
+  ///
+  /// Its RIGHT operand is a Regex, a type this model does not have, so the
+  /// operand types are not checked and the result type alone is the answer. That
+  /// is the same trade the PIPE makes one level down, for the same reason: a
+  /// claim the model cannot support is worse than an answer it can.
+  OpMatch
 } derive(Eq)
 
 ///|
@@ -74,6 +83,7 @@ pub fn BOp::symbol(self : BOp) -> String {
     OpShl => "<<"
     OpShr => ">>"
     OpPipe => "<|"
+    OpMatch => "=~"
   }
 }
 
@@ -230,6 +240,28 @@ pub(all) enum EKind {
   /// An exclusive range expression `a..<b`, from the single `TRange` token.
   /// Bare `..` and `..=` are not modelled and still error.
   ERange(Expr, Expr)
+  /// A REGEX LITERAL, `re"^a"`. The pattern text is carried, not analysed.
+  ///
+  /// It is its own node rather than a `TStr`-shaped string because a Regex is
+  /// NOT a String: `let r : String = re"^a"` is REJECTed by the toolchain with
+  /// 4014 (`_verify/settle_0494_parse_backlog.ps1` row `a5`), while
+  /// `let r : Regex = re"^a"` is ACCEPTed (row `a2`). A literal spelled as a
+  /// string would make the analyzer claim a type the toolchain refuses.
+  ///
+  /// The text is carried so that a reader can say WHAT was read, and the lenses
+  /// treat it as a leaf of unknown type -- this model has no Regex type, and the
+  /// honest answer for a type it cannot name is "unknown", not "String".
+  ERegex(String)
+  /// A REGEX CAPTURE, `re"..." as name`. The name is bound to the text the
+  /// capture group matched.
+  ///
+  /// It is its own node rather than an `ECast` because the two are different
+  /// claims: a cast says "this value has that type", and a capture says "this
+  /// NAME is bound here". Read as a cast, the name was consumed as a TYPE and
+  /// the binding was lost -- so `port_str` was reported `undefined name` at its
+  /// use, on code `moon check` compiles
+  /// (`async 0.22.4 src/http/request.mbt:59-65`).
+  EAsBind(Expr, String)
   /// A tuple field access `pair.0`. The position is an Int literal the
   /// lexer emits as one token — the float probe means `x.0.1` arrives as a
   /// TFloat and reports honestly instead of misparsing. There is no tuple

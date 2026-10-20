@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -620,9 +620,12 @@ if ($SkipMutations) {
 # EIGHT LIVE CAVEATS that bear on the pin table below stayed here deliberately, because
 # they are claims about THESE numbers rather than about a past increment:
 #
-#   - the six SUMMARY lines carry ZERO signal about the behavior lens, which no pinned
-#     corpus reaches (7493 findings, none of them from that lens; see the DIRECTION 2
-#     block in NARRATIVE.md). A pin that cannot distinguish two states is not a pin.
+#   - the SEVEN SUMMARY lines carry only THIN signal about the behavior lens. The six
+#     older corpora carried NONE (no finding on any of them was tagged `behavior`, and
+#     not one of the six contains a `main()`); `moonbit_core`, added at 0494, carries
+#     5 findings tagged `behavior` out of 15758 findings across the seven (measured
+#     2026-10-21). A pin that cannot distinguish two states is not a pin, and 5
+#     findings is close to that line: see the DIRECTION 2 block in NARRATIVE.md.
 #   - `moonbit_labeler` moved 801 -> 800 at 0470 (the last `actionable` on any corpus) and
 #     800 -> 793 at 0471. `proton` moved at 0471: 122 -> 131 parsed, `unreliable`
 #     544 -> 187. `async` moved at 0472: 390 -> 392 parsed, `unreliable` 285 -> 264;
@@ -761,13 +764,55 @@ if ($SkipMutations) {
 #   - `parse_block`'s parameter is named `value_block`, not `fn_body`. The old name is
 #     what let a real bug read as a decision.
 #
+# `moonbitlang/core` is the SEVENTH pinned corpus, and the FIRST one with a
+# non-zero `actionable`. It was added because the grammar probe control needed a
+# corpus this frontend still cannot read, and the six above had all become fully
+# readable -- see `_verify/derive_planted_gap.ps1` and the 0494 section of
+# NARRATIVE.md.
+#
+# Its 48 actionable findings are NOT corpus defects. They are NAMED CONSTRUCTS THE
+# READER DOES NOT READ, and the accounting reconciles exactly: 43 in fully-parsed
+# files (the per-file `defects=` headers are not truncated) plus 5 pre-boundary
+# findings in the two partial files that have any. The inventory, by construct:
+#
+#   10  `undefined name 'rl'` / `'lr'`      the `is` pattern `(Node(..) as rl)` --
+#                                            a REST pattern bound to a name
+#   10  a type mismatch                    `==` on two array-typed operands (6),
+#                                            `+` on 'int' and 'str' (2), `*` on a fn
+#                                            whose signature was not read (1), and
+#                                            `abs` handed a 'float' (1)
+#   9   `undefined name 'p'` / `'p1023'` / a HEX-FLOAT literal: `0x1.0p97`, and
+#       `'P'` / `'F6A8885A308CA8A54'`       `0x3.243F6A8885A308CA8A54`
+#   7   `undefined name 'N'`               the `N` suffix on an integer literal
+#                                            (`10N` is an Int64)
+#   4   `undefined name 'lexmatch'`        the `lexmatch` keyword
+#   4   `no visible binding for ...`       a package-private or associated name
+#                                            (`Arbitrary::arbitrary`, `makei`)
+#   2   UnusedLocal                        `i1` / `i2` in diff/diff.mbt
+#   1   `undefined variable 'declare'`    the `declare` keyword
+#   1   `undefined name 'strconv'`         `@internal/strconv.parse_double(s)` --
+#                                            an absolute package path with a `/`
+#
+# `notices=9988` is dominated by the `.mbt.md` literate files: a `test` block
+# inside a Markdown file is "outside the analyzer's MoonBit subset", which is a
+# notice, not a defect. `unreliable=2956` is the post-boundary tail of the 94
+# partial files.
+#
+# And the SEVEN corpus pins now carry BEHAVIOUR-LENS signal, which the six did
+# not: core contributes 5 findings tagged `behavior`, and all five are
+# consequences of the reader gaps listed above (`undefined variable 'N'` three
+# times, `undefined variable 'declare'`, and `F6A8885A308CA8A54`). Five
+# findings is thin, and it is the whole of it: see the DIRECTION 2 block in
+# NARRATIVE.md for why the behaviour lens needs `--per-function` to be reached
+# at all.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
   'moonbit_labeler' = 'files=37 parsed=37 actionable=0 notices=791 unreliable=0 withheld=0 total=791'
   'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=218 unreliable=0 withheld=0 total=218'
-  'async'           = 'files=419 parsed=415 actionable=0 notices=1829 unreliable=23 withheld=0 total=1852'
+  'async'           = 'files=419 parsed=419 actionable=0 notices=1836 unreliable=0 withheld=0 total=1836'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=2131 unreliable=0 withheld=0 total=2131'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
+  'moonbit_core'    = 'files=1029 parsed=935 actionable=48 notices=9988 unreliable=2956 withheld=552 total=12992'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -776,6 +821,7 @@ $TARGETS = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
 }
 
 if ($failed.Count -eq 0) {

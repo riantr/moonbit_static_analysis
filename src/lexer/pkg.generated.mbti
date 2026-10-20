@@ -19,6 +19,7 @@ pub(all) enum Tok {
   TBigInt
   TFloat(Double)
   TStr(String, Array[String])
+  TRegex(String)
   TName(String)
   TPlus
   TMinus
@@ -32,6 +33,7 @@ pub(all) enum Tok {
   TSlashEq
   TPercentEq
   TEqEq
+  TEqTilde
   TNe
   TLt
   TLe
@@ -49,6 +51,7 @@ pub(all) enum Tok {
   TTilde
   TRange
   TRangeIncl
+  TRangeDesc
   TPipeLt
   TPipeGt
   TAppendPlus

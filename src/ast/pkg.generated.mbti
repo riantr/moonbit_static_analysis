@@ -30,6 +30,7 @@ pub(all) enum BOp {
   OpShl
   OpShr
   OpPipe
+  OpMatch
 } derive(Eq)
 pub fn BOp::symbol(Self) -> String
 
@@ -59,6 +60,8 @@ pub(all) enum EKind {
   EBlock(Array[Stmt])
   ETuple(Array[Expr])
   ERange(Expr, Expr)
+  ERegex(String)
+  EAsBind(Expr, String)
   ETupleField(Expr, Int32)
   EIs(Expr, Array[String])
   ECast(Expr)

@@ -101,15 +101,14 @@ Invoke-MutationGate -Name '0482' -Target 'wasm' -Mutations @(
     Name = 'M3 the update clause is read and then discarded'
     File = $PARSER
     Find = @'
-  match update {
-    Some(u) => loop_body.push(u)
-    None => ()
+  for u in updates {
+    loop_body.push(u)
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
-  match update {
-    Some(_) => ()
-    None => ()
+  updates = []
+  for u in updates {
+    loop_body.push(u)
   }
 '@.Replace("`r`n", "`n")
     MustRed = '0482: a newline-separated for header desugars to SLet + SWhile with its condition read'

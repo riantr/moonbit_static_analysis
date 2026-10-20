@@ -323,7 +323,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1085/1085 on wasm; 1013/1013 on js and wasm-gc
+moon test --deny-warn                # 1096/1096 on wasm; 1024/1024 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -357,16 +357,16 @@ probe's own verdicts; the own-source self-scan; the published-package self-scan'
 self-test; the scan of the package that was actually **published**; the corpus comparison
 against the pinned baselines; and then **every mutation gate**.
 
-That last part is the point, and it is measured rather than asserted. `_verify/` holds 247
-`.ps1` scripts, of which **76 are mutation gates** — and **all 76 are inside the gate list**
+That last part is the point, and it is measured rather than asserted. `_verify/` holds 249
+`.ps1` scripts, of which **77 are mutation gates** — and **all 77 are inside the gate list**
 in `release.ps1` (`$gates`): no mutation gate is left out of the release path, and no entry
-in the list points at a script that does not exist. The remaining 171 are one-off settles,
+in the list points at a script that does not exist. The remaining 172 are one-off settles,
 probes and evidence, plus the authoring tools (`mutate_lib.ps1`, `named_claims.ps1`,
 `prove_mustred.ps1`, `preflight_compile.ps1`); they are inputs, not release stages.
 
 Two switches change what it does:
 
-- `-SkipMutations` runs everything except the 76 mutation gates — the corpus pins and the
+- `-SkipMutations` runs everything except the 77 mutation gates — the corpus pins and the
   own-source self-scan, about eight minutes. Use it when the question is "did the corpus
   move?", not "is a gate red?".
 - `-SelfTest` exercises the harness's own stage function against a failing body, a
@@ -468,7 +468,7 @@ The order is the point, and each step is a precondition for the next:
    then run the whole gate again under the new dependency. A green run on the old pin does
    not count: the README would then describe a dependency set that is not the one the code
    was tested against.
-2. **`_verify/release.ps1` is green** — all 76 mutation gates, the corpus pins, the
+2. **`_verify/release.ps1` is green** — all 77 mutation gates, the corpus pins, the
    own-source self-scan and the published-package self-scan.
 3. **`moon.mod`'s version is bumped**, and every version reference in `README.md`,
    `README.zh.md` and `SKILL.md` is synced to it.
@@ -549,8 +549,10 @@ another package never hit.
 0.4.30 — this release). The behavioral lens normally enters at the **module**: a
 function body is executed only if something *calls* it from a top-level
 statement. A library module does not call its own functions at top level, so on
-a library the lens executed **zero** function bodies — on the six pinned corpora
-every single finding was tagged `structural`, and not one was tagged `behavior`.
+a library the lens executed **zero** function bodies — on the six corpora pinned
+at 0.4.30 every single finding was tagged `structural`, and not one was tagged
+`behavior`. (The seventh corpus, `moonbit_core`, added later, carries 5
+`behavior`-tagged findings out of 15 758 across all seven — thin, but not zero.)
 
 `--per-function` analyzes every function as if it were the program's entry
 point, with its parameters bound to fresh abstract values of their **declared**

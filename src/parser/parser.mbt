@@ -1463,6 +1463,7 @@ fn tok_desc(t : @lexer.Tok) -> String {
     TBigInt => "an integer literal too wide to read"
     TFloat(f) => "float `\{f}`"
     TStr(_, _) => "a string literal"
+    TRegex(_) => "a regex literal"
     TName(n) => "`\{n}`"
     TPlus => "`+`"
     TMinus => "`-`"
@@ -1476,6 +1477,7 @@ fn tok_desc(t : @lexer.Tok) -> String {
     TSlashEq => "`/=`"
     TPercentEq => "`%=`"
     TEqEq => "`==`"
+    TEqTilde => "`=~`"
     TNe => "`!=`"
     TLt => "`<`"
     TLe => "`<=`"
@@ -1496,6 +1498,7 @@ fn tok_desc(t : @lexer.Tok) -> String {
     TTilde => "`~`"
     TRange => "`..`"
     TRangeIncl => "`..<=`"
+    TRangeDesc => "`>..`"
     TLParen => "`(`"
     TRParen => "`)`"
     TLBrace => "`{`"
@@ -2740,6 +2743,39 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(names, init), }
     }
+    // 0494 -- a STRUCT PATTERN on the left of a `let`: `let { identity, .. } = x`.
+    //
+    // `async 0.22.4 src/fs/watch_kqueue.mbt:240` writes exactly that, and before
+    // this branch the `{` fell through to the plain binding path below, which
+    // expected a NAME and reported "expected binding name" -- the whole of that
+    // file's report.
+    //
+    // THE PATTERN READER ALREADY EXISTED: `parse_is_pattern` has read a braced
+    // struct pattern since 0485, and this is a CALL SITE rather than a second
+    // reader -- two readers would be two sets of rules for one grammar.
+    //
+    // NO NEW NODE, for the reason 0477 gave for the constructor pattern: the
+    // names are bound and the initialiser is evaluated ONCE, and
+    // `SLetDestruct(Array[String], Expr)` is already the node for a `let` that
+    // binds SEVERAL names. This subset has no struct types to per-field
+    // either, so every name takes the type of the whole initialiser.
+    //
+    // WHAT THE PARSER DELIBERATELY DOES NOT CHECK is the same list 0477 settled:
+    // an unknown field is a TYPE question (the toolchain REJECTs it with 4091 --
+    // settle row `c4`), and so is the KEYED spelling, which the toolchain
+    // refuses in a `let` position with 0011, "a `let` pattern must be
+    // irrefutable" (row `c3`). This reader is type-blind, and refusing them
+    // here would mean refusing the corpus on a check it is not equipped to make.
+    // THE SHORTHAND SPELLING ONLY. The keyed spelling is a program the
+    // toolchain REFUSES in a `let` position, and 0485 pinned that refusal on
+    // purpose -- so the two are told apart before the pattern is read. See
+    // `at_shorthand_struct_pattern`.
+    if self.at(TLBrace) && self.at_shorthand_struct_pattern() {
+      let names = self.parse_is_pattern()
+      self.expect(TAssign, "'='")
+      let init = self.parse_expr()
+      return { span: sp, kind: @ast.SLetDestruct(names, init), }
+    }
     // 0477 -- a CONSTRUCTOR PATTERN on the left of a `let`.
     //
     //   let OSError(errno, context~) = self
@@ -2809,7 +2845,45 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
   }
   if self.at_name("break") {
     let _ = self.bump()
-    return { span: sp, kind: @ast.SBreak, }
+    // A `break` MAY CARRY A VALUE. `async 0.22.4 src/fs/watch_windows.mbt:322`
+    // writes `break path[:i]` -- the value the loop RETURNS -- and the value
+    // used to be left in the token stream, where the parser died on it.
+    //
+    // THE TREATMENT IS THE `continue` ARM'S, and for the same reason: the value
+    // is EVALUATED and WALKED, so the names inside it resolve, and the loop's
+    // exit value is NOT modelled. The `nobreak` block beside the loop is what
+    // this model reads as the loop's value, and a `break` value would have to
+    // be JOINED with it -- a claim about a join this subset does not make.
+    // => 判据: reach and semantics are separate increments. A reading that makes
+    // the file legible without asserting something the model cannot support is
+    // the honest one. Recorded as a gap rather than guessed at.
+    //
+    // NO `skip_seps()` HERE, for the same reason the `continue` arm has none: a
+    // bare `break` on its own line is followed by a `TNewline` and then the NEXT
+    // STATEMENT, so skipping separators would read that statement's head as
+    // this one's value and swallow the rest of the body. The lexer emits no
+    // whitespace token, so "a value follows" is exactly "the token immediately
+    // after `break` can begin an expression".
+    let bare = match self.peek() {
+      TNewline | TSemi | TRBrace | TLBrace | TEOF => true
+      _ => false
+    }
+    if bare {
+      return { span: sp, kind: @ast.SBreak, }
+    }
+    let vals : Array[@ast.Stmt] = [{ span: sp, kind: @ast.SBreak, }]
+    let mut more = true
+    while more {
+      let v = self.parse_expr()
+      vals.push({ span: v.span, kind: @ast.SExpr(v), })
+      if self.at(TComma) {
+        let _ = self.bump()
+        self.skip_seps()
+      } else {
+        more = false
+      }
+    }
+    return { span: sp, kind: @ast.SBlock(vals), }
   }
   if self.at_name("continue") {
     let _ = self.bump()
@@ -3434,7 +3508,7 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   let stmts : Array[@ast.Stmt] = []
   // An absent condition is a constant-true loop, not a missing one.
   let mut cond : @ast.Expr = { span: sp, kind: @ast.EBool(true), }
-  let mut update : @ast.Stmt? = None
+  let mut updates : Array[@ast.Stmt] = []
   // THE CLAUSE LIST IS VARIABLE LENGTH, and a `;` only ever says that a further
   // clause FOLLOWS -- none of them terminates the list. `moon check` accepts
   //
@@ -3523,19 +3597,108 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
     let _ = self.bump()
   }
   if !self.at(TLBrace) && !self.at(TEOF) {
-    update = Some(self.parse_stmt())
+    updates = self.c_for_updates()
   }
   let (body, _) = self.parse_block(false)
   let loop_body : Array[@ast.Stmt] = []
   for st in body {
     loop_body.push(st)
   }
-  match update {
-    Some(u) => loop_body.push(u)
-    None => ()
+  for u in updates {
+    loop_body.push(u)
   }
   stmts.push({ span: sp, kind: @ast.SWhile(cond, loop_body), })
   self.maybe_nobreak({ span: sp, kind: @ast.SBlock(stmts), })
+}
+
+///|
+/// The UPDATE clause of a C-style `for` may be a LIST of assignments, not one.
+///
+/// The INITIALIZER was already allowed to be a list (settled at 0472,
+/// `_verify/settle_0472_for_init_list.ps1`), and the corpus writes both in the
+/// same header:
+///
+///     async 0.22.4 src/http/utils.mbt:23
+///         for x = value, i = len - 1; i >= 0; x = x / base, i = i - 1 {
+///
+/// The update clause there is TWO assignments separated by a comma, and the
+/// reader took ONE statement and left the comma in the token stream, so the
+/// parser reported "expected '{'" -- the whole of that file's report.
+///
+/// The comma is the list separator, and the reason is the same one the
+/// initializer list gives: `parse_stmt` consumed the assignment's own value
+/// already, so a comma still on the cursor cannot belong to it. What makes
+/// this safe rather than a guess is that the dangerous case -- a comma inside
+/// an unconsumed value -- does not exist here.
+///
+/// THE UPDATE IS A LIST OF ASSIGNMENTS, not of declarations. The initializer's
+/// clause DECLARES (`i = 0` binds `i` for the loop), and the update ASSIGNS
+/// (`i = i + 1` writes to it), so the two clauses are read by different rules
+/// and the update keeps the ordinary statement node. The toolchain agrees that
+/// the update may only assign the DECLARED names: `for i = 0; i < len; j = j + 1`
+/// is REJECTed (4106), settled as `b3_control_for_update_binds_a_new_name` in
+/// `_verify/settle_0494_parse_backlog.ps1`.
+fn Parser::c_for_updates(self : Parser) -> Array[@ast.Stmt] {
+  let out : Array[@ast.Stmt] = []
+  out.push(self.parse_stmt())
+  while self.at(TComma) {
+    let _ = self.bump()
+    self.skip_seps()
+    out.push(self.parse_stmt())
+  }
+  out
+}
+
+///|
+/// Is the braced pattern at the cursor the SHORTHAND spelling -- `{ identity, .. }`
+/// -- rather than the KEYED one -- `{ "cmd": [cmd], .. }`?
+///
+/// THE TOOLCHAIN REFUSES THE KEYED SPELLING IN A `let` POSITION -- 0011 / 4118,
+/// "a `let` pattern must be irrefutable" (`_verify/settle_0494_parse_backlog.ps1`,
+/// rows `c3` and `c4`) -- and 0485 pinned that refusal on purpose, in the row
+/// "0485: a let destructuring rest pattern is still not read". So this reader
+/// KEEPS it: the shorthand is read, and the keyed one still reports.
+///
+/// That is why the two spellings have to be told apart rather than read alike.
+/// The difference is what is at brace depth 1: a KEY is a string, or a name
+/// followed by a colon, and a SHORTHAND field is a bare name with neither.
+///
+/// The corpus needs the shorthand and not the keyed one:
+/// `async 0.22.4 src/fs/watch_kqueue.mbt:240` writes `let { identity, .. } = ...`
+/// and the toolchain ACCEPTS it (settle row `c1`).
+fn Parser::at_shorthand_struct_pattern(self : Parser) -> Bool {
+  let mut depth = 0
+  let mut j = self.p
+  while j < self.toks.length() {
+    match self.toks[j] {
+      TLBrace => {
+        depth += 1
+        j += 1
+      }
+      TRBrace => {
+        depth -= 1
+        j += 1
+        if depth == 0 {
+          return true
+        }
+      }
+      TEOF => return false
+      TStr(_, _) => {
+        if depth == 1 {
+          return false
+        }
+        j += 1
+      }
+      TColon => {
+        if depth == 1 {
+          return false
+        }
+        j += 1
+      }
+      _ => j += 1
+    }
+  }
+  false
 }
 
 ///|
@@ -4120,6 +4283,34 @@ fn Parser::rest_binding_at(self : Parser, j : Int32) -> Bool {
 }
 
 ///|
+/// Is this name a SHORTHAND FIELD binding -- `{ identity, .. }` -- rather than a KEY?
+///
+/// The difference is what FOLLOWS it: a key is followed by a colon and a value
+/// (`{ cmd: [cmd] }`), a shorthand field is not (`{ identity }`), and the
+/// shorthand BINDS the field to a name of its own.
+///
+/// The keyed spelling is the one 0485 measured, and its key is a STRING there
+/// (`{ "cmd": [cmd], .. }`) -- so the key was never a `TName` and the value
+/// position was the only place a name could be collected. The shorthand puts a
+/// bare `TName` in FIELD position, and collecting it is what makes
+/// `let { identity, .. } = x` bind `identity` instead of leaving it undefined
+/// at its use two lines later.
+///
+/// THE COLON IS THE WHOLE TEST, and it is what keeps the two spellings apart:
+/// `{ cmd: [cmd] }` must still bind only the `cmd` inside the brackets, and
+/// `{ cmd, .. }` must bind the field. A name followed by a colon is a key.
+///
+/// `.. rest` is a shorthand too, and `rest_binding_at` covers it -- `pattern_binding_at`
+/// refuses a name preceded by a single dot, which is right for `Foo.bar` and
+/// wrong for `.. rest`.
+fn Parser::shorthand_field_at(self : Parser, j : Int32) -> Bool {
+  if j + 1 < self.toks.length() && self.toks[j + 1] == TColon {
+    return false
+  }
+  self.rest_binding_at(j) || self.pattern_binding_at(j)
+}
+
+///|
 /// The same predicate at the CURSOR, for the branch that parses rather than
 /// scans.
 fn Parser::at_pattern_binding(self : Parser) -> Bool {
@@ -4340,8 +4531,18 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
         // 0466b, unchanged: `.. rest` is a binding, and `pattern_binding_at` refuses any name
         // preceded by a `TDot` -- correctly for `Foo.bar`, wrongly for `.. rest`, which is two
         // dots. See `rest_binding_at`.
+        //
+        // 0494, THE SHORTHAND FIELD: `{ identity, .. }`. A name in FIELD position -- one that
+        // is not the value of a `key: value` pair -- is a SHORTHAND, and it BINDS the field
+        // to a name of its own. The corpus writes it in a `let`:
+        // `async 0.22.4 src/fs/watch_kqueue.mbt:240`, `let { identity, .. } = ...`.
+        // A name in VALUE position keeps the rule it had.
         TName(n) =>
-          if in_value && (self.pattern_binding_at(j) || self.rest_binding_at(j)) {
+          if in_value {
+            if self.pattern_binding_at(j) || self.rest_binding_at(j) {
+              found.push(n)
+            }
+          } else if depth == 1 && bracket == 0 && self.shorthand_field_at(j) {
             found.push(n)
           }
         _ => ()
@@ -4563,11 +4764,16 @@ fn Parser::parse_shift(self : Parser) -> @ast.Expr {
 ///|
 fn Parser::parse_cmp(self : Parser) -> @ast.Expr {
   let mut l = self.parse_is()
-  while self.at(TLt) || self.at(TLe) || self.at(TGt) || self.at(TGe) {
+  while self.at(TLt) ||
+        self.at(TLe) ||
+        self.at(TGt) ||
+        self.at(TGe) ||
+        self.at(TEqTilde) {
     let op = match self.peek() {
       TLt => @ast.OpLt
       TLe => @ast.OpLe
       TGt => @ast.OpGt
+      TEqTilde => @ast.OpMatch
       _ => @ast.OpGe
     }
     let _ = self.bump()
@@ -4583,15 +4789,17 @@ fn Parser::parse_add(self : Parser) -> @ast.Expr {
   while self.at(TPlus) ||
         self.at(TMinus) ||
         self.at(TRange) ||
-        self.at(TRangeIncl) {
-    if self.at(TRange) || self.at(TRangeIncl) {
-      // `a..<b` exclusive, `a..<=b` INCLUSIVE. The right side is read at UNARY
-      // precedence on purpose: ranges occur almost only in `for i in a..<b`
+        self.at(TRangeIncl) ||
+        self.at(TRangeDesc) {
+    if self.at(TRange) || self.at(TRangeIncl) || self.at(TRangeDesc) {
+      // `a..<b` exclusive, `a..<=b` INCLUSIVE, `a>..b` DESCENDING. The right side is read at
+      // UNARY precedence on purpose: ranges occur almost only in `for i in a..<b`
       // heads, where both this reading and the strict reading parse and walk
       // identically, and `1..<n*2` reading as `(1..<n)*2` costs nothing — the
       // walk visits every operand either way. A whole precedence tier for one
       // operator would be the dearer mistake.
       let incl = self.at(TRangeIncl)
+      let desc = self.at(TRangeDesc)
       let sp = self.span()
       let _ = self.bump()
       let r = self.parse_unary()
@@ -4604,6 +4812,17 @@ fn Parser::parse_add(self : Parser) -> @ast.Expr {
       if incl {
         self.note_skip(
           "inclusive range end is outside the analyzed subset; it was read but the bound was not analysed",
+          sp,
+        )
+      }
+      // The DESCENDING direction is the same kind of thing and the same kind of
+      // notice. `ERange` carries no direction, so `a>..b` and `a..<b` are the
+      // same node -- and a range that counts DOWN rather than up is not a
+      // difference to lose silently either. The corpus shape is
+      // `async 0.22.4 src/fs/watch_windows.mbt:320`, `for i in path.length()>..0`.
+      if desc {
+        self.note_skip(
+          "descending range direction is outside the analyzed subset; it was read but the direction was not analysed",
           sp,
         )
       }
@@ -5105,6 +5324,34 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
     if self.at_name("as") {
       let asp = self.span()
       let _ = self.bump()
+      // THE REGEX CAPTURE, `re"..." as name`. The operand is a REGEX LITERAL,
+      // and that is what tells a capture from a CAST: `x as Int` casts a value
+      // to a type, and `re"^a" as cap` binds `cap` to the text the group
+      // captured.
+      //
+      // The corpus shape is `async 0.22.4 src/http/request.mbt:59-65`:
+      //
+      //     (re".*" as host) + (re":" ...) + (re"[0-9]+" as port_str)
+      //
+      // and the names those two capture are READ ten lines later. Read as a
+      // CAST -- which is what this arm did -- the name was consumed as a TYPE
+      // and the binding was lost, so `port_str` was reported `undefined name`
+      // on code `moon check` compiles.
+      //
+      // NOT DONE, AND SAID SO: the LABELLED capture, `as raw, after=rest`. It
+      // is written in `moonbitlang/lexer 0.4.0` and `moonbitlang/json5 0.5.5`
+      // -- neither is a PINNED corpus -- and adding a shape with no evidence of
+      // it being in the measured corpora is the habit this increment exists to
+      // avoid. Recorded as a gap rather than guessed at.
+      let capture = match e.kind {
+        @ast.ERegex(_) => self.peek_name() != ""
+        _ => false
+      }
+      if capture {
+        let (n, _) = self.expect_name("capture name")
+        e = { span: asp, kind: @ast.EAsBind(e, n), }
+        continue
+      }
       let _ = self.type_annotation()
       e = { span: asp, kind: @ast.ECast(e), }
       continue
@@ -6055,6 +6302,11 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     TBigInt => { span: sp, kind: @ast.EBigInt, }
     TFloat(f) => { span: sp, kind: @ast.EFloat(f), }
     TStr(s, names) => { span: sp, kind: @ast.EStr(s, names), }
+    // The REGEX LITERAL. Its own node, because a Regex is not a String --
+    // `let r : String = re"^a"` is REJECTed by the toolchain and
+    // `let r : Regex = re"^a"` is ACCEPTed
+    // (`_verify/settle_0494_parse_backlog.ps1`, rows `a5` and `a2`).
+    TRegex(s) => { span: sp, kind: @ast.ERegex(s), }
     TName("true") => { span: sp, kind: @ast.EBool(true), }
     TName("false") => { span: sp, kind: @ast.EBool(false), }
     // `if` in expression position: `let d = if a { x } else { y }`. Measured as

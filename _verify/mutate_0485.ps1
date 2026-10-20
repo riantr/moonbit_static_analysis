@@ -75,8 +75,26 @@ Invoke-MutationGate -Name '0485' -Target 'wasm' -Mutations @(
   @{
     Name = 'M2 every name in the braces binds, including a key'
     File = $PARSER
-    Find = '          if in_value && (self.pattern_binding_at(j) || self.rest_binding_at(j)) {'
-    Repl = '          if self.pattern_binding_at(j) || self.rest_binding_at(j) {'
+    Find = @'
+        TName(n) =>
+          if in_value {
+            if self.pattern_binding_at(j) || self.rest_binding_at(j) {
+              found.push(n)
+            }
+          } else if depth == 1 && bracket == 0 && self.shorthand_field_at(j) {
+            found.push(n)
+          }
+'@.Replace("`r`n", "`n")
+    Repl = @'
+        TName(n) =>
+          if in_value {
+            if self.pattern_binding_at(j) || self.rest_binding_at(j) {
+              found.push(n)
+            }
+          } else if depth == 1 && bracket == 0 && (self.shorthand_field_at(j) || self.pattern_binding_at(j)) {
+            found.push(n)
+          }
+'@.Replace("`r`n", "`n")
     MustRed = '0485: an unquoted key does not bind, its value does'
   }
 

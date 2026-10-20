@@ -696,6 +696,17 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(a)
       self.walk_expr(b)
     }
+    // A REGEX LITERAL, `re"^a"`. A LEAF: the pattern text is carried, not
+    // analysed, and there is nothing inside it to walk.
+    ERegex(_) => ()
+    // A REGEX CAPTURE, `re"..." as name`. The base is walked and the name is
+    // BOUND, exactly as an `is` binding is: `bind_pattern` and not `bind`,
+    // because a capture that is never read is legal MoonBit and must not be
+    // reported as an unused local.
+    EAsBind(base, name) => {
+      self.walk_expr(base)
+      self.bind_pattern(name, e.span)
+    }
     // `pair.0`: only the base is read; the position is a column, not a
     // variable — the same rule as EField's name above.
     ETupleField(base, _) => self.walk_expr(base)

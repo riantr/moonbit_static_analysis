@@ -203,7 +203,7 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
     let _ = self.bump()
   }
   if !self.at(TLBrace) && !self.at(TEOF) {
-    update = Some(self.parse_stmt())
+    updates = self.c_for_updates()
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
@@ -218,7 +218,7 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
   }
   self.expect(TSemi, "';'")
   if !self.at(TLBrace) {
-    update = Some(self.parse_stmt())
+    updates = self.c_for_updates()
   }
 '@.Replace("`r`n", "`n")
     MustRed = '0473: a for head with no initializer carries no statement for one'
@@ -239,10 +239,10 @@ fn Parser::is_c_style_for(self : Parser) -> Bool {
     File = $PARSER
     Find = @'
   if !self.at(TLBrace) && !self.at(TEOF) {
-    update = Some(self.parse_stmt())
+    updates = self.c_for_updates()
   }
 '@.Replace("`r`n", "`n")
-    Repl = '  update = Some(self.parse_stmt())'
+    Repl = '  updates = self.c_for_updates()'
     MustRed = '0473: an absent update clause leaves the body exactly as written'
   }
 

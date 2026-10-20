@@ -500,6 +500,28 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       let _ = self.ty_of(b, TUnknown)
       TUnknown
     }
+    // A REGEX LITERAL, `re"^a"`. This model has NO Regex type, and the honest
+    // answer for a type it cannot name is UNKNOWN -- not TStr, because a Regex
+    // is not a String: `let r : String = re"^a"` is REJECTed by the toolchain
+    // with 4014 (`_verify/settle_0494_parse_backlog.ps1`, row `a5`).
+    ERegex(_) => TUnknown
+    // A REGEX CAPTURE, `re"..." as name`. The captured text is a String, but
+    // this model does not claim it: the base is typed and the RESULT is
+    // unknown, which is the same answer the regex literal itself gets.
+    // A REGEX CAPTURE, `re"..." as name`. The name is BOUND in the type lens's
+    // frame, exactly as an `is` binding is -- without that, the capture's own
+    // name was reported `undefined name` at its use, on code `moon check`
+    // compiles (`async 0.22.4 src/http/request.mbt:66`).
+    //
+    // The bound type is TUnknown: the captured text is a String and this model
+    // does not claim it.
+    EAsBind(base, name) => {
+      let _ = self.ty_of(base, TUnknown)
+      let fi = self.frames.length() - 1
+      self.frames[fi].set(name, TUnknown)
+      self.annos[fi].set(name, false)
+      TUnknown
+    }
     // `pair.0`: there is no tuple Ty to per-element, so the element is
     // unknown; the base is still TYPED, so a wrong name inside it is still
     // found. The int-index check EIndex runs does not apply here — the

@@ -44,6 +44,34 @@ $mutations = @(
     if self.at_name("as") {
       let asp = self.span()
       let _ = self.bump()
+      // THE REGEX CAPTURE, `re"..." as name`. The operand is a REGEX LITERAL,
+      // and that is what tells a capture from a CAST: `x as Int` casts a value
+      // to a type, and `re"^a" as cap` binds `cap` to the text the group
+      // captured.
+      //
+      // The corpus shape is `async 0.22.4 src/http/request.mbt:59-65`:
+      //
+      //     (re".*" as host) + (re":" ...) + (re"[0-9]+" as port_str)
+      //
+      // and the names those two capture are READ ten lines later. Read as a
+      // CAST -- which is what this arm did -- the name was consumed as a TYPE
+      // and the binding was lost, so `port_str` was reported `undefined name`
+      // on code `moon check` compiles.
+      //
+      // NOT DONE, AND SAID SO: the LABELLED capture, `as raw, after=rest`. It
+      // is written in `moonbitlang/lexer 0.4.0` and `moonbitlang/json5 0.5.5`
+      // -- neither is a PINNED corpus -- and adding a shape with no evidence of
+      // it being in the measured corpora is the habit this increment exists to
+      // avoid. Recorded as a gap rather than guessed at.
+      let capture = match e.kind {
+        @ast.ERegex(_) => self.peek_name() != ""
+        _ => false
+      }
+      if capture {
+        let (n, _) = self.expect_name("capture name")
+        e = { span: asp, kind: @ast.EAsBind(e, n), }
+        continue
+      }
       let _ = self.type_annotation()
       e = { span: asp, kind: @ast.ECast(e), }
       continue
@@ -106,12 +134,10 @@ $mutations = @(
     Name = 'M5 the parser stops consuming the cast target type'
     File = $PARSER
     Find = @'
-      let _ = self.bump()
       let _ = self.type_annotation()
       e = { span: asp, kind: @ast.ECast(e), }
 '@
     Repl = @'
-      let _ = self.bump()
       e = { span: asp, kind: @ast.ECast(e), }
 '@
   }
