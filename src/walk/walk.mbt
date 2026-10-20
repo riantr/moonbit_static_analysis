@@ -1197,29 +1197,53 @@ fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit 
           None => ()
         }
       // ---------------------------------------------------------------------------
-      // 0468/0469 MEASURED DEFECT, NOT YET FIXED: EVERY NESTED BODY SHARES `bs`.
+      // 0468/0469 MEASURED DEFECT: EVERY NESTED BODY SHARES `bs`.
       //
       // Each arm below passes the SAME `bs` into its body, so a `let` written inside an
       // `if` arm, a `while` body, a `for` body or a bare block outlives the construct and
-      // lands in the ENCLOSING function's table. `Infer::run_fn` seeds its frame 0 from
-      // that table (infer.mbt:816-819) and `declare_sym` is guarded on `frame.contains`,
-      // so the FIRST binding for a name wins -- and a flat table makes the INNER one
-      // first.
+      // lands in the ENCLOSING function's table. `Infer::run_fn` seeds its frame from
+      // that table.
       //
-      // Both directions of the same missing scope are MEASURED, not argued:
+      // THE ORDER THAT TABLE IS SEEDED IN, and this block got it WRONG until 0492. IT
+      // USED TO SAY: "`Infer::run_fn` seeds its frame 0 from that table
+      // (infer.mbt:816-819) and `declare_sym` is guarded on `frame.contains`, so the
+      // FIRST binding for a name wins -- and a flat table makes the INNER one first."
       //
-      //   FALSE POSITIVE. moonbit_labeler 0.2.13 app_moui/rasterizer.mbt:1218 reports
-      //     `argument 2 to 'blend_pixel' has incompatible type 'float'; expected 'int'`
-      //   on code `moon check` compiles. Line 1196 writes `let x : Double = ...` inside a
-      //   `for i` body; line 1217 binds `x` as a `for` header over an `Int`; line 1218
-      //   passes it to an `Int` parameter. The inner `Double` wins.
-      //   A four-case probe reproduces it in ALL of `if`/`while`/`for`/bare-block, with
-      //   `moon check` accepting the file, and the control -- the same function with the
-      //   inner `let` renamed -- reports nothing.
+      // BOTH CLAIMS WERE FALSE. `Infer::declare_sym` has NO guard -- it overwrites, so
+      // the LAST binding for a name wins -- and it never had one: `git log -S
+      // 'frame.contains' -- src/types/infer.mbt` finds no such guard anywhere in the
+      // file's history. And `run_fn` does not seed frame 0: it PUSHES a frame and seeds
+      // the top one, so the table lands in the function's own scope.
       //
-      //   FALSE NEGATIVE. 0468's `0468: a block's bindings do not scope (KNOWN FALSE
-      //   NEGATIVE, pinned)` is this same frame: `let y` inside a block stayed visible
-      //   afterwards, where `moon check` reports [4021] unbound.
+      // 0492 made the rule explicit, and the rule in force now is:
+      //
+      //   A PARAMETER WINS over a re-binding of the same name, and among body
+      //   bindings the LAST wins.
+      //
+      // The first half was a real defect, and a false NEGATIVE. The walk records an
+      // assignment `xs["k"] = "v"` as a re-binding of the base name `xs`, so the table
+      // carried a PARAMETER twice, and the second (Unknown) erased the parameter's
+      // annotation for the WHOLE function body. `fn h(xs : Array[String]) -> Unit {
+      // xs["k"] = "v" }` was reported clean, and `moon check` REJECTS that program.
+      //
+      // The second half is load-bearing: the table is FLAT across nested scopes, so
+      // "last wins" is what keeps the INNER binding from taking over the function.
+      //
+      // THE FALSE POSITIVE THIS BLOCK DESCRIBED IS NOT IN THE SCAN ANY MORE, and that
+      // is a change to the record, measured 2026-10-20: moonbit_labeler 0.2.13 scans
+      // 37 files with actionable=0, and not one line mentions `blend_pixel` or
+      // `incompatible type`. The CODE is exactly as described below --
+      // rasterizer.mbt:1196 writes `let x : Double = ...` inside a `for i` body, 1217
+      // binds `x` as a `for` header over an `Int`, 1218 passes it to an `Int` parameter
+      // -- so the finding is absent because the type lens's OWN statement walk
+      // re-declares each binding as it walks the body that owns it, and the seeded
+      // value only survives until the first statement that binds the name.
+      //
+      //   FALSE NEGATIVE, STILL OPEN, and still the open increment. 0468's
+      //   `0468: a block's bindings do not scope (KNOWN FALSE NEGATIVE, pinned)` is
+      //   this same frame: `let y` inside a block stayed visible afterwards, where
+      //   `moon check` reports [4021] unbound. That one is NOT fixed, and the row is
+      //   the pin.
       //
       // => 判据: one mechanism, two directions. A leaked name only becomes a FALSE
       // POSITIVE when something later binds the same name -- which is why this sat
@@ -1227,7 +1251,7 @@ fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit 
       // filed as two separate items.
       //
       // NOT FIXED HERE. The change is small in this function and large everywhere else:
-      // `bs` also seeds the type lens's frame 0, so removing nested contributions is only
+      // `bs` also seeds the type lens's frame, so removing nested contributions is only
       // safe if the type lens DECLARES each binding as it walks the body that owns it.
       // Every corpus's finding count moves. It is its own increment, and 0468's two rows
       // that PIN this false negative are expected to go red when it lands -- which is what

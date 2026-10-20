@@ -14,6 +14,14 @@
 #     mutate_0428.ps1  baseline=False preflight=True  sha256=True
 #     mutate_0429.ps1  baseline=True  preflight=True  sha256=True
 #
+# THAT TABLE IS A MEASUREMENT OF THE DEFECT, NOT OF THE PRESENT, and it is worth saying
+# so, because it reads like a status report. MEASURED 2026-10-20: all 74 numbered gates
+# call `Invoke-MutationGate`, and it has NO pre-flight or SHA256 switch at all -- so every
+# one of them gets the baseline, the pre-flight and the SHA256 restore check, and ZERO
+# gates carry their own copy of the runner. `mutate_0412.ps1` and `mutate_0413.ps1`, the
+# two this table names, both print a pre-flight line and both end with "every restore
+# verified byte-identical".
+#
 # So the defect was not in one script, it was in the PATTERN that fourteen copies
 # of the pattern inherited -- and each copy has to be fixed by hand, which is
 # exactly how the next one gets missed. This file is the harness; a release gate

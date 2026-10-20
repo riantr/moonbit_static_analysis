@@ -814,12 +814,39 @@ fn Infer::run_fn(
   self.annos.push(Map([]))
   self.vst.push({ func: f.name, file: "ml", line: f.span.start.line, })
   // declarations come from the structural lens's table
+  //
+  // THE PARAMETER WINS, and the ORDER of these two loops is the whole point.
+  //
+  // The walk's table lists a function's PARAMETERS first and its BODY BINDINGS
+  // after, and a body binding of the same name is not a new declaration -- it
+  // is the same variable, re-bound. It carries no type of its own: a body
+  // binding starts Unknown and the statements refine it as they are walked. So
+  // declaring it AFTER the parameter overwrote the parameter's annotation, and
+  // the annotation was then gone for the WHOLE function body.
+  //
+  // MEASURED 2026-10-20: `fn h(xs : Array[String]) -> Unit { xs["k"] = "v" }`
+  // was reported CLEAN, because the walk records an assignment as a re-binding
+  // of the base name, so the table carried `xs` twice and the second (Unknown)
+  // won. The toolchain REJECTS that program -- `moon check` reports an Expr
+  // Type Mismatch -- so the silence was a FALSE NEGATIVE, and a broad one:
+  // EVERY check on that name degraded to "unknown" for the rest of the body.
+  //
+  // Body bindings are declared FIRST here, so the parameter is written LAST and
+  // survives. Among the body bindings themselves the LAST still wins, and that
+  // ordering is load-bearing: the walk's table is FLAT across nested scopes and
+  // lists the INNER binding first, so "last wins" is exactly what keeps the
+  // 0468/0469 binding-scope leak fixed -- moonbit_labeler 0.2.13
+  // app_moui/rasterizer.mbt:1218 was a false positive while the inner binding
+  // won.
+  for b in bs {
+    if !b.param {
+      // body bindings start Unknown; statements refine them
+      self.declare_sym(b, TUnknown, false)
+    }
+  }
   for b in bs {
     if b.param {
       self.declare_sym(b, ann_to_ty(b.tyann), !(b.tyann == ""))
-    } else {
-      // body bindings start Unknown; statements refine them
-      self.declare_sym(b, TUnknown, false)
     }
   }
   for st in f.body {

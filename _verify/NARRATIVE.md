@@ -3956,3 +3956,122 @@ but the gate that would have told us so was, until this commit, one that could n
 at all.
 
 
+## 0492: THE PARAMETER THAT WAS RE-BOUND AND FORGOT ITS TYPE
+
+(IT WAS FOUND BY AUDITING A GATE, and the chain is worth recording, because every step of it was a
+measurement and not a guess. The audit was for Direction 1's remainder -- "13 gates still carry their
+own copy; mutate_0412/0413 lack pre-flight and SHA256".)
+
+DIRECTION 1'S REMAINDER IS ALREADY DONE, and the goal's note about it is STALE. MEASURED: all 74
+numbered gates `require` `mutate_lib.ps1` and ZERO carry their own copy of the runner; and 0412 and
+0413 both print `Pre-flight: all 4 live patterns present and UNIQUE.` and `all 6 live patterns
+present, 1 AMBIGUOUS`, both run a baseline (`1067/1067 passed, 0 failed.`), and both end with
+`every restore verified byte-identical`. The harness has no opt-out switch -- `Invoke-MutationGate`
+takes no pre-flight or SHA256 parameter at all -- so a gate that calls it gets all of it. The
+historical table in `mutate_lib.ps1`'s header is the 2026-10-13 measurement of the DEFECT, and it
+reads as a statement of the present.
+
+BUT GATE 0413 SAYS SOMETHING ELSE. Its N1 anchor is `if bt is TList(_) && !(it is TInt) &&
+!(it is TUnknown) {` -- and that text appears TWICE in `src/types/infer.mbt`: line 400, the READ
+arm of the subscript base-type gate, and line 608, the WRITE arm. The pre-flight says so:
+
+    PREFLIGHT AMBIGUOUS x2: N1 subscript gate (read arm)  (src\types\infer.mbt)
+      the FIRST occurrence is the one that will be mutated -- check that
+      it is the one the mutation names.
+
+and the harness only WARNS on an ambiguous anchor and mutates the first match. 0413's own retired
+row N2 admits the consequence in writing: "the write arm is not separately covered by any
+mutation".
+
+SO THE WRITE ARM HAD NEVER BEEN MUTATION-VERIFIED, and the question is what it does. MEASURED, by
+mutating the SECOND occurrence and running the suite:
+
+    WRITE-ARM MUTANT: Total tests: 1067, passed: 1067, failed: 0  -> 0 red
+
+THE WRITE ARM'S GUARD WAS DEAD CODE. Removing it changed NOTHING.
+
+AND THEN THE PART THAT MADE IT WORTH AN INCREMENT. The write arm cannot fire even when it is
+reached, because of what happened EARLIER, and that took a diagnostic probe to see. The probe
+printed the type lens's own frame at the moment the body was walked:
+
+    fn h(xs : Array[String]) -> Unit { xs["k"] = "v" }   DIAGFRAME fn=h xs : Unknown
+    fn h(xs : Array[String]) -> String { xs["k"] }        DIAGFRAME fn=h xs : [str]
+    fn h() -> Unit { let xs = ["a"]  xs["k"] = "v" }      DIAGFRAME fn=h xs : Unknown
+
+SAME PARAMETER, SAME ANNOTATION, TWO DIFFERENT FRAME CONTENTS. The parameter's type was `Unknown`
+whenever the body ASSIGNED to it, and `[str]` when the body only READ it.
+
+THE MECHANISM, and it is in the WALK's table. `Infer::run_fn` seeds a function's frame from the
+structural lens's binding table, and that table lists the function's PARAMETERS first and its BODY
+BINDINGS after -- because the walk records an assignment `xs["k"] = "v"` as a RE-BINDING of the
+base name `xs`. So the table carried `xs` TWICE, and the body binding -- which carries no type of
+its own -- was declared LAST and OVERWROTE the parameter's annotation. The parameter's type was
+then gone for the WHOLE function body, and "unknown" matches nothing and is assignable to
+anything, so EVERY check on that name degraded to silence.
+
+SETTLED WITH THE TOOLCHAIN, `_verify/settle_0492_param_type.ps1`, 9 rows. THE POSITIVE CONTROLS
+COME FIRST AND MUST REJECT, and that is not decoration: an earlier version of this probe reported
+EVERY row ACCEPTED -- including `let x : Int = "s"` -- because its project was not a project the
+toolchain would check, so `moon check` printed "no work to do" and exited 0. A settle that cannot
+reject is not a settle, and the first draft of it was worthless:
+
+    read_string_index          REJECT   the analyzer already reported this one
+    write_string_index         REJECT   the analyzer was SILENT here
+    write_list_local           REJECT   the analyzer already reported this one
+    param_reassigned_wrong_type REJECT   the analyzer was SILENT here
+    write_int_index            ACCEPT   correct code
+    write_map_key              ACCEPT   correct code
+
+THE TOOLCHAIN REJECTS BOTH FORMS. The type lens has a gate for exactly this shape -- "list indices
+must be int" -- and the READ form of the same code IS reported, while the WRITE form is not. The
+source says the two arms must agree: "Both arms must agree -- a check that fires on read and not on
+write is a claim about syntax, not about types." It was a claim about syntax.
+
+THE FIX IS THE ORDER OF TWO LOOPS, in `Infer::run_fn`: the body bindings are declared first and the
+PARAMETERS last, so a parameter's annotation is written over any re-binding of the same name.
+Among the body bindings themselves the LAST still wins, and that is load-bearing -- the walk's
+table is FLAT across nested scopes and lists the INNER binding first, so "last wins" is what keeps
+the 0468/0469 binding-scope leak fixed.
+
+GATE 0492: 4 KILLED, 0 declared survivors, every restore byte-identical. The four mutations are the
+four ways this can be wrong -- the order reverted, the parameter's TYPE dropped, its ANNOTATED flag
+dropped, and the OTHER HALF OF THE PAIR: the write arm's own base-type condition, which was
+UNOBSERVABLE while the arm was dead and is observable now. M4 is the one worth noting: it drops
+`bt is TList(_)` and the `Map`-indexed-by-its-key control goes red, so the arm is not just reachable
+but RESPONSIBLE.
+
+THE SIX CORPUS PINS DID NOT MOVE -- moui 4225, labeler 791, image 218, async 1829/23/0/1852, proton
+2131, contract 34, all byte-identical. That is the false-positive control for a fix that makes
+strictly MORE names resolve to their annotated types, over the same 1081 `.mbt` files. The
+self-scan is 161/161 parsed, actionable 0, notices 1761.
+
+AND A FALSIFIED COMMENT, CORRECTED IN PLACE. `walk.mbt` said, of the very mechanism this increment
+changed: "`Infer::run_fn` seeds its frame 0 from that table (infer.mbt:816-819) and `declare_sym`
+is guarded on `frame.contains`, so the FIRST binding for a name wins". BOTH CLAIMS WERE FALSE, and
+they were false WHEN WRITTEN: `Infer::declare_sym` has no guard -- it overwrites -- and
+`git log -S 'frame.contains' -- src/types/infer.mbt` finds no such guard anywhere in the file's
+history. `run_fn` does not seed frame 0 either: it PUSHES a frame and seeds the top one. The
+comment is corrected where it stands, naming the old text.
+
+The same block also called the labeler:1218 false positive a defect "NOT YET FIXED", and it is not in
+the scan any more: moonbit_labeler 0.2.13 scans 37 files with actionable=0 and not one line
+mentions `blend_pixel` or `incompatible type`. The CODE is exactly as that block describes it
+(rasterizer.mbt:1196 writes `let x : Double` inside a `for i` body, 1217 binds `x` as a `for`
+header over an `Int`, 1218 passes it to an `Int` parameter), so the finding is absent because the
+type lens's OWN statement walk re-declares each binding as it walks the body that owns it. The
+FALSE NEGATIVE half of that block -- a `let` inside a block staying visible after the block -- is
+STILL OPEN, and 0468's pinned row is still the pin.
+
+=> 判据: A PARAMETER'S ANNOTATION IS A FACT ABOUT THE VARIABLE. A RE-BINDING OF THAT VARIABLE IS
+NOT A NEW DECLARATION, AND IT MUST NOT ERASE THE FACT.
+
+=> 判据: A GATE THAT CANNOT FIRE IS NOT A GATE. The write arm's guard was unreachable in the only
+case it was written for, and nothing said so -- because the arm it belonged to was never the one
+that answered.
+
+=> 判据: A MUTATION THAT TARGETS A BRANCH CANNOT KILL IT IF THE BRANCH IS NEVER REACHED. "THE
+MUTATION SURVIVED" AND "THE MUTATION WAS NEVER EXERCISED" LOOK THE SAME FROM THE OUTSIDE, AND
+ONLY A SECOND MEASUREMENT -- HERE, THE FRAME DUMP -- TOLD THEM APART.
+
+
+
