@@ -499,14 +499,20 @@ either hiding the other. The default (module) view is unchanged: the same
 corpora produce byte-identical numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** The
-> per-function view reports 58 `actionable` on `moui` 0.1.12, where the module
-> view reports 0. Those 58 are not 58 defects — they are an *inventory of
-> what is still wrong with the behavioral lens*. Five classes of lens defect
-> were fixed alongside it (a list value against a list parameter, a call that
-> omitted an omittable parameter, a function whose body is an `if`, a string
-> concatenation, and a string comparison); what remains is **one** class:
-> a name used from a *sibling file of the same package*, which the
-> single-file lens cannot see. Use it to see the lens, not to gate a build.
+> per-function view reports 7 `actionable` on `moui` 0.1.12, where the module
+> view reports 0. Those 7 are not 7 defects — they are an *inventory of
+> what is still wrong with the behavioral lens*. Six classes of lens defect
+> have been fixed since the view was added (a list value against a list
+> parameter, a call that omitted an omittable parameter, a function whose body
+> is an `if`, a string concatenation, a string comparison, and a name used from
+> a *sibling file of the same package*, which the single-file lens could not
+> see). What remains is four smaller classes: a name bound by an `is`-pattern,
+> a `None` receiver, a cross-file constructor's arity, and unreachable code.
+> Use it to see the lens, not to gate a build.
+>
+> (This note said **58** and "what remains is **one** class" until 0.4.30 fixed
+> the sibling-file class: 51 of the 58 were that one class, and the seven that
+> remain are the four above plus the unreachable-code finding.)
 
 **Measured** (before and after the trusted-region gate, same trees):
 

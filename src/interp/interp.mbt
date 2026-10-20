@@ -1063,6 +1063,52 @@ fn Interp::eval(
                 // a cross-file name. The structural and type lenses both have
                 // this table and both stay silent on the same line.
                 AAny
+              } else if self.extern_iface.has_value(n) ||
+                self.extern_iface.has_type(n) {
+                // A CROSS-FILE NAME read as a value: a function, a constant, or
+                // an enum constructor declared in ANOTHER file -- a sibling of
+                // this one, or a dependency.
+                //
+                // THE READ PATH DID NOT ASK THE TABLE, and the CALL path has
+                // asked it since 0.4.3 -- `Interp::call` below asks the same
+                // two questions, for the same reason, in the same words. So a
+                // name that IS bound elsewhere was reported `undefined
+                // variable` here, while the structural lens -- whose "no
+                // visible binding" gate has consulted the same table since
+                // 0.4.3 -- stayed silent on the same line. Two lenses, one
+                // line, opposite answers.
+                //
+                // MEASURED, wzzc-dev/moui 0.1.12, the per-function view: 51
+                // findings of this shape -- 49 PRINTED, plus 2 the scanner's
+                // per-file print cap hides -- of which 35 are `undefined
+                // variable 'Constant'` -- an enum variant of `pub(all) enum
+                // DeclarationChannel` in `core/declaration.mbt`, read bare in
+                // `core/modifier_paint.mbt`. The rest are the same shape:
+                // `MoveLeft`/`MoveRight`/`MoveStart`/`MoveEnd` (variants of a
+                // `priv enum` in a sibling file), `Up`, `view_size_key`,
+                // `DeclarationKey::double`, and the package-private
+                // `dispatch_web_*`, `web_active_app`, `clone_semantics_issue`
+                // and `macos_perf_now_ms`.
+                //
+                // SETTLED WITH THE TOOLCHAIN, `_verify/settle_0491_crossfile.ps1`,
+                // 12/12: the toolchain ACCEPTS every same-package sibling
+                // shape -- a bare unit variant of a `pub(all)` enum, a bare
+                // unit variant of a `priv` enum, a package-private `fn`, a
+                // package-private `let`, a `pub const`, a qualified `pub fn`,
+                // and all of them in one file -- and REFUSES the cross-package
+                // ones (a package-private `fn`, a bare variant of another
+                // package's enum) and a name that exists nowhere. The
+                // controls are what make the ACCEPT rows mean something: a
+                // blanket "any name is bound" would pass them too.
+                //
+                // The VALUE is unknown -- we know the name is bound and we do
+                // not know its type -- so the honest answer is `AAny`, exactly
+                // as for the constructor above and as for a cross-file name
+                // in the type lens (`TUnknown`). `AType("Function")` would
+                // claim more than the table knows: `has_value` cannot tell a
+                // function from a constant, and the table records that
+                // difference only in a flag this lens has no reason to read.
+                AAny
               } else if self.tail_bound(n, env) {
                 // A QUALIFIED name read as a value whose TAIL is bound:
                 // `PixelFormat::RGBA8`. The qualifier is a TYPE, so the name is

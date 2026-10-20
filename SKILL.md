@@ -175,15 +175,19 @@ unchanged: the same corpora produce byte-identical numbers with and without
 the flag.
 
 > **The view is not yet sound — read this before using the numbers.** It
-> reports 58 `actionable` on `moui` 0.1.12 where the module view reports 0.
-> Those are not 58 defects; they are an inventory of what is still wrong with
-> the behavioral lens, which the entry made visible for the first time. Five
-> classes of lens defect were fixed along with it (a list value against a
-> list parameter, a call that omitted an omittable parameter, a function
-> whose body is an `if`, a string concatenation, and a string comparison).
-> What remains is **one** class: a name used from a sibling file of the same
-> package, which the single-file lens cannot see. Use the flag to *see* the
-> lens; do not gate a build on it.
+> reports 7 `actionable` on `moui` 0.1.12 where the module view reports 0.
+> Those are not 7 defects; they are an inventory of what is still wrong with
+> the behavioral lens, which the entry made visible for the first time. Six
+> classes of lens defect have been fixed since (a list value against a list
+> parameter, a call that omitted an omittable parameter, a function whose body
+> is an `if`, a string concatenation, a string comparison, and a name used
+> from a sibling file of the same package, which the single-file lens could
+> not see). What remains is four smaller classes: a name bound by an
+> `is`-pattern, a `None` receiver, a cross-file constructor's arity, and
+> unreachable code. Use the flag to *see* the lens; do not gate a build on it.
+>
+> (This note said **58** and "What remains is **one** class" until 0.4.30
+> fixed the sibling-file class: 51 of the 58 were that one class.)
 
 ## What the numbers mean, and what they do not
 

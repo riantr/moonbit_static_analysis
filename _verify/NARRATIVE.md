@@ -3647,3 +3647,180 @@ like the same sentence until the toolchain renames something. Then one of them l
 live names and the other loses nothing. The direction the repository already accepted -- a missed
 report is cheaper than a false positive -- was written into the generator's header as a warning, and
 the rename is what turned the warning into a rule.
+
+
+## 0491: THE CROSS-FILE NAME THE BEHAVIORAL LENS REFUSED TO RESOLVE
+
+0490 took the per-function view's moui count from 265 to 58, and the 58 were CLASSIFIED before any
+fix was written -- the classes were the diagnosis:
+
+    A = 51  CROSS-FILE NAMES
+    B =  1  an `is`-pattern binding scope (`anchor`)
+    C =  4  `None`-receiver method errors
+    D =  1  a cross-file constructor arity
+    +   1  `unreachable code`
+
+This increment is class A, and it is the only one of the four that was a defect in the ANALYZER
+rather than in the analysed code: all 51 were findings on code `moon check` accepts, and every one
+of them was produced by a lens that had been asking the WRONG QUESTION in one place and the RIGHT
+question everywhere else.
+
+THE DEFECT IS ONE LINE, and the evidence for it is three places in the source that already
+disagreed with each other:
+
+    the STRUCTURAL lens's "no visible binding" gate   walk.mbt:363-371   asks the table
+    the TYPE lens                                       infer.mbt:100-113  asks the table
+    the BEHAVIORAL lens's CALL path                    interp.mbt:1663    asks the table
+    the BEHAVIORAL lens's READ path                     interp.mbt:1025    DID NOT
+
+And the call path's own comment says what the read path should have said:
+
+    the alternative is reporting the name as undefined, which CONTRADICTS the structural and
+    type lenses (both of which consult the same table and stay silent)
+
+Two lenses, one line, opposite answers.
+
+THE READ PATH IS THE `EName` ARM of `Interp::eval`, and it consults, in order: the environment, the
+globals, the local function table, the method table, the ambient table, the constructor table --
+and then, before this increment, the cross-file table was simply ABSENT. So a name bound in a
+SIBLING FILE of the same package, or in a dependency, was reported `undefined variable` by the
+behavioral lens while the other two stayed silent on the same line.
+
+MEASURED, moui 0.1.12, the per-function view: 51 findings of this shape, of which 35 are
+`undefined variable 'Constant'` -- an enum variant of `pub(all) enum DeclarationChannel` in
+`core/declaration.mbt`, read bare in `core/modifier_paint.mbt`. The rest are the same shape: the
+unit variants of a `priv enum` in a sibling file (`MoveLeft`, `MoveRight`, `MoveStart`, `MoveEnd`),
+`Up`, `view_size_key`, `DeclarationKey::double`, and the package-private `dispatch_web_open_url`,
+`dispatch_web_settings`, `dispatch_web_clipboard_write_text`, `web_active_app`,
+`clone_semantics_issue` and `macos_perf_now_ms`.
+
+AND THE COUNT IS 51, NOT THE 49 the printed scan showed, and the difference is worth a paragraph
+because it is the SECOND time this repository's own print path has hidden findings from a
+measurement. `sa/main.mbt:317` truncates the PRINTED findings per file at `findings_shown_per_file`
+while `aggregate` counts them all -- so a file whose actionable count passes the cap prints fewer
+findings than it has, and the SUMMARY line is right while the transcript is short. MEASURED on the
+two scans this increment produced:
+
+    0490   58 actionable   56 printed   2 hidden   (core/modifier_paint.mbt,
+                                                      runtime/semantics.mbt)
+    0491    7 actionable    7 printed   0 hidden
+
+Both hidden ones were cross-file names, so the class-A count is 51 and not the 49 the printed set
+showed.
+
+=> 判据: A COUNT READ OFF A TRANSCRIPT IS A COUNT OF WHAT WAS PRINTED, AND THE PRINTER HAS A CAP.
+The SUMMARY line counts what the analyzer FOUND. A diff of two transcripts measures what the
+printer SHOWED. When the two disagree by 2, the 2 are not a rounding error -- they are findings, and
+here they were findings of the very shape being fixed.
+
+SETTLED WITH THE TOOLCHAIN, `_verify/settle_0491_crossfile.ps1`, TWELVE rows on the installed
+toolchain, because the claim being settled is the TOOLCHAIN's and not the analyzer's: does MoonBit
+ACCEPT these shapes? Every ACCEPT row is code the toolchain must accept, and every REJECT row is a
+control the toolchain must REFUSE, so that "the analyzer must stay silent" cannot be satisfied by
+silencing everything.
+
+    ACCEPT   a bare unit variant of a `pub(all)` enum, read in a SIBLING file
+    ACCEPT   a bare unit variant of a `priv` enum, read in a SIBLING file
+    ACCEPT   a package-private `fn`, CALLED from a sibling file
+    ACCEPT   a package-private `let`, READ bare from a sibling file
+    ACCEPT   a `pub const`, READ bare from a sibling file
+    ACCEPT   a qualified `pub fn`, CALLED from a sibling file
+    ACCEPT   all of them, together, in ONE sibling file
+    REJECT   a package-private `fn` from ANOTHER package
+    REJECT   a bare variant of ANOTHER package's enum
+    ACCEPT   the same names, QUALIFIED, from another package
+    REJECT   a name that exists NOWHERE   <- the control the analyzer must keep reporting
+
+A PACKAGE IS A DIRECTORY, and that is the rule the analyzer's per-package private table encodes. The
+rows are built as a TWO-PACKAGE project -- `src/pa` declares, `src/pb` is a different package that
+imports it -- and one package per row because a single package cannot hold two rows: one row's error
+would mask another's, and the whole point of a settle is to see each verdict separately.
+
+THE FIX IS ONE BRANCH, in the `EName` read chain, and it asks the same two questions the call path
+asks:
+
+    } else if self.extern_iface.has_value(n) ||
+      self.extern_iface.has_type(n) {
+      AAny
+    }
+
+`AAny` -- "a value of unknown type" -- because the table says a name IS bound and says nothing about
+what it IS. `has_value` cannot tell a function from a constant: the table records that difference in
+a flag (`is_const`) this lens has no reason to read. Claiming `AType("Function")` would claim more
+than the table knows, and mutation M3 below is what that costs.
+
+BOTH HALVES ARE KEPT, and the reason is the one 0490 wrote down about the builtin method table: the
+structural lens's gate asks `!has_type(name) && !has_value(name)`, so a lens that asked only one of
+the two would still contradict it. A MISSED report is accepted; a FALSE POSITIVE is not.
+
+MEASURED, the per-function view, before and after:
+
+    corpus             0489                    0490                    0491
+    moui             actionable 265      ->    actionable  58      ->    actionable   7
+    proton           actionable 136      ->    actionable  92      ->    actionable   5
+    moonbit_image    actionable  94      ->    actionable  68      ->    actionable  44
+    moonbit_labeler  actionable  95      ->    actionable  48      ->    actionable  40
+
+AND THE SIX MODULE-VIEW PINS DID NOT MOVE: moui 4225, labeler 791, image 218, async 1829/23/0/1852,
+proton 2131, contract 34 -- byte-identical to the 0488 numbers, because the module entry never
+executes a function body and so never reached the read path this fix touches. The self-scan is 160/160
+parsed, actionable 0, notices 1755.
+
+THE SEVEN THAT REMAIN on moui are the other classes, and they are named here so that the next
+increment does not have to rediscover them:
+
+    undefined variable 'anchor'                             (UndefinedName) -- class B
+    no method matching clamp_int(None, int, Any)            (MethodError)    -- class C
+    no method matching web_string_append_char(None, Any)    (MethodError)    -- class C
+    no method matching web_finish_create_string(None)       (MethodError)    -- class C
+    no method matching >(None, float)                       (MethodError)    -- class C
+    no method matching RouteHistoryState::from_routes(...)  (MethodError)    -- class D
+    unreachable code                                        (Unreachable)
+
+GATE 0491, IN FULL: 4 KILLED, 0 declared survivors, every restore byte-identical. 1067 tests. The
+gate had to be REGISTERED in `release.ps1`'s gate list to run at all -- the list ended at '0490', and
+a gate that is not in the list is a gate that is not run, which is the same shape as a gate that
+reports a result it never produced.
+
+AND THE TWO MUTATIONS THAT HAD TO BE FIXED BEFORE THE GATE COULD SAY THAT are worth the space,
+because both of them were gates that LOOKED fine.
+
+THE FIRST VERSION OF M3 SURVIVED, for the most embarrassing reason imaginable: the assertion was on a
+family this lens never emits. `Interp::binop`'s fallback arm reports `FMethodError` -- "no method
+matching +(...)" -- and `FOpMismatch` is the TYPE lens's family. The row asserted
+`count_family(perfn, "OperatorMismatch") == 0`, which stayed 0 while the mutant answered
+`AType("Function")` and produced a real `MethodError`.
+
+The two families SHARE A MERGE GROUP -- `Family::merge_group` puts `FArgType | FMethodError |
+FOpMismatch` under "arg-type" -- and a merge group is not a family, so a count BY FAMILY cannot see
+the other one. MEASURED under the mutation: exactly ONE `MethodError`, from the behavioral lens, at
+`pipeline_0491_test.mbt:153`.
+
+=> 判据: TWO FAMILIES THAT SHARE A MERGE GROUP ARE STILL TWO FAMILIES. Asserting the wrong one is
+not a weak assertion -- it is an assertion about a finding this lens never emits, and it is green
+forever.
+
+THE FIRST VERSION OF M4 WAS KILLED BY THE WRONG TEST. The blanket -- the branch firing for every
+name -- was killed by a pre-existing merge test, `merge: one defect, three lenses, ONE finding`, and
+NOT by the control row that was written to kill it.
+
+The reason is the MERGE. BOTH lenses report the unbound name -- the structural lens says "no visible
+binding for 'helper'", the behavioral lens says "undefined variable 'helper'" -- at the SAME span,
+so the two collapse into ONE finding whose lens list is the union. `count_family(perfn,
+"UndefinedName") == 1` is therefore satisfied by the STRUCTURAL lens ALONE, and a blanket that
+silenced only the BEHAVIORAL lens still passes it.
+
+The control row now counts `count_family_in(perfn, "UndefinedName", @core.LBehavior)`, and under the
+blanket it goes red at `pipeline_0491_test.mbt:91`. The row is now a control OF THE LENS IT IS ABOUT.
+
+=> 判据: A MERGED FINDING IS COUNTED BY FAMILY, BUT A CLAIM ABOUT ONE LENS'S DECISION HAS TO BE
+COUNTED BY LENS, OR THE OTHER LENS ANSWERS FOR IT.
+
+AND THE STRUCTURAL LENS'S OWN COMMENT ALREADY SAID IT. The whole defect -- a lens that asks the
+cross-file table in one place and not in another -- was ANSWERED IN THE SOURCE, in the sibling
+branch, in a comment that explains WHY the table must be asked. The read path did not get the same
+treatment, and the difference is 51 false positives on code `moon check` accepts.
+
+=> 判据: A LENS THAT ASKS A QUESTION IN ONE PLACE HAS TO ASK IT EVERYWHERE, AND THE PROOF THAT IT
+DOES NOT IS A COMMENT IN THE BRANCH THAT DOES.
+
