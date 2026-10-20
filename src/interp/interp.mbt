@@ -180,6 +180,14 @@ priv struct MethodDef {
   ptypes : Array[String]
   /// parameter names, in order (from the walk table)
   pnames : Array[String]
+  /// which parameters a call may OMIT, one flag per parameter, parallel to
+  /// `pnames` and `ptypes`.
+  ///
+  /// The COUNT (`nopt`) cannot answer the question a label-matched dispatch
+  /// has to ask, which is per parameter: a call that supplies a labelled
+  /// parameter and omits a REQUIRED one is an error, and a count cannot tell
+  /// that from a call that omits an optional one.
+  pomittable : Array[Bool]
   /// how many of the parameters a call may OMIT (declared `name? : T`, or
   /// declared `name~ : T = default`). See `n_omittable`.
   nopt : Int32
@@ -410,6 +418,7 @@ fn setup_interp(
       name: f.name,
       ptypes,
       pnames: fn_pnames(f),
+      pomittable: fn_pomittable(f),
       nopt: n_omittable(f),
       cycle_ret,
       body: f.body,
@@ -546,6 +555,7 @@ fn Interp::analyze_entry(
     name: f.name,
     ptypes,
     pnames: fn_pnames(f),
+    pomittable: fn_pomittable(f),
     nopt: n_omittable(f),
     cycle_ret,
     body: f.body,
@@ -764,6 +774,40 @@ fn Interp::exec_stmt(
           for ei in elseifs {
             let env_ei = copy_env(acc)
             self.flow = FNormal
+            // THE CONDITION IS CODE, AND IT WAS NOT EVALUATED HERE. Two
+            // consequences, and they point in opposite directions.
+            //
+            // A name read in the condition was never checked, so a real
+            // undefined name went unreported -- a false NEGATIVE.
+            //
+            // And an `is` pattern in the condition never bound, so the name it
+            // introduces was reported `undefined variable` in the branch's own
+            // body -- a false POSITIVE. MEASURED, wzzc-dev/moui 0.1.12,
+            // `views/text/text_area_control.mbt:414`:
+            //
+            //     ctx.text_control.text_selection_anchor is Some(anchor)
+            //
+            // binds `anchor`, which is read twelve lines later at `:426`, and
+            // the per-function view reported `undefined variable 'anchor'`.
+            // The same binding in a plain `if` condition worked, and the same
+            // binding in an `else if` condition did not -- and the difference
+            // is exactly this line.
+            //
+            // The condition is evaluated in the SAME environment the branch's
+            // body runs in, so the binding it introduces is in scope for that
+            // body, which is the claim being made. The binding then joins the
+            // merged environment, so it stays visible to the branches after
+            // it -- a leak in the SILENT direction, which is the safe one:
+            // MoonBit scopes the binding to the `if`, and this lens scopes
+            // bindings flat everywhere else (see `SBlock`).
+            let cv = self.eval(ei.cond, env_ei)
+            if !vboolean(cv) {
+              self.report(
+                @core.FCondBool,
+                "condition must be bool, got '\{val_name(cv)}'",
+                ei.cond.span,
+              )
+            }
             self.exec_block(ei.body, env_ei)
             val = vjoin(val, self.last_value)
             if self.flow == FNormal {
@@ -826,6 +870,39 @@ fn Interp::exec_stmt(
       for k, v in merged {
         env.set(k, v)
       }
+      // A LOOP MAY RUN ZERO TIMES, so the body's flow is not the flow AFTER
+      // the loop. `while cond` is not guaranteed to run at all, and the
+      // statement after it is reachable whenever the condition is false on
+      // the first test.
+      //
+      // MEASURED, wzzc-dev/moui 0.1.12,
+      // `core/unicode/grapheme_cluster.mbt:428`: a `while cursor >= 0` whose
+      // body ends in `return`, followed by `false`. The per-function view
+      // reported `unreachable code` on the `false` -- but `cursor` is
+      // `index - 1`, so `cursor` is `-1` when `index` is `0`, the loop runs
+      // ZERO times, and the `false` is the function's value on that path.
+      //
+      // THE TOOLCHAIN DOES NOT SETTLE REACHABILITY, and that is measured
+      // rather than assumed: MoonBit ACCEPTS code after a `return`
+      // (`_verify/settle_0493_lens_values.ps1`, row `e3`), so the
+      // `Unreachable` family is a lint the toolchain does not share. What
+      // settles THIS claim is the EXECUTION row of the same script: the
+      // program prints 42, so the statement after the `while` really is
+      // reached.
+      //
+      // The body's flow is kept in exactly one case: a condition that is
+      // constantly true, where the body is guaranteed to run at least once.
+      // A `break` or a `continue` leaves the loop, so the flow after it is
+      // ordinary in every case.
+      let always = match cv {
+        ABool(b) => b
+        _ => false
+      }
+      let broke = match self.flow {
+        FBreak | FContinue => true
+        _ => false
+      }
+      self.flow = if always && !broke { self.flow } else { FNormal }
     }
     SFor(v, _, seq, body) => {
       let sv = self.eval(seq, env)
@@ -970,6 +1047,20 @@ fn Interp::exec_alt(
         // parses as `(idx + 1)..elseifs` and then `.length()`.
         while j < elseifs.length() {
           self.flow = FNormal
+          // THE CONDITION IS CODE, and it was not evaluated here -- the same
+          // omission as the unknown-condition path in the `if` arm, and the
+          // same two consequences. The comment there says why; this is the
+          // second of the two paths that reach an `else if` body, so it needs
+          // the same rule. An `is` pattern in the condition must bind before
+          // the body runs.
+          let cv = self.eval(elseifs[j].cond, env)
+          if !vboolean(cv) {
+            self.report(
+              @core.FCondBool,
+              "condition must be bool, got '\{val_name(cv)}'",
+              elseifs[j].cond.span,
+            )
+          }
           self.exec_block(elseifs[j].body, env)
           val = vjoin(val, self.last_value)
           if self.flow == FNormal {
@@ -1146,7 +1237,7 @@ fn Interp::eval(
       let r = self.eval(b, env)
       self.binop(op, l, r, e.span)
     }
-    ECall(name, args, _) => {
+    ECall(name, args, labels) => {
       let vals : Array[AbsVal] = []
       for a in args {
         vals.push(self.eval(a, env))
@@ -1180,7 +1271,7 @@ fn Interp::eval(
       if !self.methods.contains(name) && self.tail_bound(name, env) {
         return AAny
       }
-      self.call(name, vals, e.span)
+      self.call(name, vals, labels, e.span)
     }
     // A method call. The receiver and every argument are EVALUATED, not skipped:
     // an undefined name inside `x.f(y)` is a real undefined name, and a branch
@@ -1606,6 +1697,7 @@ fn Interp::call(
   self : Interp,
   name : String,
   vals : Array[AbsVal],
+  labels : Array[String],
   sp : @core.Span,
 ) -> AbsVal {
   // builtins first (len's applicability is checked like a method)
@@ -1651,16 +1743,156 @@ fn Interp::call(
   }
   match self.methods.get(name) {
     Some(def) => {
-      // dispatch: every declared parameter type must accept its argument
-      // (union-splitting lite; Any parameters accept everything)
-      let mut ok = true
-      for i, pt in def.ptypes {
-        let arg = match vals.get(i) {
-          Some(v) => v
-          None => ABottom
+      // THE ARGUMENT -> PARAMETER MAP.
+      //
+      // MoonBit lets a call supply its arguments BY LABEL, and when it does the
+      // LABELS decide the binding, not the positions. This dispatch compared
+      // POSITIONALLY, which is the type lens's mistake -- fixed there, but
+      // never here -- and it showed up as
+      //
+      //     no method matching RouteHistoryState::from_routes(Any, str, str)
+      //
+      // MEASURED, wzzc-dev/moui 0.1.12,
+      // `views/navigation/navigation_routing.mbt:157`:
+      //
+      //     RouteHistoryState::from_routes(routes=snapshot.routes, title~, source~)
+      //
+      // The callee declares FOUR parameters -- `routes~`, `cursor?`, `title?`,
+      // `source?` -- and the call supplies three, by label, omitting the
+      // optional `cursor?`. Compared by position, the second argument (`title~`,
+      // a string) was checked against `cursor?` (an Int), and the call was
+      // rejected.
+      //
+      // The labels were IN THE AST the whole time -- `ECall`'s third field is
+      // the label list, parallel to the arguments -- and this lens DISCARDED
+      // them. The `x~` shorthand is a label too: it is the same field.
+      //
+      // The labels are only usable when the parameter NAMES are known, and
+      // they are known for a callee in THIS file (`def.pnames`). A callee in
+      // another file never reaches this branch at all: the method table is
+      // per file, and a name the table does not hold is dispatched as an
+      // unknown-returning call.
+      let declared = def.ptypes.length()
+      // param index -> argument index; -1 means "not supplied"
+      let by_param : Array[Int32] = []
+      let mut k = 0
+      while k < declared {
+        by_param.push(-1)
+        k += 1
+      }
+      let mut any_label = false
+      let mut li = 0
+      while li < labels.length() {
+        if labels[li] != "" {
+          any_label = true
         }
-        if !(pt == "" || pt == "Any") && !vmatches(arg, pt) {
-          ok = false
+        li += 1
+      }
+      // The names and the types must be the SAME function's, or the index of a
+      // label would mean nothing. They come from the same source when the
+      // signature lookup found this function; when it did not, the label map
+      // is not built and the call is compared positionally, which is what
+      // happened before.
+      let aligned = def.pnames.length() == declared
+      let mut ok = true
+      if any_label && aligned {
+        // 1. THE LABELLED ARGUMENTS, by name.
+        let mut i = 0
+        while i < vals.length() && i < labels.length() {
+          let lab = labels[i]
+          if lab != "" {
+            let mut found = -1
+            let mut j = 0
+            while j < declared {
+              if def.pnames[j] == lab {
+                found = j
+                break
+              }
+              j += 1
+            }
+            if found < 0 {
+              // A LABEL THE CALLEE DOES NOT HAVE. The toolchain rejects this
+              // with 4085; settled in `_verify/settle_0493_lens_values.ps1`,
+              // row `d4_control_unknown_label`.
+              ok = false
+            } else if by_param[found] >= 0 {
+              // THE SAME LABEL TWICE.
+              ok = false
+            } else {
+              by_param[found] = i
+            }
+          }
+          i += 1
+        }
+        // 2. THE POSITIONAL ARGUMENTS, in order, into the parameters that no
+        //    label has claimed.
+        let mut next = 0
+        let mut i2 = 0
+        while i2 < vals.length() {
+          let mut claimed = false
+          let mut c = 0
+          while c < declared {
+            if by_param[c] == i2 {
+              claimed = true
+            }
+            c += 1
+          }
+          if !claimed {
+            while next < declared && by_param[next] >= 0 {
+              next += 1
+            }
+            if next >= declared {
+              // MORE ARGUMENTS THAN THE CALLEE DECLARES.
+              ok = false
+            } else {
+              by_param[next] = i2
+              next += 1
+            }
+          }
+          i2 += 1
+        }
+        // 3. A PARAMETER THAT WAS NOT SUPPLIED must be one a call may omit.
+        //    The toolchain rejects a call that omits a required one with
+        //    4086; settled in the same script, row
+        //    `d3_labelled_call_omits_a_required`.
+        let mut j2 = 0
+        while j2 < declared {
+          if by_param[j2] < 0 {
+            let may_omit = j2 < def.pomittable.length() && def.pomittable[j2]
+            if !may_omit {
+              ok = false
+            }
+          }
+          j2 += 1
+        }
+      } else {
+        // 1'. THE POSITIONAL COMPARISON, unchanged: every declared parameter
+        //     type must accept its argument (union-splitting lite; Any
+        //     parameters accept everything).
+        for i, pt in def.ptypes {
+          let arg = match vals.get(i) {
+            Some(v) => v
+            None => ABottom
+          }
+          if !(pt == "" || pt == "Any") && !vmatches(arg, pt) {
+            ok = false
+          }
+        }
+      }
+      // THE TYPE CHECK, per PARAMETER, for the labelled call. The positional
+      // call did it above.
+      if any_label && aligned {
+        let mut j3 = 0
+        while j3 < declared {
+          let ai = by_param[j3]
+          if ai >= 0 {
+            let pt = def.ptypes[j3]
+            let arg = vals[ai]
+            if !(pt == "" || pt == "Any") && !vmatches(arg, pt) {
+              ok = false
+            }
+          }
+          j3 += 1
         }
       }
       // THE ARITY RULE. A call may OMIT the parameters the function declares
@@ -1678,7 +1910,6 @@ fn Interp::call(
       // the function declares is still an error, and the floor is the number
       // of REQUIRED parameters, so a call that omits a required one is still
       // reported.
-      let declared = def.ptypes.length()
       if vals.length() > declared || vals.length() < declared - def.nopt {
         ok = false
       }
@@ -1695,7 +1926,35 @@ fn Interp::call(
         )
         return ABottom
       }
-      self.analyze_fn(def, vals)
+      // THE VALUES IN PARAMETER ORDER. A labelled call supplies them in the
+      // CALL's order, and the callee's body reads them by the PARAMETER's
+      // name -- so the body would read the wrong values without this.
+      let ordered : Array[AbsVal] = []
+      if any_label && aligned {
+        let mut j4 = 0
+        while j4 < declared {
+          let ai = by_param[j4]
+          ordered.push(
+            match vals.get(ai) {
+              Some(v) => v
+              None => ABottom
+            },
+          )
+          j4 += 1
+        }
+      } else {
+        let mut j5 = 0
+        while j5 < declared {
+          ordered.push(
+            match vals.get(j5) {
+              Some(v) => v
+              None => ABottom
+            },
+          )
+          j5 += 1
+        }
+      }
+      self.analyze_fn(def, ordered)
     }
     None => {
       // A name the cross-file table knows: the callee exists, in a file this
@@ -1860,10 +2119,39 @@ fn Interp::analyze_fn(
   // ABottom is NOT substituted for "None" here: a function whose body's last
   // statement is a `let` returns UNIT, and "None" says that, while ABottom
   // says "no value at all" -- a different claim, and a stronger one.
+  //
+  // BUT "None" IS A CLAIM, AND THERE ARE TWO SITUATIONS WHERE IT IS FALSE.
+  //
+  //   - an EXTERN function. Its body is written in another language, so there
+  //     is nothing here to execute, and the DECLARED return type is the only
+  //     statement about what it returns that the file makes.
+  //   - a body whose last statement is an `if` whose branch value is not
+  //     modelled. A `match` inside a branch has no value this lens can name,
+  //     and "no value" is not "the value None".
+  //
+  // MEASURED, wzzc-dev/moui 0.1.12, the per-function view, FOUR findings of
+  // this shape:
+  //
+  //     no method matching clamp_int(None, int, Any)
+  //     no method matching web_string_append_char(None, Any)
+  //     no method matching web_finish_create_string(None)
+  //     no method matching >(None, float)
+  //
+  // on code `moon check` accepts. The first is the `match` inside an `if`
+  // branch (`views/text/text_input_editing.mbt:42`); the last three are
+  // extern functions (`backend/web/web_host.mbt:357` and `:359`,
+  // `backend/linux/linux_services.mbt:183`).
+  //
+  // The DECLARED return type is used only when the declaration says something
+  // concrete. A function with no return annotation keeps the "None" answer,
+  // because "it returns Unit" is the only claim an unannotated body makes,
+  // and `cycle_ret` is `AAny` for exactly that case.
   let ret = if self.ret_vals.length() > 0 {
     join_vals(self.ret_vals)
   } else if self.last_value != ABottom {
     self.last_value
+  } else if def.cycle_ret != AAny {
+    def.cycle_ret
   } else {
     join_vals(self.ret_vals)
   }
@@ -1920,6 +2208,27 @@ fn fn_pnames(f : @walk.FnInfo) -> Array[String] {
   let out : Array[String] = []
   for p in f.params {
     out.push(p.name)
+  }
+  out
+}
+
+///|
+/// Which parameters a call may OMIT, one flag per parameter.
+///
+/// PARALLEL TO `fn_pnames` AND `fn_param_tys`, and it is read from the SAME
+/// loop over `f.params` for the same reason they are parallel at all: two
+/// readers over one list is how the 0.4.18/0.4.20 "name readers drift" lesson
+/// repeats, and a flag list that drifts from the name list would mis-index
+/// every argument of every labelled call.
+///
+/// `n_omittable` is the COUNT of these flags, and the count is not enough for
+/// the dispatch: a call that supplies a labelled parameter and omits a
+/// REQUIRED one has to be told apart from a call that omits an optional one,
+/// and only the per-parameter flag can do that.
+fn fn_pomittable(f : @walk.FnInfo) -> Array[Bool] {
+  let out : Array[Bool] = []
+  for p in f.params {
+    out.push(p.omittable)
   }
   out
 }
@@ -2108,6 +2417,7 @@ pub fn analyzed_sigs(
       name: f.name,
       ptypes,
       pnames: fn_pnames(f),
+      pomittable: fn_pomittable(f),
       nopt: n_omittable(f),
       cycle_ret,
       body: f.body,

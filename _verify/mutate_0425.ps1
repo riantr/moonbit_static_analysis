@@ -125,17 +125,28 @@ $muts = @(
   # dead. Removing it reinstates the original leak for the second branch onwards,
   # which is why the else-if fixture and the plain if fixture are separate tests.
   # Indent 12/12/12.
+  #
+  # RE-ANCHORED at 0493. The anchor was the three lines
+  #
+  #     let env_ei = copy_env(acc)
+  #     self.flow = FNormal
+  #     self.exec_block(ei.body, env_ei)
+  #
+  # and 0493 put the CONDITION EVALUATION between the reset and the body -- the
+  # `else if` conditions were code that was never executed, and 0493 executes
+  # them. The MUTATION is the same one: the per-branch flow reset is removed,
+  # and with it the isolation between the branches. The ANCHOR is two lines now,
+  # because that is where the reset is; the third line it used to name is still
+  # there, further down, behind the condition.
   @{
     Name = 'M4 the per-branch flow reset removed'
     File = $F
     Find = @'
             let env_ei = copy_env(acc)
             self.flow = FNormal
-            self.exec_block(ei.body, env_ei)
 '@
     Repl = @'
             let env_ei = copy_env(acc)
-            self.exec_block(ei.body, env_ei)
 '@
   }
 

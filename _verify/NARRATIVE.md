@@ -4074,4 +4074,218 @@ MUTATION SURVIVED" AND "THE MUTATION WAS NEVER EXERCISED" LOOK THE SAME FROM THE
 ONLY A SECOND MEASUREMENT -- HERE, THE FRAME DUMP -- TOLD THEM APART.
 
 
+## 0493: FOUR CLAIMS THE LENS MADE ABOUT PROGRAMS THE TOOLCHAIN ACCEPTS
+
+0489 gave the behavioral lens a per-function entry, 0490 and 0491 fixed five of the classes it made
+visible, and what was LEFT on wzzc-dev/moui 0.1.12 was SEVEN actionable findings. They were not
+seven defects in the analysed code. They were an INVENTORY of four claims the lens made about
+programs the toolchain accepts, and every one of them was a CLAIM -- a statement about what the
+code means -- rather than a finding.
+
+MEASURED, the per-function view on moui 0.1.12, BEFORE this increment:
+
+    views/text/text_area_control.mbt:426     undefined variable 'anchor'
+    views/text/text_input_editing.mbt:42     no method matching clamp_int(None, int, Any)
+    views/navigation/navigation_routing.mbt:157
+                                              no method matching RouteHistoryState::from_routes(Any, str, str)
+    core/unicode/grapheme_cluster.mbt:428    unreachable code
+    backend/web/web_host.mbt:357             no method matching web_string_append_char(None, Any)
+    backend/web/web_host.mbt:359             no method matching web_finish_create_string(None)
+    backend/linux/linux_services.mbt:183      no method matching >(None, float)
+
+AFTER it: ZERO. The per-function view reports `actionable=0 notices=4225`, and the notices count
+did not MOVE -- so nothing was traded away to get there.
+
+### CLASS B -- THE `is` BINDING IN AN `else if` CONDITION
+
+    } else if event.phase == @core.PointerPhase::Move &&
+      ctx.text_control.text_selection_anchor is Some(anchor) {
+      ...
+      if hit.offset != anchor || hit.offset != ctx.text_control.caret {
+
+`anchor` is bound by the `is` pattern and read twelve lines later, and the lens reported
+`undefined variable 'anchor'` on the READ.
+
+THE CAUSE IS A SINGLE LINE THAT WAS NOT EXECUTED. The `else if` conditions are evaluated in the
+constant-condition path of `exec_alt` and in NOBODY ELSE: the unknown-condition path in the `if`
+arm walked the `elseif` BODIES and never touched their conditions. So the `is` pattern in a
+condition never bound, and the name it introduces was unbound in the branch that uses it.
+
+THE SAME OMISSION HIDES A FALSE NEGATIVE IN THE SAME LINE. A name read in an `else if` condition
+was never checked, so a genuinely undefined name went unreported. Fixing the binding without
+evaluating the condition would have left that in place, so the fix evaluates the condition -- and
+the direction of the change is not neutral: it makes the lens report MORE in that position and
+less in the other.
+
+MEASURED, and the mechanism was bisected with one-file probes before a line of it was written.
+The binding in a plain `if` condition worked and the binding in an `else if` condition did not,
+and the difference was exactly the unevaluated condition. A `match` inside a branch, an `is` in an
+`&&`, and a `match` in the `then` branch were each measured separately.
+
+### CLASS C -- "None", WHICH IS A CLAIM ABOUT A RETURN TYPE
+
+Four of the seven, and the same answer in all four: the type "None". "None" is the lens's spelling
+of UNIT, and it was the answer for a function whose body produced NO VALUE. That is false in two
+situations, and both of them are in the corpus:
+
+  - an EXTERN function. `extern "C" fn linux_accessibility_text_scale() -> Double = "moui_..."`
+    has no body here -- the body is written in another language -- so there is nothing to execute,
+    and the DECLARED return type is the only statement about what it returns that the file makes.
+  - a body whose last statement is an `if` whose branch value is not modelled. A `match` inside a
+    branch has no value this lens can name; "no value" is not "the value None".
+
+The second one has a sharper form than it looks. The branch is only taken when the condition is
+CONSTANTLY false -- and at a CALL SITE the condition is a literal. Analysed as an entry point the
+condition is unknown, both branches are explored, and the join is the other branch's value. So the
+defect only ever showed at a call site, and it showed as the CALLER's argument being "None" --
+`no method matching clamp_int(None, int, Any)`, which reads like a claim about `clamp_int` and is
+a claim about the callee two frames up.
+
+THE FIX IS THE DECLARED RETURN TYPE, and it is used only when the declaration says something
+concrete. A function with no return annotation keeps the "None" answer, because "it returns Unit"
+is the only claim an unannotated body makes, and `cycle_ret` is `AAny` for exactly that case.
+
+### CLASS D -- THE LABELS DECIDE THE BINDING, NOT THE POSITIONS
+
+    RouteHistoryState::from_routes(routes=snapshot.routes, title~, source~)
+
+The callee declares FOUR parameters -- `routes~`, `cursor?`, `title?`, `source?` -- and the call
+supplies three, by label, omitting the optional `cursor?`. The dispatch compared arguments
+POSITIONALLY, so the second argument (`title~`, a string) was checked against the second parameter
+(`cursor?`, an Int) and the call was rejected.
+
+THE LABELS WERE IN THE AST THE WHOLE TIME. `ECall`'s third field is the label list, parallel to
+the arguments, and it was written for exactly this -- the AST comment says "MoonBit lets a call
+reorder named arguments freely, settled against `moon check`". The TYPE LENS was fixed for this in
+0.4.5 ("Without the labels the type lens compared `args[3]` against `params[3]`"). This lens never
+was, and the same mistake showed up in the same file with the other lens silent.
+
+The fix maps each argument to its parameter BY LABEL, and the values are then put back in
+PARAMETER order before the callee's body runs -- a callee reads its arguments by name, so without
+that the body would have read the wrong values.
+
+### CLASS E -- A LOOP MAY RUN ZERO TIMES
+
+    while cursor >= 0 {
+      ...
+      return saw_linker && fallback_codepoint_is_indic_conjunct_consonant(codepoint)
+    }
+    false
+
+The body always returns, so the lens reported the `false` as unreachable. But `cursor` is
+`index - 1`, so `cursor` is `-1` when `index` is `0`, the loop runs ZERO times, and the `false` IS
+the function's value on that path. The reachability rule was "the statement after a TERMINATOR is
+unreachable", and it was applied to a loop, which is not a terminator.
+
+THE TOOLCHAIN DOES NOT SETTLE REACHABILITY, and that is measured rather than assumed: MoonBit
+ACCEPTS code after a `return` (settle row `e3_control_code_after_a_return`, which ACCEPTED), so
+the `Unreachable` family is a lint the toolchain does not share. A settle built on accept/reject
+cannot tell the analyzer's claim from the truth here, because the toolchain accepts BOTH a
+reachable and an unreachable statement.
+
+WHAT SETTLES IT IS RUNNING THE PROGRAM. The execution section of the settle prints 42 for the
+statement after the `while`, and 1 for the same program with a `return` in place of the loop. The
+two are distinguished by the OUTPUT, and neither is distinguished by the exit code.
+
+### THE SETTLE, AND WHERE MY OWN EXPECTATION WAS WRONG
+
+`_verify/settle_0493_lens_values.ps1`, 21 rows with NINE that REJECT, plus two EXECUTION rows. The
+controls are what make the ACCEPT rows mean something: a blanket "stay silent" would pass them
+too.
+
+THREE OF MY OWN EXPECTATIONS WERE WRONG, and the toolchain was right in all three. They are
+recorded here because a settle that only ever confirms what the author expected is not measuring
+anything.
+
+  - `c3_extern_result_is_used` REJECTED with 4156, "extern \"C\" is unsupported in wasm backend".
+    That is a fact about the BACKEND, not about the type, and the row is now settled on the native
+    target. The first draft of the row was wrong in a way that would have read as "the toolchain
+    rejects extern functions".
+  - `d6_control_positional_omits_a_labelled_param` REJECTED with 4086 and 4080. A `~` parameter
+    must be supplied BY LABEL: a positional pass is rejected. The expectation said ACCEPT.
+  - `e3_control_code_after_a_return` ACCEPTED. MoonBit accepts unreachable code, so the row could
+    not be the control the author wanted it to be, and the EXECUTION section replaced it.
+
+### THE FIX, THE PINS, AND THE GATE
+
+  - the `else if` conditions are EVALUATED, in both paths that reach an `else if` body, and the
+    binding an `is` introduces is in scope for the body that follows it;
+  - a function whose body yields no value answers with its DECLARED return type, when the
+    declaration is concrete;
+  - a labelled call maps its arguments to the parameters BY LABEL, and the values reach the callee
+    in parameter order;
+  - a `while` leaves the flow ORDINARY unless the condition is constantly true, and a `break` or a
+    `continue` leaves it ordinary in every case.
+
+THE SIX CORPUS PINS DID NOT MOVE -- moui 4225, labeler 791, image 218, async 1829/23/0/1852, proton
+2131, contract 34, all byte-identical. That is the false-positive control for a fix that removes
+seven findings: the MODULE view, which is what the pins measure, is untouched. The self-scan reads
+163 files, 163 parsed, actionable 0, notices 1779.
+
+THE TESTS ARE 1013 js / 1085 wasm / 1013 wasm-gc, up from 1001 / 1073 / 1001, and the twelve new
+rows are in `src/pipeline/pipeline_0493_test.mbt`. Every class has a row that says "the analyzer
+must still report this" next to the row that says "the analyzer must NOT report this": a real type
+mismatch is still a method error, a labelled argument of the wrong type is still a method error, a
+labelled call that omits a required parameter is still a method error, a label the callee does not
+have is still a method error, and the statement after a `return` is still unreachable.
+
+GATE 0493: 5 KILLED, 0 declared survivors, every restore byte-identical, every named test
+confirmed. The five are the four classes plus M5, which attacks the OTHER half of class E -- the
+`Unreachable` report itself -- so the control row that says "code after a `return` is still
+unreachable" is pinned and not merely present.
+
+THE M4 MUTATION OF GATE 0490 BECAME UNOBSERVABLE, and the argument for that took three
+measurements and one correction before it was true.
+
+The first argument was the toolchain's 4074: a function with NO return annotation whose tail is an
+`if` is rejected, so every if-tailed function the toolchain accepts carries an annotation. It is
+INCOMPLETE, and the way that was found is that the corner was probed rather than assumed. A
+function declared `-> Int64` whose tail is an `if` is ACCEPTED by the toolchain (settle row
+`c9_unreadable_declared_type_is_accepted`), and `ann_to_ty` maps `Int64` to TUnknown, so
+`cycle_ret` is AAny and 0493's declared-return-type fallback does NOT fire there. 4074 covers the
+UNANNOTATED case only.
+
+The corner is real. It is also unobservable, and that is a measurement rather than an argument. A
+five-program battery was scanned with the M4 mutation applied and with it absent. Exactly ONE
+program changes its verdict, and it passes an Int64 where an Int is expected -- which the
+toolchain REJECTS with 4014, Expr Type Mismatch (settle row
+`c10_control_int64_into_an_int_param`). The four programs the toolchain accepts show no
+difference at all. The reason is structural: the lens reports a method error only where it can
+read the PARAMETER's type, and the toolchain's nominal typing forbids the one widening that would
+separate an unreadable declared type from a readable parameter.
+
+And on the whole measured surface the mutation changes NOTHING. With it applied the mutant
+reproduces all six corpus pins byte-identically -- moui 608/608 notices 4225, labeler 37/37
+notices 791, image 18/18 notices 218, async 415/419 notices 1829 unreliable 23 total 1852, proton
+137/137 notices 2131, contract 4/4 notices 34 -- the moui PER-FUNCTION view (608/608 actionable 0
+notices 4225) and the own-source scan (144/144 actionable 0 notices 1439).
+
+So M4 is declared `Expect = 'SURVIVED'` with that argument attached, and the other eight mutations
+of the gate are unchanged: 8 killed, 1 declared survivor, every restore byte-identical, every
+named test confirmed.
+
+=> 判据: A PROOF THAT IS NOT MEASURED IS A CLAIM, AND THE FIRST DRAFT OF THIS ONE WAS WRONG. It
+said 4074, and 4074 covers only the unannotated case. The corner is real, the argument has to say
+so, and what settles it -- a battery in which the single differing program is invalid code -- is
+what makes the declaration true rather than convenient.
+
+=> 判据: "None" IS A CLAIM, AND IT WAS FALSE FOUR TIMES. A function whose body yields no value was
+reported as returning Unit, and the four places that showed up are four programs the toolchain
+accepts. "We do not know" and "it is Unit" are different answers, and only one of them is a
+statement about the code.
+
+=> 判据: A LOOP MAY RUN ZERO TIMES. The reachability rule was "the statement after a terminator is
+unreachable", and it was applied to a loop, which is not a terminator.
+
+=> 判据: THE LABELS DECIDE THE BINDING, NOT THE POSITIONS. One lens was fixed for that in 0.4.5
+and the other was not, and the defect that survived was the one the fixed lens had already ruled
+out.
+
+=> 判据: A SETTLE THAT ONLY CONFIRMS WHAT ITS AUTHOR EXPECTED IS NOT MEASURING ANYTHING. Three of
+the twenty-one expectations in this one were wrong, and the toolchain was right in all three. A
+settle whose rows are all ACCEPTED on the first run has told you nothing about the analyzer. The
+settle now carries 25 rows and 11 controls that REJECT.
+
+
+
 

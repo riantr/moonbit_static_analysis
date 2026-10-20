@@ -28,6 +28,13 @@
 #   M7  THE PARSER DID NOT RECORD `omittable`, so the `?` spelling of an
 #       omittable parameter was invisible to the arity rule.
 #
+# M4 IS NOW A DECLARED SURVIVED, and its proof is at the row itself rather
+# than here: 0493 gave the lens a SECOND, INDEPENDENT answer to the same
+# question -- the DECLARED return type -- so discarding the branch's value no
+# longer changes a verdict. The proof was measured, it is not a formality, and
+# its first draft was WRONG: it said the toolchain's 4074 closes the case, and
+# 4074 closes only the UNANNOTATED case.
+#
 # M8 AND M9 COME FROM A DIFFERENT SOURCE, and the difference is worth stating.
 # The toolchain CHANGED THE CANONICAL SPELLING of the two unsuffixed integer
 # types on 0.1.20261012: `Int` is now `Int32`, `UInt` is now `UInt32`. `Int16`
@@ -113,17 +120,23 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
   # "a call that omits a required parameter is still an error", which the
   # toolchain agrees with (4080). So this mutation is killed by a CONTROL
   # row, and that is what makes it a KILL rather than a quieter report.
+  # RE-ANCHORED at 0493. The anchor was the `let declared` line TOGETHER WITH the
+  # rule below it, and 0493 moved the `let declared` up: the dispatch now builds
+  # an argument-to-parameter MAP before the arity rule is applied, so the two
+  # are no longer adjacent. The MUTATION is the same one -- the floor
+  # `declared - nopt` is dropped, so a call may omit a REQUIRED parameter -- and
+  # it is still LIVE: the per-parameter rule 0493 added applies to a LABELLED
+  # call, and this one is POSITIONAL, so the count is the only thing that
+  # catches it.
   @{
     Name = 'M2 the arity rule has no floor'
     File = $INTERP
     Find = @'
-      let declared = def.ptypes.length()
       if vals.length() > declared || vals.length() < declared - def.nopt {
         ok = false
       }
 '@.Replace("`r`n", "`n")
     Repl = @'
-      let declared = def.ptypes.length()
       if vals.length() > declared {
         ok = false
       }
@@ -154,6 +167,40 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
   # M4 THE `if` VALUE. The branch's value was evaluated and DISCARDED, so a
   # function whose body's last statement is an `if` returned "None" and every
   # operator applied to the result was reported.
+  #
+  # DECLARED SURVIVED at 0493, and the argument is MEASURED rather than
+  # asserted. 0493 gave `analyze_fn` a fourth answer: when the body yields no
+  # value, the DECLARED return type answers it. That covers every program whose
+  # declared type the type model can READ, which is why this mutation -- which
+  # discards the branch's value -- no longer changes the verdict.
+  #
+  # THE CORNER THAT IS NOT COVERED IS A REAL ONE, and saying so matters more
+  # than the convenience of a short proof. A declared type the type model
+  # CANNOT read (`Int64`, `UInt`, `Option[Int]`) maps to TUnknown, so
+  # `cycle_ret` is AAny and the fallback does not fire. The toolchain ACCEPTS an
+  # if-tailed function under such a type (settle row
+  # `c9_unreadable_declared_type_is_accepted`), so the corner is NOT empty --
+  # the 4074 argument covers only the UNANNOTATED case and is not the whole
+  # story. The first draft of this proof said 4074 and was incomplete.
+  #
+  # It is unobservable anyway, and this is how THAT was measured. A five-program
+  # battery was scanned with this mutation applied and with it absent; the ONLY
+  # program whose verdict differs passes an Int64 where an Int is expected, and
+  # the toolchain REJECTS that program (settle row
+  # `c10_control_int64_into_an_int_param`, 4014 Expr Type Mismatch). The four
+  # the toolchain accepts show no difference at all. The reason is structural:
+  # the lens reports a method error only where it can read the PARAMETER's
+  # type, and the toolchain's nominal typing forbids the one widening -- an
+  # Int64 value read as an Int -- that would separate an unreadable declared
+  # type from a readable parameter.
+  #
+  # AND ON THE WHOLE MEASURED SURFACE the mutation changes NOTHING: with it
+  # applied the mutant reproduces all six corpus pins byte-identically (moui
+  # 608/608 notices 4225, labeler 37/37 notices 791, image 18/18 notices 218,
+  # async 415/419 notices 1829 unreliable 23 total 1852, proton 137/137 notices
+  # 2131, contract 4/4 notices 34), the moui PER-FUNCTION view (608/608
+  # actionable 0 notices 4225) and the own-source scan (144/144 actionable 0
+  # notices 1439).
   @{
     Name = 'M4 a function whose body is an if returns None again'
     File = $INTERP
@@ -165,7 +212,8 @@ Invoke-MutationGate -Name '0490' -Target 'wasm' -Mutations @(
       let _ = self.eval(e, env)
     }
 '@.Replace("`r`n", "`n")
-    MustRed = 'a function whose body is an if returns the branch value'
+    Expect = 'SURVIVED'
+    Prove = '0493 answers the same question from the DECLARED return type, so discarding the branch value changes no verdict: with the mutation applied the mutant reproduces all six corpus pins, the moui per-function view and the own-source scan byte-identically. The uncovered corner -- a declared type the type model cannot read (Int64/UInt/Option[Int]) -- is accepted by the toolchain (settle row c9) but is unobservable, because the only program whose verdict differs is rejected by the toolchain with 4014 Expr Type Mismatch (settle row c10) and the lens reports a method error only where it can read the parameter type.'
   }
 
   # M5 THE STRING CONCATENATION. `bin_widen` had no arm for two strings, so
