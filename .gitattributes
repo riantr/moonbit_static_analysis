@@ -1,0 +1,10 @@
+# The published-self-scan fixtures are CAPTURES, byte for byte. They are the
+# evidence that a guard can go red, and their exact bytes are part of that
+# evidence: a capture that has been line-ending-normalised is a capture of
+# something slightly different from what was observed. `-text` stops git from
+# converting them in either direction, on any platform.
+#
+# The rest of the tree is unaffected -- this rule is deliberately narrow, and
+# deliberately does NOT say `* -text`, which would turn every source file in
+# the repository into a binary as far as git is concerned.
+_verify/fixtures/*.out -text

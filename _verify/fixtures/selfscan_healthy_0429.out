@@ -1,0 +1,1545 @@
+Fetching riantr/moonbit_static_analysis@0.4.29 to C:\Users\31379\AppData\Local\Temp\selfscan_36fd2473\.repos\riantr\moonbit_static_analysis\0.4.29
+Success: Successfully fetched riantr/moonbit_static_analysis@0.4.29 to C:\Users\31379\AppData\Local\Temp\selfscan_36fd2473\.repos\riantr\moonbit_static_analysis\0.4.29
+TARGET	riantr/moonbit_static_analysis@0.4.29	.repos/riantr/moonbit_static_analysis/0.4.29
+SCANNED	68 files under .repos/riantr/moonbit_static_analysis/0.4.29
+FETCH	1 import(s) from moon.mod
+Fetching moonbitlang/async@0.22.4 to C:\Users\31379\AppData\Local\Temp\selfscan_36fd2473\.repos\moonbitlang\async\0.22.4
+Success: Successfully fetched moonbitlang/async@0.22.4 to C:\Users\31379\AppData\Local\Temp\selfscan_36fd2473\.repos\moonbitlang\async\0.22.4
+FETCH	deposited under .repos/ — pass --extern-iface-dir .repos to index their interface names
+IFACE	types=41	values=231	(dirs=1)
+PRIVTAB	packages=16	names=611	(package-private top-level names, sibling files only)
+CLEAN	.mbt	.repos/riantr/moonbit_static_analysis/0.4.29/main.mbt
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/pkg.generated.mbti
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/walk/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=23	.repos/riantr/moonbit_static_analysis/0.4.29/src/walk/walk.mbt
+13:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+18:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+21:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+27:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+30:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+48:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+51:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+59:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+118:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+126:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+255:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+306:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+317:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+404:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+446:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+593:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+631:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+733:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+775:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+802:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+898:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+986:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1080:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=10	.repos/riantr/moonbit_static_analysis/0.4.29/src/types/infer.mbt
+6:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+75:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+80:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+149:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+494:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+554:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+720:12 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+799:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+852:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+904:21 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/types/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=15	.repos/riantr/moonbit_static_analysis/0.4.29/src/types/types.mbt
+10:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+39:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+47:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+59:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+70:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+88:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+139:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+193:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+220:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+251:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+321:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+327:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+333:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+342:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+345:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=3	.repos/riantr/moonbit_static_analysis/0.4.29/src/types/types_0422_test.mbt
+25:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+33:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+56:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=6	.repos/riantr/moonbit_static_analysis/0.4.29/src/types/types_test.mbt
+16:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+29:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+42:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+56:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+75:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+90:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/statecheck/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=2	.repos/riantr/moonbit_static_analysis/0.4.29/src/statecheck/statecheck.mbt
+29:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+166:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=9	.repos/riantr/moonbit_static_analysis/0.4.29/src/statecheck/statecheck_test.mbt
+5:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+22:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+47:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+57:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+85:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+120:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+165:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+189:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+222:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/samples/pkg.generated.mbti
+CLEAN	.mbt	.repos/riantr/moonbit_static_analysis/0.4.29/src/samples/samples.mbt
+FOUND	.mbt	defects=0	notices=20	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/main.mbt
+55:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+84:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+171:15 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+172:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+177:16 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+293:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+316:21 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+339:21 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+369:13 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+397:16 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+459:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+481:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+598:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+673:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+790:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+798:11 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+979:16 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1040:14 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1125:17 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1190:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=14	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/mermaid.mbt
+90:18 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+122:15 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+186:21 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+210:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+221:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+244:17 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+246:17 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+254:18 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+291:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+307:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+315:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+329:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+380:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+403:18 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=28	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/mermaid_test.mbt
+50:13 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+159:21 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+217:35 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+225:23 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+231:34 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+241:20 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+355:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+360:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+372:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+410:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+418:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+425:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+434:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+440:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+449:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+456:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+468:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+478:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+505:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+512:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+545:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+573:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+584:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+646:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+681:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+708:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+721:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+756:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=6	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/provenance.mbt
+31:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+166:12 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+167:12 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+226:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+291:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+382:22 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=28	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/provenance_test.mbt
+29:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+40:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+50:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+57:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+63:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+70:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+77:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+89:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+98:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+110:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+116:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+129:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+146:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+156:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+164:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+175:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+186:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+194:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+201:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+206:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+217:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+230:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+259:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+284:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+296:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+313:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+321:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+332:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=23	.repos/riantr/moonbit_static_analysis/0.4.29/src/sa/sa_test.mbt
+82:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+116:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+143:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+171:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+181:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+195:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+204:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+215:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+224:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+253:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+271:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+288:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+303:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+315:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+334:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+351:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+366:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+406:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+418:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+430:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+437:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+459:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+492:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/report/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=3	.repos/riantr/moonbit_static_analysis/0.4.29/src/report/report.mbt
+12:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+23:18 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+44:13 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=6	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline.mbt
+14:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+86:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+105:13 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+205:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+214:15 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+237:18 - error: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=14	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0413_test.mbt
+16:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+31:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+50:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+66:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+92:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+129:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+144:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+158:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+181:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+200:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+217:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+237:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+255:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+274:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=6	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0414_test.mbt
+24:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+43:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+70:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+83:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+100:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+125:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=7	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0415_test.mbt
+19:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+39:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+52:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+75:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+87:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+101:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+119:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=8	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0416_test.mbt
+27:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+42:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+56:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+65:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+79:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+118:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+133:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+158:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=6	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0417_test.mbt
+32:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+49:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+61:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+76:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+92:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+114:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=23	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0418_test.mbt
+41:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+52:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+67:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+88:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+100:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+115:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+134:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+147:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+162:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+179:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+192:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+207:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+222:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+240:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+259:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+277:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+292:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+311:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+331:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+345:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+357:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+384:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+401:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=8	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0419_test.mbt
+29:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+46:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+62:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+82:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+99:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+122:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+139:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+156:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=5	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0420_test.mbt
+39:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+52:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+63:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+85:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+100:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=19	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0421_test.mbt
+52:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+76:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+95:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+139:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+161:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+182:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+204:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+226:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+265:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+285:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+305:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+338:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+356:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+380:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+402:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+428:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+450:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+468:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+501:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=14	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0422_test.mbt
+134:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+177:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+200:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+237:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+279:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+329:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+351:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+377:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+405:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+459:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+479:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+515:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+535:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+578:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=14	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0423_test.mbt
+50:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+70:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+92:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+117:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+135:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+166:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+213:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+246:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+280:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+301:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+320:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+356:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+376:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+395:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=12	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0424_test.mbt
+83:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+98:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+127:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+162:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+179:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+209:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+227:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+245:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+295:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+323:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+352:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+396:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=12	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0425_test.mbt
+69:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+83:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+103:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+120:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+133:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+153:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+169:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+183:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+201:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+220:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+244:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+258:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=14	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0426_test.mbt
+46:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+58:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+72:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+88:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+106:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+118:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+132:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+150:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+165:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+183:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+198:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+236:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+262:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+283:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=13	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0427_test.mbt
+48:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+63:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+78:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+91:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+112:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+130:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+152:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+175:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+191:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+205:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+220:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+256:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+280:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=5	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0428_test.mbt
+54:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+68:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+83:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+101:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+118:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=12	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_0429_test.mbt
+45:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+58:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+70:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+87:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+101:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+114:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+129:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+144:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+164:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+193:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+214:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+230:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=90	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pipeline_test.mbt
+22:1 - error: const declaration is outside the analyzed subset (ParseError) [structural]
+
+25:1 - error: const declaration is outside the analyzed subset (ParseError) [structural]
+
+28:1 - error: const declaration is outside the analyzed subset (ParseError) [structural]
+
+31:1 - error: const declaration is outside the analyzed subset (ParseError) [structural]
+
+34:1 - error: const declaration is outside the analyzed subset (ParseError) [structural]
+
+37:1 - error: const declaration is outside the analyzed subset (ParseError) [structural]
+
+40:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+48:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+66:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+83:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+107:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+122:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+131:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+153:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+172:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+185:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+206:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+221:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+245:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+251:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+262:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+288:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+307:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+330:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+345:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+367:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+383:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+402:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+416:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+430:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+445:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+464:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+481:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+501:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+517:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+550:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+573:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+593:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+604:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+624:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+...  50 more in this file
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/pipeline/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=44	.repos/riantr/moonbit_static_analysis/0.4.29/src/parser/parser.mbt
+6:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+51:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+124:9 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+294:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+305:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+314:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+484:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+578:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+602:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+680:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+798:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+852:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+874:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+892:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+979:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1123:13 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1180:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1244:17 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1250:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1419:19 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1598:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1651:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1877:14 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1918:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1978:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1984:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2136:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2246:11 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2288:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2399:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2411:14 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2440:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2453:14 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2510:17 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2536:31 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2606:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+2802:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+3026:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+3052:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+3165:9 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+...  4 more in this file
+FOUND	.mbt	defects=0	notices=7	.repos/riantr/moonbit_static_analysis/0.4.29/src/parser/parser_0417_test.mbt
+12:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+30:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+45:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+64:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+77:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+90:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+104:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=75	.repos/riantr/moonbit_static_analysis/0.4.29/src/parser/parser_test.mbt
+14:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+34:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+50:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+64:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+79:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+94:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+107:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+122:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+137:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+149:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+160:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+173:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+183:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+199:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+215:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+234:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+251:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+264:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+274:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+297:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+303:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+309:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+318:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+336:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+343:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+350:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+368:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+376:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+389:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+398:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+407:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+416:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+434:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+449:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+464:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+477:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+496:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+505:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+514:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+527:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+...  35 more in this file
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/parser/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=20	.repos/riantr/moonbit_static_analysis/0.4.29/src/moonfiles/moonfiles.mbt
+112:18 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+113:18 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+143:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+151:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+166:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+209:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+255:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+366:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+417:13 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+669:23 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+888:26 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+892:20 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+945:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1124:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+1207:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1264:24 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1275:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1306:9 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1322:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1433:16 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=45	.repos/riantr/moonbit_static_analysis/0.4.29/src/moonfiles/moonfiles_test.mbt
+5:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+20:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+28:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+37:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+44:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+54:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+62:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+75:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+84:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+103:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+125:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+159:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+169:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+186:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+207:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+223:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+239:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+260:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+285:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+323:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+340:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+374:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+382:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+406:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+429:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+442:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+455:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+462:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+497:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+523:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+541:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+553:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+566:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+581:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+600:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+612:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+636:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+648:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+669:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+680:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+...  5 more in this file
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/moonfiles/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=12	.repos/riantr/moonbit_static_analysis/0.4.29/src/lexer/lexer.mbt
+6:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+112:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+115:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+166:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+365:17 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+461:13 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+647:9 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+817:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+953:9 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1102:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1211:11 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1274:13 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=13	.repos/riantr/moonbit_static_analysis/0.4.29/src/lexer/lexer_0414_test.mbt
+12:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+21:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+38:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+46:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+57:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+66:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+83:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+92:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+105:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+115:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+126:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+145:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+153:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+FOUND	.mbt	defects=0	notices=24	.repos/riantr/moonbit_static_analysis/0.4.29/src/lexer/lexer_test.mbt
+24:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+42:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+60:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+68:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+96:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+110:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+119:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+135:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+144:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+159:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+174:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+182:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+198:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+208:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+214:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+233:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+246:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+259:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+271:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+278:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+287:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+298:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+311:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+341:1 - error: test declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/lexer/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=18	.repos/riantr/moonbit_static_analysis/0.4.29/src/jsoncli/main.mbt
+12:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+20:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+24:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+28:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+32:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+38:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+43:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+53:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+56:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+61:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+65:18 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+70:25 - error: short lambda is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+81:28 - error: short lambda is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+159:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+168:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+204:3 - error: try expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+264:13 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+268:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/jsoncli/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=38	.repos/riantr/moonbit_static_analysis/0.4.29/src/interp/interp.mbt
+13:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+20:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+24:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+38:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+94:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+106:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+127:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+138:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+143:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+146:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+159:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+281:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+315:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+321:19 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+323:21 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+353:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+388:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+416:22 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+436:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+669:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+721:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+738:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+942:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1133:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1151:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1169:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1277:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1291:7 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1294:9 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1321:17 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1353:7 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1381:5 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1411:18 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1416:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1430:14 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1449:15 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1455:19 - error: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+1457:21 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/interp/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=2	.repos/riantr/moonbit_static_analysis/0.4.29/src/core/advice.mbt
+13:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+27:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+CLEAN	.mbt	.repos/riantr/moonbit_static_analysis/0.4.29/src/core/builtins.mbt
+CLEAN	.mbt	.repos/riantr/moonbit_static_analysis/0.4.29/src/core/builtin_methods.mbt
+FOUND	.mbt	defects=0	notices=19	.repos/riantr/moonbit_static_analysis/0.4.29/src/core/core.mbt
+7:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+10:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+13:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+16:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+94:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+172:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+288:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+292:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+297:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+301:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+305:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+315:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+333:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+345:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+349:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+367:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+378:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+389:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+393:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+CLEAN	.mbtp	.repos/riantr/moonbit_static_analysis/0.4.29/src/core/core_proof.mbtp
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/core/pkg.generated.mbti
+CLEAN	.mbt	.repos/riantr/moonbit_static_analysis/0.4.29/src/cli/main.mbt
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/cli/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=28	.repos/riantr/moonbit_static_analysis/0.4.29/src/ast/ast.mbt
+10:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+37:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+41:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+64:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+67:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+70:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+199:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+202:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+205:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+208:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+212:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+215:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+218:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+221:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+285:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+288:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+291:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+299:1 - error: enum declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+308:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+313:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+323:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+333:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+343:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+352:1 - error: struct declaration is outside the analyzed subset; its body was not analyzed (ParseError) [structural]
+
+358:3 - error: derive declaration is outside the analyzed subset (ParseError) [structural]
+
+365:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+376:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+392:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+
+CLEAN	.mbti	.repos/riantr/moonbit_static_analysis/0.4.29/src/ast/pkg.generated.mbti
+PARSED	68/68 files understood (100.0%); 0 more read only up to their first parse error
+BYKIND	.mbt	files=51	parsed=51	defects=0	notices=823
+BYKIND	.mbti	files=16	parsed=16	defects=0	notices=0
+BYKIND	.mbtp	files=1	parsed=1	defects=0	notices=0
+SUMMARY	files=68	parsed=68	actionable=0	notices=823	unreliable=0	withheld=0	total=823	(actionable+notices+unreliable = total; withheld ⊆ unreliable)

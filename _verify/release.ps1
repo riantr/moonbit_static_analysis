@@ -299,6 +299,44 @@ if ($SkipMutations) {
   }
 }
 
+# --- 5a  the published-self-scan gate's OWN self-test -------------------------
+# `selfscan_published.ps1` is a gate, and a gate that has never been shown to go
+# red is a comment. This stage runs that gate against TWO REAL CAPTURES committed
+# under `_verify\fixtures\`:
+#
+#   `selfscan_empty_tree_0430.out` -- the 2026-10-20 scan of the published 0.4.30
+#     after the registry download timed out. The package directory was created
+#     empty, the scanner read ZERO files, printed a well-formed SUMMARY carrying
+#     `actionable=0`, and the gate reported GATE OK. It must now FAIL.
+#   `selfscan_healthy_0429.out` -- the same day's scan of the published 0.4.29
+#     tree: 68 files, parsed 68/68, actionable=0. It must still PASS.
+#
+# The third check is the one that carries the evidence: the EMPTY capture must
+# PASS with the tree-presence guard DISARMED. Without that, a gate that was red
+# for some other reason -- a changed version assertion, a reworded message --
+# would look exactly like a working guard.
+#
+# It runs before 5b because 5b uses the gate, and it is FAST and OFFLINE: it
+# fetches nothing. The live stage below is the one that depends on the network.
+$ST = Join-Path $root '_verify\selftest_selfscan_published.ps1'
+if (-not (Test-Path $ST)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\selftest_selfscan_published.ps1'
+  $failed += 'selfscan-selftest'
+} else {
+  Stage 'published self-scan self-test' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $ST 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(^\s+(ok|FAIL|skip)\s)|(SELF-TEST)|(^\s*CHECK )') { Write-Output $ln }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'selfscan-selftest' }
+}
+
 # --- 5b  the PUBLISHED package, scanned by the analyzer that shipped ----------
 # Placed after the mutation gates because it is the slowest stage that depends on
 # something outside this repository. It is also the only one that exercises the real
@@ -333,6 +371,28 @@ if ($SkipMutations) {
 # ordering fact. The corpus comparison after it is gated on `$failed`, so an aborted
 # run leaves the pins UNMEASURED -- run them with `-SkipMutations` rather than
 # reading the abort as a regression.
+#
+# AND A GREEN STAGE HERE IS NOT, BY ITSELF, EVIDENCE THAT THE PACKAGE WAS READ.
+# Measured 2026-10-20, AFTER 0.4.30 was published: this stage reported
+#
+#     GATE OK: the published 0.4.30 scans its own shipped source clean.
+#
+# on a scan that had read NOTHING. The registry download had timed out, `moonx`
+# created the package directory EMPTY, and the scanner printed a well-formed
+# report of an empty tree -- `SCANNED 0 files`, `PARSED 0/0`, `actionable=0` --
+# which is a TRUE statement about nothing, and the sum of true statements about
+# nothing is GATE OK. The script's own header warned against this ("EMPTY OUTPUT
+# IS A FAILURE, NOT A ZERO"); the missing guard was one level down, for a scan
+# that printed a SUMMARY and read no files.
+#
+# `selfscan_published.ps1` now asserts the tree is really there -- the scanned
+# file count must be GREATER THAN ZERO, and the package's own `moon.mod` must not
+# be in the SKIP list -- and stage 5a above proves that guard can go red, on a
+# committed copy of that very capture. A green stage now means a tree was read.
+#
+# => 判据: a vacuous pass is worse than a red gate. A gate that reports OK on a
+# scan of nothing has told the release that the shipped artifact is clean, and
+# the shipped artifact was never read.
 $SP = Join-Path $root '_verify\selfscan_published.ps1'
 if ($SkipMutations) {
   Write-Output ''

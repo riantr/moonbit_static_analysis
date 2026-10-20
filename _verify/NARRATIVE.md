@@ -3831,3 +3831,128 @@ treatment, and the difference is 51 false positives on code `moon check` accepts
 => 判据: A LENS THAT ASKS A QUESTION IN ONE PLACE HAS TO ASK IT EVERYWHERE, AND THE PROOF THAT IT
 DOES NOT IS A COMMENT IN THE BRANCH THAT DOES.
 
+
+## 0.4.30 POST-PUBLISH: THE GATE THAT SAID "OK" WITHOUT READING ANYTHING
+
+(The release was published and verified. This is the defect the verification ITSELF found, and it is
+a defect in the CHECK rather than in the analyzer -- which is the only kind of defect a release
+verification can still find once the release is out.)
+
+THE PUBLISHED-PACKAGE SELF-SCAN reported
+
+    GATE OK: the published 0.4.30 scans its own shipped source clean.
+
+on a scan that had read NOTHING AT ALL.
+
+The 2026-10-20 run of `_verify/selfscan_published.ps1` asked the registry for
+`riantr/moonbit_static_analysis@0.4.30`. The download from `download.mooncakes.io` TIMED OUT.
+`moonx` created the package directory anyway, EMPTY, and the scanner -- pointed at an empty
+directory -- printed a perfectly well-formed report:
+
+    SCANNED  0 files under .repos/riantr/moonbit_static_analysis/0.4.30
+    SKIP     .repos/riantr/moonbit_static_analysis/0.4.30/moon.mod unreadable: OSError(...)
+    PARSED   0/0 files understood (0.0%)
+    SUMMARY  files=0 parsed=0 actionable=0 notices=0 unreliable=0 withheld=0 total=0
+
+EVERY CHECK IN THE SCRIPT PASSED, because every check was a TRUE STATEMENT ABOUT NOTHING:
+`actionable=0` is true of a tree with no files in it, `parsed=0/0` is true of a tree with no files
+in it, and there was no non-ParseError error line to object to. The sum of true statements about
+nothing is GATE OK.
+
+The script's own header had already warned about a version of this -- "EMPTY OUTPUT IS A FAILURE,
+NOT A ZERO. Six 0-byte dumps once printed a line per corpus and read as a clean result." That guard
+catches a scan that printed NOTHING. The missing guard was ONE LEVEL DOWN: it catches a scan that
+printed a SUMMARY and read nothing at all.
+
+THE FIX IS TWO ASSERTIONS, both on the SCANNER's own output rather than on `moonx`'s wording:
+
+  * the scanned file count must be GREATER THAN ZERO;
+  * the package's own `moon.mod` must not appear in a `SKIP` line.
+
+The second one is the stronger of the two, and it is worth saying why: the `SKIP` line for the
+package's OWN `moon.mod` is the fingerprint of an empty tree. A tree that was really fetched has a
+readable `moon.mod`, and the scanner reads it -- it needs it to resolve the package's imports, which
+is why the healthy capture carries a `FETCH 1 import(s) from moon.mod` line right after the
+`SCANNED` line.
+
+=> 判据: A GREEN GATE THAT NEVER READ THE ARTIFACT IS A GREEN GATE ABOUT NOTHING. "THE SCAN WAS
+CLEAN" AND "THE SCAN WAS OF SOMETHING" ARE TWO DIFFERENT CLAIMS, AND ONLY THE SECOND ONE IS WORTH
+ANYTHING.
+
+AND THE PROOF THAT THE GUARD IS LOAD-BEARING HAS THREE PARTS, because a guard that has never been
+shown to go red is a comment.
+
+THE FIRST PART -- THE GUARD FIRES. Both captures are REAL, and they are committed rather than
+regenerated, because a fixture written to make a guard look good is worth nothing:
+
+    _verify\fixtures\selfscan_empty_tree_0430.out   719 bytes   the timed-out 0.4.30 download
+    _verify\fixtures\selfscan_healthy_0429.out      93 KB      the published 0.4.29 tree
+
+Replaying the empty-tree capture now FAILS, with EXACTLY TWO checks failed -- the zero-file
+assertion and the `moon.mod` SKIP assertion, and nothing else. The count matters: if a third check
+also fired, the capture would be failing for some other reason and this evidence would be about that
+reason instead.
+
+Replaying the healthy capture still PASSES: 68 files, parsed 68/68, actionable=0, 823 notices. The
+guard does not fire on a real tree.
+
+THE SECOND PART -- THE GUARD IS THE CAUSE, NOT A PASSENGER. `selfscan_published.ps1` grew a
+`-SelfTestNoTreeGuard` switch, and it is honoured ONLY in replay mode, so the live gate can never be
+disarmed by a stray flag. With the guard disarmed, the SAME empty-tree capture PASSES and reports
+the empty tree as clean -- which is the 2026-10-20 behaviour, reproduced on demand. That is what
+makes the first part mean something: without it, a gate that was red for some other reason (a
+changed version assertion, a reworded message) would look exactly like a working guard.
+
+THE THIRD PART -- THE CONTROL ON THE OLD CODE. The script as it stood at `825c506` was run against
+the same capture, with the network call removed and the capture substituted for its output, and with
+nothing else changed. It printed:
+
+    GATE OK: the published 0.4.30 scans its own shipped source clean.
+
+exit 0. The vacuous pass is not a story about what the old script "might" have done; it is what the
+old script did, on the bytes in the repository.
+
+=> 判据: A GUARD THAT WAS NEVER SEEN TO GO RED IS A COMMENT, AND A GUARD THAT GOES RED FOR THE
+WRONG REASON IS A COMMENT WITH A LOUDER VOICE. THE PROOF IS THE CAPTURE, THE CONTROL, AND THE
+CAUSE -- IN THAT ORDER.
+
+THE SELF-TEST IS A STAGE NOW, not a thing I did once. `release.ps1` runs
+`_verify/selftest_selfscan_published.ps1` as stage 5a, BEFORE the live stage 5b that uses the gate
+under test. It is FAST and OFFLINE -- it fetches nothing -- so it does not add a second dependency
+on a registry that has already timed out twice in one afternoon.
+
+THE LIVE RE-RUN, once the download worked, is the other half of the story:
+
+    scanned 143 files under .repos/riantr/moonbit_static_analysis/0.4.30
+      ok  the tree scanned is 0.4.30
+      ok  parsed 143/143 files
+      SUMMARY  files=143 parsed=143 actionable=0 notices=1421 unreliable=0 withheld=0 total=1421
+    GATE OK: the published 0.4.30 scans its own shipped source clean.
+
+143 is not a number to be pleased about; it is a number to be CHECKED, and it checks out exactly.
+Tag `v0.4.30` contains 126 `.mbt` + 16 `.mbti` + 1 `.mbtp` = 143 files, and the scanner read
+143 of them and parsed 143 of them. The published package is therefore COMPLETE -- nothing tracked is
+missing from the artifact, and nothing untracked leaked into it.
+
+The 18 files in the repository that the package does NOT contain are accounted for, and every one of
+them is a file that was never meant to be shipped: 17 `_verify\_work_*.mbt` scratch copies of source
+files, and `src/lexer/lexer_0488_test.mbt`, which is deliberately untracked. The repository-wide
+scan reads 161 files -- the same 161 it read before any of this -- and the two committed fixtures
+are invisible to it, because the scanner only reads the toolchain's own file kinds.
+
+THE 68 -> 143 IS NOT A PACKAGING CHANGE, and it is worth saying so before someone asks: 0.4.29
+shipped 51 `.mbt` and 0.4.30 ships 126, because the increments 0470-0491 added the test files for
+the 19 new grammar forms. The 0.4.29 tree had 22 non-test `.mbt` files and so does 0.4.30; what
+grew is the test suite around them.
+
+=> 判据: A FILE COUNT IN A PASSING GATE IS A CLAIM ABOUT A PACKAGE, NOT A NUMBER TO BE PLEASED
+ABOUT. "143 FILES READ" IS ONLY WORTH SAYING ALONGSIDE "143 FILES EXIST", OR IT IS A NUMBER THAT
+COULD HAVE COME FROM ANY TREE.
+
+AND ONE THING THIS DOES NOT CHANGE, stated plainly: `_verify\` IS NOT PUBLISHED. The package
+contains only the toolchain's file kinds, so this fix changes the GATE and not the ARTIFACT. The
+shipped 0.4.30 is exactly the 0.4.30 that was tagged, and it does not need to be re-published --
+but the gate that would have told us so was, until this commit, one that could not tell us anything
+at all.
+
+

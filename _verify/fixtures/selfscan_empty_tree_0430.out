@@ -1,0 +1,6 @@
+Fetching riantr/moonbit_static_analysis@0.4.30 to C:\Users\31379\AppData\Local\Temp\selfscan_a49fed54\.repos\riantr\moonbit_static_analysis\0.4.30
+TARGET	riantr/moonbit_static_analysis@0.4.30	.repos/riantr/moonbit_static_analysis/0.4.30
+SCANNED	0 files under .repos/riantr/moonbit_static_analysis/0.4.30
+SKIP	.repos/riantr/moonbit_static_analysis/0.4.30/moon.mod	unreadable: OSError("@fs.open(): \".repos/riantr/moonbit_static_analysis/0.4.30/moon.mod\": 系统找不到指定的文件。")
+PARSED	0/0 files understood (0.0%); 0 more read only up to their first parse error
+SUMMARY	files=0	parsed=0	actionable=0	notices=0	unreliable=0	withheld=0	total=0	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
