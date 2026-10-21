@@ -2,38 +2,95 @@
 
 [English](README.md) | **中文**
 
-`riantr/moonbit_static_analysis` — **三鉴（结构/类型/行为）静态分析流水线，一个基础设施，两种用途**：
+`riantr/moonbit_static_analysis` —— 一个 **三鉴（结构 / 类型 / 行为）静态分析流水线**，
+面向 MoonBit。一套基础设施，两种用途：
 
-1. **程序代码修订**：分析**快速进化中的 MoonBit 语言**的程序（未定义名、未用绑定、类型错配、死分支、不可达代码）；
-2. **静态状态修订**：为多层状态机提供通用机器表审计（`src/statecheck`）——**被测对象调用本模块**，把机器表作为纯数据喂进来。参考消费方是 [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct@0.1.28)（主体／群体／社会／进化层状态机族），其 `audit` 包用真实机器表调用本模块做黑盒测试。
+1. **程序代码修订** —— 分析 **快速进化中的 MoonBit 语言** 写的程序（未定义名、未用绑定、
+   类型不匹配、死分支、不可达代码）；
+2. **静态状态修订** —— 面向多层状态机的通用机器表审计（`src/statecheck`）：**被审计的主体
+   调用本模块**，把它的机器表当纯数据喂进来。
 
-一条流水线贯穿两者：**结构走查 → 类型/符号 → 抽象解释 → 统一报告**。
+它能读 MoonBit 工具链的每一种文件后缀 —— `.mbt` / `.mbtx` / `.mbti` / `.mbt.md` /
+`.mbtp` —— 而且 **绝不修改被扫描的目标**：被分析的仓库既不依赖本模块，也不会被本模块改动。
+
+在 `moonbitlang/core`（1029 个文件）上的实测：**解析 957 个，actionable 33 条**——这 33 条
+**没有一条**是本前端读不到的构造或算不出来的运算符，**没有一条是被分析代码的缺陷**。
+同一棵树上 `moon check --target all` 只报**一条**错误，在一个 `.mbt.md` 文档文件里。
 
 ## 目录
 
-- [安装 / 快速上手](#安装--快速上手)
-- [三鉴（结构/类型/行为）（流水线核心）](#三鉴结构类型行为流水线核心)
-- [用途一：程序代码修订（快速进化中的 MoonBit 语言）](#用途一程序代码修订快速进化中的-moonbit-语言)
-- [用途二：静态状态修订（机器表 → 三鉴）](#用途二静态状态修订机器表--三鉴)
-- [把扫描结果渲染成状态图（public API）](#把扫描结果渲染成状态图public-api)
+- [特性](#特性)
+- [安装](#安装)
+- [快速上手](#快速上手)
+- [用途一：程序代码修订](#用途一程序代码修订)
+- [用途二：静态状态修订](#用途二静态状态修订)
+- [API 参考](#api-参考)
+- [命令行参考](#命令行参考)
+- [输出怎么读](#输出怎么读)
+- [覆盖范围与边界](#覆盖范围与边界)
+- [文件种类](#文件种类)
 - [包结构](#包结构)
-- [文件种类（MoonBit 工具链的其它后缀）](#文件种类moonbit-工具链的其它后缀)
 - [验证](#验证)
-- [形式验证（moon prove）](#形式验证moon-prove)
-- [发布](#发布)
-- [分析其他项目（不引入本项目）](#分析其他项目不引入本项目)
-- [DeepSeek Harness 插件](#deepseek-harness-插件)
-- [更新日志](#更新日志)
+- [发布历史](#发布历史)
+- [参与开发](#参与开发)
+- [许可证](#许可证)
+- [参考](#参考)
 
-## 安装 / 快速上手
+## 特性
+
+- ✅ **三鉴，一份报告** —— 结构遍历 → 类型/符号 → 抽象解释，合并之后一个缺陷就是 **一条**
+  发现，它的透镜标签是所有看见它的透镜的并集。合并是无损的：合并前后的计数都保留。
+- ✅ **MoonBit 的每一种文件后缀** —— `.mbt` / `.mbtx` / `.mbti` / `.mbt.md` / `.mbtp`，
+  其中包括编译器**根本不审**的三种。
+- ✅ **只读，不写** —— 被分析的仓库既不依赖本模块，也不会被本模块改动。本工具只在扫描时
+  **读取**目标的文件。
+- ✅ **跨文件符号解析** —— `--extern-iface-dir` 索引 `.mbti` 里的声明，于是从别的包用来的
+  类型不会被报成未定义。
+- ✅ **诚实的覆盖率** —— 前端读不完的文件被标成 `PARTIAL`，它边界之后的发现**被计数、
+  但不展示**。
+- ✅ **状态机审计** —— 同一套三鉴跑在纯数据的机器表上：状态即绑定、驱动槽即类型契约、
+  历程即抽象执行。
+- ✅ **Mermaid 图输出** —— `--mmd` / `--mmd-auto`，可选开启；被截断的图会在自己的头部
+  里写明这一点。
+- ✅ **文件名里带出处** —— 包、版本、**工具链**和时间戳，好让一次扫描可以和后来的扫描
+  互相比较。
+- ⚠️ **`--per-function`** —— 行为透镜的第二个入口。用它的数字之前，请先读
+  [覆盖范围与边界](#覆盖范围与边界)。
+
+## 安装
 
 ```bash
 moon add riantr/moonbit_static_analysis@0.4.32
 ```
 
+然后在 `moon.mod` 里引入：
+
+```moonbit
+import {
+  "riantr/moonbit_static_analysis@0.4.32",
+}
+```
+
+## 快速上手
+
+### 扫描另一个项目 —— 不引入依赖，也不改动它
+
+```bash
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
+```
+
+`moonx` 下载 mooncakes 为该发布版本构建好的 **预编译 wasm**，缓存后用 `moonrun` 跑起来
+——不用 clone，也不用本地构建。
+
+目标可以是注册表坐标（`author/module`，可带 `@version` 或 `@latest`），也可以是本地路径；
+省略则扫描当前目录。坐标会先由 `moon fetch` 落到 `.repos/`，然后再遍历。
+
+### 当作库来用
+
 ```moonbit
 // 用途一：修订一段 MoonBit（当前子集）程序
-let result : @pipeline.PipelineResult = @pipeline.run(source, "main.mbt")
+let result : @pipeline.PipelineResult =
+  @pipeline.run(source, "main.mbt", @core.IfaceSymTab::empty())
 println(@pipeline.render_result(result))
 
 // 用途二：审计一台状态机（机器表以纯数据进来）
@@ -41,24 +98,22 @@ let spec : @statecheck.MachineSpec = { name: "主体", states: [...], ... }
 println(@statecheck.render(spec))
 ```
 
-## 三鉴（结构/类型/行为）（流水线核心）
-
-三鉴按"后者消费前者的表"组装：
-
-| 鉴 | 包 | 职责 | 产出 |
-|---|---|---|---|
-| 结构 | `src/walk` | 赋值即绑定、未用/未定义/参数被改、常量折叠剪枝 | 绑定表 `fn_bindings` |
-| 类型 | `src/types` | 注解即契约、推断、赋值/实参/条件检查（**声明取自绑定表**） | 签名表 `sigs` |
-| 行为 | `src/interp` | 格上抽象解释、按签名调度、虚栈（**方法表取自签名表**） | 行为发现 |
-| 合并 | `src/pipeline` | 同一缺陷的多鉴回声 → 一条报告，lens 并集 | `render_result` |
-
-四个组装点：绑定表→符号表（组装点1）、签名表→方法表（组装点2）、常量折叠的格化（组装点3）、合并去重（组装点4）。
-
-## 用途一：程序代码修订（快速进化中的 MoonBit 语言）
+### 跑一遍 demo
 
 ```bash
-moon run src/cli          # demo：6 个样例 × 三鉴
+moon run src/cli          # 6 个样例 × 三鉴、文件种类 demo、样例机器
 ```
+
+## 用途一：程序代码修订
+
+三鉴是这样装配的：**后面每一鉴都消费前面那一鉴的表**。
+
+| 透镜 | 包 | 职责 | 产出 |
+|---|---|---|---|
+| 结构 | `src/walk` | 以赋值论绑定、未用/未定义/形参被改、常量折叠剪枝 | 绑定表 `fn_bindings` |
+| 类型 | `src/types` | 以标注论契约、推导、赋值/实参/条件检查（**声明来自绑定表**） | 签名表 `sigs` |
+| 行为 | `src/interp` | 在格上做抽象解释、按签名分派方法、虚拟栈（**方法表来自签名表**） | 行为发现 |
+| 合并 | `src/pipeline` | 一个缺陷在多鉴里的回声 → 一条报告，透镜取并集 | `render_result` |
 
 ```
 === undefined.mbt ===
@@ -68,17 +123,19 @@ moon run src/cli          # demo：6 个样例 × 三鉴
 Summary: 1 finding(s) (before merge: structural 1, type 2, behavior 1)
 ```
 
-一条缺陷三鉴都看见 → **一条**报告，标签是并集；合并前后计数都保留（合并无损）。死分支被剪两次（结构层 `const_eval` + 行为层 `ABool` 格值），不存在的 `typo_fn` 零报告。
+三鉴都看见的同一个缺陷 → **一条**报告，标签取并集。死分支会被剪两次（结构侧的 `const_eval`
+加上行为侧的 `ABool` 格值），而调用一个不存在的 `typo_fn` 产生零条发现。
 
-## 用途二：静态状态修订（机器表 → 三鉴）
+## 用途二：静态状态修订
 
-`src/statecheck` 接受**任意状态机的纯数据规格** `MachineSpec`（状态 / 初始 / 终点 / 迁移 / 触发-槽位 / Block 理由 / 修习历程），三鉴读机器表就像读程序：
+`src/statecheck` 接受 **任意状态机的纯数据规格** —— 一个 `MachineSpec`（状态 / 初始 /
+终止 / 迁移 / 触发槽落位 / Block 理由 / 历程）。三鉴读机器表的方式，和读程序一模一样：
 
-| 鉴 | 机器侧语义 | 检查内容 |
+| 透镜 | 机器侧语义 | 它检查什么 |
 |---|---|---|
-| 结构 | **状态即绑定**（"赋值即绑定"推广到机器表） | 任何状态都必须被至少一条迁移绑定（出或入）；只出不进 → `never entered`；从初始位置的可达性闭包；终点必须可达（机器必须能完成） |
-| 类型 | **驱动槽契约**（"注解即契约"） | 每个触发必须归位已知槽、无空槽；`Block` 必须带理由——**无路必须说出口，不能沉默** |
-| 行为 | **轨迹抽象执行**（虚栈） | 修习历程每一步都必须有触发承载；断链的轨迹步带入口帧→出错帧的虚栈 |
+| 结构 | **状态即绑定**（「以赋值论绑定」抬升到机器表） | 每个状态至少被一条迁移绑定（入或出）；只出不进 → `never entered`；从初始位出发的可达闭包；终止位必须可达——这台机器得能走到头 |
+| 类型 | **驱动槽契约**（「以标注论契约」） | 每个触发必须落进已知槽，不许有空槽；一个 `Block` 必须带理由——**无路的一步必须出声说，不能沉默** |
+| 行为 | **历程即抽象执行**（虚拟栈） | 每个历程步骤都必须被某条迁移承载；一个搁浅的步骤会带着虚拟栈从入口帧走到错误帧 |
 
 ```moonbit
 let spec : @statecheck.MachineSpec = { name: "主体", states: [...], ... }
@@ -86,10 +143,10 @@ let findings : Array[@report.Report] = @statecheck.audit(spec)
 let text : String = @statecheck.render(spec)   // 合并后的文本报告
 ```
 
-**pyroduct 是被测对象，不是依赖**：本模块自身不依赖 pyroduct；方向是 pyroduct（其 `audit` 包）用真实机器表构造 `MachineSpec` 调用本模块。依赖单向：机器 → 分析器。
+**pyroduct 是被审计的主体，不是依赖**：本模块不依赖 pyroduct；方向是 pyroduct（它的
+`audit` 包）拿自己的真实机器表拼出 `MachineSpec` 来调用本模块。单向：机器 → 分析器。
 
-pyroduct 侧的真实自审计（`moon run cmd/main -- audit`）。**它 pin 的是 0.2.0**，所以
-下面输出里出现的 `0.2.0` 指那个 pin，不是上面 `moon add` 的安装版本：
+pyroduct 的真实自审（`moon run cmd/main -- audit`）打印：
 
 ```
 规格 | 计数
@@ -100,335 +157,123 @@ pyroduct 侧的真实自审计（`moon run cmd/main -- audit`）。**它 pin 的
 无路组合（带理由） | 228
 修习历程 | 031 站
 
-已知设计（4 条，出处层：设计使然——0.2.0 审计已验证）：
-- state '无忆' is never entered: it appears only as a transition source
-- state '无筹' is never entered: it appears only as a transition source
-- state '无忆' is unreachable from the initial position '立位'
-- state '无筹' is unreachable from the initial position '立位'
-
 未预期发现：**0 条**
 ```
 
-`无忆`／`无筹`（原文：失忆／浑噩）是主体机器（34 位·53 迁·8 槽）里真实存在的两个"只出不进且不可达"
-位置——pyroduct 自己的 192 个测试之外，用另一套三鉴语言独立复核出机器的论文边界
-（「记不起来的过去」与「尚未到来的未来」）。"未预期发现 0 条"是回归绊线：三鉴在真实表上
-任何新增报警都会让 pyroduct 的测试失败，强制复审。
+「未预期发现 0 条」这一行是绊线：真实表上一旦出现新的结构/类型/行为发现，就会让
+pyroduct 的测试挂掉，强制一次复审。
 
-> `moon run src/cli` 末尾那台 `pyroduct 形状示例机器` 是本模块内嵌的 **8 状态玩具机**
-> （`statecheck.pyroduct_flavored()`），不是 pyroduct 的真表；它带 `182:12` 这类
-> `行:列`，那是 `state_span()` 按状态名哈希出来的**稳定伪 span**（同一名字永远同一坐标），
-> 不是任何源文件的位置——别拿它去 pyroduct 里对行号。
+> `moon run src/cli` 末尾打印的 `pyroduct-shaped sample machine` 是本模块自己的
+> **8 状态玩具**（`statecheck.pyroduct_flavored()`），不是 pyroduct 的真实表。它带的
+> `182:12` 这样的坐标是**由状态名散列出来的稳定伪位置**，不是任何源文件里的行号。
 
-## 把扫描结果渲染成状态图（public API）
+## API 参考
 
-`@sa.mermaid_states(verdicts, summary, prov, per_file, max_files)` 把一次扫描渲染成
-mermaid `stateDiagram-v2`——和 CLI 打印的是同一批发现，只是形状从"给人扫一眼"换成
-"给程序读"。
+### 程序分析 —— `src/pipeline`
 
-每个文件的框的主干就是那些计数所依赖的信任链：`lexed → structural → type → behavioral`。
-前端没读完的文件停在那条线上，越界之后的发现**计数但不画**。每条发现是自己的状态，
-挂在报告它的那一鉴下面，带一条 note：`WHY:`（哪条规则、依据什么证据触发）与 `HOW:`
-（该改什么），取自 `@core.Family::advice`。
+| 函数 | 签名 |
+|---|---|
+| `run` | `(src : String, file : String, extern_iface : @core.IfaceSymTab) -> PipelineResult` |
+| `run_functions` | `(src : String, file : String, extern_iface : @core.IfaceSymTab) -> PipelineResult` |
+| `render_result` | `(r : PipelineResult) -> String` |
+| `merge_findings` | `(all : Array[@report.Report]) -> Array[@report.Report]` |
+| `merge_group` | `(g : Array[@report.Report]) -> @report.Report` |
 
-有两个 family 带着读者**动手之前必须知道**的警告，而且都写在 note 正文里：
-`.mbti` / `.mbtp` / `.mbt.md` 上的 `ParseError` 通常是前端规则而不是解析边界；
-`UndefinedName` 有两个已知盲区（`#doc(hidden)` 的 API 不出现在任何 `.mbti` 里；
-`@pkg.fn(1, 2)` 这种顶层跨包引用不会被折叠成可调用名）。
+`run` 让行为透镜在 **模块** 上入口，`run_functions` 让它在每个 **函数** 上入口（见
+[覆盖范围与边界](#覆盖范围与边界)）。两个视图是**分开的，不是相加的**。
 
-`per_file` 与 `max_files` 限制图的规模，`0` 表示不限制。**被截掉的部分一定会在图里写出来**
-——写在头部和该文件的 note 上，所以被截断的图不会被读成"干净的图"。`summary` 永远描述
-**整个扫描**，而画出来的可能只是子集。文件按**可行动数**降序取，不是按原始发现数：在
-moonbitlang/core 上，原始发现最多的那个文件是一个 402 条发现的测试文件，而那 402 条全是
-notice、零缺陷——按原始数排，它会排在这张以"先看该修什么"为职责的图的第一位。
+### 机器表 —— `src/statecheck`
 
-```moonbit
-let root = /* 已解析到的源码根目录 */
-let prov = @sa.provenance_for("my/module@1.2.3", root)
-let text = @sa.mermaid_states(verdicts, @sa.aggregate(verdicts), prov, 8, 25)
-println(scan_artifact_name(prov, root))
+| 函数 | 签名 |
+|---|---|
+| `audit` | `(spec : MachineSpec) -> Array[@report.Report]` |
+| `render` | `(spec : MachineSpec) -> String` |
+| `pyroduct_flavored` | `() -> MachineSpec` —— 那个 8 状态样例机器 |
+
+### 图与出处 —— `src/sa`
+
+| 函数 | 签名 |
+|---|---|
+| `mermaid_states` | `(verdicts : Array[Verdict], summary : Summary, prov : ScanProvenance, per_file : Int32, max_files : Int32) -> String` |
+| `provenance_for` | `async (target : String, root : String) -> ScanProvenance` |
+| `scan_artifact_name` | `(p : ScanProvenance, root : String) -> String` |
+| `aggregate` | `(verdicts : Array[Verdict]) -> Summary` |
+| `stamp_utc` | `(ms : Int64) -> String` |
+| `moon_mod_version` | `(src : String) -> String` |
+
+`mermaid_states` 返回合法的 mermaid `stateDiagram-v2`。它绕开的两条约束都是实测的，不是
+假设的：转移标签是**第一个** `:` 之后的全部内容，所以里面不能再有 `:`——于是位置和消息
+都放进带引号的状态标签里；而 MoonBit 没有运算符续行，所以以 `+` 开头的源码行是解析错误，
+这就是文档一行一行 `write_string` 写出来的原因。
+
+`per_file` 和 `max_files` 给绘图封顶，`0` 表示不封。**被封顶砍掉的部分会在图里写明**，
+写在头部和文件上的一条注里，所以被截断的图不会被读成干净的图。文件按 **actionable**
+条数降序排，而不是按原始发现数：在 `moonbitlang/core` 上，原始发现最多的文件是一个
+402 条发现的测试文件，而那 402 条全是 notice、零缺陷；按原始数排会把它放在一张「该把
+注意力放在哪」为职责的图的第一位。
+
+### 出处 —— 产物的文件名
+
+一次扫描结果是对**某棵特定的树**、被**某个特定的工具链**、在**某个特定的时刻**读出来的
+主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
+
 ```
-
-输出是合法 mermaid：已用 `mermaid@10.9.8` 对 moonbitlang/core 的真实扫描（1029 文件）做过
-**解析 + 渲染**双重验证。渲染器围绕两条实测出来的文法约束写成：
-
-- 迁移标签是第一个 `:` 之后的**全部**内容，所以标签里不能再有 `:`——行号和消息因此放在
-  带引号的 state 标签里，绝不放箭头上
-- MoonBit 没有运算符续行，源码里以 `+` 开头的行是语法错误——所以文档是一段一段
-  `write_string` 拼出来的，原因就是这个
-
-`src/sa/mermaid_test.mbt` 每次运行都把生成的文本按这套文法重读一遍——每一行都必须是
-mermaid 接受的形态、每个节点 id 必须是标识符、每条迁移的端点必须是已声明的状态——并且
-它自己被证明能抓住五个它本该抓住的文档。
-
-### 给产物命名：版本与扫描时间写进文件名
-
-一次扫描结果是对**某一棵树、由某套工具链、在某一时刻**的断言。三件事都放进文件名——
-`@sa.provenance_for(target, root)` 负责收集，`@sa.scan_artifact_name(prov, root)` 负责排布：
-
-```
-moonbit_static_analysis_0.4.7_0.1.20260920_20261009T155222Z.mmd
+moonbit_static_analysis_0.4.32_0.1.20260920_20261009T155222Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
-tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没找到
+tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
 
-格式是 `<包名>_<版本号>_<moonbit版本>_<时间戳>.mmd`。四个字段各回答一个问题：
-
-| 字段 | 回答 | 来源 |
+| 字段 | 回答什么问题 | 来源 |
 |---|---|---|
-| `package` | 读的是什么 | 坐标，或**解析后**的目录名 |
-| `version` | 它的哪个修订 | 目标自己的 `moon.mod`（`moon.mod.json` 也读） |
-| `moonbit` | **是哪套工具链读的** | 子进程跑 `moon version` |
+| `package` | 读的是谁 | 坐标，或**解析后**的目录名 |
+| `version` | 它的哪一版 | 目标的 `moon.mod`（`moon.mod.json` 也认） |
+| `moonbit` | **是哪个工具链读的** | `moon version`，作为子进程跑 |
 | `stamp` | 什么时候 | `@async.now()`，UTC |
 
-`moonbit` 是唯一没法从树里读回来的字段，也是决定两次扫描能不能比较的那个。`moon.mod` 只记
-模块自己的版本和依赖，从不记编译它的工具链；也没有 `MOONBITS_*` 环境变量可问（实测：env 里
-过滤 MOON 是空的）。所以只能去问工具链本身。这一点是**实测**的而不是照着文档念：
-`moon version` 打出
+`moonbit` 是从树里**恢复不出来**的那一格，也正是它决定一次扫描能不能和后来的扫描比较。
+如果 `moon version` 子进程失败，这一格读作 `unknown`，而不是写错。
 
-```
-moon 0.1.20260920 (914d7da 2026-09-20)
-```
+它刻意**不**做三件事：不省略它定不下来的东西（缺失的版本、工具链或时钟写成字面量
+`unknown`——四个字段里省掉一段会让**其余几段错位**）；不产出点开头的文件名（以 `.` 开头的
+名字在 `ls` 里看不见，而一个没人能列出来的产物，谁也不会再找到它）；不把文件名本身当成
+记录——同样的三件事会以 `%%` 头注释在文档**里面**再写一遍，因为文件会被改名，而一旦改了名，
+名字就不再是任何证据。
 
-取第二个字段。它是一次子进程调用，所以只在真的要写图时跑一次；失败就写 `unknown`，
-而不是写错。
+### 报告 —— `src/report`
 
-对本工具尤其重要：仅仅因为把方法调用建进 AST，这个 `.mbt` 子集在同一份**没变过**的 core
-检出上就从 158 个文件涨到 173 个。结论随工具链走，所以不写明工具链的扫描结果没法跟后来的
-结果比较。
-
-包名是坐标的模块名；路径则是**解析后**的目录名——扫 `.` 是最常见的用法，照着调用方写的
-字符串命名会得到 `_.mmd`。
-
-版本优先取坐标里的 `@version`，没有就读目标自己的 `moon.mod`（`moon.mod.json` 也读——
-两种写法在现场都存在）。时间戳是 UTC，来自 `@async.now()`，这一点是**实测**的而不是照着
-文档注释念：wasm 跑出 `1791522911114`，而约 1.1 秒前读到的墙上时钟是 `1791522910008`，
-差值正好是两次调用之间的延迟。这里没有时区数据库，所以时间戳取 UTC 并用结尾的 `Z` 说明，
-而不是一年错两次小时。
-
-> **本轮更正。** 上一版这一节写着「CLI 根本没法打时间戳，因为唯一的时钟在 `internal`
-> 包后面」。那是错的：`moonbitlang/async` 把它公开重导出了
-> （`pub using @event_loop {now}`），而且 `provenance_for` 从 0.4.5 起就在调
-> `@async.now()`。CLI 之所以写 `unknown`，只是因为它被塞了一个手写的空时间戳，而没有去调
-> 那个本来就能用的函数。
-
-这件事刻意**不做**的三件事：
-
-- **不省略它没能确定的东西。** 版本、工具链或时钟缺失时写字面量 `unknown`。省掉那一段会
-  得到一个"看起来完整"的名字，而且四个字段时更糟：**会错位**——读 `core_0.1.2_20261009`
-  的人会把时间戳当成工具链版本。
-- **不产出 dotfile。** 以 `.` 开头的名字在 Linux/macOS 上 `ls` 根本列不出来，而没人
-  列得出来的产物等于没人找得回来。
-- **不把文件名当记录。** 同样的三个字段会以 `%%` 注释**重复写在文档正文里**，因为文件
-  是会被改名的，改完名之后它的名字就不再是证据了。
-
-### 从 CLI 直接写出一张图：`--mmd` / `--mmd-auto`
-
-渲染器本来只是库函数，现在不写代码也能用上：
-
-```
-moonx riantr/moonbit_static_analysis@latest <target> --mmd out/scan.mmd
-moonx riantr/moonbit_static_analysis@latest <target> --mmd-auto
-```
-
-两者都**额外**写出图，并在最后一行打印 `MMD<TAB><路径>`；stdout 上的文本报告一字未改，
-仍然是权威输出。`--mmd-auto` 用上面那套命名，写进**工作目录**。
-
-这里有三个决定，都不是随手定的：
-
-- **要显式开，永远不是默认。** 这张图天生有损：`mermaid_states` 按 actionable 数排序、
-  到自己的上限就停，并在正文里写明 `%% THIS DRAWING IS A SUBSET`。把图当唯一输出等于把
-  这句话藏起来，而且会悄悄弄坏所有 grep `SUMMARY` 的脚本。
-- **`--mmd` 必须带路径，自动命名另给一个 `--mmd-auto`。** 可选值在这里是歧义的：
-  `<target> --mmd <path>` 里 `--mmd` 后面那个裸词同样可能是第二个目标，两种读法无法区分。
-  与其猜、然后以 "unexpected extra argument" 失败，不如让这个值必填。
-- **产物绝不落进被扫描的树里。** 本模块写明的约束是只**读**目标的文件；往别人的源码仓库
-  里丢文件既违背这个承诺，也会弄脏一棵用户未必拥有的树。
-
-四个字段全是真的。在 moonbitlang/core 完整 1029 文件的扫描上实测：
-
-```
-MMD  _mbcore_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T132547Z.mmd
-```
-
-`_mbcore` 是解析后的目录名，`0.1.20260920+7d59c7ec9` 是目标 `moon.mod` 里的自己的版本，
-`0.1.20260920` 是 `moon version` 报的工具链，`20261009T132547Z` 是真实的 UTC 时间戳——
-对照本地墙上时钟 `20261009T212552`，正好差预期的 +8。若 `moon version` 那个子进程失败，
-该字段写 `unknown`，其余字段不受影响。
-
-写失败会打印 `ERROR --mmd: cannot write <path>`，stdout 其余部分不受影响——`write_file`
-不会创建父目录，所以 `--mmd no/such/dir/x.mmd` 是干净失败，而不是留下半个文件。
-
-`@sa.stamp_utc(ms) -> String` 是纯函数、可单独使用：把 epoch 毫秒转成
-`YYYYMMDDTHHMMSSZ`，民用日期用 Hinnant 的 `civil_from_days` 算，测试把答案钉在
-"不会有争议"的日期上——epoch 本身、闰日、年界月界、一次真实运行报出的那个确切时刻，
-以及 400 年世纪规则的两侧（2000 是闰年，2100 不是）。
-
-## 包结构
-
-```
-src/core      Span/Severity/Lens/Family(merge_group 契约)/Frame + Family::advice
-src/report    Report 结构与渲染（lens 并集标签、vst 框架）
-src/sa        扫描入口 + aggregate() + mermaid_states()（对外 library）
-src/lexer     MoonBit 词法前端
-src/parser    MoonBit 语法 → ast（含 .mbtx 脚本的 import 块）
-src/ast       MoonBit 抽象语法
-src/walk      结构鉴：绑定表 + 结构发现
-src/types     类型鉴：Ty/Ty?/Sig 推断
-src/interp    行为鉴：AbsVal 格 + 调度 + 虚栈
-src/pipeline  组装：跑三鉴 + merge_group 合并
-src/moonfiles 其余文件种类：.mbt.md 逐块三鉴 / .mbti 接口审计 / .mbtp 证明 lint
-src/statecheck 用途二：通用机器表审计（MachineSpec 纯数据桥）
-src/samples   demo 样例（内嵌 MoonBit 源）
-src/cli       可执行入口（程序 demo + 文件种类 demo + 示例机器审计）
-```
-
-## 文件种类（MoonBit 工具链的其它后缀）
-
-完整分类表见 [EXTENSIONS.md](EXTENSIONS.md)，语义依据
-[docs.moonbitlang.com/en/latest](https://docs.moonbitlang.com/en/latest/)（最终依据），
-并与 mooncakes 的 [`moonbitlang/parser@0.4.3`](https://mooncakes.io/docs/moonbitlang/parser@0.4.3) /
-[`moonbitlang/lexer@0.4.2`](https://mooncakes.io/docs/moonbitlang/lexer@0.4.2) 对照过：
-
-| 后缀 | 本项目静态分析 |
+| 函数 | 签名 |
 |---|---|
-| `.mbt` | 三鉴程序分析 |
-| `.mbtx` | 三鉴程序分析 + 导入块审计（条目文法 `"path" [@alias] [*]`；重复路径报 FParse；导入清单随报告回显） |
-| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知类型引用。行文法与 `moon info` 实际输出一致，生成文件不会报**畸形行**——但它的**未知类型**检查完全没有跨文件感知，在生成文件上仍会误报（实测 `moonbitlang/core` 上 93 条，而那棵树 `moon check --target all` 是 0 错误通过的）。这类发现按「未验证」对待，不要当缺陷报给用户 |
-| `.mbt.md` | literate：只分析工具链**确实编译**的围栏 —— `mbt check` / `mbt test` 及其 `moonbit` 写法；第二个词是 `check` 或 `test` 才使块成为活代码。行号对齐 `.md` 真实行。裸 `mbt`、裸 `moonbit` 与 `nocheck` 是展示块，跳过——**按工具链实测**，见 EXTENSIONS.md |
-| `.mbtp` | 证明文件逻辑侧 lint（体内字符串常量、`!`/`↔` 禁形、跨包调用、lemma 缺 `proof_ensure`）——**不替代 `moon prove`** |
-| `moon.mod` / `moon.pkg` / workspace | 记录在案，不做静态分析（配置不是代码——官方也把两者放在 `parser` 的 `moon_config` 子包里，与 `syntax` / `mbti_parser` 并列而独立；理由见 EXTENSIONS.md「配置文件的边界」）|
+| `Report::render` | `(self : Report) -> String` |
+| `render_reports` | `(reports : Array[Report]) -> String` |
 
-`.mbti` 审计的行文法是照着真实生成物对齐的：`moon info` 实际会输出 `import {}` 块、
-`#deprecated` / `#alias(...)` / `#callsite(...)` 属性行、`const`、`impl … for T`、
-`suberror`、带 `pub` / `async` / `extern` / 类型参数 / 具名参数（`input_offset? : Int`）/
-`raise` / `String?` 的 `fn` 签名。早期版本会把其中每一种都当成"畸形行"报出来，
-也就是对**每一个**真实生成的接口文件都误报。
+每条发现都带一条注，含 `WHY:`（哪条规则触发的、依据什么触发的）和 `HOW:`（该改什么），
+取自 `@core.Family::advice`。
 
-## 验证
+## 命令行参考
 
-```bash
-moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 1163/1163；js 与 wasm-gc 1083/1083
-moon run src/cli                     # 程序 demo + 文件种类 demo + pyroduct 形状示例机器审计
+```
+moonx riantr/moonbit_static_analysis@latest <target> [旗标]
 ```
 
-各 target 的数量不同是刻意的：`src/sa` 与 `src/jsoncli` 声明了
-`supported_targets = "+wasm+native"`，js 与 wasm-gc 会**跳过**这两个包而不是失败。
-因此"四个 target 各 N"这种写法本身就是错的；只有 wasm 的数字覆盖渲染器与扫描器。
-
-`--deny-warn` 是有意的：官方包配置页要求「In CI, add `--deny-warn` to `moon check`,
-`moon test`, or the equivalent command to treat enabled warnings as fatal errors」。
-少了它，「0 警」这句话没有任何东西强制 —— 冒出警告 CI 照样绿。`.github/workflows/gate.yml`
-里的 CI 门禁因此带 `--deny-warn`；代价是工具链日后新增警告会让 CI 变红，这正是它的用途。
-
-> CI 只跑 `--target js`；上面「四个 target」是本地跑的结论，CI 不覆盖 native/wasm。
-
-### 唯一的发布入口
-
-`moon check` 与 `moon test` 是地板，而本项目并不只依赖地板。地板之上的一切都在**一个**脚本里：
-
-```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
-```
-
-`_verify/release.ps1` 依次跑：脚本自身的 self-test；`moon fmt --check`；
-`moon check --deny-warn`；三个 test target；`moon build --target wasm`；文法探针自身的判定；
-本仓源码自扫描；已发布包自扫描的 self-test；对**已发布**那个包的扫描；与固定基线的语料比对；
-然后是**全部变异门禁**。
-
-最后一条是重点，而且是量出来的而不是断言的：`_verify/` 下有 249 个 `.ps1` 脚本，其中
-**77 个是变异门禁**——每个钉住一个缺陷的增量对应一个 `mutate_<NNNN>.ps1`——而
-**这 77 个全部在 `release.ps1` 的门禁清单**（`$gates`）里：没有一个变异门禁落在发布路径之外，
-清单里也没有任何一条指向不存在的脚本。其余 172 个是一次性的 settle、探针与证据，加上四个
-写作工具（`mutate_lib.ps1`、`named_claims.ps1`、`prove_mustred.ps1`、`preflight_compile.ps1`）；
-它们是输入，不是发布阶段。
-
-两个开关会改变它的行为：
-
-- `-SkipMutations` 跑除 77 个变异门禁以外的全部内容——语料 pin 与本仓自扫描，约 8 分钟。
-  当问题是「语料动了吗」而不是「哪个门禁红了」时用它。
-- `-SelfTest` 拿一个失败体、一个抛异常体和一个通过体去跑脚本自身的阶段函数。
-  **没被证明过会变红的守卫不算守卫**，这里就是证明它的地方。
-
-CI（`.github/workflows/gate.yml`）跑的是更小的地板：`moon update`、`moon check --deny-warn`、
-`moon fmt --check`、`moon test --target js --deny-warn` 与 `moon build --target wasm`。
-变异门禁、语料比对与已发布包自扫描都是本地的，所以真正要紧的是那个本地入口。
-
-
-## 形式验证（moon prove）
-
-`src/core` 是纯内核（无 Array 携带的结构体、无字符串），以 `"proof-enabled": true` 开启
-MoonBit 2026 实验形式验证；`src/core/core_proof.mbtp` 是逻辑侧：谓词（is_error /
-type_error_family / lower_irreflexive_ok / lower_transitive_ok / lower_antisymmetric_ok /
-rank_order_ok）+ **19 条引理**（rank 顺序三常数、lower 三律、rank_order_agrees、
-severity 分类：5 个 Error 族 + 7 个 Warning 族逐条 + 全量 taxonomy）。
-
-```bash
-moon prove src/core --why3-config .why3.conf   # 生成 19 个 VC 并交 cvc5/alt-ergo
-```
-
-验证状态（why3 降级产物 `_build/verif/src/core/*.smt2` 逐目标 cvc5 机检）：
-
-- **21/21 目标全部 VALID**（unsat）：19 条引理 + span_at/zero_span 两个自动安全 VC。
-- 已知工具链限制（均为上游问题，非本项目代码）：
-  1. `#proof_pure` 函数体为**结构体字面量**时（pos/span_at/zero_span）降级为不透明逻辑符号
-     —— 函数体被丢弃，span 形状律在逻辑侧不可证（已由测试钉住，见 core_proof.mbtp 注释）。
-  2. 捆绑 why3server（Windows 构建）丢失求解器 stdout —— why3 报 "High failure"、输出仅
-     `.`；裸 `why3 ... prove` CLI 同样复现。逐目标机检绕过：
-     `why3 -o <dir> -P cvc5 <mlw>` 导出 SMT 后对每个文件跑 cvc5。
-
-本地复现所需 shim（不进发布 zip）：`.why3.conf`（datadir/libdir 指向 `.moon/share/why3`
-与 `.moon/lib/why3`，显式 `[prover]` 节）与 `cvc5wrap.ps1`（滤掉 why3 文件尾部的
-`get-info :reason-unknown` —— cvc5 1.0.9 对确定性回答会报错，why3 1.7.2 解析失败）。
-
-## 发布
-
-本模块通过以下渠道发布（同一份源码，三处同步）：
-
-| 渠道 | 地址 |
+| 旗标 | 含义 |
 |---|---|
-| Gitee（主仓） | <https://gitee.com/ren-yongxiang/moonbit_static_analysis.git> |
-| GitHub（镜像） | <https://github.com/riantr/moonbit_static_analysis> |
-| mooncakes.io（包注册表） | <https://mooncakes.io/docs/riantr/moonbit_static_analysis> |
+| `<target>` | 注册表坐标（`author/module[@version]`）或路径。省略则扫描当前目录。 |
+| `--exclude <dir>` | 要跳过的目录名。可重复。它存在是因为点目录规则抓不全：项目可能把 vendored 的注册表快照放在一个普通名字下。 |
+| `--extern-iface-dir <dir>` | 在这个目录里找 `.mbti`，把里面声明的类型/值当成被分析的所有 `.mbt` 文件里的合法名字。可重复。最自然的目标是 `moon fetch` 过依赖之后的 `.repos/`。目标自己的树永远被索引。 |
+| `--no-auto-fetch-deps` | 默认会读目标的 `moon.mod` 并 `moon fetch` 每个直接依赖。加上它就跳过自动 fetch。 |
+| `--mmd <path>` | **同时**把这次扫描写成 mermaid `stateDiagram-v2` 落到 `<path>`，并在最后一行打印 `MMD<TAB><path>`。刻意做成可选：stdout 始终是权威的文本报告。 |
+| `--mmd-auto` | 同上，但自己取名，写到**工作目录**——绝不写进被分析的树里。 |
+| `--per-function` | 让行为透镜在每个 **函数** 上入口，而不是在模块上。 |
+| `--findings-shown-per-file N` | 每个文件**打印**多少条发现（默认 40）。这是打印上限，不是分析上限：SUMMARY 的计数来自全部发现，所以调大它只是把本来已经计数的发现显示出来，不会改动 SUMMARY 里的任何数字。 |
 
-- **mooncakes.io**：由 **CI** 发布，本机不发布。把 `v*` tag 推到 GitHub 会触发
-  `.github/workflows/publish.yml`：它解析注册表索引（`moon update`）、核对 `moon.mod` 的版本号
-  与 tag 一致、核对仓库里恰好只有一个 `moon.mod`，然后跑门禁（`moon fmt --check`、
-  `moon check --deny-warn`、`moon test --target js --deny-warn`、`moon build --target wasm`），
-  再跑 `moon publish`，最后建 GitHub Release。凭据是 `MOONCAKES_RIANTR_TOKEN` 这个 secret，
-  它的**内容**是 `~/.moon/credentials.json` 的整个文件，不是裸 token。
-  （发布后 `riantr/moonbit_static_analysis@0.4.32` 可被任何 MoonBit 模块以 `import` 依赖；
-  `src/cli` 附带 SKILL.md，上架 [skills.mooncakes.io](https://skills.mooncakes.io)。）
-- **Gitee / GitHub**：`git push` 双推；tag 与 moon.mod 版本号保持一致。
-  **Gitee 是日常仓，GitHub 是发版仓。**只推到 Gitee 的 tag 什么也发布不了——
-  发布的触发器在 GitHub 上。
+`--mmd` 必须带路径，`--mmd-auto` 是另一个写法，这是刻意的：一个可选的值在这里是有歧义的，
+因为在 `<target> --mmd <path>` 里，`--mmd` 后面那个词既可能是路径，也可能是第二个没预期的
+目标，没法分辨。
 
-### 发版顺序
+> **命令行无法以非零码退出。** MoonBit 在这里可用的包里没有暴露进程退出的入口，所以一个
+> 定位不到的目标会打印 `ERROR` 然后仍然退出 0——**调用方必须读输出，而不是读退出码**。
 
-顺序本身就是重点，每一步都是下一步的前提：
-
-1. **依赖先升。**先去 mooncakes.io 查最新版本，`moon update`，然后在**新依赖**下把整套门禁
-   再跑一遍。在旧 pin 上跑绿不算数：那样 README 描述的依赖集就不是被测代码实际用的那一组。
-2. **`_verify/release.ps1` 全绿**——77 个变异门禁、语料 pin、本仓自扫描与已发布包自扫描。
-3. **改 `moon.mod` 的版本号**，并把 `README.md`、`README.zh.md`、`SKILL.md` 里所有引用该版本号的
-   地方同步过去。
-4. **提交，然后推**：master 推 Gitee，tag 推 Gitee，再把 master 与 tag 推 GitHub。
-   真正触发发布的是推给 GitHub 的那个 tag。
-
-第 3 步在第 2 步之后是故意的。注册表分发的是 README，所以一份已经写好下一个版本号的 README
-是一次「宣称了代码还没说的话」的发布；而在 README 同步之前就推 tag，会把这件事变成永久的。
-
-## 分析其他项目（不引入本项目）
-
-本工具可以扫**任意** MoonBit 仓库，而那个仓库既不依赖本模块、也不会被改动 —— 源码只在扫描时被**读取**：
-
-```bash
-moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
-```
-
-第一个参数是要扫的目标：registry 坐标（`author/module`，可带 `@version` / `@latest`）或一个本地路径；省略则扫当前目录。坐标会经 `moon fetch` 落到 `.repos/` 再遍历。`--exclude <目录>` 可重复，用来跳过**以普通名字存放的 vendored 源码**（点目录规则抓不到它们）。
-
-### 输出说的是「我读懂了什么」，不是「我数出多少条」
+## 输出怎么读
 
 ```
 SCANNED	107 files under ...\ML\CI
@@ -439,49 +284,79 @@ PARSED	32/107 files understood (29.9%); 75 more read only up to their first pars
 SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
 ```
 
-- **`PARSED` 是头号指标。** 工具链的前端只覆盖 MoonBit 的一个子集，读不懂的部分
-  报出来的「发现」量的是**工具的盲区**，不是你的代码。
-- **半读懂的文件仍然值得读。** 解析器记录它**真正读不下去的第一行**；那之前的
-  发现照常报（`PARTIAL`），之后的计入 `unreliable` 且**从不展示**——它们来自一棵
-  已经错了的树，摆出来等于把这个工具最初的毛病又犯一遍。
-- **跳过声明不算读不懂。** 「不分析 `test` 块」不会移动这条边界，因为块之后的
-  代码照样读得通。
-- **`actionable` 不含告知。** 「这种声明不分析」不是你的代码有缺陷——不然自检
-  会报「发现 92 个问题」而真实缺陷是 0。
-- 未解析文件**按原因分组**而不是一行一个，带示例路径。
-- `actionable + notices + unreliable = total`，这一行打印里直接断言成立。`withheld` 也印在旁边，但是 `unreliable` 的子集（无前置发现的 PARTIAL 文件的尾部发现），不计入等式。
+- **`PARSED` 才是头条。** 前端覆盖的是 MoonBit 的一个**子集**，所以它读不懂的部分量的是
+  这工具的盲区，不是你的代码。
+- **读了一半的文件仍然值得读。** 解析器记下它**真正**失败的那一行；之前的发现照报
+  （`PARTIAL`），之后的计入 `unreliable` 且永不展示——那来自一棵已经不对的树，把它当结果
+  端上来，就是这个工具当初要根治的那个毛病。
+- **被跳过的声明不会挪动这条边界。** 「这个 `test` 块没被分析」不影响后面的代码仍被读到，
+  所以这样的文件是 `FOUND`。
+- **`actionable` 不含 notice。** 我们选择不分析的声明形式不是你代码的缺陷。
+- 读不懂的文件**按原因分组**，而不是一行一个。
+- `actionable + notices + unreliable` = `total`，这一行自己断言。`withheld` 另行报出，但它是
+  `unreliable` 的子集，所以故意不参与这个和式。
 
-**跨文件类型符号解析**（0.4.3 新增）：单个 `.mbt` 用到别的包里的类型（如
-`@argparse` 的 `Command`）原本会报 `undefined name 'Command'`——单文件分析
-看不到外部声明。`--extern-iface-dir <dir>`（可重复）把指定目录里所有
-`.mbti` 的声明类型 + 值签名灌进跨文件符号表；结构走查和类型镜在报
-`FUndefinedName` 之前先查这张表。默认还会读目标的 `moon.mod` 自动 `moon fetch`
-直接依赖（`--no-auto-fetch-deps` 关掉）。类型命中返回 `TUnknown`、值命中
-返回 `TUnknownFn`（新增的 Ty 变体：确定是个值、但**签名没读到**，所以
-调用方 `Command(...)` 既不误报 `FOpMismatch`，也不会拿一个编出来的
-arity 去判「参数过多」——`.mbti` 只给名字、从不给参数表，编出来的
-arity 是猜测，检查会把它当事实报出去）。表里没有的名字照常报错——
-表只抑制、不发明。查表前会先剥掉 `@pkg.` 限定：`.mbti` 里声明是裸名
-`pub fn T::m`，使用处必须写成 `@pkg.T::m`，两侧拼写不一致时精确匹配
-永远打不中，而那正是唯一常见的跨包写法。
+**跨文件类型符号解析** —— 一个 `.mbt` 用了别的包里声明的类型（比如 `@argparse` 的
+`Command`），单文件分析器只看得见自己那个文件，于是会报 `undefined name 'Command'`。
+`--extern-iface-dir <dir>`（可重复）在指定目录里找 `.mbti`，把它们声明的类型和值签名
+装进一张**跨文件符号表**；结构遍历和类型透镜在报 `FUndefinedName` 之前会先查这张表。
 
-**`--per-function`：让行为透镜在每个函数上入口**（0.4.30 新增）。行为透镜通常在
-**模块**上入口：函数体只有被**顶层语句调用**时才会被执行。而库模块不会在顶层调用
-自己的函数，所以在库上这个透镜执行的函数体是**零**——六个语料上每一条发现都标着
-`structural`，没有一条标着 `behavior`。
+这张表只**抑制**，从不发明合法绑定：表里没有的名字照报。类型命中返回 `TUnknown`；值命中
+返回 `TUnknownFn`——一个已知是值、但签名没读的值——于是 `Command(...)` 既不会触发
+`FOpMismatch`，也不会拿一个凭空发明的参数个数去检查。查表前会先剥掉 `@pkg.` 前缀：
+`.mbti` 里写的是裸名（`pub fn T::m`），使用处必须写 `@pkg.T::m`，所以精确匹配下这两种
+拼法永远碰不上，而命名另一个包最常见的写法也就永远打不中。
 
-`--per-function` 把每个函数都当作程序的入口来分析，它的形参绑定到按**声明类型**
-新造的抽象值。对入口点来说声明类型是唯一站得住的选择：形参的运行期值未知，透镜
-只能假定声明类型，不能更多。**没写标注**的形参变成「一个我们什么都不知道的值」，
-且不得凭空造出发现。
+## 覆盖范围与边界
+
+### 这个工具不跟谁竞争
+
+在 `.mbt` 上，本工具 **不与工具链的编译器竞争**：`moon check` 有真正的解析器和约 90 条内建
+告警，覆盖率恒为 100%。本工具的 `.mbt` 前端读的是一个 **子集**，在 `moonbitlang/core` 上
+它解析 **1029 个文件里的 957 个**（93.0%）；`.mbti` 和 `.mbt.md` 是 100%。
+
+本工具能做而编译器不能做的：编译器**根本不审**的那三种文件——`.mbti`、`.mbt.md`、
+`.mbtp`——以及跨包语义。
+
+### 前端读过去、但没有分析的构造
+
+每一个它读过去**却没有分析**的声明或表达式形式都会报成一条 notice，而那条 notice 说的是
+**工具**，不是你的代码。在本项目自己的源码上实测（170 个文件）：
+
+| notice | 条数 | | notice | 条数 |
+|---|---:|---|---|---:|
+| `test` 声明 | 1175 | | 匿名函数字面量 | 10 |
+| `match` 表达式 | 299 | | `const` 声明 | 6 |
+| `if` 表达式 | 67 | | 短 lambda | 2 |
+| `struct` 声明 | 58 | | `try` 表达式 | 1 |
+| `derive` 声明 | 52 | | | |
+| `enum` 声明 | 24 | | | |
+
+去掉其中任何一行，都需要为那个形式做一个 AST 节点，所以它们是**功能**，不是措辞问题。
+真正要紧的是这个区别：**表达式级**的排除（379 条）落在函数体内部，会把那个函数体的审计
+整个关掉；**声明级**的排除（1315 条）在所有函数体之外，不会。
+
+### `UndefinedName` 的两个盲点
+
+两个都是已知的，而且都写在发现自己的注里：
+
+- `#doc(hidden)` 的 API 在任何 `.mbti` 里都不出现，所以无法从依赖的**源码**索引；
+- 写成 `@pkg.fn(1, 2)` 的顶层跨包引用，解析器不会把它折成一个可调用的名字，所以即使那个
+  包**已经**被索引，它照样会被报出来。
+
+### `--per-function`：让行为透镜在每个函数上入口
+
+`--per-function` 把每个函数都当作程序的入口来分析，形参绑定到按**声明类型**新造的抽象值。
+对入口点来说声明类型是唯一站得住的选择：形参的运行期值未知，透镜只能假定声明类型，
+不能更多。
 
 两个视图是**分开的，不是相加的**，所以可以互相比较而不会互相遮蔽。默认（模块）视图
 不变：同一批语料加不加这个旗标，数字逐字节一致。
 
-> **这个视图还不算可靠，旗标是可选的就是因为这个。** 逐函数视图由
+> **这个视图还不算可靠，旗标是可选的就是因为这个。** 它由
 > `_verify/census_perfunction.ps1` 在**全部七个**固定语料上量，发版门禁**把数字钉住**。
-> 现在它报 **58** 条 `actionable`，而模块视图报 33（33 条全在 `moonbit_core`）。
-> **这 58 条没有一条是被分析代码的缺陷。**
+> 现在它报 **58** 条 `actionable`，而模块视图报 33 条。**这 58 条没有一条是被分析代码的
+> 缺陷。**
 >
 > | 家族 | 条数 | 透镜当时主张什么 |
 > |---|---:|---|
@@ -498,2386 +373,135 @@ arity 是猜测，检查会把它当事实报出去）。表里没有的名字�
 > | K | 3 | 带具名实参的本地调用 |
 > | L | 2 | 已记录的 `#doc(hidden)` 边界 |
 >
-> **「能过」是量出来的，不是假设的。** `moon check --target all` 在 `moonbitlang/core`
-> 上恰好报**一条**错误，在 `json/README.mbt.md`，而它不在带发现的**二十四个**文件之列。
+> **「能过」是量出来的，不是假设的。** `moon check --target all` 在 `moonbitlang/core` 上
+> 恰好报**一条**错误，在 `json/README.mbt.md`，而它不在带发现的**二十四个**文件之列。
 > 这只是一半：没有诊断的文件和没人打开过的文件长得一模一样，所以
 > `_verify/control_perfunction_census.ps1` 往这些文件里（**副本上**）各追加一个故意的
-> 类型错误，并要求错误原样回来——**24 / 24**。若换成 `--target js`，其中五个什么都不会
-> 报，因为 MoonBit 的逐文件 `targets` 选项在那个 target 上根本不编译它们：没有 target
-> 编译的文件，是检查器从没见过面的文件。
+> 类型错误，并要求错误原样回来——**24 / 24**。
 >
-> **L 家族那两条是「已记录的边界」而不是缺陷**：跨包的 `#doc(hidden)` 函数
-> 没法从依赖的**源码**索引——只能从它的 `.mbti`——所以
-> `@locale.LocalePreferences::resolve` 在 `proton` 0.3.4 里
-> （`facade_locale.mbt:70`、`core/app_command_host.mbt:114`）仍然报未定义函数。
-> 要回答它们，就得把这个分析器长成源码索引器，那是另一个项目。拿它来看透镜，
-> 不要拿它卡构建。
+> **L 家族那两条是「已记录的边界」而不是缺陷**：跨包的 `#doc(hidden)` 函数没法从依赖的
+> **源码**索引——只能从它的 `.mbti`——所以 `@locale.LocalePreferences::resolve` 在
+> `proton` 0.3.4 里仍然报未定义函数。要回答它们，就得把这个分析器长成源码索引器，那是
+> 另一个项目。**拿它来看透镜，不要拿它卡构建。**
 >
-> （这条注记原本写的是 **116** 和「剩下**一**类」，直到 0.4.30 修掉兄弟文件那一类，
-> 之后写的是 **7** 和「四类更小的」，再之后写的是 **2**——直到 0.4.32 把普查从
-> **六个**语料改成**七个**。量出那两条的普查只覆盖六个：`moonbit_core` 不在其中，
-> 而它的发现数比其余六个加起来还多。0.4.31 那个数字对**量过的**语料是真的，对
-> **没量过的**语料是假的——而一个没有门禁的数字，是可以悄悄消失的，所以现在这份普查
-> 进了版本库、被门禁钉住，并且遇到归不了类的发现就失败。）
+> （这条注记原本写的是 **116 → 2**，而那个「2」是**六个**语料的普查——`moonbit_core`
+> 不在其中，而它的发现数比其余六个加起来还多。那个数字对**量过的**语料是真的，对
+> **没量过的**语料是假的。发布史见 [CHANGELOG.zh.md](CHANGELOG.zh.md)。）
 
-**已实测**（改可信区间前后，同一批树）：
+## 文件种类
 
-| 目标 | 文件 | 解析 | actionable（旧 → 新） |
-|---|---|---|---|
-| `riantr/moonbit_doubleML@latest` → 0.113.0 | 180 | **73（40.5%）** | 0 → **123** |
-| 本仓库自身（.repos/0.3.5） | 39 | **22（56.4%）** | 0 → **7** |
-| `moonbit_linalg_gpu` | 8 | **4（50.0%）** | 1 → **5** |
-| `ML/CI`（`--exclude _qa_verify`） | 107 | **32（29.9%）** | 11 → **57** |
-
-> **与 `moon check` 的关系要说清楚**：在 `.mbt` 上，本工具**不与工具链的编译器
-> 竞争**——`moon check` 有真正的解析器和约 90 条内建告警，覆盖率恒为 100%，
-> 实测 2.3 秒 / 128 条，且每条都带 `file:line:col`、源码片段与修复建议。本工具的
-> `.mbt` 前端只读一个**子集**：在 moonbitlang/core 上，882 个 `.mbt` 解析了
-> **173 个（19.6%）**，而 `.mbti` 与 `.mbt.md` 是 100%。原先最大的单一原因
-> **方法调用在 AST 里根本没有位置**——`ECall` 的被调名是 `String`，所以
-> `m.set(k, v)` 无处安放，解析就停在那里——**本轮已修**（新增 `EMethodCall` 节点，
-> 三个 lens 都接上），该阻塞从 34 降到 **0**。这才是诚实的头条数字，也是
-> `PARSED` 要印在第一行的原因。本工具能说「编译器做不到」的地方是
-> `.mbti` / `.mbt.md` / `.mbtp` 三类文件与跨包语义。
->
-> 早先版本在同一份 ML/CI 代码上报过 **529** 条「未使用局部」，而编译器报 8 条。
-> 那不是两种意见，而是没解析的 struct 函数体里那些字段被当成了没被读的绑定。
-> 现在它报不出来了——被前端截断的函数会整函数退出未使用局部 / 未使用参数 /
-> 参数被改写这三族审计，因为「从未被读」是关于**整个函数**的结论，半个函数
-> 支撑不了这个结论。仅此一项修复就把 moonbitlang/core 从 270 条 actionable
-> 降到 147 条，把本仓库从 11 条降到 **0 条**。
->
-> 再往下读，同一条原则还适用于**模块帧**，也适用于一类解析器从没学过怎么解析的
-> 名字：前端没读完的文件，模块帧是**可证不完整**的，所以那里「找不到可见绑定」
-> 什么也不能证明；而 `Type::member` 路径（`@debug.Repr::opaque_(v)`）是成员引用
-> 不是绑定，跟字段名、方法名本来的处理一致。再把 `extern "c" fn` 当成声明建模
-> （原先整条跳过，名字就丢了，于是每个 extern 函数的调用点都报未绑定），补上数值
-> 字面量与 enum 构造器，moonbitlang/core 从 **270 条降到 49 条**，`undefined name`
-> 从 64 条降到 17 条（发布 0.4.6 时误记为 0，与该版扫描产物不符，后按实测勘正），
-> 本仓库仍是 **0**；0.4.7 再把 `.mbti` 审计的未知类型检查接到模块级接口符号表上，
-> 其余 13 条误报清零，降到 **36**。
->
-> | moonbitlang/core | 文件 | 解析 | actionable | 未定义名 |
-> |---|---|---|---|---|
-> | 0.4.5 | 1029 | 305 | 270 | 64 |
-> | 0.4.6 | 1029 | 320 | 49 | 17 |
-> | 0.4.7 | 1029 | **320** | **36** | **17** |
-
-根包是薄转发层，真正的实现在 `src/sa`（library）。设成 library 是因为「main 包 import 另一个 main 包」已被工具链标记为将来会报错；`src/sa` 与根包都声明 `supported_targets = "+wasm+native"`，因为文件 IO 与子进程来自 `moonbitlang/async`，只有 wasm / native 后端有可用的 async 运行时（js 没有，wasm-gc 缺 `run_async_main`），其余后端会**跳过**这两个包而不是失败。
-
-## DeepSeek Harness 插件
-
-`src/jsoncli` 是 JSON 桥接入口（Node 下运行，一条 JSON 请求进、一条 JSON 应答出）：
-`{"kind":"program","source":...}` 走程序三鉴，`{"kind":"file","filename":...}` 按扩展名
-分派到对应文件种类的分析（`.mbt` / `.mbtx` / `.mbt.md` / `.mbti` / `.mbtp`），
-`{"kind":"machine","spec":...}` 走机器表审计。
-它被打包为 DeepSeek Harness 插件 `@riantr/moonbit-static-analysis-dsh`（工作区目录
-`dsh-plugin-moonbit-static-analysis/`），向 agent 暴露 `moonbit_analyze` /
-`moonbit_analyze_file` / `moonbit_audit` / `moonbit_gates` **四个**工具——插件只是生成器与
-格式化器，分析语义全部留在 MoonBit 侧、随模块一起版本化与跑门禁。
-安装方式见该目录 README（`plugin_manager` 的 `install_bundle`）。
-
-## 更新日志
-
-### 0.4.7 要点
-
-**`.mbti` 接口审计学会了跨文件解析类型。** 生成的接口文件大量引用声明在同包其它文件
-（或 extern 目录）里的类型——`&Show` 参数、`raise SnapshotError` 返回、`impl Debug for
-BenchError` 的目标——此前 `@moonfiles.iface` 只看单文件，core 上 13 个真实 `.mbti`
-因此被误报「未知类型」。本版为接口审计建立**模块级接口符号表**：对扫描目标的每个
-`.mbti` 逐文件收集声明与 `pub using` 再导出后合并，解析顺序为本文件声明 → 内建名 →
-类型参数 → 任一已扫接口（仅类型）。core 上 `.mbti` 缺陷 **13 → 0**，actionable
-**49 → 36**。
-
-顺带修掉：`pub using @pkg {type T}` 形状的再导出此前**一条也没被收集**（24 个
-type + 20 个 trait 的 prelude 段因此不可见），现在进表。
-
-实测（moonbitlang/core，1029 文件，同一台机器）：
-
-| | 文件 | 解析 | actionable | 未定义名 |
-|---|---|---|---|---|
-| 0.4.6 | 1029 | 320 | 49 | 17\* |
-| 0.4.7 | 1029 | **320** | **36** | **17** |
-
-\* 勘误：0.4.6 行的未定义名发布时误记为 **0**，与该版自己的扫描产物不符——0.4.6 的
-扫描里同样有这 17 条，本次核对原始产物后按实测更正；`.mbti` 修复没有触碰它们。
-
-剩余 36 条的构成（下一层的靶子）：17 条未定义名 = 11 条跨文件函数引用（hex / base64
-的 v128 bench 文件调用同包其它文件定义的 `sample_bytes` / `encode_scalar`）+ 3 条
-引用子集外声明的名字（`E_MAX` / `b` / `N`）+ 3 条其余形态（`is` / `e`）；其余 19 条
-是未用绑定等其它缺陷。
-
-自检（扫本仓库自身源码）保持 **0**。测试 231 → 233。
-
-### 0.4.11 —— 第一次扫外部代码：四个修复，全部来自实测
-
-把扫描器指向一个它从没见过的包：
-
-```
-moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
-```
-
-119 个文件，解析 87，**actionable 43**。逐条分类而不是只数一遍，发现其中 30 条是
-分析器自己的缺陷。四个修复，每一条都能追到具体的发现：
-
-| 修复 | 是什么 | 条数 |
-|---|---|---|
-| `Repr` 进内建表 | `core/debug` 里 `Repr` 枚举的构造器，隐式可见——而**不在** `core/builtin` 接口里（表里其它名字全是从那儿抄的） | 16 |
-| 插值里的 import 别名 | `@` 不是标识符字符，所以 `\{@sm.all_states()}` 记录别名时**丢了 `@`**，walk 里 `!has_prefix("@")` 那道闸根本看不见。**这是 0.4.8 自己引入的回归** | 6 |
-| `extend` 是声明 | 当成语句读时，`extend` 变成了一个名字 | 8 |
-| C 风格三段式 `for` | MoonBit 的另一种 `for`；把它的头部当绑定变量读，就会要求 `in` | 覆盖率 |
-
-`Repr` 是用工具链定的，不是推断的：同一个插值里同时写 `Repr(1)` 和
-`ZzNoSuchName123(2)`，`moon check` 只报了第二个。
-
-**覆盖率 73.1% → 86.5%**（87 → 103 / 119）。真正推动覆盖率的是 `for` 修复，而且
-是在修复**自身**的第二个 bug 之后：用来区分两种 `for` 的前瞻，最早那版扫描
-深度 0 的 `;` 时**没有在函数体的 `{` 处停下**，于是文件后面只要出现一个 `;`，
-绑定形式的 `for` 就会被误判成 C 风格，然后死在 `expected ';'` 上。它把本该
-恢复 12 个文件的结果变成 4 个，**把错误搬走了而不是消掉**——15 条
-`expected 'in'` 变成 14 条 `expected ';'`。现在钉住这一点的测试，就是照着
-这个失败写的。
-
-`for` 被降解成 `SBlock[SAssign, SWhile]`，而不是新增 AST 节点——因为每个 lens 都对
-`SKind` 做穷尽匹配。它唯一的不精确之处（update 子句在循环后跑一次，而不是每轮
-一次）是刻意的，且偏向安静那一侧：update 被保留，因为 `i = i + 1` 正是 `i` 被
-**读**的地方，丢掉它会让每个循环计数器看起来都没被用过。这一点有测试钉住。
-
-四个修复合计：**actionable 43 → 31**，其中 26 条属于同一个已知限制——调用同包
-另一个文件里的**包私有**辅助函数，`.mbti` 解析看不见它。这已经是剩余问题里
-占比最大的一类，**0.4.12 关掉了它**（见下节）。
-
-测试：js 215 / wasm 285 / wasm-gc 215。自检保持 46/46、actionable=0。
-五道新防护全部做过突变验证。
-
-### 0.4.12 —— 包私有跨文件解析：剩余最大的一类被关掉
-
-0.4.11 剩下 31 条 actionable 里的 26 条属于同一件事：调用**同包另一个文件**里的
-包私有顶层名字。这不是"限制"，是分析器的缺口——MoonBit 的一个**目录就是一个包**，
-同目录任何 `.mbt` 声明的顶层名字在兄弟文件里都可见，而分析器只经 `.mbti` 解析跨文件
-名字，生成的接口里只有 `pub`。
-
-先把结论量出来，再动手：
-
-- 26 条涉及的 11 个名字（`sieve`、`ridge_fit`、`ridge_predict`、`ols_core`、
-  `normal_cdf`、`fmt`、`claim_code`、`claim_of`、`phase_code`、`contains_state`、
-  `has_state`）**全部**是同目录兄弟文件里的包私有顶层 `fn`——26/26，没有例外；
-- 工具链确认语言确实允许：两文件包里一个文件调用另一个文件的私有 `fn`，
-  `moon check` 与 `moon test` 都通过，**跨 `_test.mbt` 也一样**（`has_state`
-  正是这一种）。所以这 26 条全是对分析器的误报。
-
-做法是每个**目录**一张表：把该目录下所有 `.mbt` 的顶层声明收进来，与跨文件表求并，
-只给这一目录的文件用。`@parser.collect_declared_names` 是**只读 token** 的扫描
-（和 `harvest_ctors` 同一手法：`fn` / `struct` / `enum` / `trait` / `type` /
-`const` / `let` / `extern` / `suberror`），不是解析——调用方只要名字，而词法是解析的
-便宜那一半。
-
-三条边界，都是刻意钉住的：
-
-1. **只取深度 0。** 函数体、`test`、`extend`、`impl` 里的绑定都在至少一层花括号
-   之下，永远不会被收进来。否则一个局部 `let` 就能让自己全包可见。
-2. **名字必须是关键字后紧邻的那个 token。** `let (a, b) = ...` 后面跟的是 `(`，
-   什么都收不到。
-3. **`fn Foo::new` 按整体收成 `Foo::new`，不是 `Foo`**——`Foo` 未必存在。
-
-被分析的**文件自己也在自己那张表里**：它本来就是自己包的一部分。副作用是同文件
-顶层 `const` 也不再被误报（走查本身不注册 `const` 声明，这一直是个坑）——这是测出来
-的，不是顺手带出来的。
-
-`IfaceSymTab::merge` 是**原地改**接收者的，所以这里用的是新的
-`IfaceSymTab::union`：合并进共享表会把一个包的私有名字发给另一个包，而符号表里每个
-名字都是一次**抑制**，跨包泄漏只会让另一个包里真正未定义的名字不再上报。
-
-**pyroduct actionable 31 → 5**，总发现数 658 → 632，正好 −26：既没有新发现冒出来，
-也没有误伤被移走的条目。剩下 5 条：`paths.mbt` 两条 `OperatorMismatch`、
-`algebra.mbt` 的 `_classes`、`slot.mbt` 的 `self`、`audit/mbti.mbt` 的 `_f`。
-
-自检 46/46、actionable=0。输出多一行 `PRIVTAB packages=N names=M`——没查过的表和
-查过是空的，看起来是一样的，所以它得被说出来。
-
-测试 js 220 / wasm 292 / wasm-gc 220。七道防护做了突变验证，其中**一道是突变找出
-来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
-测试只查了值那一半。补上类型侧之后才变红。
-
-### 0.4.32 —— 数的是 UTF-16 码元的转义、词法匹配，以及那份只量了六个语料的普查
-
-#### 字符字面量的转义：整套语法，以及它底下的**崩溃**
-
-这条积压的常备说明写的是「转义读取器最多取四个十六进制位，那正好是 BMP」。
-**观察是对的，解释是错的**，而错的解释才是危险的那一半：照那条说明去修，会把位数
-限住，然后**照样拒绝 `'\u{10000}'`**。
-
-机制是实测的：`"\u{1F600}".to_string().length()` 是 **2**——UTF-16 码元；而
-`.to_array().length()` 是 **1**——码点。读取器把能吃到的十六进制位都吃掉，然后检查
-`s.length() != 1`，那是一个 **UTF-16 计数**。问题从来不是转义形式，而是那个**计数**。
-
-于是读取器现在实现工具链的整套转义语法（29 种形式，每一种都对着 `moon check` 定过），
-并且数的是**字符**。`\xNN` 恰好两位；`\u{...}` 一到六位，值不超过 U+10FFFF 且不含
-代理区；`\uXXXX` 恰好四位；字节形式根本不吃 `\u`。超限的位被吃掉但不累加，第七位
-判为字面量不合法。
-
-**这一切底下藏着一个崩溃。** `'\u{110000}'` 走到 `v.unsafe_to_char()`，抛出
-`RuntimeError: unreachable`，把**整个扫描**带崩——后面每个文件都没被读到，而扫描照样
-打出了 SUMMARY 行，于是这个故障看起来像一个「发现恰好少一点的语料」。那个边界不是转义
-规则的细化；它是「会回答的扫描器」和「会停下来的扫描器」的区别。
-
-**字符计数同时放开了直接写出来的星平面字面量。** 不只是转义形式：
-`builtin/string_methods.mbt:117` 是 `c == '😂'`，正是它把那个文件卡在 117 行。只修
-转义形式的读取器会把半个语料留在身后。
-
-#### `lexmatch` 是一个构造，不是一个名字
-
-这条积压的具名项是带标签的捕获 `(re"..." as t, after=next)`。范围是**重新推**出来的：
-`after=` 在语料里出现在 22 个文件的 283 行上，逐条分类后，真正的构造是**一个语料里
-五个文件上的 84 处**，其余六个语料里**一处也没有**。常备说明写的是「3 个 PINNED core
-文件里的 18 处」；18 正好只是那两个 `diff` 测试文件，所以处数和文件数都错了。
-
-`lexmatch` 之前被读成普通名字，于是解析器在四个语料点上报 `undefined name 'lexmatch'`——
-而那些代码是 `moon check` 能过的。现在它被读成构造：主语、可选的 `with longest`，以及
-被整体跳过的各个分支。这个表达式被记为「在分析子集之外」，并复用 `@ast.EMatch`——形状
-完全相同，另开一个变体只会让 walk/types/infer/interp 和 `.mbti` 白白震荡一场，却不带来
-任何新信息。
-
-#### 插值里的 lambda 形参是**绑定**，不是读取
-
-修好 `lexmatch` 之后，`builtin/autoloc.mbt` 越过了它原来的解析边界，然后这个文件在
-83:5 报 `no visible binding for 'sb'`——`sb` 是插值里一个 lambda 的形参：
-
-```
-$|{"filename":\{sb => self.filename.escape_to(sb)},...}
-```
-
-收集器在第一个非标识符字符处就把名字冲掉了，而在 `sb => sb` 里，那个字符是**空格**。
-两种写法都处理了（`sb=>sb` 和 `sb => sb`）。而且「挖出来的」不是回归：这个发现原先被
-解析边界挡在后面，所以它在这次增量里被**修掉**，而不是被钉成 `actionable=1`。
-
-#### 那份普查只量了六个语料，第七个从来没被数过
-
-上面的 `--per-function` 方框被重写了，理由值得一读：量出 0.4.31 那个「116 → 2」的
-普查只覆盖**六个**语料，`moonbit_core` 不在其中。在七个上量，0.4.31 的数字是 **66**。
-两个 wasm 打同一份语料，方向不含糊：
-
-```
-                        0496 之前（be21ecd）      0496
-    files                     1029                 1029      不变
-    parsed                     935                  957      +22
-    actionable                  64                   56       -8
-```
-
-两个发现集合正好差 **8** 条，**没有一条新的**：八条全是 `undefined variable 'lexmatch'`。
-所以这次增量把普查**变好了**；那个往上走的数字，是一个从来没被数过的数字。
-
-这 58 条被一份**进版本库**的普查脚本归成**十二类**，遇到归不了类的发现就失败，发版
-门禁**逐语料钉住**数字。它们没有一条是被分析代码的缺陷，而这个结论是量出来的：`
-moon check --target all` 在 `moonbitlang/core` 上恰好报一条错误，在
-`json/README.mbt.md`，而它不在带发现的二十四个文件之列。没有诊断的文件和没人打开过
-的文件长得一模一样，所以还有一道**正向对照**：往这些文件里（**副本上**）各追加一个
-故意的类型错误，并要求错误原样回来——**24 / 24**。若换成 `--target js`，其中五个什么
-都不会报，因为 MoonBit 的逐文件 `targets` 选项在那个 target 上根本不编译它们：没有
-target 编译的文件，是检查器从没见过面的文件。
-
-#### 之后的数字
-
-```
-    测试套件                     1163 通过，0 失败   （0496 之前 1136；+27）
-    逐函数普查                   七个语料 66 -> 58   （core 64 -> 56；proton 2 -> 2）
-    这 58 条                     12 个家族，没有一条是被分析代码的缺陷
-    带它们的文件                 24 个，moon check 读到了 24 / 24
-    这份普查                     进版本库、被门禁钉住、归不了类就失败
-    模块视图语料 pin             moonbit_core 33（0496 之前 37）；其余六个逐字节一致
-    变异门                       发版门禁里 79 个（0496 之前 78）
-    0496 自己的门                14 个变异：13 个 KILLED，1 个带证明的声明存活
-    重新锚定的门                 6 个（0459 M4、0480 M1-M3、0488 M5-M6）
-```
-
-### 0.4.31 —— 那 116 条发现是透镜的一份清单，而清单被清空了
-
-0.4.30 时 `--per-function` 视图在 `moui` 0.1.12 上报 7 条 `actionable`，分属「四类更小的」
-透镜缺陷。那是把顺序搞反了：数字小只是因为这个视图只被指向了一个语料，而**类**才是真正的
-内容。这一版在固定语料上量这个视图——**116 条 actionable**——把它们归成**八类**，一类一类
-修掉，每类都配一条必须仍然报出来的对照。
-
-| 家族 | 条数 | 透镜当时主张什么 | 怎么修的 |
-|---|---:|---|---|
-| A | 61 | 解构出来的名字绑定的是**整个元组** | 绑的是元素——类型透镜本来就答「Unknown」 |
-| B | 25 | 带值的 `continue`/`break` 是 unreachable code | 带走的值是终结符**自己的载荷**，不是旁边的语句 |
-| C | 8 | 循环体总是终止的循环之后的语句是死代码 | 「循环可能被 break 出去」是与合并流**分开**的信号 |
-| D | 10 | `extern`/FFI 调用、可省形参被当成位置槽、同一个名字声明了**两次**、以及没有函数体的函数 | **一个名字下的四个缺陷**，每一个都先单独隔离出来 |
-| E | 5 | trait 的方法不是值 | `.mbti` 读取器把 trait 的方法收成 `Trait::method` |
-| F | 4 | 整数 `/` 被定型成 `float` | `div_type`，以及它旁边的常量折叠 |
-| G | 2 | 被 `is` 模式的 `as` 绑定绑出来的名字没有绑上 | `as` 绑定在**任何**深度都被收上来 |
-| H | 1 | 推导式没有绑定自己的模式 | 名字绑在环境的副本里 |
-
-**那 116 条没有一条是被分析代码的缺陷。** 每一条都在 `moon check` 能过的文件里，都在已发布、
-已上架的包里。它们是透镜的**一份清单**，现在清单空了，只剩两条「已记录的边界」——跨包的
-`#doc(hidden)` 函数没法从依赖的**源码**索引，只能从它的 `.mbti`；要回答它们就得把这个分析器
-长成源码索引器，那是另一个项目。
-
-#### 模块视图没动——只有一个语料动了，而且是往下动
-
-七个固定语料里六个的模块视图数字逐字节相同，这正是两个视图分开的意义。第七个
-`moonbit_core` 从 **48 条 actionable 变成 37 条**，而**怎么**动的才是值得读的部分：建了
-两个 wasm，一个是 0495 之前的树，一个是这棵，**同一个**语料两边各扫一遍。
-
-```
-    actionable  48 -> 37
-    notices     9988 -> 9988   不变
-    unreliable  2956 -> 2956   不变
-    withheld    552 -> 552     不变
-    parsed      935 -> 935     不变
-    files       1029 -> 1029   不变
-```
-
-**发现集合**恰好差 11 条，**新的一条没有**：十条 `undefined name 'rl'` / `'lr'`
-（`is` 模式 `(Node(..) as rl)`）和一条 `no visible binding for 'Arbitrary::arbitrary'`
-（把 trait 的方法当值读）。每个文件的 `defects=` 头（不截断）显示，有发现的 680 个文件里
-**只有 2 个**变了，别的文件计数完全一样。光看计数分不出「修好 11 条」和「修好 11 条、
-又换来 11 条新的」；集合分得出，而它说的是前者。
-
-#### 这次改动自己弄坏的五个变异门
-
-完整发布门第一次跑是红的，挂在五个门上，原因就是这次改动本身：0495 把这几个门锚定的文本
-挪了位置。锚点挪位不是拼写错误要改掉——它要重新锚到**当前**文本、**同一个**变异，然后
-**量**它是否还能杀掉。这五个门的 31 个锚点现在全部存在且唯一。
-
-**然后其中三个失败的原因跟锚点毫无关系**，这部分才值得读，因为一次以绿灯收尾的重新锚定，
-可能藏住一个已经不再守任何东西的门。
-
-- **0425 的 M7 存活了，而这次存活是对的。** 0495 把 `falls` 标志换成了流的列表加一个合并，
-  缺 `else` 的那一支从**赋值**一个「落到下面」变成了**贡献**一个——于是只要有哪个分支落到
-  下面，它就变得多余，而 0.4.25 的样例恰好就坐在那个位置。这一行仍然管着一件没有样例管过
-  的事：没有 `else`、而**每个**分支都终止的链。在 0495 之前的树上量过：那个变异恰好杀掉
-  一条测试；在这棵树上它一条都杀不掉。所以修法是补一条**样例**，而不是重新锚一次锚——M7
-  又被杀掉了。
-- **0472 的 M5 写不出来了。** `continue` 带走的值现在是终结符自己的载荷 `Array[Expr]`，
-  而赋值是 `Stmt` 种类——这个变异根本写不出来，编译器会这么说。它守着的那个主张现在由
-  **类型**保证，比一行代码更强；于是它带着这个理由退役，而**另加**一个变异，在主张如今
-  真正待着的地方守住它的另一半（「值被读到了」）。
-- **0493 的 M3 点名的测试不再是该点的那个。** 别处的一次修复——可省形参不是位置槽——让它
-  点名的行不再能区分两种机制。现在由仍然能区分的那行（callee 没有的那个 label）来点名，
-  并且把理由写下来，而不是假设。
-
-#### 为了数而加的旗标
-
-`--findings-shown-per-file N`——每个文件的打印上限本来是 40，而要数 116 条得全看见。默认值
-不变。
-
-#### 之后的数字
-
-```
-    逐函数 actionable 发现            116 -> 2   （那 2 条是已记录的 #doc(hidden) 边界）
-                                       ^^ 0.4.32 就地更正——那次普查只覆盖了**六个**语料
-    模块视图语料 pin                   六个语料不变；moonbit_core 48 -> 37
-    moon test --deny-warn              wasm 1136/1136；js 与 wasm-gc 1056/1056
-    moon check --deny-warn             exit 0
-    自身源码自扫                       167/167 解析，actionable=0
-    变异门                             78 个门全绿；一个变异带着理由退役
-```
-
-**那个「2」是六个语料的普查，第七个从来没被数过。** 量出它的普查覆盖 `moui`、
-`moonbit_labeler`、`moonbit_image`、`async`、`proton`、`proton_contract`——`moonbit_core`
-不在其中，而 `moonbit_core` 的发现数比其余六个加起来还多。在**七个**语料上量，0.4.31
-那个数字是 **66**，不是 2。这一版宣称清空的那份清单，并没有清空。
-
-修法不是把句子写得更好听，而是把普查变成：**进版本库**（第七个不会再被漏掉）、
-**写明**它覆盖哪些语料、遇到**归不了类**的发现就**失败**，并且被发版门禁**钉住**。
-0.4.32 补上了两样：`_verify/census_perfunction.ps1` 与
-`_verify/control_perfunction_census.ps1`。
-
-### 0.4.30 —— 最后 89 条发现归零，而行为透镜发现自己一直是错的
-
-0.4.29 时六个语料一共背着 **89 条 actionable**：async 19 条、proton 68 条、
-proton_contract 2 条，另外三个语料是 0。这一版把它们变成**六个全是 0**——而且是在
-**同样的 1081 个 `.mbt` 文件**上（moui 551、labeler 35、image 17、async 362、proton
-114、contract 2，这一版重新数过，没变）。自检读的文件从 68 个变成 **161** 个，
-`actionable` 始终是 0，测试从 **514 个 wasm 变成 1067 个**。
-
-#### 前端又读懂了十九种语法形式
-
-这一轮的工作大部分是前端做的。读不懂的形式会留下一个**可证不完整**的模块帧，
-于是里面每个名字看起来都没绑定、每个运算符看起来都不匹配——这正是 0.4.7 那条
-「干净的 0 有可能是靠不看换来的」教训的反面。每种形式在写之前都对着工具链定案；
-凡是编译器对规则有话说的，历史里都在对应的 increment 之前留了一个 `settle` 提交。
-
-| 形式 | increment |
+| 后缀 | 本工具做什么 |
 |---|---|
-| C 风格 `for` 的初始化子句是一个**声明** | 0470 |
-| 匿名 `fn` 的 `)` 与 `{` 之间的尾部 | 0471 |
-| `for` 头是**一种**文法，不是两种 | 0473 |
-| 处于**表达式**位置的循环被送进了错误的读取器 | 0474 |
-| 只带一个声明的 binder 头 | 0475 |
-| binder 头初始化子句之后的那一步 | 0476 |
-| `let` 等号左边的构造子模式 | 0477 |
-| `<?` payload，`expr <? { "k": v, .. }` | 0478 |
-| UTF-8 BOM 被跳过，而不是被拒绝 | 0479 |
-| 无大括号的转义，`'\uXXXX'` | 0480 |
-| 嵌套的可选类型 | 0481 |
-| 被换行分开的 `for` 头 | 0482 |
-| 带包限定的持有者，`@pkg.Type::method` | 0483 |
-| 接收者是引用的 trait 方法 | 0484 |
-| `is` 位置上的大括号结构体模式 | 0485 |
-| `+` 连接的效果子句 | 0486–0487 |
-| 跨行的 `<+`、`$|` 模板串 | 0488 |
+| `.mbt` | 三鉴程序分析 |
+| `.mbtx` | 三鉴程序分析 + import 块审计 |
+| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知的类型引用。行文法与 `moon info` 真正吐出的一致，所以生成的接口文件不会报*畸形行*。未知类型检查会查全模块的接口表，在 `moonbitlang/core` 上实测 **0**。残留的发现仍可能指向扫描范围之外声明的类型——请当作未经验证，而不是缺陷。 |
+| `.mbt.md` |  literate：只认工具链真正**会编译**的围栏——`mbt check` / `mbt test` 以及 `moonbit` 写法。裸 `mbt`、裸 `moonbit` 和 `nocheck` 是展示块，跳过。 |
+| `.mbtp` | 逻辑侧证明 lint（函数体里的字符串常量、被禁的 `!`/`↔` 形式、跨包调用、没有 `proof_ensure` 的引理）——**不能替代 `moon prove`** |
+| `moon.mod` / `moon.pkg` / 工作区 | 只记录，不做静态分析——配置不是代码 |
 
-0481 关掉了 proton 最后一个读不完的文件，0482 关掉了 moonbit_image 最后一个，
-0483 关掉了当时 async 剩下的那几个。**async 还有 4 个文件读不完**，就是那份常备
-积压：`re"..."` 正则字面量、`let { .. } = x` rest 解构、带非空更新子句的 `for` 头，
-以及 `>..` 配 `break <value>`。
+完整分类见 [EXTENSIONS.md](EXTENSIONS.md)。
 
-#### `--per-function`：让行为透镜在每个函数上入口
-
-0.4.29 在真实代码上量了行为透镜，那个数字很难看：六个语料 **1081 个 `.mbt` 文件**
-上，它全部可读贡献只有 **3 条 actionable**，占那 89 条的 3.4%；而它自己的三个 family
-——`Unreachable`、`NonBooleanCond`、`MethodError`——数出来是 **0 / 0 / 0**。机制本身
-不是缺陷：透镜在**模块**上入口，函数体只有被顶层语句调用才执行，而库模块不会在
-顶层调用自己的函数。
-
-`--per-function` 给了它第二个入口：每个函数都当作程序入口来分析，形参绑定到按
-**声明类型**新造的抽象值——对入口点来说这是唯一站得住的选择，因为运行期值未知。
-默认视图不动，两个视图**分开而不是相加**。
-
-而新视图立刻显示这个透镜是**错的**，不只是安静。在 moui 0.1.12 上它报 **265 条
-actionable**，而模块视图报 0——那是透镜自己缺陷的清单，全都落在 `moon check` 接受的
-代码上。0490 修了列表值撞列表形参、元数规则必须变成一个**区间**、函数体是 `if`
-的函数、字符串拼接、字符串比较，以及一个从没记录 `omittable` 的解析器；0491 修了
-最后一类——**读**路径从来没查过跨文件符号表，而结构透镜和这个透镜自己的**调用**路径
-从 0.4.3 起就查了。
-
-| 语料 | 0489 | 0490 | 0491 |
-|---|---:|---:|---:|
-| moui | 265 | 58 | **7** |
-| proton | 136 | 92 | **5** |
-| moonbit_image | 94 | 68 | **44** |
-| moonbit_labeler | 95 | 48 | **40** |
-
-moui 上剩下 7 条，分属四个有名有姓的类：一个被 `is` 模式绑定的名字、一个 `None`
-接收者、跨文件构造子的元数，以及 unreachable 代码。
-
-#### 工具链给两个无后缀整数类型改了名，而表没跟上
-
-0.1.20261012 改了 `Int`/`UInt` 的**规范拼写**，变成 `Int32`/`UInt32`。类型本身没被
-改名——`Int` 仍然是可用的别名——但 `moon fmt` 会重写成带宽度的新写法，而分析器的
-ambient 类型表和方法表还带着旧拼写：本仓库自己生成的接口文件上就是 **37 条发现**，
-而且是在**默认视图**里，所以新工具链上的每个用户都会拿到它们。
-
-修法是**并集**，不是镜像：builtin 方法表是当前接口声明的、intrinsic 补的，**加上**
-上一版表里已有的。新接口丢掉的 102 个名字被带了过去；每个名字一个探针，定案
-33 个已死、69 个仍可调用，丢掉那 69 个会把合法的调用变成 `undefined function`。
-
-#### 两处就地更正
-
-0490 在七个文件里写错了工具链版本号，又在同一个提交的第八处写了对的，而仓库早在
-0.4.22 就有三处写对了。更正是后续提交，不是改写历史。
-
-还有一次 `Get-Content -Raw` 往返在这台 CP936 机器上把 `—` 写成 `鈥?`，**并且吞掉
-了后面的换行**，在两处把两行注释并成一行。五个文件里 19 处，每一处修好的行都对着
-引入损坏那个提交的**父提交**核过字节。故意留着的两处不动——两份 README 是**故意**
-把乱码摆在那儿，作为缺陷的记录。
-
-#### 依赖动了
-
-`moonbitlang/async` 0.22.4 → **0.22.5**，切这一版之前整套门禁在新依赖下重跑过一遍。
-「wasm-gc 想要一个 async 没有导出的 `run_async_main`」这个说法对着新版本重新核过，
-仍然成立：`integration.mbt` 用 `#cfg(target="native")` 和 `#cfg(target="js")` 守着它，
-另一半是 `integration.wasm.mbt`——只给 `wasm` 目标，不是 `wasm-gc`。
-
-### 0.4.29 —— `expr as &Trait` 是运算符，而解析器里根本没有它的产生式
-
-`as` **早就在词法器的关键字表里**。但**表达式**文法里没有任何东西消费它。postfix 循环在它
-上面断开，语句读取器把剩下的 `as` 当成下一个表达式的开头，绑定遍历再把它当成普通标识符
-解析出来：
+## 包结构
 
 ```
-69:38 - error: undefined name 'as' (UndefinedName) [structural+type]
+src/core      Span/Severity/Lens/Family(merge_group 契约)/Frame + Family::advice
+src/report    Report 结构与渲染（透镜标签取并集、vst 帧）
+src/sa        扫描入口 + aggregate() + mermaid_states()（public，库）
+src/lexer     MoonBit 词法前端
+src/parser    MoonBit 语法 → ast
+src/ast       MoonBit 抽象语法
+src/walk      结构透镜：绑定表 + 结构发现
+src/types     类型透镜：Ty/Ty?/Sig 推导
+src/interp    行为透镜：AbsVal 格 + 分派 + 虚拟栈
+src/pipeline  装配：跑三鉴 + merge_group 合并
+src/moonfiles 其它文件种类：.mbt.md 逐块三鉴 / .mbti 接口审计 / .mbtp 证明 lint
+src/statecheck 用途二：通用机器表审计（纯数据 MachineSpec 桥）
+src/samples   demo 样例（内嵌 MoonBit 源码）
+src/cli       可执行入口（程序 demo + 文件种类 demo + 样例机器审计）
+src/jsoncli   DeepSeek Harness 的 JSON 桥
 ```
 
-**一个从来没存在过的名字**，被当成 actionable 报出来——而那个程序 `moon check` 零错误接受。
-这是同一形状的第三次出现：`guard`（0.4.21）、`raise`（0.4.23）、现在是 `as`。词法器认识、
-解析器不认识的关键字。
+根包是个薄转发层；实现是 `src/sa`，一个**库**。`src/sa` 和根包都声明
+`supported_targets = "+wasm+native"`，因为文件 IO 和子进程来自 `moonbitlang/async`，
+而只有部分后端有可用的 async 运行时；其余后端**跳过**这两个包而不是失败。
 
-#### 对着编译器定案，不是假设
+## 验证
 
-`_verify/settle_0428_cast.ps1` 编译三种形式，并要求两个反例必须被拒：
-
-| 程序 | `moon check` |
-|---|---|
-| `b as &Sink` | **ACCEPTED** |
-| `Box::{ n: 2 } as &Sink` | **ACCEPTED** |
-| `Box::{ ..o, n: 9 } as &Sink` | **ACCEPTED** |
-| `b as`（没有目标） | REJECTED |
-| `b as Box`（不是 trait object） | REJECTED |
-
-`moon check` 把规则原话说出来了：*「`Int` is not a trait object type, it cannot be used on the
-right hand side of `as`」*。所以 `as` 是解析器**必须接受**的运算符，被约束的只有它的右侧。
-这个 settle 的前两稿**什么都没定下来**：一稿把 `fn() => 1` 当 lambda（MoonBit 的 lambda 用
-大括号，`fn() => 1` 是 3002），另一稿拿 `as Int` 当目标，于是每个用例都死在 trait-object
-规则上，压根没问到 `as` 本身。
-
-#### 修法，以及这个节点**故意不**带的东西
-
-`ECast(Expr)`——只带操作数——外加 `parse_postfix_from` 里的 `as` 分支。目标类型由现成的
-`type_annotation` 读掉，然后**丢弃**。
-
-这看起来像错过了一个机会：`as` 要求 trait object，所以类型看着可查。**它不可查。**
-`IfaceSymTab` 不区分 trait 和 struct——`using @pkg { type View }`、`trait` 声明、`struct`
-声明，全都落进同一个 `types` 集合。基于那张表的检查会把**每一个**转成 struct 类型的 cast 都
-报出来。带着这个字段却不读它，是一个没有透镜能查的字段——那比不写它更糟。这就是 0.4.26
-`()`→TNone 那条教训的反面：**前置条件表里根本不成立的检查，是假阳性发生器**，而「不查」
-才是诚实的答案。
-
-**span 取 `as` 那个 token**，不是操作数的。那个循环里其他所有扩展都保留 base span，但那些节点
-把 base 压平成了名字、不这样做就会丢掉位置；而这里操作数作为子节点还活着，它的位置仍能通过
-`ECast` 取到，**`as` 自己的位置则别处无处可记**。
-
-#### 三个透镜，以及这个修复**本来可能引入**的假阳性
-
-`walk` **必须**遍历操作数。`fn to_sink(b : Box) -> &Sink { b as &Sink }` 里只有这一处读 `b`
-——一个不遍历就返回的 arm 会把参数报成未读，**用一个假阳性换另一个**。这就是 `EComp` 教训的
-原样形态：**没被遍历的那一半，就是会消失的那一半**。它有专属测试，M2 杀它。
-
-`infer` 对操作数定型（所以里面的错名字、错实参类型照样找得到），结果给 `TUnknown`。
-`interp` 求值操作数并给 `AAny`，保持路径活着，而不是像 `1 as &Trait` 那样折叠掉。
-
-#### 实测
-
-人口是**用工具自己的输出**数的，不是用匹配器——分析器本来就每个出现发一条发现，而发现里写着
-那个 token，所以这个数继承不到匹配器的盲区。`undefined name 'as'`，六个语料：**恰好 1 处**，
-在 `wzzc-dev/moui runtime/view_tree.mbt:69:38`。
-
-一处很少。但它同时是 **moui 全部的 actionable**。
-
-| 语料 | actionable 前 | 后 | |
-|---|---:|---:|---|
-| moui | 1 | **0** | 那条 `as` 假阳性 |
-| moonbit_labeler | 0 | 0 | 逐字节一致 |
-| moonbit_image | 0 | 0 | 逐字节一致 |
-| async | 19 | 19 | 逐字节一致 |
-| proton | 68 | 68 | 逐字节一致 |
-| proton_contract | 2 | 2 | 逐字节一致 |
-
-自检 68/68 解析（100%），**actionable = 0**。
-
-**这个数要连着它的覆盖面一起读。** 823 条通知里，**429 条是「test 声明在已分析子集之外」**——
-`test` 和 `impl`、`trait` 走同一个大括号跳過器，于是 **429 个测试体从未被遍历**。这是自检里
-**最大的一项排除**。
-
-完整清单由 `_verify/backlog.ps1` 实测得出（**这份清单以前是手攒的，而且漏项**）：
-
-| # | 通知 | 计数 |
-|---:|---|---:|
-| 1 | test 声明 | **429** |
-| 2 | match 表达式 | **155** |
-| 3 | **if 表达式** | **45** |
-| 4 | struct 声明 | 36 |
-| 5 | derive 声明 | 31 |
-| 6 | enum 声明 | 14 |
-| 7 | 匿名函数字面量 | 10 |
-| 8 | const 声明 | 6 |
-| 9 | 短 lambda | 2 |
-| 10 | try 表达式 | 1 |
-
-合计 729 条**已打印**通知；另有 **94 条**落在每文件的显示上限之后（823 − 729）。
-所以上表是下界，不是全部。**每一行都是一段「读过去了但没分析」的跨度**——里面的东西对三个
-lens 都不可见，读丢了，绑定也丢了。少掉任何一行都需要为那个形式加一个 AST 节点，
-所以它们是**功能**，不是可以改写的通知文案。
-
-`actionable = 0` 说的是**被分析了的那部分声明体**，不是那 823 个被排除的体；这个 0 有一部分
-是**靠不看换来的**——而且看的正是最大的一组。这正是 0.4.10 的形状：「一个干净的 0，有一部分
-是靠不看得到的」，只是这次对准的是项目自己的测试套件。
-
-#### 还有**第二条**「靠不看」的路，而且是整函数粒度的
-
-上面对的是**哪些声明体没被遍历**。还有一条它没提，而它可能更安静：
-
-`Walker::audit_suppressed`（`walk.mbt:354`）把**任何与函数行范围重叠的排除区**当成
-「这个函数里我没法下结论」，于是那个函数的 `UnusedLocal` / `UnusedParam` / `ParamChanged`
-**整体关掉**（`walk.mbt:707`、`walk.mbt:1011`）。
-
-`_verify/match_read_discriminator.ps1` 实测，正对照带上了：
-
-| 用例 | 本地量从未被读 | 结果 |
-|---|---|---|
-| 函数里**没有**未分析区 | 是 | **报 unused** |
-| 函数里**有**一个 `match` | 是 | **不报** |
-
-同一个局部、同一个函数，只因为函数里多了一个 `match`，unused 检查就整个不说话了。
-所以「a local read only inside a match arm 没有报 unused」**并不是**「arm 里的读被记录了」——
-我第一版探针就是这么写的，**那是错的**；真相是抑制。
-
-后果有两条，都是真的：
-
-1. `match`(155)、`if` 表达式(45)、匿名函数字面量(10)、短 lambda(2)、`try`(1) 这
-   **213 处表达式级**排除落在函数体内时，会关掉**整个函数**的 unused 检查。
-   声明级排除（`test` 429 / `struct` 36 / `derive` 31 / `enum` 14 / `const` 6，共 **516** 处）
-   在函数范围之外，**不触发**这条抑制（`walk.mbt:349-351` 写明了这一点）。
-   这个划分由 `_verify/backlog.ps1` 按类别打印，不是我手分的。
-2. 因此 **`actionable = 0` 有一部分是绿的、绿在「没在看」上**——和上面那条测试体排除是
-   同一种形状，只不过这一条之前没人写下来。
-
-抑制点有**两处**，不止一处：顶层函数在 `walk.mbt:1010`，**局部函数**（`SLocalFunc`）在
-`walk.mbt:710`——两处的理由写在代码注释里：「`sp` 是局部函数的整个范围，所以它体内的
-`match` 同样会抑制它的 frame audit」。
-
-**没有测的是**：这个项目里到底有多少个函数因此被关掉了。213 是**上界**；要拿到准确函数数
-需要每个 `fn` 的行范围，而分析器并不导出它。与其手写一个花括号扫描然后给出一个可能错的
-数字，不如把上界摆出来。
-
-测试 js 442（新增 12）/ wasm 514 / wasm-gc 442。五个突变，四个被杀，一个预期存活，
-每次还原都按 SHA256 逐字节核对。
-
-#### 行为 lens 在真实语料上到底贡献了多少
-
-`src/interp` 是整个模块里最大的一块：一个抽象解释器，带格、调用缓存和虚拟栈。它到底
-有没有挣到自己的位置，README 说了不算——量。
-
-`_verify/lens_audit.ps1` 做两件事。**相位一**数：每条渲染出来的发现都带 lens 标签
-（`report.mbt:50`），所以 lens 的占比直接从扫描输出里读。**相位二**是差分，也是真正下结论的
-那一步：把 `analyze_module` 改成返回空，重新构建，**在同一棵语料树上**逐字节 diff。
-
-| 语料 | `.mbt` | actionable 开 | 关 | 差 |
-|---|---:|---:|---:|---:|
-| moui | 551 | 0 | 0 | **0（逐字节一致）** |
-| moonbit_labeler | 35 | 0 | 0 | 0 |
-| moonbit_image | 17 | 0 | 0 | 0 |
-| async | 362 | 19 | 18 | **1** |
-| proton | 114 | 68 | 66 | **2** |
-| proton_contract | 2 | 2 | 2 | 0 |
-| **六个合计** | **1081** | **89** | **86** | **3** |
-
-**行为 lens 不是死代码——但它的全部可读贡献是六个语料、1081 个 `.mbt` 里的 3 条 actionable
-（占 89 条的 3.4%）。** 三条全是 `undefined function`，全部落在**限定名**的跨包构造器调用上：
-async 的 `Set::from_array`，proton 的 `@async.CondVar::Cond` ×2。最大的语料 moui
-（551 个文件、3288 条打印发现）把它整个关掉，输出**逐字节一致**。
-
-更值得说的是**它自己那几个族**。interp 是 `Unreachable`、`NonBooleanCond`、`MethodError`
-三个族的**唯一**产生者，而这三个族在 89 条 actionable 里的计数是 **0 / 0 / 0**——不是「少」，
-是零。一个专门用来查「`return` 之后的代码不可达」的 lens，在 1081 个真实文件上没有报过一次
-不可达。原因 README 早就写过（见 0.4.16 那一节）：interp 只在**函数体被顶层语句触达**时才
-分析它，而真实代码里绝大多数函数没人从顶层调用。
-
-**这里不声称那三个族是死代码。** 我造了合成探针（`_verify/lens_matrix.ps1`，七个形状），
-**它一个都没触发**——连已知能触发的那个形状（把 proton 的 `facade_notification.mbt` 原样
-单文件扫一遍）也复现不出来，因为探针没有语料的包上下文，符号表解析不到 `@async`。这正是
-0.4.16 那个探针缺陷的同一个形状：**探针量的是探针，不是 lens。** 所以探针的零不支持任何结论，
-差分才是证据。
-
-#### 那个存活者，以及它暴露出的门禁 bug
-
-**M4**（interp 不再求值 cast 的操作数）存活了。为了确认它是**理直气壮**地存活、而不是
-因为少写一个测试，花了三版夹具加一个测量脚本：
-
-1. 操作数里的 `MethodError`——**根本不存在**。`1.nomethod()` 什么都不报；我探针数到的
-   那一条是**警告**（`UnusedParam`），被我 grep `error:` 过滤掉了。
-2. 同一个想法放进一个从不被调用的函数。`Interp::run_top` 直接跳过 `SFunc`（`interp.mbt:389`）。
-3. 同一个想法放进 `fn main`——它**也是** `SFunc`，同样被跳过。
-
-随后 `_verify/probe_0429_m4.ps1` 上这个突变、重新构建、diff 分析器的真实输出，跑了五个程序。
-**五个全部逐字节一致**，两条实测理由：cast 操作数里的未绑定名字是**walk** 以 `undefined name`
-报的，而 interp 的 `undefined variable` 与它**同族同 span**，`merge_findings` 只显示一个、
-藏起另一个；`FMethodError` 和 `FOpMismatch` 共用 `"arg-type"` 组（`core.mbt:380`），操作数里的
-运算符错配同样会被折叠掉。
-
-**这里记的是「我造不出能观测到它的夹具」，不是「已在整个输入空间证明等价」。** 这是两句不同的
-话，只有第一句有支撑。保留这个 `eval`，是因为每个兄弟 arm（`EField`、`ETupleField`、`EStruct`、
-`EComp`、`EMethodCall`）都求值自己的操作数——一致性是理由，不是证明。
-
-**而门禁自己先是错的。** 早先一次运行报「M4 KILLED, 2 of 442 red」，但**杀死它的两个测试
-在干净代码上就是红的**——它们断言了一条分析器从不产生的 `MethodError`。此后每个突变都同样报
-那两条红，于是门禁看起来健康，而唯一没被钉住的突变被报成钉住了。
-`_verify/mutate_0429.ps1` 现在**先跑一遍未突变的套件，不是全绿就中止**，因为突变计数只有
-在基线是绿的时候才有意义。
-
-### 0.4.28 —— `derive` 没有函数体：一条 ParseError 在说一件不成立的事
-
-`derive(Debug, Eq, Clone)` 是**带括号的 trait 列表，没有大括号**。但顶层分派把它送进了
-`skip_decl_braced`——那是 `struct` / `enum` / `trait` / `impl` / `extend` / `test` 用的跳過器。
-两个后果，**只有一个是看得见的**：
-
-**一、消息是假的。** `skip` 的文案由一个 `braced` 标志决定，于是每条 derive 通知都写着
-「its body was not analyzed」——**而 derive 根本没有 body 可分析**。六个语料里生产代码共 570 条。
-
-**二、它会吃掉邻居。** `skip_decl_braced` 向前扫找 `{`，只在遇到 `fn` 时停下。所以
-
-```moonbit
-derive(Debug, Eq)
-struct Box { n : Int }
+```bash
+moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
+moon test --deny-warn                # wasm 1163/1163；js 与 wasm-gc 1083/1083
+moon run src/cli                     # 程序 demo + 文件种类 demo + 样例机器审计
 ```
 
-里，**struct 的大括号被 derive 当成自己的 body 吞掉了**，struct 自己那条排除通知从来没被发出来。
-文件声称只做了一次刻意的排除，实际做了两次，而丢掉的那一条正是这条通知存在的意义。
+`--deny-warn` 是刻意的：不加它，就没有任何东西强制「0 警」这个说法——一次告警回归会静悄悄
+地过掉 CI。CI（`.github/workflows/gate.yml`）跑 `moon update`、`moon check --deny-warn`、
+`moon fmt --check`、`moon test --target js --deny-warn` 和 `moon build --target wasm`。
 
-#### 我自己犯的那个错，和 0.4.27 是同一族
+各 target 的测试数量不同是刻意的：`src/sa` 与 `src/jsoncli` 声明
+`supported_targets = "+wasm+native"`，所以 js 与 wasm-gc 这两次运行会**跳过**这两个包而不是
+失败它们。一个声称所有 target 都是同一个数字的测试计数本身就是错的，而 wasm 那个数字是
+唯一同时覆盖渲染器和扫描器的。
 
-我量过「`derive` 后面紧跟一个大括号声明」在 moui 0.1.12 里的出现次数：**0**。于是我写下了
-「这是潜伏缺陷，对语料零影响」。
+### 唯一的发布入口
 
-**度量是对的，推论是错的。** 跳過器不是在下一行停下——它扫到**任何** `{` 才停，可能隔着很多行。
-它一直在吞，只是吞的不是我量的那种紧邻形状。
+`moon check` 和 `moon test` 是地板，而本项目不只靠地板。它上面的所有东西都在**一个**脚本里：
 
-| 通知 | 修之前 | 修之后 | 差 |
-|---|---:|---:|---:|
-| `derive`（旧文案） | 575 | 0 | −575 |
-| `derive`（正确文案） | 0 | 547 | +547 |
-| **struct** | 572 | **829** | **+257** |
-| **enum** | 155 | **246** | **+91** |
-| **extend** | 238 | **308** | **+70** |
-| 合计 | **5,026** | **5,399** | **+373** |
-
-**+418 条此前不可见的排除声明。** 修正之后 notice 数字**上升**——这不是退步，是那 418 条
-一直在被悄悄吞掉。
-
-**六个语料的 actionable 全部不变**（moui 1 / labeler 0 / image 0 / async 19 / proton 68 /
-proton_contract 2），没有新增误报。
-
-#### 这一版没有做什么
-
-通知**保留**。分析器确实没有建模 derive 生成的实现，所以读者有权被告知；被去掉的只是那句
-关于「函数体」的假话。**这不是靠少报来好看。**
-
-测试 js 430（新增 5）/ wasm 502 / wasm-gc 430。四道突变全部被杀，每轮 restore 都用 SHA256
-证明逐字节一致。M1（退回 braced）与 M2（消息重新声称有 body）是**故意分开**的——只有 M1 被杀
-的话，测试锁住的是分派而不是行为，一个声称存在函数体的消息照样能过。
-
-### 0.4.27 —— 返回位置带括号的函数类型，不再被当成元组
-
-返回位置上的函数类型有两种写法，原来只认一种：
-
-```moonbit
--> (Int) -> String     箭头在右括号之后
--> (() -> Int)         箭头在括号之内
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 ```
 
-第二种掉进了 `return_annotation` 的元组分支。那个分支一路吃到**第一个前面没有逗号的
-`)`**，而在 `(() -> Int)` 里，这个 `)` 正是**空参数列表**的右括号——于是标注在 `()` 处就结束
-了，`-> Int)` 留在 token 流里。`parse_block` 接着去找 `{`，看到 `->`，报 `expected '{'`；
-之后整个文件就死了。**一处标注带走整个文件，而且报错指的那个大括号根本不是问题所在。**
+`_verify/release.ps1` 依次跑：门禁自身的自测；`moon fmt --check`；`moon check --deny-warn`；
+三个测试 target；`moon build --target wasm`；语法探针自己的判定；自身源码自扫；已发布包
+自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**79** 个，
+而且 79 个全在 `release.ps1` 的门列表里，所以没有任何一个变异门被漏在发布路径之外。
 
-修法：判据是「这些括号**关联**的箭头在哪」，而它只可能在两个地方——括号**之内**，或者紧跟
-匹配到的 `)` **之后**。一次带嵌套计数的扫描同时回答两者，条件变成 `arrow_inside || is_fn`。
+两个开关会改变它的行为：`-SkipMutations` 跑除变异门以外的一切；`-SelfTest` 拿一个失败
+的、一个抛异常的、一个通过的函数体去考验门禁自己的 stage 函数。**一道从没被证明会变红的
+防护不是防护**，而这里就是证明它的地方。
 
-所有受影响的写法都先 settle 过，`moon check` 零错误：带括号式、带参数式、结果本身是元组的
-嵌套式、可选式 `-> (() -> Unit)?`、带 `raise` 的式子、以及**多行签名 + 泛型 + 限定名**的式子。
+### 形式验证（`moon prove`）
 
-#### 语料效果：同一棵树上两个 build 的 A/B
+`src/core` 是一个纯内核（没有带 Array 的结构体、没有字符串），并带
+`"proof-enabled": true` 以启用 MoonBit 2026 的实验性形式验证；`src/core/core_proof.mbtp`
+是逻辑侧：谓词 + **19 条引理**。
 
-**先说一个差点上当的数字。** proton 的 actionable 在这棵树上读作 **68**，而旧笔记记的是
-**100**。差 32 条看着像大胜，但那是**语料树换了**：旧基线取自 TEMP 兄弟树，而
-`--extern-iface-dir` 会把兄弟树的接口表喂进这一轮运行。**跨两棵树比数字，量的是树，不是改动。**
-同一棵树、两个 build 的 A/B 才是能归因的证据。
-
-A/B 的结论：只有 moui 动，**三个文件从 PARTIAL 变成完整解析**——
-`services/service_task.mbt`、`core/program_subscription.mbt`、
-`backend/common/services/service_async_queue.mbt`；`unexpected token` 从 113 个文件降到 110。
-另外五个语料**逐字节一致**。
-
-#### 我的度量脚本两次报了假零
-
-这是这一版真正的收获，比修复本身更值得记。
-
-**其一，是上面那个 A/B。**
-
-**其二，是「这个构型在语料里出现多少次」。** 度量脚本先后两次报「六个语料 0 处」。
-第一次的匹配式 `\([^()]*\)` 根本匹配不了嵌套括号——它对一个**按构造就含嵌套括号**的形状报
-「未找到」。换成平衡括号扫描之后，**还是 0**。这次括号逻辑是对的，错在前缀：
-
-```regex
-\bfn\s+[A-Za-z_]\w*\s*\([^()]*\)\s*->\s*\(
+```bash
+moon prove src/core --why3-config .why3.conf   # 产生 19 个 VC，交给 cvc5/alt-ergo
 ```
 
-每一个子句对普通 MoonBit 都是错的：`fn` 后面紧跟 `[`（`fn[T]`）就匹配不上；`[A-Za-z_]\w*`
-匹配不了 `ServiceTask::start`；`\([^()]*\)` 既跨不了多行参数列表，也容不下参数里自带的括号。
-而它漏掉的正是语料里**最常见**的那个形状：
+**21/21 个目标 VALID**（unsat）：19 条引理，加上 span_at/zero_span 的自动安全性 VC，
+每一个都用 cvc5 机器验证过。
 
-```moonbit
-pub fn[T] ServiceTask::start(
-  self : ServiceTask[T],
-  complete : (ServiceTaskResult[T]) -> Unit,
-) -> (() -> Unit)? {          ← `-> (`，而且箭头在里面
-```
+## 发布历史
 
-**真实数量是 24 处、9 个 moui 文件**，而不是 0。
+逐版本的发布史——每一版改了什么、改动的实测依据是什么、以及某个结论被撤回时的更正——
+见 **[CHANGELOG.zh.md](CHANGELOG.zh.md)**（[English](CHANGELOG.md)）。
 
-**判据：匹配器太窄不会报「未找到」，它报「我没看」。而这两件事在屏幕上长得一模一样。**
-匹配一个真实签名是**解析**问题，用正则做是**赌**。所以现在的版本根本不去认签名——它找每一个
-`->` token，问紧跟其后的括号组里有没有箭头；这样它不会因为「不认识签名长什么样」而漏看。
-而且它的对照不是合成文件，是 A/B：它**必须**找出 A/B 说改动的那三个文件，否则门禁直接中止。
+## 参与开发
 
-#### settle 必须先证明自己在测量
+1. Fork 仓库并建一个特性分支。
+2. 给新功能加测试。
+3. 把发布门禁跑绿：
 
-写这一版的夹具时，`settle` 脚本报了**十五个「clean」，而它什么都没查**。因为用例的 key
-**没有 `.mbt` 后缀**：清理用的 `-Filter '*.mbt'` 匹配不到任何文件（旧用例全部堆积），而
-`moon check` 根本不编译无扩展名的文件，它拿到的是 44 字节的
-`Finished. moon: ran 2 tasks, now up to date`。
+   ```bash
+   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
+   ```
 
-十五个全绿。**唯一的证据是那个本该变红的负控制，它也读了「clean」。**
+4. 提一个 pull request。
 
-现在三道闸各自封死上面那种失效的一半：G1 断言 `src` 里恰好一个 `.mbt`；G2 断言
-`moon check` 真的干了活（输出非空、且不是「无事可做」横幅）；G3 断言负控制**必须变红**，
-否则整轮结果作废。
+这道门禁不是装饰：它会跑 **79 道变异门**，每一道都改源码、要求一个具名测试变红，
+并证明恢复是逐字节一致的。
 
-另外两处 MoonBit 事实也是这么查出来的：**lambda 用花括号**（`fn() { 1 }`；`fn() => 1` 是
-`unexpected token '=>'` 报错），以及**顶层大写名是类型**（`fn G() -> Int` 报
-`unexpected token '(', you may expect '::'`）。
+## 许可证
 
-#### 突变门禁：四杀一等价
+MIT License。详见 [LICENSE](LICENSE)。
 
-五道突变，四道被杀。**M4 存活，而它是等价突变——这一点是证明出来的，不是假设的**：
+## 参考
 
-- 元组分支返回 `""`（`parser.mbt:1272`）
-- 函数类型分支返回 `"(Int)"`（`fn_type_annotation:1016`，其后没有 `->`，`out` 保持括号组）
-- `ann_to_ty("")` == `TUnknown`（`types.mbt:140`）
-- `ann_to_ty("(Int)")` **也是** `TUnknown`——没有任何分支会剥掉那对括号
-
-标注字符串**只有一个消费者** `declared_ret`，而 M4 改道的每一种输入喂给它的都是
-`TUnknown`。所以在**整个输入空间上** M4 不可能改变任何可观测量。**硬造一个夹具去杀它
-是表演**：这个突变没有行为可杀。
-
-我第一次尝试杀它时断言的是 `ann_to_ty("(Int)")` 会得到 `TInt`——**错的**，所以那道夹具没有
-改变任何结论。夹具留下了（那条声明返回路径本来就该有夹具），但注释现在写的是它**建立了
-什么、没有建立什么**。
-
-测试 js 425（新增 13）。每一个夹具都同时过 `moon check` **和**分析器两边。
-
-### 0.4.26 —— 尾表达式就是返回值：一次由读代码而不是由语料 delta 找到的修复
-
-**先更正我自己。** 这条待办上一版写的是「声明返回类型在尾表达式函数体上渲染成 `None`
-——**可能比 `raise` 本身还大**」。**实测之后这句话是错的**：`raise` 六个语料共 1213 处，
-而尾表达式函数**只有 305 个**（moui 108 / moonbit_labeler 64 / async 69 / proton 40 /
-moonbit_image 24）。大约是四分之一，不是更大。
-
-**语料 delta 是零。** 六个语料、12,428 个文件，**逐字节与 0.4.25 一致**。这一版是**一次
-正确的修复**（有复现器），不是清理。
-
-#### 缺陷：尾表达式的值被丢掉了
-
-尾表达式被解析成 `SExpr`，而 `SExpr` 明确丢弃自己的值：
-
-```moonbit
-Interp::exec_stmt   SExpr(e) => { let _ = self.eval(e, env) }
-Interp::analyze_fn  let ret = join_vals(self.ret_vals)
-join_vals           if vals.length() == 0 { return AType("None") }
-```
-
-于是 `ret_vals` 永远是空的，`join_vals` 答 `None`，这个 `None` 进入**调用缓存**，**调用者
-继承它**：
-
-```moonbit
-fn f() -> Int {
-  1
-}
-fn g() -> Int {
-  f() + 1        // 报 no method matching +(None, int)
-}
-```
-
-一个关于**能编译的代码**的、语气笃定的假阳性。`return 1` 版本的控制夹具是干净的，
-而且错误值能穿过两层调用者——因为它是被**存下来**的，不是被返回的。
-
-顺带一件同样重要的事：**分析器自己对这份文件说的是 `f() -> None`**。签名行是它对「我读懂了
-什么」的陈述，读错了就是缺陷，哪怕没有 finding。
-
-#### 修法：新节点 `STail`，加一个 `fn_body` 标志
-
-`STail` 只在**函数体**里产生——这就是 `fn_body : Bool` 存在的理由：同一个块解析器还要读循环
-体、`if` 分支和裸块，在那些位置上尾表达式是一条**被丢弃的普通表达式语句**
-（`fn f() -> Int { while c { 1 } }` 不返回任何东西）。
-
-三个透镜各自不同：walk 与 `SExpr` 完全一致；类型透镜把它的类型 **join 进推断返回类型**
-（`scan_returns` 之前对它一无所知）；行为透镜**记录它的值**，而且**不动 flow**——尾表达式
-后面本来就没有东西了。在行为透镜里它**必须被求值**，这与 `raise` 的操作数正相反：终止符
-之后的值是死的，所以那里刻意不求值。
-
-#### settle：我自己的第一版是空的，而且空了两处
-
-第一版 settle 报了 12 个形状全部「0 错误」，**包括一个 MoonBit 明确拒绝的反例**。两处独立的
-bug，而且都是那种不报错的：
-
-1. **`moon check` 只检查从 `fn main` 可达的函数体。** 没有 `main` 就没有任何类型检查。
-2. **脚本自己删掉了 `src/moon.pkg`**（`Get-ChildItem src -File | Remove-Item`），于是从第一
-   个用例起就没有包可检查，`moon check` 什么都不输出。再加上 PowerShell 会把 native 命令写
-   stderr 变成 `NativeCommandError`，合并后的字符串是空的——**两次独立的失败叠在一起，
-   让一个 settle 对编译器拒绝的程序开出健康证明。**
-
-修好之后加了**两个负控制**：`fn f() -> Int { "a" }` 报 4014，`fn f() { 1 }` 报 4074。**只有
-负控制会红，settle 才算在测量东西。**
-
-它顺带查出两件关于**语言**的事实：
-- `while s == "a" { "b" }` 是 **4139**——循环体的尾表达式被丢弃，而只有 Unit 可以静默丢弃。
-  我第一版的循环夹具就是这么写的，**一个编译器拒绝的夹具不是夹具**。
-- **尾表达式必须有声明的返回类型**（4074）。这正好说明潜在面为什么正好是 305：受影响的函数
-  集合，就是编译器已经逼你标注的那个集合。
-
-#### 自找的回归，而且是靠六语料逐字节 diff 抓到的
-
-类型透镜里我也把 `()` 教成 Unit 去配行为透镜。`TNone` 是**具体类型**，于是空元组和任何东西
-比较都会报——moui `backend/macos/macos_backend.mbt:204` 多出一条
-`unsupported operand types for '>': 'int' and 'None'`。那个文件的解析停止行、notice 数、
-actionable 数在那一刻全都和前一版一模一样，**只有六语料 diff 看见了它**。
-
-类型透镜那一步已经回退（行为透镜那一步保留——签名行里的值来自那里）。**M5 和 M6 现在是
-这道门禁里的一对永久对照**：M5 复现我犯的那个错，M6 是它的反面（「所有元组都是 Unit」）。
-
-#### 突变门禁：7 道，第一轮全绿
-
-七道，覆盖四个文件里的四个决定：解析器的 `fn_body`（M3）、位置（M4）、标志是否传到函数体
-（M7）、行为透镜是否记录（M1）、记录的是什么（M2）、`()` 是不是 Unit（M5）、真元组是不是
-还是元组（M6）。**7 杀 0 存活**，每个 restore 都用 SHA256 证明逐字节一致。
-
-0.4.25 加的 pre-flight 立刻就回本了：本门禁第一版有两个模式串写的是 `moon fmt` 会折成
-**一行的三行臂**，pre-flight 在毫秒级中止并打出它要找的那行——**而不是浪费一整轮
-`moon test`**。
-
-测试 js 412 / wasm 484 / wasm-gc 412（此前 398 / 470 / 398）。自检 63 文件、**actionable 0**。
-
-### 0.4.25 —— 行为透镜的 if 分支 flow 泄漏，和一个测不出来的东西
-
-**这一版没有语料 delta，而这是量出来的，不是推出来的。** 六个语料、12,428 个文件，
-改前改后**逐字节一致**；改前 `Unreachable` 是 0 条，改后也是 0 条。所以它是**一个带
-复现器的正确性修复**，不是「清理掉了什么」——把 0 说成成果，正是这个项目一直在拒绝
-的那种话。
-
-#### 缺陷：分支之间没有 join
-
-`Interp` 在**同一个实例**里依次探索条件未知的 `if` 的各个分支，于是 flow 状态直接在
-分支之间传递：一个分支终止了，**下一个**分支的第一条语句就看起来不可达；而整个 `if`
-之后活下来的，是**最后一个**分支留下的状态。
-
-最短的复现器里**没有 `raise`**：
-
-```moonbit
-fn f(g : Int?) -> Int {
-  guard g is Some(v) else {
-    return 0
-  }
-  return v
-}
-```
-
-报 `return v` 是 `unreachable code`。else 终止、then 不终止，而 else 的 flow 赢了接力。
-`guard` 被建模成 then-branch 为**空**的 `SIf`，所以 then 永远不终止——缺陷因此在每一处
-`guard ... else { ... }` 上都是活的。这个形状就是 proton 0.3.4
-`facade_app_metadata.mbt:81-82` 的形状，只是那里 else 里写的是 `raise`。
-
-#### 修法：逐分支重置 + fall-through join
-
-每个分支执行前 `self.flow = FNormal`，分支结束后 `falls = self.flow == FNormal`；
-**缺 else 恒为 `falls = true`**（没有分支被取，控制就继续）；末尾
-`self.flow = if falls { FNormal } else { FReturn }`。`exec_alt` 从 `Unit` 改成返回
-`Bool`，它自己的 `ABool(false)` 臂也做同一个 join。
-
-两个 MoonBit 细节记在源码里：
-
-- **枚举默认不实现 `Eq`**，`self.flow == FNormal` 报 `Type Flow does not implement trait
-  Eq`，所以 `priv enum Flow` 加了 `derive(Eq)`；
-- `for j in (idx + 1)..elseifs.length()` 会解析成 `(idx+1)..elseifs` 再 `.length()`
-  （报 `type Int has no method arr`），遍历剩余 else-if 必须用 `while`。
-
-`ABottom` 条件保持原语义（不终止、falls through）——「bottom 条件该不该压制下游」是另一
-个问题，这一版不回答，两个方向都没改。
-
-#### 突变门禁：8 道，三轮才全绿
-
-| 轮次 | 结果 | 说明 |
-|---|---|---|
-| 第一轮 | **1 杀 / 3 存活 / 3 空转** | 3 个模式串根本没匹配上源码 |
-| 第二轮 | **6 杀 / 1 存活（M6）** | 模式串修好了，M6 暴露的是夹具覆盖问题 |
-| 第三轮 | **8 杀 / 0 存活** | 补 2 个夹具 + M8 |
-
-两道活下来的原因都不是「测试没写够」，而是更蠢的东西，记在这里因为它们会再发生：
-
-**一、夹具必须真的走到它声称在测的那段代码。** `f(1)` 会让 `n` 绑成 `AInt(1)`，
-`binop` 把 `n > 0` 折叠成 `ABool(true)`，于是 then-branch 单独跑，**join 所在的臂压根
-没进**。而 `f(g())`（`g` 未定义）让调用返回 `ABottom`，整个函数体静默——「没有发现」和
-「通过」长得一模一样。第一版有 4 道死在这上面。
-
-真正能走到的形状是 `s == "a"`：`binop` 的 `OpEq | OpNe` 臂无条件返回 `AType("bool")`，
-**根本没有字符串臂可折叠**。另外两条备选也实测过：`f(@core.nothing)`（`AAny` 被吸收成
-`AType("bool")`）和 `x is Some(v)`（`EIs` 故意返回 `AAny`——**所有真实代码里的 `guard`
-本来就走 join**）。
-
-配套的对照很重要：**同形状、相反的期望值**。折叠夹具（`f(1)`，无 else，then 返回）
-期望 **1**，不折叠夹具（`f("a")`，同形状）期望 **0**。这个反转就是「它们真的走了不同
-的臂」的证据；第一版两个都用 `f(1)`，于是那条「对照」只是在重测常量折叠。
-
-**二、空转变异只有跑完全套件才会报出来。** M5/M6 的缩进按 10 空格写而文件里是 8/6，
-M7 的模式串写成 `None => true` 而源码是 `None => falls = true`——三道各白跑一次
-`moon test`。所以现在**先做 pre-flight**：任何模式串在原文里找不到就在毫秒级中止并打出
-它要找的那一行。第四轮修 M8 时它立刻抓到了我自己的一个错（M8 的 Find 串误抄了 M6 的
-**替换后**文本）。
-
-**三、M6 的存活是夹具覆盖问题，不是模式串问题。** `exec_alt` 的**终止** `match els`
-只有在**没有剩余 else-if** 时才执行，而当时每一个链式夹具都带 else-if。没有夹具到得了
-那段代码，怎么调模式串都杀不掉它。补夹具时顺手发现 **M8**——M6 背后那条
-「缺 else 恒 falls through」的**终止版**同样没人测过，于是加了一道。现在 M6/M8 改的是
-**同一个 8 行块里的一行**，两个方向互为对照：一个让终止版没法说「终止」，一个让它没法
-说「落空」。两句话都说不了的那块代码是没有用的。
-
-测试 js 398 / wasm 470 / wasm-gc 398。扫描脚本 `_verify/scan_0425.ps1` 连比两个基线
-（0.4.24 与本次之前的那次 0.4.25 扫描），写新文件名而不是覆盖——`scan_0423.ps1` 里那句
-「两次扫描写同一个文件名，就是让基线悄悄变成它自己的对照」在这里又用了一次。
-
-### 0.4.24 —— `raise` 作为表达式：一条子句的第三个位置
-
-**这一版是被一个测量改道的。** 0.4.23 结束时 actionable 涨了，我把每一个 `UndefinedName`
-拉出来分类，结论是「`enum`/`suberror`/`derive` 的构造子在分析子集之外」——这是我上一版
-自己写的判断。分类之后发现**最大的桶根本不是构造子**：大约 70 条 `UndefinedName` 里，
-**65 条是字面量 `raise`** 这个名字（proton 一个语料就占 56 条）。构造子只有 7 条上下。
-
-`raise E` 作为**语句**从来没被实现过。0.4.23 做的是同一条子句在**函数**上的两个位置
-（签名标注、函数类型返回标注），而真正执行 raise 的那条语句是第三个位置。它被当成普通
-标识符读了，于是每一条 raise 语句都报 `undefined name 'raise'`——一个关于**能编译的
-代码**的、语气笃定的假阳性。
-
-出处是 proton 0.3.4 `facade_app_metadata.mbt:82`：
-
-```moonbit
-guard config.package_config() is Some(package_config) else {
-  raise MissingPackageMetadata
-}
-```
-
-规模（排除 vendored `.mooncakes`）：**proton 585 处 / 54 文件、async 427 处 / 90 文件、
-moonbit_image 180 处 / 16 文件、moonbit_labeler 15 处 / 9 文件、proton_contract 6 处 / 1 文件。**
-
-settle 过了，五种带 payload 的形式 `moon check` 全 0 错误；另外**不带 payload 的裸 `raise`
-本身也是合法 MoonBit**，三个位置（独占函数体、函数体末尾、闭合嵌套块且无分号）同样 0 错误。
-
-#### 新节点 `SRaise`，而不是 `SReturn`
-
-这是刻意的。三个透镜都会把 raise 读错成 return：
-
-- `Infer::scan_returns` 的 `SReturn(Some(e)) => acc = ty_join(acc, self.ty_of(e, TUnknown))`
-  会把**错误构造子的类型** join 进函数返回类型；
-- `Interp` 的 `SReturn` 会把 payload `eval` 出来 `push` 进 `ret_vals`，**凭空造一个
-  `raise` 根本不产生的返回值**；
-- 只有「会终止」这一件事是两者共有的，而那正是 `SRaise` 保留的全部。
-
-payload **照常被 walk 和类型检查**（`raise E(nosuchfunction())` 里的 `nosuchfunction` 照样
-报），但**不被求值**——终止符之后的一切都是死代码，求值一个结果会被丢弃的表达式只会扰动
-抽象值栈。两个透镜各有一个测试钉住这一点。
-
-#### 结果：只减不增
-
-| 语料 | 0.4.23 | 0.4.24 | 发现级 |
-|---|---|---|---|
-| `wzzc-dev/moui` 0.1.12 | parsed 483 / actionable 1 | **parsed 483 / actionable 1** | 逐条一致 |
-| `moonbitlang/async` 0.22.4 | parsed 216 / actionable 22 | **parsed 216 / actionable 19** | −8 条，**0 条新增** |
-| `moonbit-community/proton` 0.3.4 | parsed 95 / actionable 103 | **parsed 95 / actionable 100** | −6 条，**0 条新增** |
-| `riantr/moonbit_image` 0.3.7 | parsed 2 / actionable 3 | **parsed 2 / actionable 0** | −3 条，**0 条新增** |
-| `proton_contract` 0.3.4 | parsed 4 / actionable 3 | **parsed 4 / actionable 3** | 逐条一致 |
-| `riantr/moonbit_labeler` 0.2.13 | parsed 25 / actionable 0 | **parsed 25 / actionable 0** | 逐条一致 |
-
-65 条 `undefined name 'raise'` **全部归零**，而且**没有任何 family 的新增**——
-`Unreachable` 也是 0 → 0。这在「多读一个语法就多一批 finding」的项目里不常见，值得说清楚
-为什么：我在改之前**先查了它会不会引入假的 `unreachable code`**。
-
-#### 先量「会不会变吵」，再动手
-
-把 `SRaise` 接上之后我立刻去量 `Unreachable`，因为行为透镜的 `if` 各分支是**在同一个
-`Interp` 里顺序执行**的，分支之间的 flow 状态会串：一个终止的分支会把后面所有语句判成死代码。
-如果这是真的，这一版就是拿 56 条假阳性换一批新的假阳性。
-
-实测：12,428 个文件里 `Unreachable` 从 0 变 0。**但缺陷是真的，而且能独立复现**，
-不需要 `raise`：
-
-```moonbit
-fn f(g : Int?) -> Int {
-  guard g is Some(v) else { return 0 }
-  return v            // 被报成 unreachable —— 这是假阳性
-}
-```
-
-else 分支终止，then 分支（`guard` 建模成空 then）不终止，**else 的 flow 赢了**。
-⇒ **如实记账，这一版不修**：它在这六个语料上 0 次触发，改的是行为透镜的分支合并语义，
-和 raise 是两件事。⇒ 另记一条：`enum_ctors` 的构造子采集**只接了 `enum`**，没接
-`suberror`/`derive`；而且 proton 的 `OperationFailed` 这类**跨文件** `.mbti` 里的构造子名字
-根本进不了 `IfaceSymTab`——那是剩余那 7 条的来源。
-
-#### 突变门禁：7 道，**第一版 4 杀 3 存活，最后 7 杀 0 存活**
-
-三道存活各自有一个共同的原因，值得写下来：**payload 不被解析时它不会消失，它变成下一条语句。**
-`raise E(nosuchfunction())` 于是被读成 `SRaise(None)` 后面跟一条表达式语句
-`E(nosuchfunction())`，同样两个未定义名字、同样在同一行、同样合并成一条——**所有计数型断言
-两种实现都通过**。
-
-- **M2**：先试「行为透镜不求值 payload」来分辨，没成——被孤立的 payload 紧跟在一个终止的
-  `SRaise(None)` 后面，行为透镜同样不会执行它，它被报成 unreachable 了。最后用**锚点行号**
-  分开：payload 挂上去时死掉的是第 6 行的 `return 1`，被孤立时死掉的是第 5 行的 payload 本身。
-  **同样的条数、同样的 family、同样的透镜，不同的行号**——而行号正好就是「payload 属于这条
-  raise」这句话本身。
-- **M4**：第二个原因。此前的 payload 全是对**未知名字**的调用，而对未知函数的调用没有签名
-  可查实参，`ty_of` 提前返回，payload 其实根本没被看。换成类型透镜自己会查的表达式：
-  `raise 1 + "a"`（settled 合法，`int + str` 是 `OperatorMismatch`）——二元运算符不像名字查找
-  那样会因为缺签名而跳过。
-- **M7**：文件里**根本没有裸 `raise` 的夹具**。叫 `bare` 的那个函数写的是 `raise E`，
-  有 payload。补上真正无 payload 的形式（三个位置）就红了。
-
-测试 js 386 / wasm 458 / wasm-gc 386（新增 12 道）。
-### 0.4.23 —— `raise` 效应标注，以及一个被它照出来的假阳性
-
-**先更正我自己的一个数。** 这一版开工时我说「moui 608 个文件里 149 个（24.5%）带
-`-> T raise E`，全部完全不可解析」。**那个 grep 把 vendored 的 `.mooncakes` 一起数了**，
-而扫描器根本不扫 vendored 目录。排除之后 moui 只有 **2 个**文件。同一把尺子量六个语料
-（排除 `.mooncakes`）：
-
-| 语料 | 文件 | 签名位 `-> T raise` | 类型位 `() -> T raise` |
-|---|---|---|---|
-| `moonbitlang/async` 0.22.4 | 409 | **72** | **10** |
-| `moonbit-community/proton` 0.3.4 | 136 | **70** | **33** |
-| `riantr/moonbit_image` 0.3.7 | 17 | **14** | 0 |
-| `proton_contract` 0.3.4 | 3 | 2 | 0 |
-| `riantr/moonbit_labeler` 0.2.13 | 35 | 2 | 1 |
-| `wzzc-dev/moui` 0.1.12 | 607 | 2 | 0 |
-
-修复是真的（`moonbit_image/bmp.mbt:26` 的 `-> Image raise Failure` 现在干净解析，
-`decoded_bmp` 之前死在 `expected '{'`），但**规模我之前报大了一个数量级**。可读文件总数
-**787 → 825**，不是 149 个文件的量级。
-
-#### 一条子句，两个位置
-
-`parse_fn_signature` 读完 `-> T` 之后直接期待 `{`，不认 `raise`。settle 过了，四种形式
-（`-> T raise` / `-> T raise E` / `-> T!` / `-> Unit raise E`）`moon check` **0 错误**。
-裸形出自 `moonbitlang/core/error/error_test.mbt`，所以它不是这里发明的形状。
-
-**写完签名位才发现漏了类型位。** 函数类型自己也可以带效应标注——`fn f(g : () -> Int raise)`
-在 settle 里同样是 0 错误，但解析器报 `expected ')'` 并且丢掉文件后半段。只修签名位会留下
-一个「签名位置认、类型位置不认」的半截修复：proton 33 个文件、async 10 个正好是这个形状，
-每一个都会死。两个调用点现在共用 `Parser::parse_raise_effect`。
-
-裸形「必须停在这里」的判据写成了**「下一个 token 能不能开一个类型」**（`TName` / `TLParen`
-/ `TAmp`），不是「哪些 token 终结」。因为两个方向不对称：**多读一个 token 是静默误解析**
-（函数体被吞进类型标注，什么都不报）；**少读一个 token 是响亮的 `expected '{'`**。
-
-#### 顺带照出来的假阳性：`guard!`
-
-`parse_guard` 读完 `guard` 就去读条件，于是 `guard! cond` 的 `!` 掉进表达式读取器，变成对条件
-取反。报出来是 `operand of '!' must be bool, got '[int]'`——**一个关于能编译的代码的、语气
-笃定的假阳性**：
-
-```moonbit
-// moonbitlang/async 0.22.4 src/internal/fd_util/pipe.mbt:31
-guard! fds is [r, w]
-```
-
-这个缺陷一直在，只是被「文件压根没解析」挡着。**raise 修复只是不再替它遮丑。**
-
-于是 `TBang` 这一个 token 在同一个文件里有三个主人：`raise` 短式、`guard!`、以及真正的布尔
-非。三道对照测试各钉一个——`!` 短式、裸 `guard`、`!` 仍然是非运算符。任何一处改成扫 token
-而不是按位置判定，这三条里必有一条会红。
-
-#### 代价：actionable 涨了，而且涨的全是 `UndefinedName`
-
-可读文件变多，**每多一个可读文件就多一批 finding**，其中一部分是假的。这必须说清楚：
-
-| 语料 | 0.4.22 parsed / actionable | 0.4.23 parsed / actionable | 发现级 |
-|---|---|---|---|
-| `wzzc-dev/moui` 0.1.12 | parsed 481 / actionable **1** | **parsed 483 / actionable 1** | 0 条新增 |
-| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 17 | **parsed 216 / actionable 22** | +5 `UndefinedName` |
-| `moonbit-community/proton` 0.3.4 | parsed 72 / actionable 43 | **parsed 95 / actionable 103** | +60 `UndefinedName` |
-| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **parsed 2 / actionable 3** | +3 `UndefinedName` |
-| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **parsed 4 / actionable 3** | +2 `UndefinedName` |
-| `riantr/moonbit_labeler` 0.2.13 | parsed 24 / actionable 0 | **parsed 25 / actionable 0** | 0 条新增 |
-
-按 family 数过：**新增的 actionable 一条 `UndefinedName` 都不例外**，`UnusedParam` 不变，
-`OperatorMismatch` 因为 `guard!` 修好反而**减少**（2 → 0）。抽查确认是假阳性：
-
-```moonbit
-// proton facade_error.mbt:6
-OperationFailed(action~, status=..., detail=...)
-// 报: no visible binding for 'OperationFailed'
-```
-
-`OperationFailed` 是 `WindowSessionError` 的构造子，全语料有四处真的这么用。它的声明
-（`enum` / `suberror` / `derive`）**在分析子集之外**，body 没被分析，名字就永远进不了符号表。
-**根因是既有的子集边界，不是这一版的解析改动**——这一版只是让这些文件第一次能被读，于是
-第一次能看见这个洞。它现在是 actionable 噪声的第一大来源，比 raise 本身更值得下一版处理。
-
-#### 突变门禁：9 道，**9 杀 0 存活**（`_verify/mutate_0423.ps1`）
-
-比 0.4.22 的 6 杀 2 存活干净。几道值得记：
-
-- **M7 / M8 是同一个守卫的两个方向。** 守卫放行一切 → 裸 `raise` 吞掉函数体的 `{` 或闭合的
-  `)`，**静默误解析**，4 条测试变红；守卫什么都不放行 → 每个具名效应都不再被消费，6 条变红。
-  只测一个方向，会把「过严」误当成「正确」。
-- **M5 杀掉的不是 `skip_indexed()`，而是 `raise` 关键字自己。** 第一版我把
-  `skip_indexed()` 去掉当 M5，结果 **371/371 全绿——它是个等价突变**：`type_annotation` 自己
-  就调 `indexed_suffix()`，`raise E[Int]` 不靠那行也能整块吃掉。这行死代码**删掉了**，理由写在
-  调用点：留着会让下一个人以为它在管一个它其实没管的用例，而删掉它的人没有任何证据说明有东西
-  在查。
-- **M2 第一次报的是 COMPILE-ERR，那是门禁自己的 bug 不是结果。** 我的 Find 串以换行开头，
-  替换后代码被并进了上一行注释里，突变**根本没运行**。判据只有一个：**`Total tests:` 行不存在**
-  才算 COMPILE-ERR，绝不 grep。
-
-#### 两个新记下来的缺口（这一版量到，没修）
-
-- **返回类型在尾表达式函数体上渲染成 `None`。** `fn f() -> Int { 1 }` → `f() -> None`，
-  而 `fn f() -> Int { return 1 }` → `f() -> int`。**跟 `raise` 无关**：四种 raise 形式配上/不配上
-  显式 `return` 全部一致。真实 MoonBit 大量用尾表达式，所以这个的语料影响大概率远大于 raise 本身。
-  0.4.23 的测试因此**刻意用显式 `return`**——不然这条断言会因为一个和效应标注毫无关系的理由变红。
-- **返回位置的带括号函数类型被当成元组。** `fn f() -> (() -> Int) {` 报 `expected '{'`，
-  **没有 `raise` 也一样**（`return_annotation` 的元组分支停在第一个 `)` 而非配对的那个）。
-  真实的 `-> (Int, String)` 正常。语料影响小：moui 6 个文件，其余语料 0。下一版处理。
-
-测试 js 374 / wasm 446 / wasm-gc 374（新增 14 道）。
-
-### 0.4.22 —— 具名实参按**名字**匹配，以及 `Int32` 读作 `Int`
-
-可读文件数不变（**481**），但 moui 的 actionable **8 → 1**。消失的 7 条全是同一个形状
-`argument 4 ... has incompatible type 'str'; expected 'bool'`，从
-`core/gesture.mbt:754` 开始：
-
-```moonbit
-// core/pkg.generated.mbti:92 的声明顺序
-ActionCommand::new(intent~, label?, shortcut?, enabled?, group?, description?)
-// core/gesture.mbt:754 的调用顺序
-ActionCommand::new(intent=..., label=..., group=..., description=..., shortcut=...)
-```
-
-MoonBit 允许具名实参任意重排（`moon check` 确认），所以**实参的下标不等于形参的下标**。
-旧代码比较 `args[3]` 和 `params[3]`，于是 `description`（String）落到 `enabled`（Bool）
-上。现在每个具名实参按**标签**找形参，只有没有标签、或标签谁也不匹配时才退回按位置。
-
-`~` 简写（`f(x~)`）同样是一个标签，从 token 流里把名字读回来（`Parser::name_at`），
-所以它也能重排。
-
-| | 形状 | 结果 |
-|---|---|---|
-| A | 具名实参重排（`moui core/gesture.mbt:754`） | actionable 8 → **1** |
-| B | `ann_to_ty` 少一个 `"Int32"` 分支 | **修掉格式化器给自己源码造的 87 个静音点** |
-
-**反向对照是这一版最要紧的东西。** A 的断言是 0 条，而"把检查整个关掉"同样会得到 0 条
-——所以必须有一条断言 **1 条** 的测试才让它有意义。九条测试成对写：具名错类型、位置错
-类型、标签谁也不匹配退回位置、`~` 简写重排对与错、位置元数、`?` 可选参数省略、
-`Int32` 同义与不同义。
-
-**突变门禁抓到了三条当时看不见的东西**（`_verify/mutate_0422.ps1`，8 道 6 杀 2 存活）：
-
-- **夹具里多一行 `let r = build()` 会让三条突变全部存活。** 实参类型不符时行为透镜会把
-  同一个调用报成 `MethodError`，和类型透镜的 `ArgTypeMismatch` 合并（`merge_findings`
-  按 `(merge family, 行号)` 分组），于是 `count_family("ArgTypeMismatch")` 恒为 0。
-  **把 `param_index` 改成永不匹配，432 个测试照样全绿。** 零计数断言只有在它数的那个
-  finding 真的以那个 family 到达时才可能失败。
-- **两行同线会塌成一条。** 同上，`merge_key` 是 `(merge_group, line)`；两个错实参写在
-  一行只回来一条，所以期望 2 的用例必须拆行。
-- **`parse_call_args` 有四个 push 点。** 「不以名字开头的实参」那一个不是「以名字开头」
-  那一个；少 push 一次不会报错，只会让 `labels` 比 `args` 短，缺口之后的每个实参读到的
-  是**后面某个实参的标签**。补的夹具是 `g(1, b=true)`——顺带settle出一条语义：
-  `?` 可选形参**根本不能按位置传**（`moon check` 报 "requires 0 positional arguments"），
-  `~` 必填标签的也不能，只有裸的 `a : Int` 才行。这也正是具名实参在真实 MoonBit 里
-  到处都是、而按位置匹配误报那么多的原因。
-
-**两道存活的突变，如实记账而不是补测试把它做绿**：
-
-- **M7 `all_positional` 门（具名调用不查元数）。** 没有任何测试能看见它，因为**没有任何
-  合法 MoonBit** 会用具名实参传超过形参个数——settle 过了：标签重复是 4084，标签匹配不
-  到形参是 4085，都是 `moon check` 已经报出来的编译错误。它的代价是量过的：六个语料
-  12,428 个文件里，它只影响 **1 条** finding（`moui backend/web/web_host.mbt`，且在该文件
-  的可靠区边界之后，落进 `unreliable` 桶、从不作为结果显示），而那条无法确认是真阳性。
-  写一条钉住「无合法程序会表现出的行为」的测试会让门禁变绿、让套件变弱。
-- **M8 方法调用标签。** `EMethodCall` 现在带标签，但 infer 直接丢弃
-  （`EMethodCall(base, _, args, _)`），因为本模型里方法实参**根本没有类型检查**——没有
-  接收者签名可查。这是真缺口，不是设计上的宽容：要杀掉它得先有方法接收者签名，比这一版大。
-
-**`Int64` / `UInt` 故意不并到 `TInt`。** `moon check` 确认 `UInt` 传给 `Int` 形参是
-`Expr Type Mismatch`，反过来也是，`Int64` 对两者都是。并进去不是无害的加宽，而是**精准
-静音 `moon check` 恰好会报的那些不匹配**——正是 0.4.5 的失败模式（前置条件永不满足的
-检查）符号反转。它们读作 Unknown，等各自的 `Ty` 变体和可赋值规则。给后续的人一个规模：
-proton + async + moui 一共 **122 处 `: Int64`、23 处 `: UInt`**。
-
-测试 js 360 / wasm 432 / wasm-gc 360（新增 17 道）。自检 59/59、`actionable=0`、
-`unreliable=0`、`withheld=0`。
-
-| 语料 | 0.4.21 | 0.4.22 | 发现级 |
-|---|---|---|---|
-| `wzzc-dev/moui` 0.1.12 | parsed 481 / actionable 8 | **parsed 481 / actionable 1** | 7 条假阳性消失，**0 条新增** |
-| `riantr/moonbit_labeler` 0.2.13 | parsed 24 / actionable 0 | **逐字节一致** | — |
-| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 17 | **逐字节一致** | — |
-| `moonbit-community/proton` 0.3.4 | parsed 72 / actionable 43 | **逐字节一致** | — |
-| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **逐字节一致** | — |
-| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **逐字节一致** | — |
-
-### 0.4.21 —— 436 → 481：`guard`、具名实参的 lambda、跨行的 `is`，和一个只绑第一个名字的 `is`
-
-可读文件 436 → **481（71.7% → 79.1%）**，withheld 1078 → **242**，unreliable 3025
-→ **1711**，`unexpected token` 163 → **113**，moui 的 actionable 10 → **8**。
-`embedded_runtime_backend.mbt` 上那 7 条（3× `image_state`、4× `host_bridge`）
-全部消失。
-
-四个独立形状，都是先量后断言：
-
-| | 形状 | 语料处 |
-|---|---|---|
-| A | `guard COND else { ... }` 被当成标识符 | 550 处 / 126 文件 |
-| B | 具名实参的值是 lambda，参数列表在那里断掉 | 解析 436 → **481** |
-| C | `is` 不跨行续接，**文件照样解析成功** | `embedded_runtime_backend.mbt:227` |
-| D | `is` 只绑第一个名字，而且只在 depth 1 | 7 条 + 全语料 13 处 |
-
-#### C 是这个项目里最难查的一种坏：解析成功，树是错的
-
-```moonbit
-guard (self.frame, self.image, self.host_bridge)
-  is (Some(frame_state), Some(image_state), Some(host_bridge)) &&
-  !self.disposed else {
-```
-
-换行结束表达式，`is` 被读成普通标识符，然后**文件解析成功**，只是那个点之后
-每个名字都是错的——15 条发现，而且因为什么都没失败，**一条都没被标成
-unreliable**。所以这道门禁不断言 `n_parse == 0`（它两种情况都绿），断言的是
-**续接之后的那些名字能解析**。
-
-续接只跳 `TNewline`，**不能**用 `skip_seps`——它也吃 `;`，而分号在 C 风格
-`for` 里是**结构性的**。写成 `skip_seps` 时是既有测试把它抓红的，这条以
-`0421: a C-style for body is still analyzed (control)` 钉住。
-
-#### D：先 settle 再动手，结果和我的判断不一样
-
-我以为 `Some(Os(error))` 里的 `error` 本来就绑着，只是没人用。**先跑
-`moon check`**：
-
-```
-fn f(x : Int) -> Int {
-  guard try_os(x) is Some(Os(error)) else { return 0 }
-  error + 1
-}
-```
-
-`moon check` 接受，**`error` 确实是绑定**。原来的读取器只读 depth 1，于是 `Os`
-成了绑定名、`error` 掉了下去，它的每一次使用都报 `undefined variable`。depth 3
-的 `Some(DragLeft(Some(event_position)))` 同理。
-
-规则收敛成一个判定，**两个分支共用同一个读取器**（0.4.18 和 0.4.20 各栽在
-"第二个名字读取器会和第一个漂移"上一次，这次写成带下标的谓词，让它没法漂）：
-
-- 不是 `_`，不是关键字
-- 后面不是 `(`——那是嵌套构造器，不是绑定
-- 左右邻居都不是 `.`——`@core.Role::Checkbox` 是限定路径，语料里 18 处
-- 第一个 `:` 收尾——后面是类型标注，`Int` 不是绑定；`::` 正好走到这条
-
-#### 差分**抓出了我自己引入的回归**
-
-`proton internal/bridge_admission_test/main.mbt:93`：
-
-```moonbit
-runtime.prepare_bridge_request(request, window) is (Gone | PageUnavailable)
-```
-
-那个 `(` 是**分组括号**，不是构造器载荷，于是 `Gone` 和 `PageUnavailable`
-被当成局部绑定，报出两个**并不存在**的未使用局部。其中**一个是我这次新引入的**
-——旧读取器只取第一个名字，所以从来只绑过 `Gone`。元组分支因此改成
-`depth >= 2`（真正的元组绑定在 `Some(` 里，深一层）。这条不是推理出来的，是
-六语料逐条发现级差分跑出来的，加了 M8 钉住。
-
-#### 差分
-
-| 语料 | 0.4.20 | 0.4.21 | 发现级 |
-|---|---|---|---|
-| `wzzc-dev/moui` 0.1.12 | parsed 436 / actionable 10 | **parsed 481 / actionable 8** | 多 45 个文件变可读 |
-| `riantr/moonbit_labeler` 0.2.13 | parsed 23 / actionable 3 | **parsed 24 / actionable 0** | 3 条 `undefined function '@core.X::new'` 消失 |
-| `moonbitlang/async` 0.22.4 | parsed 206 / actionable 29 | **parsed 206 / actionable 17** | 12 条 `undefined name 'guard'` 消失，**0 条新增** |
-| `moonbit-community/proton` 0.3.4 | parsed 71 / actionable 44 | **parsed 72 / actionable 43** | 2 条 `guard` 消失，1 条新增见下 |
-| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **逐字节一致** | — |
-| `proton_contract` 0.3.4 | parsed 3 / actionable 1 | **逐字节一致** | — |
-
-proton 唯一那条新增是 `internal/bridge_admission_test/main.mbt` 里的
-`undefined name 'nobreak'`——**一个刚变可读的新文件**，`nobreak` 是本前端
-还没实现的循环修饰符。不是这次改动造出来的假阳性，是新文件暴露出的真实缺口。
-
-#### 突变 8 道全杀，两个方向都有
-
-M1 `guard` 不解析、M2 **丢掉 `guard` 的 else 块**（控制测试才抓得住：条件里的
-名字照样解析，不丢 else 的话两边一模一样）、M3 具名实参 lambda 头关掉、M4 跨行
-续接去掉、M5 只绑第一个名字、M6 限定路径规则去掉、M7 嵌套构造器规则去掉、
-M8 or-pattern 深度规则去掉。8/8，每一处还原都按 SHA256 验证过逐字节一致。
-
-#### 没修的，如实记账
-
-moui 剩 8 条 actionable，全部落在两个已知项上：`navigation_routing.mbt` 1 条
-和 `gesture.mbt` 6 条是**具名实参按位置比对**（`TFunc` 不带形参名，要改整条签名
-流水线）；`view_tree.mbt` 1 条是 `expr as Type`，AST 里没有 `ECast`。
-
-另外两条**量出来但没动**的已知限制，因为它们不在这一轮的形状家族里：
-
-- **调用函数类型的参数会报 `undefined function`**：`let f = inc` 然后 `f(1)`
-  就报，文件里**根本没有 lambda**。这是 0.4.19 加函数类型注解带出来的既有假阳性。
-  我的门禁夹具一开始踩到了它，才写进测试文件头的告诫里。
-- **`is Some(x : Int)` 的类型标注**：全语料 0 处（18 处 `is X(...)` 里带冒号的
-  全是 `@core.Role::Checked` 这种限定路径）。规则里留了 `:` 收尾，但**没有语料
-  验证过**，不据此宣称已覆盖。
-
-#### 工具链在这次发布当天动了，CI 一开始是红的
-
-`v0.4.21` 的 tag 一推上去，`gate` 就**红在 `moon fmt --check`**，而
-`moon check` 是绿的。两个 workflow 都从
-`curl .../install/unix.sh | bash` 装 moon——**不钉版本**，装的是 `latest`。
-
-**先量，再决定怎么修**：
-
-1. 本地 `moon fmt --check` 是绿的，所以不是我这棵树的问题。
-2. 把已发布的 **v0.4.20 tag** 检出，用同一个新 moon 跑 `moon fmt --check`——
-   **也红**。所以这是**早就存在的环境问题**，跟任何一次改动无关：上游一改
-   格式化器，不钉版本的 gate 就会在任何 commit（包括 revert）上变红。
-3. 新 moon 是 `0.1.20261012`（当天发布），本地是 `0.1.20260920`。差异不是
-   空白：它把 `src/core/moon.pkg` 的 `options("proof-enabled": true,)` 改成
-   `proof_enabled = true`，**全树 19 个文件**要重排，其中还有
-   `Int` → `Int32` 的类型改写。
-4. 先试**钉版本**——最省事。`MOONBIT_INSTALL_VERSION=0.1.20260920` 装到
-   CI 上，**`Install moon` 这一步直接失败**：CDN 上已经没有这个版本的 Linux
-   二进制。**钉版本这条路是死的**，因为旧的会被删。
-5. 所以只剩一条：接受新工具链的格式化。
-
-接受之前先量它到底改不改行为：新 moon 跑**未重排**的 0.4.21 源码，
-`moon check` 退出 0、`moon test` 415/415 全过——说明 `Int` → `Int32` 只是
-格式化器的规范形式，不是编译要求。重排之后再量一遍：check 0、三目标
-343/415/343 全过、自检 59/59 `actionable=0`、**六个语料的 SUMMARY 逐字节
-一致**。所以这 19 个文件的改动**一个可测量的数都没动**，`Int` → `Int32` 也
-不是新要求。
-
-#### 顺带发现：突变脚本会**静默失配**
-
-重排把 `.mbt` 从 LF 变成 CRLF，而 `mutate_0421.ps1` 自己还是 LF（它不是
-MoonBit 源码，格式化器不管它）。于是**每一道跨行 pattern 都匹配不上**，八道
-突变里有六道报 NO-OP。
-
-门禁是**响亮地失败**的（NO-OP 计作失败，这正是它该有的行为），但一个会静默
-失配的门禁离「装饰品」只差一次编辑。所以改成**两边归一化换行再比对**，写回时
-沿用文件原有的风格——改完之后八道全杀，而且每次还原的 SHA256 仍然逐字节一致，
-这反过来也证明了归一化的往返是对的。
-
-#### 测试
-
-415 道（js 343 / wasm 415 / wasm-gc 343）。自检 59/59，`actionable=0`、
-`unreliable=0`、`withheld=0`。
-
-### 0.4.20 —— 一个方法被当成了顶层函数
-
-`impl T for U with fn m(...) { ... }`。可读文件 432 → **436**，withheld 176 → 172，
-unreliable 3193 → **3025**，moui 的 actionable **14 → 10**：四条
-`undefined name 'self'` 消失。
-
-#### 我第一版的测试是**空的**，突变抓出来了
-
-第一版只断言「`self` 没被报未定义」。把修复回退掉，整个套件**照样全绿**。
-原因不在直觉里，在 `Parser::skip`：它只记一条 note，**一个 token 都不消费**。
-所以修复前 cursor 停在 `fn` 上，顶层循环把 `with fn identity(self) { ... }`
-当成一个**普通顶层函数**重新读了一遍——`self` 一直都绑定着，语料那条告警
-从来就不是「缺绑定」。
-
-真正变掉的是**收割**（harvest）：`collect_declared_names` 看到的是 depth 0 的
-`fn`，于是把方法名 `identity` 记成了包级 value，包里任何地方调用 `identity`
-都会解析成「已定义」。
-
-#### 改了**两个**地方，因为有两个独立的读取器
-
-1. `skip_decl_braced`：`fn` 哨兵是给 `pub impl Eq for T`（无体，形参在另一个
-   块里）准备的，`with` 只出现在有体的那种写法里，所以拿 `with` 当区分。
-2. `collect_declared_names`：**完全独立的第二个名字读取器**，根本不经过
-   `skip_decl_braced`。不给它自己加护栏，幽灵方法名原样回来。
-
-（这已经是 0.4.18 的同一个教训第二次出现了：泛型函数名进不了 sibling 表，
-也是因为这个。）
-
-语料上量过：1224 个 `impl ... with` 头（221 个文件），其中 **1047 个写
-`with fn`**，另外 177 个**省略 `fn`**（`pub impl ToJson for Affine with
-to_json(self : Affine)`）。那 177 个从来没碰到哨兵、一直是对的；1047 个全错。
-1047 个头里**没有一个**带多于一个 `fn`，所以停在第一个 body 之后不会留下悬空。
-
-#### `trait` 自己的名字必须留着
-
-第一版把整个 holder 挡掉了，于是 `trait Marker { ... }` 的 `Marker` 也收割不到，
-把 pyroduct 那个既有测试弄红了。`trait` 声明的类型是包级的，要留；
-`impl Eq for T` 和 `extend` 声明**任何东西**都不声明——`Eq` 是被实现的 trait，
-声明在别处——所以只让 `trait` 贡献名字。这条单独用 M4 钉住。
-
-#### 收割那道修复在 moui 上**看不到收益**，这是预期
-
-语料数字和只改 parser 时一模一样（436 / 10）。因为它修的是**造出来的绑定**
-——一个假的阴性，不是少报一条可见的发现。它防的是「包里调用一个方法名，
-被解析成已定义」。moui 里没有这种调用，所以量不出来。它的门是
-`0420: an impl method is not harvested as a top-level function`，
-只测收割器本身。
-
-#### 差分
-
-| 语料 | 0.4.19 | 0.4.20 |
-|---|---|---|
-| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **六项指标逐字节一致** |
-| `riantr/moonbit_labeler` 0.2.13 | parsed 23 / actionable 3 | **parsed 23 / actionable 3** |
-| `moonbitlang/async` 0.22.4 | parsed 196 / actionable 30 | **parsed 206 / actionable 29** |
-| `wzzc-dev/moui` 0.1.12 | parsed 432 / actionable 14 | **parsed 436 / actionable 10** |
-
-自检 56/56，`actionable=0`、`unreliable=0`、`withheld=0`。
-
-#### 突变 4 道全杀，而且是两个方向
-
-M1 拿掉 `with` 例外（修复消失）、M2 把哨兵整个关掉（**控制测试**才抓得住：
-无体 impl 会一路吞掉后面整个文件）、M3 拿掉收割护栏、M4 不收 `trait` 名字。
-M2 是这个门禁存在的理由——只测「修复没了」是不够的。
-
-### 0.4.19 —— 389 → 432：一个字面量被当成绑定名，和一个把文件读废的类型注解
-
-接着用 `wzzc-dev/moui` 0.1.12。读得懂的文件 389 → **432**（71.1%），withheld
-219 → 176，unreliable 4388 → **3193**。
-
-#### `if x is Some(true)` 把 `true` 当成了绑定名
-
-`core/view_node_test.mbt` 一带报了 `local variable 'true' assigned but may not be
-used`。`parse_is_pattern` 把 payload 里**任何**名字都当成绑定——而绑定的前提是
-「这个名字引入一个变量」，关键字不引入。
-
-判据用 `@lexer.is_moonbit_keyword`，**不**在 parser 里另抄一份。那张表本来就含
-`true`/`false`，而且里面有一段长注释专门说明为什么 `self` **不在**表里；另抄一份
-正是两边漂移的开始。`self` 因此照样能绑定（`if x is Some(self)` 就是这个意思），
-这条也进了测试当反向对照。
-
-#### 函数类型注解：845 处 / 171 个文件
-
-`on_input~ : ((String) -> Msg)?`、`key : (T) -> String`、`emit : (Msg) -> Unit`。
-`(` 原来直接撞上 `expect_name`，报 "expected type name"，文件到此为止。
-
-注解的元素由 `type_annotation` **自己**读，所以嵌套自然成立——`((String) -> Msg)?`
-是「返回函数类型的函数类型」。渲染是**如实**渲染的，不是拍平，所以交给类型镜头的
-字符串还是原来那句话；`ann_to_ty` 对 `(` 开头的注解没有分支，返回 `TUnknown`，
-这是诚实的答案：镜头不建模函数类型，而 unknown 才能让上面任何操作保持安静。
-
-返回位置多一个坑：`return_annotation` 的元组分支接受**任何** `(`。第一版用
-「三个 token `(`, `)`, `->`」去认函数类型——那只匹配 `() -> T`，因为
-`(Int) -> String` 的括号**中间**有个 `Int`。是那个夹具（4 个 parse error）把
-这条抓出来的。改成**扫描到配对的 `)` 再看后面是不是 `->`**。
-
-#### 诚实记账：这一版 actionable 从 4 涨到 14
-
-多读 43 个文件，必然多出 9 条新发现。**其中 7 条是假阳性**，来自三个这轮只是
-「变得可见」的类别，都已量过、已写进 SKILL：
-
-| 类别 | 条数 | 语料规模 | 根因 |
-|---|---|---|---|
-| 具名实参按位置比对 | 5 | `ActionCommand::new(...)` ×5 | 调用**省略了有默认值的参数**并按名字传剩下的，镜头丢标签按位置比，于是 `description`(String) 对上了第 4 个形参 `enabled`(Bool) |
-| `impl ... with fn name(self)` 的 `self` | 4 | 1047 处 / 204 文件 | `skip_decl_braced` 的哨兵放弃 impl 体，形参没有绑定 |
-| `expr as Type` 转换 | 1 | 29 处 / 21 文件 | `as` 没有处理，当成裸名字 |
-
-前两类都需要**改 AST**（`ECall` 的实参要带标签；`Param` 要记有没有默认值），
-不是一处几行的改动。这轮不做，写下来当下一轮的账。
-
-行首 `is` matcher 那个（`f(x)` 换行后接 `is Some(_)`）这轮**没有 settle 掉**：
-最小探针复现不出合法形态，所以没有据此写修复，仍然是已知缺口。
-
-#### 差分
-
-| 语料 | 0.4.18 | 0.4.19 |
-|---|---|---|
-| `riantr/moonbit_labeler` 0.2.13 | parsed 22 / actionable 3 | **parsed 23 / actionable 3** |
-| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **六项指标逐字节一致** |
-| `wzzc-dev/moui` 0.1.12 | parsed 389 / actionable 4 | **parsed 432 / actionable 14** |
-
-labeler 的 unreliable 360 → 352，actionable 一条没动。自检 55/55，
-`actionable=0`、`unreliable=0`、`withheld=0`。
-
-#### 突变：一道杀不掉，而且**应该**杀不掉
-
-4 道突变 3 杀。第 4 道把「每个 `(` 开头的返回都当函数类型」，**活了下来**——
-原因是诚实的：对镜头读得懂的任何注解，元组分支和函数类型分支消耗的
-**token 完全相同**，没有 `->` 时 `fn_type_annotation` 渲染完就返回，`ann_to_ty`
-两边都得到 unknown。所以 `n_parse` 分辨不了它们，这道突变**本质上不可分辨**。
-元组那条测试仍然留着——它不是给这道突变当击杀的，是防将来把元组解析改坏的。
-
-还有一处工具选错了：`is_moonbit_keyword` 的 `.mbti` 导出**没有**突变覆盖——
-`moon test` 从**源码**编译，而只有**自检**读被跟踪的 `.mbti` 接口文件；把那行
-删掉，391 个测试照样全绿。这个洞是真的（0.4.18 已经踩过一次 `TTilde`），
-所以发布检查里跑自检并要求 `actionable=0`。
-
-### 0.4.18 —— 换一个语料：608 个文件里 193 → 389，actionable 588 → 6
-
-前十七版的语料都是本项目熟悉的东西。这轮换了一个**从未扫过**的包：
-`wzzc-dev/moui` 0.1.12（608 文件）。选它的理由只有一条——`moon check` 能跑通，
-所以凡是它报出来的问题，要么是解析器读不懂的**合法 MoonBit**，要么就是真缺陷。
-没有第三种可能。
-
-结果：193/608（31.7%）读得懂，六处修复后 389/608（63.9%）；actionable 从
-**588 降到 6**。
-
-#### 先 settle，再动手
-
-六处里有一处的**根因是错的**，而且是我自己以为对了的那种。`data : &RuntimeViewNode`
-里的 `&` 我一直当「引用类型」。`moon check` 说不是：
-
-```
-Error [4100] x : &Node
-  ╰── The type Node is not a trait
-Error [4091] x.n
-  ╰── @moonbitlang/core/ref.Ref[Node] has no field n
-```
-
-`&T` 是 `Ref[T]`，而且 `T` 必须是 **trait**——moui 只在 trait 上写它
-（`&RuntimeViewNode`），那才是能过编译的形状。修法因此不是「加个引用类型」，
-而是在 `type_annotation` 里把 `&` 收掉、折进类型名，让 `ann_to_ty` 老老实实
-返回 `TUnknown`（和 `Map[K,V]` 同一个答案）。
-
-`~` 也是先 settle 才知道有两个面：编译器原话是
-`The labels f~ are required by this function`（声明侧）与
-`This function has no parameter with label x~`（调用侧）。
-
-#### 六处修复，各自的账
-
-| 修复 | 形状 | 语料里的量 |
-|---|---|---|
-| `&T` | `Ref[T]` 注解 | 31 处 / 13 文件 |
-| `~` | `label~ : T` / `x~` | 594 文件 |
-| `fn[T]` | 类型参数 | 1563 处 / 266 文件 |
-| `b"..."` | 字节串字面量 | 878 处 / 134 文件 |
-| `{ ..base }` | struct update | 370 处 / 88 文件 |
-| `.m(...)` | 行首点号续链 | 1124 行 / 131 文件 |
-
-可读文件数逐条：193 →(`&`)195 →(`~`)313 →(`fn[T]`)342 →(`{..}`)373 →(`.`)389。
-
-#### 三条「读到了但丢掉」，不是三条规则
-
-`b"..."`、`{ ..base }`、行首 `.m(...)` 链，这三处如果只把 token 吃掉，
-会各自造出一个**新的假阳性**：链和 spread 里的实参是真实表达式，丢掉就等于
-把「只在链里用过的参数」报成 unused。所以三处都保留了读：
-
-- spread 的 base 以**空名**压进字段表——`walk`/`infer`/`interp` 三家都写成
-  `let (_, v) = f`，只看值不看名，所以空名对它们不可见，而表达式活着，
-  `self` 就还是被读到的；
-- 行首链复用**真正的 postfix 构造器**（把 `parse_postfix` 拆出一个
-  `parse_postfix_from`），链段于是成为 `EMethodCall`，实参自然在树里。
-
-#### 一处如实记账：`b"..."` 没有换来可读文件
-
-改了之后 moui 的 parsed 数**一个没动**（342 → 342）。因为 `b"` 在 moui 里从来
-不是任何文件的**第一个**错误，前面总有别的构造先挡住。这是个真的解析器缺陷
-（突变验证证明：不修就会 `undefined variable 'b'` + `expected ')'`），只是
-这一版语料上**测不出收益**。留着，账照实记。
-
-#### 突变验证里，脚本自己抓到了自己的错
-
-12 道突变，11 道被杀。第 12 道（链的 rewind）**故意标成 SURVIVED**：把
-`self.p = save` 去掉之后，cursor 停在分隔符之后——但外层语句循环本来就会再调
-`skip_seps`，所以结果完全一样。那行是**防御性的**，没有任何测试或语料能区分它。
-留着它（让循环自洽，而不是靠调用方兜底），但不假装它被覆盖了。
-
-更值得记的是脚本自己出的错：第一版用 `Parse error` 判断 COMPILE-ERR，
-结果它匹配上了我自己那条**名字里带 "parse error"** 的测试，把一道杀了 2 条
-的突变报成「build 坏了，不算证据」。改成**用 `Total tests:` 行是否存在**来判断，
-脆弱的探测器会把一个真修复挡在发布外面，这比没有探测器更糟。
-
-`Buffer` 那道也先写了错版本：只让它出现在**类型注解**里，而 `.mbt` 前端对
-未知类型名根本不开火——测试恒绿，突变 M12 活了。语料里真正的形状是
-`Buffer(size_hint=12)`，**构造函数调用**。按语料改完才杀掉。
-
-#### 差分
-
-| 语料 | 0.4.17 | 0.4.18 |
-|---|---|---|
-| `riantr/moonbit_labeler` 0.2.13 | parsed 18 / actionable 3 | **parsed 22 / actionable 3** |
-| `riantr/moonbit_image` 0.3.7 | parsed 1 / actionable 0 | **parsed 1 / actionable 0（逐字节一致）** |
-| `moonbit-community/proton` 0.3.4 | — | parsed 70 / actionable 45 |
-| `moonbit-community/proton_contract` 0.3.4 | — | parsed 3 / actionable 1 |
-| `moonbitlang/async` 0.22.4 | — | parsed 196 / actionable 30 |
-| `wzzc-dev/moui` 0.1.12 | parsed 193 / actionable 588 | **parsed 389 / actionable 6** |
-
-labeler 的 unreliable 从 612 降到 360，withheld 从 179 降到 146，actionable
-一条没动——**只读得更多，没有新增判定**。moonbit_image 六项指标全部相同。
-
-自检：54/54 文件读懂，`actionable=0`、`unreliable=0`、`withheld=0`。
-
-（中途这里也出过一次真问题：加了 `TTilde` 之后自检冒出 2 条
-`undefined name 'TTilde'`。不是代码错，是 `src/lexer/pkg.generated.mbti`
-这个**被 git 跟踪的生成文件**没跟着更新——`moon update` / `moon doc` 都不会
-重新写它。补进去之后自检回到 0。）
-
-#### 还没修的（都是 parser，行为上有意不改）
-
-- `is` 打头的表达式（`f(x)` 换行后接 `is Some(_)`）会被读成裸名字 `is`，
-  报 `undefined name 'is'`；`if x is Some(true)` 会把字面量 `true` 当成绑定名，
-  报 `local variable 'true'`。两处共 3 条 actionable，都在
-  `core/view_node_test.mbt` 一带。
-- `impl ... with fn layout(self, context)` 里未标注类型的 `self` 报未定义，
-  1 条。
-- ~~三处 parser 补完之后 219 个文件仍读不到全文，主因还是 `unexpected token`。~~
-  **已被实测取代（0.4.30）。** 这条一直没法落地，因为 `unexpected token` 什么
-  都没说：它是 `parse_atom` 的兜底分支，消息里没有 token；而扫描器是**按原因
-  消息**给读不动的文件分类的，于是 wzzc-dev/moui 0.1.12 的 122 个读不动的文件
-  里有 110 个挤在同一个匿名行里。现在 `tok_desc` 会报出 token 本身（46 个 `Tok`
-  变体全覆盖），同一次扫描变成 13 行分布，其余 SUMMARY 数字逐字节不变。
-- **`a..<=b` 闭区间**：lexer 里原本有一条注释写着「`..=` 没有建模：当初加这个 token
-  的时候没在受影响的语料里量到」。**写的时候是真的，再读的时候已经过期**，代价是
-  moui 的 4 个文件。对着工具链逐个量（每个一个独立 package，旁边一个坏 canary）：
-  `0..n` 被**拒绝**——"Missing `=` after `..` in range expression. Hint: use
-  `a..<=b` for inclusive range or `a..<b` for exclusive"，`0..<=n` 通过，`0..=<n`
-  被拒绝。所以闭区间写法是 `..<=`，而且裸 `..` 保持两个 TDot 是**对的**。
-  四个字符的判断必须排在三个字符**前面**——顺序反了会把 `0..<=n` 切成 `..<` 加 `=n`，
-  也就是工具链明确拒绝的那种形状。
-  它是**独立 token**而不是复用 `TRange`：三个镜头（walk / types::infer / interp）
-  对 `ERange(a, b)` 一视同仁，都只读两个操作数，**都不建模包含性**。所以包含端
-  被**读到但不分析**，并且发出一条 notice——否则 `a..<=b` 和 `a..<b` 在树里
-  完全一样，而「循环 n 次」和「n+1 次」不是可以默默丢掉的区别。
-- 分布出来后按顺序修了最大的**九**类：调用处的 `?` 可选参数简写 `f(x?)`、把 lambda
-  当作参数默认值、跨行的方法链、`match` 的被匹配表达式起自下一行、**表达式位置的
-  箭头 lambda**、**`a..<=b` 闭区间**、**限定构造器 `is Type::Ctor`**、
-  **括号内类型标注 `(expr : Type)`**、以及**空下标 `value[:]`**。
-  moui **486/608（79.9%）→ 590/608（97.0%）**，`unreliable` 1696 → 246，
-  `withheld` 238 → 2。
-- **`is Type::Ctor`：又是一次排名排错，而且错法和前两次不同。**
-  待办里写的是「`is` 模式出现在**表达式位置**」——照字面理解是 `parse_is` 没被走到。
-  它走到了，而且在好几个版本之前就在正确的优先级层上。真正缺的是
-  `parse_is_pattern` 内部：lexer 里**没有** `TColonColon`，`::` 是**两个** `TColon`，
-  而模式读取器读掉构造器名字就返回了，没消费这两个冒号。漏掉的 `:` 一路退回
-  `parse_cmp`，最后落在 `parse_atom` 的兜底分支——所以 scanner 的原因措辞是
-  ``unexpected token `:```，出现在一行里**唯一的** `:` 是路径分隔符的地方。
-  **这是「原因字符串不是原因」的第四次**，也是 `blockers.ps1`（把每条原因接回它的
-  **源码行**）第四次给出相反答案。moui 正好 +5 个文件，和重新排序时点名的数量一致，
-  没有多也没有少；proton 的 `parsed` 和 `actionable` 都没动，`unreliable` 950 → 927。
-- **这一轮把我自己的排名推翻了两次，值得单独记一笔。** 前四个类别是按
-  scanner 的**原因措辞**排的（`unexpected token ':'`、`expected ')'`），我把它
-  读成了 `is` 模式和函数类型；实际把这些行一一对回源码之后，最大的一类根本不是
-  它们，而是**箭头 lambda**：`(a, b) => …`、`(_n : T) => …` 在 `let` 右侧和
-  **位置实参**上都读不出来。
-  原因是三处 lambda 处理各管一段：`at_arrow_lambda`（只认裸 `x =>`）在位置实参
-  分支上，`at_lambda_head`（认全部写法）只在 `name =` 之后，而 `parse_expr`
-  一处都没有。于是 `g(a => a)` 能读、`g((a) => a)` 和 `let h = (a, b) => a + b`
-  不能。**一个"原因字符串"不是原因。**
-- 同一个 lambda 分支还带出两件事，都不是它自己造成的：
-  1. **comprehension 自己的 `=>` 和 lambda 的拼写一模一样。** 三处调用点
-     （iterable、guard、body）因此改走 `parse_or`；第一版忘了 iterable，
-     五个 comprehension 测试当场变红。
-  2. **`at_lambda_head` 里有一个能跨文件的盲扫。** 它把 `::` 当成参数类型标注
-     的冒号，然后一路找下一个 `=`——而 `=>` 就是 `TAssign` + `TGt`。于是
-     `T::{}` 后面只要隔几十行有任何一个 `=>`，整段就被当成一个巨大的 lambda
-     头吃掉。**这个 bug 是自检发现的，不是测试**：`src/core/core.mbt` 和
-     `src/lexer/lexer.mbt` 从 71/71 掉到 69/71，而 551 个测试全绿——因为没有任何
-     一个测试让 `::` 表达式和 `=>` 同处一个文件。回归测试因此**成对**写。
-- 修好盲扫之后，async 的 `actionable` 13 → 14、proton 54 → 61。**这 8 条不是
-  新缺陷，是那个盲扫一直在藏的**：4 条 `undefined name 'noraise'`
-  （proton 的 `fn f() -> T noraise {`）、3 条 `no visible binding for
-  'InvalidSetting'` 和 1 条 `'Waiting'`（后 4 条是 suberror 变体跨文件，已列为
-  长期项）。A/B 实测：护栏单独去掉**不会**出现（边界先停），边界单独去掉
-  **也不会**出现（护栏先停），两个一起去掉才复现原来的 `PARSED 0/1`。
-  **一个宽到能吞掉六十行外 `=>` 的前瞻不值得留着换这份安静。**
-- `defer` 另修了一类**假阳性**而不是读不动的文件：没有这个 arm 时 `defer` 被当成
-  普通标识符，报 `undefined name 'defer'`——这是**关于分析器的**错报，代码
-  `moon check` 零错误。async **18 → 13**、proton **55 → 54**，同样是 A/B 实测
-  （关掉 arm 重扫，7 条 `undefined name 'defer'` 全部消失，0 条新增）。
-- proton 中途经过 55 → 56 → 54 → 61：`match` 那一步让一个本来读不动的文件变得
-  可读，于是暴露出**更多**这类假阳性。**读入更多文件先让假阳性上升再下降，
-  是这个指标正常的形状。**
-- moui 剩下的 **27** 个。修完 `is Type::Ctor` 之后重跑了一次 `blockers.ps1`，
-  重新排序的结果是：`(expr : Type)` 括号内类型标注 **6 个文件**（排第一）、
-  `value[:]` 空下标 **4**、实参位置上的 `async fn(…)` **3**、
-  `fn f() -> T = "js" "sym"` FFI 声明式 **2**，另有 5 个各 1 个的单点。
-  我上一版清单里排第一的 `is`（当时记 4 个）实际是 5 个，而排第三的
-  `(expr : Type)`（当时记 3 个）实际是 6 个——**清单又一次是按旧读法排的**。
-- `name?=value` **判定完毕：不是缺口。** 探针里 `?=` 和 `~=` 都返回 MOON-BAD，
-  也就是说工具链自己拒绝这种实参写法。与其为一种 `moon check` 都不接受的写法
-  增加支持，不如把它记成「不是缺口」。
-- **同一轮量出来一个 48 个 site、却只挡 1 个文件的缺口，值得单独记一笔。**
-  `is @pkg.Type::Ctor`（包限定构造器）**根本读不出来**：模式头以 `@` 开头，
-  而 `peek_name()` 只认 `TName`，于是读取器什么都没消费就返回了。
-  全语料 48 处，moui 32 处、分布在 16 个文件里。把这 16 个文件**逐个单独扫描**
-  （`_verify/pkg_head_impact.ps1`）的结果是：15 个能读，**只有 1 个真的被挡住**
-  （`backend/macos/macos_services.mbt`）——另外 15 个的 site 都在被整块跳过的
-  `test` 块里。**site 不等于文件**，按 32 来排就会把一个 1 文件的修复排到
-  6 文件的修复前面。
-  更值得记的是**它对排序工具也是不可见的**：把「含 `@pkg` 的文件」和
-  `blockers.ps1` 的受阻文件表交叉比对，重叠是 **0**，看上去这个缺口不花钱——
-  因为 `macos_services.mbt` 正是那 4 个「边界之前零发现、因而根本不打印 `PARTIAL`」
-  的文件之一。`blockers.ps1` 自己的表头就写着这份表是**下界**，
-  而这一次正好落在下界之外。⇒ **一个与「没问题」一致的下界，不构成「没问题」的证据**；
-  两张表交叉比对，只知道**两张表都看得见的那部分**。
-  作为 KNOWN LIMIT 连同一条去掉 `@sqlite3.` 前缀的对照测试钉在
-  `parser_0436_test.mbt`，本轮不修。
-- **括号内类型标注 `(expr : Type)`**：`parse_atom` 的 `TLParen` 分组分支读掉内层表达式
-  之后直接要 `)`，六个受阻文件全部死在这里——`expected ')'`，而那一行的 `:` 是类型
-  标注，不是笔误。修复范围由工具链划定，不是由方便划定（四种写法各一个 package，
-  每个旁边一个坏 canary）：
-
-  | 写法 | moon | |
-  |---|---|---|
-  | `('0' : Int)` | **MOON-OK** | 唯一合法的写法，已实现 |
-  | `let y = 1 : Int` | MOON-BAD | 不加括号：被拒绝 |
-  | `(1 : Int, 2)` | MOON-BAD | 元组元素上的标注：被拒绝 |
-  | `(s : Int)`，`s : String` | MOON-BAD | 所以标注是**断言**，不是强制转换 |
-
-  最后一行决定了**不发 notice**：0.4.30 里 `..<=` 因为同样「读到了然后丢掉」发了
-  notice，可两者的结论相反——闭区间端点会把 n 次循环变成 n+1 次，**标注在运行时什么
-  都不改变**（类型编译器已经查过了），在这里发子集排除 notice 等于报告一个并不存在的
-  丢失。门禁 0437 的 M3 就是凭空造出那条 notice，它由一条**对照**（比较两种写法各自的
-  report 条数）杀掉，而不是由正向测试杀掉。
-- **这一轮头一次交付量低于清单的预测，值得单独记一笔。** 括号内标注在受阻清单里占
-  **6 个文件**，实际只换来 **+2**。另外四个文件在**更早**的地方就失败了，修标注根本
-  走不到它们——这就是「`blockers.ps1` 按**首个**错误排序」的含义。三个增量连续三次
-  清单数与交付数不一致（`is` +5 对 +5、`..<=` +5 对 +4、标注 +2 对 +6）。
-  ⇒ **清单里的行数不是预测值**，按它排序是启发式，不是测量。实际交付：
-  `is` +5、`..<=` +5、标注 +2——**并不保持清单给出的顺序**。moui 的
-  `unreliable` 406 → 335、`withheld` 51 → 34，`notices` 3999 → 4050（方向是对的：
-  能解析的文件才会产生子集排除 notice，读不下去的文件产生不了）。其余五个语料
-  **逐字节不变**。moui 剩下 **25** 个受阻文件。
-- **空下标 `value[:]`**：本轮最大的一跳，也是**头一次付出代价**的一跳。
-  `parse_postfix_from` 的方括号分支先用 `parse_expr()` 读**起始**下标，之后才问
-  `at(TColon)`；于是紧跟在 `[` 后面的 `:` 被交给了表达式解析器，文件死在
-  ``unexpected token `:` ``——那是受阻清单里 8 个文件的原因措辞，而这 8 处的 `:`
-  全都是下标分隔符。源码里那条注释当时写着开头的 `[:n]`「不在语料里，老实报错」，
-  `chars[:index]` 让它过期了，而「老实报错」其实是在给一个 blocker 化妆。
-  缺失的下标用 `EBigInt` 这个不透明占位（和已有的开尾处理一致），因为
-  `const_eval` 不能折叠一个它从没读到过的界。
-  moui **583 → 590（+7，本轮最大）**，`unreliable` 335 → 246，`withheld` 34 → **2**，
-  受阻文件 25 → 18；proton 101 → 103，async 226 → 227。
-- **但 moui 的 `actionable` 0 → 1、proton 61 → 63——这是本轮第一次「多读文件
-  抬高了 actionable」。** 不是回归，也不是白得的，逐条交代：
-
-  | 语料 | 新发现 | 已记录的局限 |
-  |---|---|---|
-  | moui | `macos_native_ime.mbt:437` `parameter 'prefix' may not be used` | `prefix` 确实在 **442 行**用了，在 `catch { }` 块里；`catch` 分支用 `skip_braces` 整块跳过，所以只在那里的读看不见（KNOWN LIMIT，钉在 `parser_0432_test.mbt:155`） |
-  | proton | `app_control.mbt:5` `undefined name 'noraise'` | `parse_raise_effect` 只处理 `!` 和 `raise E`，不处理 `noraise` |
-  | proton | `updater/hex.mbt:22,45` `no visible binding for 'MalformedSignature'` ×2 | suberror 变体跨文件使用——per-file `enum_ctors` 局限 |
-
-  三条都是**分析器自己的既有局限**、都作用在 `moon check` 接受的代码上，都不是空下标
-  这个改动造成的（改动只是让这些文件读得下去了）。这就是 README 早就写过的形状：
-  **读入更多文件先让假阳性上升再下降**。但 moui 的 `actionable` 毕竟是**头一次离开 0**，
-  而它正是这条长期目标的指标，所以 pin 带着理由上移，而不是悄悄上移——把 `catch`
-  块那条局限修掉是把它放回去的路，也因此成了板上最便宜的一件事：发现已经定位，
-  缺陷已经钉成测试。
-- `_verify/blockers.ps1` 排的是**读不动的文件**，`_verify/backlog.ps1` 排的是
-  **子集排除 notice**。两者回答的不是同一个问题，混为一谈正是这条在十四个版本
-  里一直没法处理的原因：只有前者会推动 `parsed=` 这个数字。
-
-### 0.4.17 —— 11 → 9：一条的根因是「上一版把探针写坏了」，另一条是「读到了却丢掉」
-
-0.4.16 剩 11 条。这轮回头查了 0.4.16 判定为**不可观测**、因而撤回的那条
-`Array::make`。结论是：**不可观测的原因是探针有缺陷，不是规则有问题。**
-
-#### `Array::make`：探针从来没调用过那个函数
-
-behavior 镜头只分析**被到达**的函数体——顶层语句调用得到才算。
-`rasterizer.mbt` 在 **1378 行**调用了 `PixelBuffer::new`，而 0.4.16 的每一个
-探针都只抄了定义、没抄那个调用。于是规则「改了没变化」是必然的：它压根没跑。
-
-补上调用后复现了，然后发现**第二件事**，而且它推翻了当初的读法：
-
-| 探针 | 结果 |
-|---|---|
-| 顶层可达，真实那行 | 报 `Byte::default` |
-| 去掉顶层调用 | 完全静默 |
-| `Array::make` 单独调用 | **被报** |
-| `Byte::default` 单独调用 | **被报** |
-| 外层也不存在 + 内层 `Byte::default` | **只报内层** |
-
-最后一行是重点：**一个调用一旦报错就返回 `ABottom`，外层调用不再被访问**。
-所以嵌套链只报最内层那个名字。当初把「加了 `Byte::default` 就露出
-`Array::make`」读成「打地鼠、没有终点」是错的——那是一层**掩盖**被揭开，
-不是一张无穷长的清单；调用者都认识之后，家族就终止了。
-
-#### 为什么是表，不是规则
-
-规则版本是「限定在内建类型上的调用一律是内建方法，不报」。反向对照判了它：
-
-| 写法 | 结果 |
-|---|---|
-| `Array::make(4, 0)` | 静默（名字在表里） |
-| `Array::mkae(4, 0)` | **被报**（名字不在表里） |
-
-规则版本会把两个都静音。所以 `src/core/builtin_methods.mbt` 是**生成的表**：
-656 个名字，642 个读自工具链自己的 `moonbitlang/core/**/pkg.generated.mbti`，
-剩下 14 个编译器内建（`Array::make`、`Map::new`、`StringBuilder::new` …）
-**没有任何接口声明**，逐个用 `moon check` settle——一个探针文件把它们全部
-裸写调用，旁边放一个不可能存在的控制名，工具链只标了控制名。
-
-生成脚本随仓库发布在 `tools/gen_builtin_methods.ps1`，它自己会跑 `moon fmt`。
-它必须在仓库里而不是临时目录里：`builtin_methods.mbt` 的头写着「不要手改」，
-一张**生成器没进仓库**的表会静默腐烂——下一个 MoonBit 加了方法，没人生成，
-分析器就又开始把真实的内建调用报成未定义。
-这个表是 `builtins.mbt` 那张 ambient 表的一部分，而那张表的头注释早就写明：
-**每次使用都只会漏报，绝不会凭空造出误报**——这就是为什么它可以是数据。
-
-#### 顺带证伪了 0.4.16 的一条结论
-
-0.4.16 的测试写着「限定名调用不上报，是过度报告的镜像，一个已知缺口」。
-**假的。** 那个 fixture 是 `fn f() -> Int { Nope::also_missing() }`，而 `f`
-**从来没被调用过**——和 `Array::make` 那个探针是同一个缺陷。把 `let top = f()`
-加上去，同一个名字立刻被报出来。
-
-真实原因有两条，叠在一起看着像一条：behavior 镜头需要函数体被到达，而 type
-镜头**根本不把 `::` 名当类型引用**。测试已按实际行为重写。
-
-#### `Select`：同包兄弟文件里的枚举变体
-
-`canvas_view_test.mbt:4917`：
-
-```moonbit
-fn every_mode() -> Array[Mode] {
-  [Select, Rect, Polygon, Keypoint, EditBinding]
-}
-```
-
-`Mode` 和五个变体都在**同一个包目录**的 `app_moui/app.mbt:23`。而
-`collect_declared_names` 只收**顶层关键字**后面的名字——枚举变体在花括号里，
-被 depth-0 规则跳过了。这是 0.4.15 用 path 尾部兜底解决的同文件问题的**跨文件
-孪生体**：带路径的 `Mode::Select` 走得通，裸写的 `[Select, ...]` 走不通。
-
-修法是进 `enum` 体收割变体名，但**载荷类型不算变体**，否则
-`Conv2d(Params)` 会让 `Params` 变成包可见，静默掉别的文件里一条真发现。
-所以规则是：行首（或紧跟 `{` / `,` / `|`）**且不在括号内**。
-
-（顺带一个实测：`enum E { A B }` 这种空格分隔的写法是**语法错误**，
-`moon check` 报 `expect ; or }`。测试最初按合法写了它，跑出来是红的——
-于是去问工具链，而不是去猜语法。）
-
-#### 差分：933 个文件里只有 2 个文件的判定变了
-
-| 语料 | 0.4.16 | 0.4.17 |
-|---|---|---|
-| `riantr/snn_mbt` 0.155.0 | 6 | **6**（全真阳性，未动） |
-| `riantr/moonbit_doubleML` 0.139.0 | 0 | **0** |
-| `riantr/moonbit_labeler` 0.2.13 | 5 | **3** |
-| `riantr/moonbit_image` 0.3.7 | 0 | **0** |
-| `riantr/pyroduct` 0.1.29 | 0 | **0** |
-| 合计 | 11 | **9** |
-
-逐文件比对：只有 `rasterizer.mbt` 与 `canvas_view_test.mbt` 的判定变了，各减
-**恰好 1** 条 actionable，两者的 notice 数（1 / 175）**一条未动**。其余 931 个
-文件逐字节一致。两处改动都是外科手术级的。
-
-labeler 剩下的 3 条是 `@core.SurfaceMetrics::new` ×1 与 `@core.Size::new` ×2，
-属于 0.4.16 已经定过的「调用方式」——加 `--extern-iface-dir .repos` 就没有。
-
-测试 js 286 / wasm 358 / wasm-gc 286。七道防护做了突变验证，全部杀死。其中
-**两道专门用来测形状而不是测数值**：M3 往表里塞一个不存在的名字（`Array::mkae`），
-反向对照必须变红；M4 把 0.4.16 那个**规则**装回去替代表，8 个测试变红——
-「表优于规则」是实测出来的，不是风格选择。
-
-### 0.4.16 —— 19 → 8，其中 6 条是真阳性：先承认「对」，再修剩下的错
-
-0.4.15 剩 19 条。这轮先做了一件上一轮没做的事：**逐条判定哪些是真的**。
-
-结果是 6 条**真阳性**——分析器是对的，代码确实有问题：
-
-| 位置 | 发现 | 判据 |
-|---|---|---|
-| `neuron_identity.mbt` | 参数 `dt` 从未被读 | 读源码确认函数体里没有 `dt` |
-| `dsac.mbt` ×2 + 3 个 `examples/*/main.mbt` | `for a in 0..<n` 的绑定变量 `a`/`s` 从未被读 | 同上；探针确认 `moon check` 对未读的 for 绑定变量**也**告警 |
-
-外加 3 条**不是缺陷**：`labeler` 里的 `@core.SurfaceMetrics::new` 等 3 条，
-分析器自己就打印了 `FETCH ... pass --extern-iface-dir .repos to index their
-interface names`。加上这个参数重扫，`labeler` 从 5 条降到 2 条。**那 3 条
-本来就不是 bug，是调用方式。**
-
-真正修掉的 9 条，成因只有一个共同点：**信息已经读到了，却被丢掉或没用上。**
-
-| 成因 | 条数 | 位置 |
-|---|---|---|
-| 跨包 `const` 被当成**函数** | 4 | `IfaceSymTab.values` 的 `Bool` 一直写 `true`、没人读 |
-| 带花括号的 `suberror` 体被当成表达式 | 4 | 一律走「跳到行尾」的 skip |
-
-（第三条 `Byte::default` / `Array::make` **没有修**，原因见下面「改完又撤回」。）
-
-#### 跨包 const：`3.0F * hz` 被报成 `'float' 和 'fn hz'`
-
-```moonbit
-// snn_mbt/istdp.mbt
-r: 3.0F * hz,   // hz 是 @snn_kw 的 const hz : Float
-```
-
-`.mbti` 读取器**已经分得清** `const` 和 `fn`——它对两者匹配的前缀不同——
-然后把区别扔了，因为两条分支都只产出一个裸名字。`IfaceSymTab.values` 的
-`Map[String, Bool]` 里那个 `Bool` 一直在写 `true`，从来没被读过。现在它是
-`is_const`，`merge` / `union` 也跟着透传。
-
-反例对照（必须有）：跨包的**函数**仍然返回 `TUnknownFn`，不能一起降级成
-`TUnknown`——那会让调用处理器跑去检查一个凭空编出来的参数个数。
-
-#### 带花括号的 suberror
-
-`suberror` 有两种写法：`suberror Timeout of String`（一行）和
-`pub suberror DecodeError { ... }`（带体）。原来**一律**走「跳到行尾」，
-于是带体的那种跳到换行就停了，剩下的 `{ ... }` 被当作表达式块解析，
-里面的载荷类型一个个变成 undefined name——`moonbit_image/types.mbt` 里
-`String` 报了 4 次。
-
-现在按关键字后面**实际跟的是什么**分流，扫描边界固定在 8 个 token
-（`suberror X of T` 的头部不会更长），避免把后面某个声明的花括号
-误认成自己的。反例对照：不带体的 suberror 必须照样解析，且它**之后**的
-函数仍然存在。
-
-#### 一个反向的发现：这个分析器漏报
-
-`Nope::also_missing()` 这种**限定名调用在被调用方解析不出来时，完全不报**。
-这不是本轮引入的，是上一轮修掉的过度报告留下的镜像：
-
-> 限定名一度被**过度**报告（`Layer::ReLU`、`fn hz`），修完之后它们变成了
-> **报告不足**。
-
-我把这条写成了断言**当前行为**的测试，并标注 KNOWN GAP——不是断言一个
-还不存在的发现（那会让每个版本都卡在一个没人评估过的问题上）。
-
-要往正确的方向走，得先把「接收者类型」和「包别名」区分开，这轮没做。
-
-#### 改完又撤回：`Byte::default` / `Array::make`
-
-`labeler` 的 `rasterizer.mbt:74` 是一行：
-
-```moonbit
-let pixels : Array[Byte] = Array::make(total, Byte::default())
-```
-
-分析器把其中一个被调用方报成 `undefined function`。我按探针结论
-（`Byte::default()` 编译 0 错误 0 警告）把 `Byte::default` 加进内建表——
-**结果只是把底下的 `Array::make` 露了出来**，同一行。
-
-这说明「一个名字一个名字补」是打地鼠，没有终点。于是改成按家族判定：
-**限定在内建类型上的调用（`Array::`、`Map::`、`Int::`）一律不当未定义**——
-分析器本来就没有内建类型的方法表。
-
-**这条改完又被撤回了。** 五道突变里它占两道，两道都存活（关掉它、让它永不
-匹配，整个套件照样全绿）；在一个手搭的探针上——完整文件和故意做成 partial
-的文件各一次——开关它输出**逐字节相同**。
-
-而语料里那条发现的形状我复现不出来：`undefined function` 这个串在本文件
-里只被构造一次，而我改的那处根本走不到。**在证明不了的前提下静音一整族调用，
-和当初制造这批误报是同一类错误。** 理由写在 `interp.mbt` 那条上报旁边。
-
-#### 结果
-
-| 语料 | 0.4.13 | 0.4.14 | 0.4.15 | 0.4.16 |
-|---|---|---|---|---|
-| `snn_mbt` | 33 | 19 | 9 | **6**（全真） |
-| `moonbit_doubleML` | 28 | 3 | 1 | **0** |
-| `moonbit_labeler` | 6 | 5 | 5 | **5**（加 `--extern-iface-dir` 为 2） |
-| `moonbit_image` | 4 | 4 | 4 | **0** |
-| `pyroduct` | 0 | 0 | 0 | **0** |
-| 合计 | 71 | 31 | 19 | **11** |
-
-剩下 11 条里 **6 条是真阳性**，3 条是调用方式，另外 2 条在 `labeler`
-（1 条已修的 `Byte::default` 同类，1 条被 stdout 截断看不到）。
-
-测试 js 270 / wasm 342 / wasm-gc 270（新增 8）。四道突变全部杀死，
-restore 后 SHA256 逐字节一致；自检 52/52、actionable=0。
-
-### 0.4.15 —— 剩下 30 条里的 12 条：三个成因，其中一个差点把整条规则静音
-
-0.4.14 把四个语料的 actionable 从 71 降到 31。**其中 1 条是真阳性**
-（`neuron_identity.mbt` 的 `dt` 参数确实没被读，编译器也会警告）——第一次在
-这套语料里找到真的。其余 30 条继续归因，三条成因占了 12 条。
-
-| 成因 | 条数 | 判据 |
-|---|---|---|
-| `extern "C"` 的参数被判「未使用」 | 6 | 探针：extern 不告警，同文件的普通 fn 告警 |
-| `Bool == Bool` 被判「不支持的操作数」 | 2 | 探针：0 error 0 warning |
-| 单元（无载荷）枚举变体读不到 | 4 | 探针：0 error；同 enum 的带载荷变体本来就正常 |
-
-#### 单元变体：同一文件里，带载荷的能读、不能带载荷的读不到
-
-```moonbit
-enum Layer {
-  Conv2d(Conv2dParam)   // 能读
-  ReLU                 // 报 undefined name
-}
-```
-
-不是「enum 没被采集」。采集器确实把两个名字都收进了模块帧，但存的是**裸名**
-（`ReLU`），而引用写的是**整条路径**（`Layer::ReLU`）。`Layer::Conv2d(p)` 是
-**调用**，调用路径另有兜底；`Layer::ReLU` 是**裸引用**，没有。
-
-修法是给整条路径一次尾部兜底（`@core.path_tail`），**只在整条路径已经解析失败
-之后**才走，所以不可能把能解析的名字变成解析不了的——只可能救回尾部真有东西的
-路径，那正是单元变体。
-
-配套的反向对照：`Colour::Purple`（从未声明）仍然必须报错。否则每个语料里拼错的
-枚举路径都会被静音。
-
-#### 「函数体是空的」不能当 extern 的代理
-
-直觉是：extern 函数没有函数体，所以「体空 ⇒ 不审计参数」就够了。探针否掉了它：
-
-| 写法 | `moon check` |
-|---|---|
-| `extern "C" fn expf(x : Float) -> Float = "expf"` | 静默 |
-| `fn p7(z : Float) -> Float { }` | **告警** |
-| `fn p6(y : Float) -> Float { 1.0 }` | **告警** |
-
-所以必须由 parser 显式记录 extern 函数名（`ParseResult.extern_fns`），
-跟 `enum_ctors` 同一个套路。
-
-#### 结果
-
-| 语料 | 0.4.13 | 0.4.14 | 0.4.15 |
-|---|---|---|---|
-| `snn_mbt` | 33 | 19 | **9** |
-| `moonbit_doubleML` | 28 | 3 | **1** |
-| `moonbit_labeler` | 6 | 5 | 5 |
-| `moonbit_image` | 4 | 4 | 4 |
-| `pyroduct` | 0 | 0 | **0** |
-| 合计 | 71 | 31 | **19** |
-
-`snn_mbt` 少了 10 条、`doubleML` 少了 2 条，正好等于两条成因各自的计数；
-`labeler` 和 `moonbit_image` 没动，因为它们的成因是另外两条（`@core.X::new`
-这类跨包构造、`Byte::default` 这类内建缺失，以及 `suberror` 体被二次扫描）。
-
-测试 js 263 / wasm 335 / wasm-gc 263（新增 7）。五道突变全部被杀死，restore
-后 SHA256 逐字节校验通过；自检 51/51、actionable=0。
-
-#### 突变脚本自己踩的第三个坑
-
-替换文本写成了 PowerShell 的 `$true`，而 MoonBit 里没有这个语法。两道突变因此
-**编译失败**，脚本把它们报成 `COMPILE-ERR`——和「套件抓到」长得一样，其实
-什么都没抓到。**一种不能编译的突变，和一种成功杀死的突变，在报告里必须分开。**
-
-### 0.4.14 —— pyroduct 的 0 不是「对」：换四个语料，一次挖出三个真缺陷 + 一个静默错误
-
-0.4.13 把 pyroduct 的 actionable 清到 0，**但那是 pyroduct 恰好没踩到，不是分析器对**。
-这次把同一分析器指向另外四个已发布模块（`snn_mbt` / `moonbit_doubleML` /
-`moonbit_labeler` / `moonbit_image`，共 933 个文件），立刻出现 **71 条 actionable**。
-
-| 成因 | 条数 | 判据 |
-|---|---|---|
-| `F` 后缀浮点字面量 `0.0F` 未建模 → `undefined name 'F'` | 28 | `moon run` 确认合法；`7F` 才是语法错 |
-| `/` 被当成浮点除法 → `cannot assign 'float' into '[int]'` | 14 | `7 / 2 = 3`，**不是** 3.5 |
-| 指数记法 `1.0e-12` 未词法化 → `undefined name 'e'` | 14 | `moon run` 确认合法 |
-| `suberror` 体被二次扫描 → `undefined variable 'String'` | 4 | 同一行已报 ParseError |
-
-**68 条逐条复核，0 条是真阳性。**
-
-#### 还有一个不产生任何发现的缺陷
-
-改的过程中，探针发现一个比上面四条都更糟的东西：
-
-```
-1.5 -> 1 | 0.25 -> 0 | 3.14159 -> 3
-```
-
-**每个浮点字面量都丢掉了小数部分。** `lexer.mbt` 里 `int_part` 在消费小数**之前**
-就取好了值，之后 `slice(start, int_part)` 于是只切到整数部分。
-
-它一直没被发现，是因为既有测试只断言 token 的**种类**是 `float`——被截断的值同样
-满足。**一条不产生任何发现的缺陷，会让分析器对读到的每一个浮点都静默地错。**
-新测试因此改为读**值**和**token 数**。
-
-#### 实测过的修法，以及一条实测后**撤回**的修法
-
-`walk.mbt` / `interp.mbt` 里 `/` 的常量折叠与结果类型同样与 MoonBit 事实不符
-（`OpDiv => None`、`AType("float")`）。三处都改对之后：
-
-- 五道突变里，这三道**全部存活**（改回去套件照样全绿）；
-- 在 933 个文件上做差分扫描，**两次的报告流逐字节相同**。
-
-也就是说常量求值层今天根本到不了任何一条输出的发现。按本项目「不可观测的分支
-一律不提交」的口径，**这三处改动已撤回**，理由写在了 `walk.mbt` 和 `interp.mbt`
-的注释里。声称一个无法证明的修复，比留着一处已知但暂时无害的写法更糟。
-
-#### 结果
-
-| 语料 | 文件 | 可解析 | actionable |
-|---|---|---|---|
-| `riantr/snn_mbt` 0.155.0 | 673 | 234 → **603** | 33 → **19** |
-| `riantr/moonbit_doubleML` 0.139.0 | 205 | 145 → **165** | 28 → **3** |
-| `riantr/moonbit_labeler` 0.2.13 | 37 | 16 → 18 | 6 → **5** |
-| `riantr/moonbit_image` 0.3.7 | 18 | 1 | 4 |
-| `riantr/pyroduct` 0.1.29（不回退） | 119 | 103 → **104** | **0** |
-| 合计 actionable | | | 71 → **31** |
-
-测试 js 256 / wasm 328 / wasm-gc 256（新增 16）。五道突变全部被杀死，restore
-后逐字节校验与运行前一致。
-
-#### 顺带修掉的两个自伤
-
-验证脚本本身在这次迭代里咬了两次：
-
-1. `Get-Content -Raw` 在中文 Windows 上按 GBK 解码 UTF-8，把注释里的 `—` 写成
-   `鈥?`，**并且吞掉了后面的换行**，把两行注释并成一行。现已改为按字节读、并用
-   SHA256 证明 restore 与运行前逐字节一致。
-2. 差分脚本里 `"$v_"` 被 PowerShell 解析成**名为 `v_` 的变量**（空），两次扫描
-   写进同一个文件、后者覆盖前者，于是「变体 A 和变体 B」变成了自己和自己比，
-   报出「完全一致」。现在用 `${v_}`，并在比较前断言文件存在——两次读取都失败
-   曾经被当成「相同」。
-
-判据：**比较两个结果之前，先证明两个结果都存在。**
-
-### 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
-
-0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是
-`moon check` 零错误通过的干净文件。
-
-| 成因 | 条数 | 位置 |
-|---|---|---|
-| `color[u]`：**把 `Map` 当成 list 报下标类型错** | 2 | `src/paths.mbt` 135/152 |
-| `self` **只**在插值里被读 → 报参数未用 | 1 | `src/slot.mbt` 127 |
-| `_` 前缀的未用绑定/参数（**分析器与编译器规则相反**） | 2 | `src/algebra.mbt` 118、`audit/mbti.mbt` 69 |
-
-#### 第一条差点被我用一个更糟的 bug 换掉
-
-`Map[String, Int]` 用 `String` 下标是**对的**——`Map` 按 key 索引。而类型镜从来没问
-过「这个下标的基到底是不是 list」，只要下标不是 int 就报
-`list indices must be int`，**在干净文件上给出 `error:` 级发现**。
-
-最直接的修法是加个前提：基是 `TList` 才报。**这一改立刻吞掉了两条真实错误**——
-我拿探针量出来的：`xs["k"]` 在 `Array[String]` 和 `Array[Int]` 上，`moon check`
-报 "Expr Type Mismatch"，0.4.12 能抓到，加了前提之后两条都没了。
-
-原因是 `ann_to_ty` **不认识 `Array[T]`**（只认 `[T]`，而 `[T]` 在 MoonBit 里根本不是
-合法写法），parser 还用 `skip_indexed` 把 `[...]` **整个丢掉**——`Array[String]`
-到达类型镜时只剩 `"Array"`。所以那个 `TList` 前提**永远不成立**，检查等于静音。
-
-真正的修法是**补上类型模型**，而不是关掉检查：三处——
-`ann_to_ty` 认 `Array[T]`；parser 的 `type_annotation` 保留头部的 `[...]`
-（它自己上面的注释还写着「类型镜不建模容器，所以丢掉不损失」——那句话正是这个
-bug 的说明书）；`ty_assignable` 递归进 `TList`，让 `TList(TUnknown)` 能赋给
-`TList(TStr]`（否则「Unknown 可赋给任何东西」这条规则被下一层悄悄推翻）。
-
-最终对照（探针里 5 个下标，`moon check` 报 3 个真错误）：
-
-| | 真错误 | 误报 |
-|---|---|---|
-| 0.4.12 | 3 / 3 | **1**（`Map`） |
-| 0.4.13 | **3 / 3** | **0** |
-
-⇒ **教训一：给检查加前提之前，先问「它依赖的类型读得到吗」。** 前提写对了，
-但如果依赖的那个类型是**上游丢掉的**，加前提就等于静音——而且它静默得很有道理：
-检查确实"只在基是 list 时才报"。
-
-⇒ **配套：parser 丢信息这件事，类型镜那边的注释替它辩护了。** 一句写对的注释
-（「不建模容器所以丢掉不损失」）会在**前提收紧**的那一刻变成谎言。注释里
-"这不是妥协"这种话，要跟着它依赖的前提一起复查。
-
-#### `_` 前缀：分析器和编译器规则相反
-
-`_` 前缀在 MoonBit 里是**丢弃约定**。探针（同一个文件里同时放 `_f` / `_classes` /
-`_ok3` 和一个非下划线对照 `plain`）：`moon check` **只对 `plain` 报警**。
-分析器此前只豁免裸 `_`，并在注释里断言「名字不是丢弃堆」——那是**论证，不是实测**。
-
-⇒ **教训二：豁免规则先探针，再写进注释。** 这条规则和它那句理由都是 0.4.8 加的，
-从没被工具链验证过；一改注释里的断言，编译器一句话就把它否掉了。
-
-#### `self` 是约定参数名，不是关键字
-
-词法器把 `self` 列进了「插值里不是绑定」的关键字表，于是 `\{self.designation()}`
-**不记录这次读**，只在插值里被读的参数就被报成未使用。它是 0.4.8 加插值追踪时
-**顺手猜进去的**，没量过。
-
-⇒ **教训三：同一个读法在不同代码路径上答案必须一致。** 这里的 bug 就是
-「插值里算读、普通表达式里不算」，两条路径互相矛盾。写测试时要**两个方向都钉**，
-否则只钉一个方向会以为已经覆盖了。
-
-#### 被突变验证挖出来的两件事
-
-1. **突变脚本自己的过滤器匹配了 0 个测试。** 两个 guard 报成 GREEN，其实
-   `--filter` 的 glob 根本没选中任何用例——一次「全绿」什么也没证明。脚本现在
-   断言 `ran > 0`，`ran = 0` 直接判 INVALID。
-2. **一个修复没有任何测试能杀死它。** 我一度让空列表字面量「采纳注解类型」，
-   把它静音后两个语料的发现流**逐字节相同**（496 / 528 条），也没有测试能杀它。
-   真正起作用的是 `ty_assignability` 那一条。**测不出差别的分支不是保险，是没被测过
-   却长得像决策的代码**——已删，并在两处注释里写明为什么删。
-
-pyroduct **actionable 5 → 0**，总发现数 632 → 627，正好 −5：没有新发现冒出来。
-自检 48/48、actionable=0。测试 js 240 / wasm 312 / wasm-gc 240（新增 24 个，
-其中 6 个是新的 `types_test.mbt`——这个文件此前不存在，也正是它缺失让上面那个
-回归活过了整整一个版本）。八道防护，全部突变验证通过。
-
-### 0.4.10 —— 发布 0.4.9 才暴露出自检一直在遮蔽的两件事
-
-把 provenance 的修复发出去，意味着要再用它自己扫一遍已发布的包——就是当初找出
-`unknown` 那个 bug 的检查。这一次回来是 `actionable=2`，而 0.4.8 是干净的，
-两条都在 `provenance.mbt`：
-
-```
-no visible binding for 'is_coordinate'
-no visible binding for 'split_coord'
-```
-
-两条都不是代码缺陷。它们是这一版在读自己的源码时，发现了两件关于工具本身的事。
-
-**`if` 表达式会藏起未定义名。** 同样这两个名字在同一个文件里出现了两次，只报了
-一次：
-
-```moonbit
-let stem = if is_coordinate(p.target) {   // 226 行——if 表达式
-  ...
-if is_coordinate(target) {                // 411 行——if 语句
-```
-
-`let x = if c { … } else { … }` 会被解析、两个分支会被读，然后**整块丢掉**——
-它属于「不分析的子集」，而且有告知说明。所以写在这种分支里的不存在名字，
-永远不会被报。0.4.8 自检之所以干净，部分原因正是这两个调用躺在一个被丢掉的
-if 表达式里。把它们挪进普通函数后 `if` 变成语句，被完整解析，
-两个潜伏的**漏报**就变成了两条发现。
-
-**另一个文件里的包私有辅助函数是看不见的。** 跨文件解析走 `.mbti`，
-而包私有的 `fn` 不出现在任何 `.mbti` 里——所以一个文件调用同包另一个文件的私有
-辅助函数，读起来就像未绑定。那两条发现的真相就是这个：真实存在的绑定，
-而分析器没有任何途径看到。`is_coordinate` 和 `split_coord` 现在是 `pub`，
-因此进了接口文件，理由和 `prov_or_unknown`、`stamp_utc`、`scan_artifact_name`
-当初一样。每个函数上的注释都写明了原因，免得有人日后"整理"回私有、
-悄悄把这条发现放回来。
-
-这两类本次都没修：它们都是已声明的子集 / 可见性限制，而且都偏向**沉默**而不是
-噪音。扫一个多文件包却什么都没返回时，值得知道有这两回事。
-
-### 0.4.9 —— `@latest` 扫描把自己的产物命名成 `unknown`
-
-用文档里那条命令、通过它自己扫已发布的包：
-
-```
-moonx riantr/moonbit_static_analysis@latest riantr/moonbit_static_analysis@latest --mmd-auto
-```
-
-结果是 `46/46 parsed, actionable=0`——**已发布的产物扫自己是干净的**，这是工作树
-给不了的那个检查。但产物名是
-`riantr-moonbit_static_analysis_unknown_0.1.20260920_…mmd`，头部写着
-`version=unknown`，而这次扫的正是在读
-`.repos/riantr/moonbit_static_analysis/0.4.8/`，它的 `moon.mod` 里明明白白是
-`version = "0.4.8"`。
-
-`provenance_for` 在目标是坐标时只从坐标取版本，从不回退到那棵树。`@latest`
-本身不带版本：`split_coord` 故意把它抹成空，好让 `moon fetch` 收到一个裸模块名。
-于是**工具自己头部举的那条例子命令，永远写出 `unknown`**——而版本正是用来把两次
-扫描区分开的那个字段。
-
-**钉了**版本的坐标仍然优先于树（调用方要的就是那一个），只有空的情况才回退。
-修复后重跑同一条坐标扫描实测：
-
-```
-MMD	riantr-moonbit_static_analysis_0.4.8_0.1.20260920_20261010T235302Z.mmd
-  %% version=0.4.8
-```
-
-测试：js 207 / wasm 277 / wasm-gc 207。
-
-### 0.4.8 —— 以 mermaid 工件为证据的三轮自检
-
-把扫描器对准自己跑了三轮，每一轮以上一轮的输出作为本轮的靶子。证据取 mermaid
-工件（`--mmd '@'`）；但 **stdout 文本报告才是权威**——图天生有损
-（`findings_shown_per_file = 40`），只用来定位。
-
-| 轮 | 已解析 | actionable | 那一轮修了什么 |
-|---|---|---|---|
-| 起点（0.4.7） | 46/46 | **104** | —— |
-| 第二轮后 | 46/46 | **8** | 被跳过的表达式、`walk_target` 穿透写、过期 `.mbti` |
-| 第三轮后 | 46/46 | **0** | 字符串插值里的名字不可见 |
-
-覆盖率全程没有回退。测试：js 208 / wasm 274 / wasm-gc 208，`--deny-warn` 干净。
-
-**被跳过的子表达式也是帧上的一个洞。** `match` / `try` / 函数面量是「声明的子集
-边界」——它不移动错误行、不扣覆盖率，但它跳过的那块区域恰恰可能是某个绑定唯一的
-赋值处，因此含它的函数现在整函数退出
-`UnusedLocal` / `UnusedParam` / `ParamChanged` 审计。这要求函数有**完整区间**
-（从头部到右花括号），`SFunc` / `SLocalFunc` 现在带的就是它。**104 → 8**。
-
-**穿透参数写是读，不是重绑定。** MoonBit 的结构体是引用，`self.field = v`、
-`v[0] = x`、`pair.0 = x` 改的是参数所指的对象，参数本身没变。这三种以前都算
-`ParamChanged`，于是报出一条它自己的解释（「不再持有调用方传入的值」）为假的结论。
-`ParamChanged` 现在只针对裸名重绑定。
-
-**经 `\{...}` 读到的名字就是读到了。** 插值体被原样抄进字符串 payload，所以它从来
-不是 token——只经插值读的名字看起来没被读，而插值里**不存在**的名字则根本不报。
-`TStr` 现在携带其插值引用的名字，walk 逐个解析。上一轮活下来的 **8** 条**全是**
-这一个缺陷：`mermaid.mbt` `anchor`、`pipeline.mbt` `i`/`s`/`r`、
-`parser.mbt` `what` ×2、`interp.mbt` `name`、`cli/main.mbt` `live`。**8 → 0**。
-
-这两个数字是怎么拿到的，值得单列，因为两条都容易被当成规矩重复下去：
-
-- **第三轮的起点就是错的。** 那 8 条本来准备当死代码清理。它们不是死代码——照着清理
-  就是删掉能跑的代码去迎合一条误报。那一轮找到的是分析器自己的缺陷。
-- **插值那个修复立刻又造出两条误报**：`no visible binding for '1'` 和 `'10'`，
-  出在 `\{i + 1}` 与 `\{pct / 10}`——标识符被允许以数字开头。只有拿真实代码再扫一遍
-  才会浮出来。**修误报和制造误报是同一类动作**，区别只在于有没有再跑一次扫描。
-
-
-
-
+- [MoonBit 语言指南](https://www.moonbitlang.com/docs/)
+- [moonbitlang/core](https://mooncakes.io/docs/moonbitlang/core) —— 固定语料
+- [moonbitlang/parser@0.4.3](https://mooncakes.io/docs/moonbitlang/parser@0.4.3) 与
+  [moonbitlang/lexer@0.4.2](https://mooncakes.io/docs/moonbitlang/lexer@0.4.2)
+  —— 工具链自己的文法，对照用
+- [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct) —— 机器表审计的参考消费方
+- [skills.mooncakes.io](https://skills.mooncakes.io) —— 已发布的 skill

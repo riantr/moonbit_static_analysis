@@ -1,12 +1,17 @@
 # The ParseError / subset-exclusion backlog, measured rather than remembered.
 #
-# WHY THIS EXISTS. The coverage caveat in README.md lists the largest exclusions as
-# "match (155), struct (36), derive (31), enum (14)". That list was assembled by
-# hand over several releases and it is INCOMPLETE: measured now, an `if`
-# expression in expression position accounts for 45 more, and `anonymous function
-# literal` for 10, `const` for 6, `short lambda` for 2, `try` for 1. A list that
-# omits 45 items while looking precise is worse than no list, because it reads as
-# a ranking.
+# WHY THIS EXISTS. The coverage table in README.md ("The constructs the frontend
+# reads past") IS THIS SCRIPT'S OUTPUT -- run it and paste what it prints. The
+# table used to be assembled by hand over several releases, and it was
+# INCOMPLETE: an `if` expression in expression position accounted for 45 items
+# the hand-written list omitted, and `anonymous function literal` for 10,
+# `const` for 6, `short lambda` for 2, `try` for 1. A list that omits 45 items
+# while looking precise is worse than no list, because it reads as a ranking.
+#
+# So the README table is not a claim of its own: it is this script's output, and
+# when the two disagree, this script is the authority. Measured 2026-10-21 on
+# this project's own source (170 files): test 1175, match 299, if 67, struct 58,
+# derive 52, enum 24, anonymous fn 10, const 6, short lambda 2, try 1.
 #
 # It also does not say what the numbers are a count OF. Each of these notices marks
 # a declaration or expression the frontend read past and did not analyse, so what

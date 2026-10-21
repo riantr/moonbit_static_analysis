@@ -279,6 +279,35 @@ if ($failed.Count -eq 0) {
   if (-not $script:lastOk) { $failed += 'self-scan' }
 }
 
+# --- 4b  the README's own links, anchors, versions and counts ------------------
+# The registry SERVES README.md, so a broken link there is a broken link on
+# mooncakes.io -- and a README that quotes a count nobody re-measures is the same
+# failure mode the per-function census had: a published number that can go
+# missing silently. This stage checks the four things that actually rot:
+# a relative link to a file that moved, a "#anchor" with no heading behind it,
+# a version reference that names something other than the released version, and
+# a count that no longer matches what the tools measured.
+if ($failed.Count -eq 0) {
+  $RL = Join-Path $root '_verify\check_readme_links.ps1'
+  if (-not (Test-Path $RL)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_readme_links.ps1'
+    $failed += 'readme-links'
+  } else {
+    Stage 'README links, anchors, versions and counts' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $RL 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(BROKEN|FAIL|VERIFY|MISSING)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'readme-links' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
 $gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496')
 if ($SkipMutations) {

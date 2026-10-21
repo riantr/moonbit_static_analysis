@@ -2,11 +2,12 @@
 # line the parser stopped at.
 #
 # WHY THIS EXISTS. `_verify/backlog.ps1` ranks the subset-EXCLUSION notices
-# ("match expression is outside the analyzed subset"), and README.md carries that
-# ranking. That is a count of spans the frontend read past WITHOUT ANALYSING --
-# the file still parses. The standing coverage metric is a different thing:
-# `parsed=486/608` on wzzc-dev/moui 0.1.12, i.e. 122 files the frontend could not
-# read AT ALL, each losing every finding after its first failure.
+# ("match expression is outside the analyzed subset"), and the coverage table in
+# README.md carries that ranking. That is a count of spans the frontend read past
+# WITHOUT ANALYSING -- the file still parses. The standing coverage metric is a
+# different thing: on moonbitlang/core it is `parsed=957/1029`, i.e. 72 files the
+# frontend could not read AT ALL, each losing every finding after its first
+# failure.
 #
 # So the two lists answer different questions, and only one of them is the metric.
 # Measured on the same corpus the NOTPARSE reason tally already answers coarsely:
@@ -21,7 +22,10 @@
 #
 # HONEST LIMIT. A partial file with ZERO findings before its boundary prints no
 # `PARTIAL` line at all, so those files are invisible here. The script prints the
-# recovered/122 ratio rather than letting the reader assume the tally is complete.
+# recovered/blocked ratio rather than letting the reader assume the tally is
+# complete. Both numbers are computed at RUN time -- the corpus's blocked-file
+# count moves as the frontend reads more, and a comment that hard-codes it goes
+# stale without saying so.
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify\blockers.ps1
 #        [-Root <moui dir>] [-Scan <precomputed scan output file>]
@@ -64,9 +68,9 @@ $parsedN = [int]$par[1].Value; $fileN = [int]$par[2].Value; $pct = $par[3].Value
 # The scanner's own reason tally -- the coarse answer, kept for comparison.
 # Parsed out of the NOTPARSE block TOGETHER WITH its `e.g.` example paths, so a
 # reason can be paired with the actual source line that produced it. The scanner
-# prints only a few examples per reason (35 of 122 on moui), so this pairing is a
-# labelled SAMPLE and the script says so rather than presenting it as the whole
-# set. It is what turns "34x unexpected token `,`" into a syntax form.
+# prints only a few examples per reason (a handful of the blocked set), so this
+# pairing is a labelled SAMPLE and the script says so rather than presenting it as
+# the whole set. It is what turns "34x unexpected token `,`" into a syntax form.
 $reasonTally = [ordered]@{}
 $reasonExamples = [ordered]@{}
 $curReason = ''
