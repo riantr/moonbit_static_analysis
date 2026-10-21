@@ -5665,3 +5665,127 @@ gate the way the script says to run it.
     the census is now                    TRACKED, PINNED, and it fails on an UNCLASSIFIED finding
 ```
 
+
+## 0497: THE ROSTER WAS HAND-KEPT, THE COUNT ROTTED, AND RULE 5 WAS NEVER ENFORCED
+
+### THE CLAIM, AND WHERE IT LIVES
+
+Direction 1's remainder was closed with a sentence. `_verify/mutate_lib.ps1`'s header
+says, of the fourteen gates that used to carry their own copy of the runner:
+
+> MEASURED 2026-10-20: all 74 numbered gates call `Invoke-MutationGate`, and it has
+> NO pre-flight or SHA256 switch at all -- so every one of them gets the baseline, the
+> pre-flight and the SHA256 restore check, and ZERO gates carry their own copy of the
+> runner.
+
+That sentence IS the closure of the direction. It is also a comment, and a number in a
+comment is not checked by anything.
+
+**MEASURED 2026-10-22: there are 79 numbered gates.** The sentence was five stale. Five
+gates had been added in the two days since it was written; not one of them was wrong, and
+nothing would have said so if one had been. The header's own table three lines above it
+says so in advance -- "THAT TABLE IS A MEASUREMENT OF THE DEFECT, NOT OF THE PRESENT" --
+which is exactly right, and also exactly the kind of statement that stops being true
+without anyone noticing.
+
+### THE ROSTER IS A LIST, AND THE LIST IS KEPT BY HAND
+
+`_verify/release.ps1` runs the gates from `$gates = @('0412', ..., '0496')` -- 79
+numbers, typed by hand, on one line.
+
+A gate added to `_verify` and not to that list **NEVER RUNS**. It is on disk, it is
+named like a gate, and a release run reports every gate green. A gate that does not run
+is indistinguishable from a gate that passes.
+
+MEASURED 2026-10-22: the two rosters agree today -- 79 on disk, 79 in the list, the
+same set. So this is not a live defect; it is a defect with nothing behind it, and the
+next gate added without a line in `release.ps1` would have been a silent hole.
+
+It is worse than that, because the claim is PUBLISHED. README.md:
+
+> **every mutation gate** -- 79 of them, and all 79 are inside the gate list in
+> `release.ps1`, so no mutation gate is left out of the release path.
+
+and README.zh.md, saying the same thing in Chinese. Both were true, and both were
+maintained by hand.
+
+### THE RULE THAT WAS DESCRIBED BUT NEVER ENFORCED
+
+The harness's rule 5 says:
+
+> A declared non-KILLED outcome has to carry its argument -- and that includes
+> COMPILE-ERR, which is the easiest verdict to smuggle past.
+
+The harness **printed** the argument when the field was there. It never **required** the
+field. So the rule was a wish.
+
+MEASURED 2026-10-22, over the 37 declarations in the 79 numbered gates: 35 `SURVIVED`
+and 2 `COMPILE-ERR`, and **FOUR of them carried no `Prove` at all** -- one in 0418
+(M11, the chain rewind), one in 0419 (M4, the over-eager return fn-type) and two in 0422
+(M7, the arity gate, and M8, the method-call labels).
+
+Three of the four had their argument written out in the comment directly above the
+mutation, carefully, in the way this project writes things down. And it never travelled
+with the RESULT: the gate's output said `SURVIVED` and nothing else, so the reader of
+the gate log was told that a mutation was unobservable and not why.
+
+Fixed in both places. The harness now FAILS a mutation that declares a non-KILLED outcome
+without a `Prove`, and the four mutations carry the argument that was already written
+above them -- carried over from the comment, not invented for the field.
+
+### THE GATE, AND HOW IT WAS SHOWN TO GO RED
+
+`_verify/check_gate_roster.ps1` checks four things, each of which can be wrong:
+
+1. the roster in `release.ps1` IS the roster on disk, in BOTH directions;
+2. every numbered gate uses the shared harness -- it dot-sources `mutate_lib.ps1`, it
+   calls `Invoke-MutationGate` exactly once, it defines no local function of its own,
+   and it passes no `--filter` (the old runners ran a SUBSET, and a filter that selects
+   zero tests reports green for any mutation);
+3. the shared harness still carries its guarantees -- sixteen of them, checked BY NAME,
+   so deleting one fails this gate instead of quietly weakening every gate in the
+   repository at once;
+4. the COUNT in the harness header is the count on disk. The header is the claim; this
+   is the check.
+
+A gate that has never been shown to go red is a comment, so it has a `-SelfTest`: six
+defects are injected into a COPY of `_verify` in TEMP -- a gate on disk the release
+list does not name, a gate in the list that is not on disk, a gate off the harness, a
+guarantee deleted from the harness, a `--filter` in the harness, a stale count in the
+header -- and the copy has to fail with the right message. **All six are caught.**
+
+The self-test earned its place immediately: it caught two bugs IN THE GATE, before the
+gate had ever run on the real tree.
+
+- The code-line filter checked for a here-string OPENER before it checked for a COMMENT.
+  A header comment that quotes `@'` was read as an opener, the file was swallowed from
+  there on, and **twenty-two gates were reported as "not on the shared harness"** -- a
+  claim about code the filter had not read.
+- The capture group was the whole `@'` instead of the quote alone, so the terminator
+  was built as `@'@`, which matches nothing, and every here-string swallowed the rest
+  of its file.
+
+Both are one shape: a reader that cannot tell a comment from code, or a delimiter from
+a delimiter, reports confidently on what it did not read. The second one had a silent
+failure -- a file that read as four lines instead of four hundred -- which is why the
+self-test asserts on a MESSAGE and not only on an exit code.
+
+### THE COUNTS, AFTER
+
+```
+    numbered gates on disk                       79
+    gates in release.ps1's list                  79   (the same set, both directions)
+    gates that call Invoke-MutationGate          79   (each exactly once)
+    gates that define their own function          0
+    gates that pass a --filter                    0
+    harness guarantees checked by name           16   (plus: the harness has no --filter)
+    the count in the harness header              79   (was 74, and was five stale)
+    declared non-KILLED outcomes                 37   (35 SURVIVED, 2 COMPILE-ERR)
+    ... of those, carrying no argument             0   (was 4)
+    injected defects the gate is shown to catch   6   (6 caught)
+    the suite                                 1163/1163
+```
+
+The README's gate count is no longer pinned in the README gate either: it is COMPUTED
+from the disk, so a gate added tomorrow fails the README check with the new number in
+the message instead of failing with a missing literal.

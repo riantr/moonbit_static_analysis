@@ -308,6 +308,51 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4c  the ROSTER of mutation gates, and the gate that checks it --------------
+# The mutation gates are run from a list, and the list was kept BY HAND. A gate
+# added to `_verify` but not to that list NEVER RUNS -- it is on disk, it is named
+# like a gate, and a release run reports every gate green. A gate that does not
+# run is indistinguishable from a gate that passes.
+#
+# This stage sits BEFORE the mutation gates on purpose: a release run costs about
+# half an hour, and it should not spend that on a roster that is already known to
+# be wrong. The self-test runs first, because a gate that has never been shown to
+# go red is a comment -- it injects six defects into a COPY of `_verify` in TEMP
+# and requires the copy to fail with the right message.
+if ($failed.Count -eq 0) {
+  $GR = Join-Path $root '_verify\check_gate_roster.ps1'
+  if (-not (Test-Path $GR)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_gate_roster.ps1'
+    $failed += 'gate-roster'
+  } else {
+    Stage 'gate roster: self-test (six injected defects must be caught)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GR -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(CAUGHT|MISSED|SELFTEST)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'gate-roster-selftest' }
+  }
+  if ($failed.Count -eq 0) {
+    Stage 'gate roster: one harness, one list, and a count that matches' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GR 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(ROSTER|NEVER RUN|NOT ON THE SHARED|MISSING|LISTED BUT|FAIL)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'gate-roster' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
 $gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496')
 if ($SkipMutations) {

@@ -202,6 +202,15 @@ let all_positional = labels.is_empty() ||
 let all_positional = true
 '@
     Expect = 'SURVIVED'
+    Prove = @'
+Measured on the six corpora rather than assumed: across 12,428 files the arity gate
+changes exactly ONE finding, an arity report in `moui backend/web/web_host.mbt` at a
+call past that file's reliable-region boundary, so it lands in the `unreliable`
+bucket and is never shown as a result. Every shape the gate covers is a compile
+error the toolchain already reports (duplicate label 4084, unknown label 4085).
+Writing a test that pins a behaviour no valid program exhibits would make this
+gate green and the test suite weaker.
+'@.Replace("`r`n", "`n")
   }
 
   # --- M8: method-call labels dropped -----------------------------------------
@@ -223,6 +232,14 @@ e = { span: csp, kind: @ast.EMethodCall(base, m, args, labels), }
 e = { span: csp, kind: @ast.EMethodCall(base, m, args, ["", "", "", "", "", ""]), }
 '@
     Expect = 'SURVIVED'
+    Prove = @'
+A real gap, not a deliberate leniency. `EMethodCall` carries labels now, but infer
+discards them (`EMethodCall(base, _, args, _)`) because method arguments are not
+type-checked at all in this model -- there is no receiver signature to check them
+against. The labels are parsed, carried, and ignored, so no mutation of them is
+observable. The way to kill it is a method-receiver signature, which is a larger
+change than this release.
+'@.Replace("`r`n", "`n")
   }
 
 )

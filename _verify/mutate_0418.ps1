@@ -277,6 +277,14 @@ something that merely matches.
         }
 '@
     Expect = 'SURVIVED'
+    Prove = @'
+The rewind is defensive and nothing distinguishes it. The chain loop speculatively
+consumes separators after a segment and rewinds when the next line does not open
+with `.`; removing the rewind leaves the cursor AFTER those separators, but the
+enclosing statement loop calls `skip_seps` again anyway, so the next statement
+starts in the same place and the same findings are produced. A test cannot
+distinguish the two, and the corpus does not either.
+'@.Replace("`r`n", "`n")
   }
 
   # --- M12: ambient builtin types removed -----------------------------------

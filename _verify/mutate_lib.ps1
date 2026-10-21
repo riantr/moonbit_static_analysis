@@ -15,12 +15,22 @@
 #     mutate_0429.ps1  baseline=True  preflight=True  sha256=True
 #
 # THAT TABLE IS A MEASUREMENT OF THE DEFECT, NOT OF THE PRESENT, and it is worth saying
-# so, because it reads like a status report. MEASURED 2026-10-20: all 74 numbered gates
+# so, because it reads like a status report. MEASURED 2026-10-22: all 79 numbered gates
 # call `Invoke-MutationGate`, and it has NO pre-flight or SHA256 switch at all -- so every
 # one of them gets the baseline, the pre-flight and the SHA256 restore check, and ZERO
 # gates carry their own copy of the runner. `mutate_0412.ps1` and `mutate_0413.ps1`, the
 # two this table names, both print a pre-flight line and both end with "every restore
 # verified byte-identical".
+#
+# THE COUNT IN THAT SENTENCE IS NOW CHECKED, NOT ASSERTED. It said 74 on 2026-10-20 and
+# it was five stale by 2026-10-22, because a number in a comment is not checked by
+# anything -- and the sentence it was supporting ("every gate in this repository gets
+# the baseline, the pre-flight and the SHA256 restore check") was the whole content of
+# Direction 1's remainder. Five gates had been added in between; none of them was
+# wrong, and nothing would have said so if one had been. `_verify/check_gate_roster.ps1`
+# now reads this sentence, counts the numbered gates on disk, and fails if the two
+# disagree -- so a gate added without this sentence being updated is a FAILING gate,
+# not a quietly-wrong one. Change the number here when you add a gate.
 #
 # So the defect was not in one script, it was in the PATTERN that fourteen copies
 # of the pattern inherited -- and each copy has to be fixed by hand, which is
@@ -418,6 +428,32 @@ function Invoke-MutationGate {
     $findN = ([string]$m.Find).Replace("`r`n", $nl)
     $replN = ([string]$m.Repl).Replace("`r`n", $nl)
     $want = if ($m.ContainsKey('Expect')) { [string]$m.Expect } else { 'KILLED' }
+
+    # RULE 5, ENFORCED. The rule says a declared non-KILLED outcome has to carry its
+    # argument -- and until now the harness only PRINTED the argument when the field
+    # was there. So the rule was a WISH: a mutation that declared SURVIVED and carried
+    # no `Prove` was reported as a survivor, with no reason, and nothing failed.
+    #
+    # MEASURED 2026-10-22, over the 37 declarations in the 79 numbered gates: 35
+    # SURVIVED and 2 COMPILE-ERR, and FOUR of them had no `Prove` at all -- one in
+    # 0418, one in 0419, two in 0422. Three of the four had their argument written
+    # out in the comment directly above the mutation, in prose, carefully, and it
+    # never travelled with the RESULT: the gate's output said "SURVIVED" and
+    # nothing else, which is the exact shape the rule was written to prevent.
+    #
+    # => 判据: a rule that is only PRINTED is not a rule. The harness cannot tell
+    # whether a survivor is legitimate -- only the argument can, and an argument
+    # that is not required is an argument that is not there.
+    #
+    # This is a DECLARATION check, not a run check: it fires on the field, so a
+    # mutation that declares COMPILE-ERR and turns out to be KILLED is still
+    # reported for its missing argument as well as for its wrong verdict.
+    if ($want -ne 'KILLED' -and -not $m.ContainsKey('Prove')) {
+      Write-Output ('      NO ARGUMENT: this mutation declares ' + $want + ' and carries no `Prove`.')
+      Write-Output '      Rule 5: a declared non-KILLED outcome has to carry its argument.'
+      Write-Output '      Add Prove = "<why this mutation is unobservable>".'
+      $script:MutationGateFailures += ($m.Name + ' (declared ' + $want + ' with no argument)')
+    }
 
     # Rule 3. A pattern that does not apply is a failure, not a pass.
     if ($norm.IndexOf($findN, [System.StringComparison]::Ordinal) -lt 0) {

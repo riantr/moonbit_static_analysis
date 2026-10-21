@@ -102,6 +102,18 @@ foreach ($c in $checks) {
 }
 
 Write-Output '=== 5. the counts the README quotes ==='
+# The GATE COUNT is COMPUTED, not pinned. A literal '79' in this file would be
+# another number that has to be kept right by hand -- and the roster it describes
+# changes every time a gate is added. So the number comes from the disk, and the
+# README has to say THAT number. When a gate is added, this check fails with the
+# new count in the message, and the README is a one-word edit.
+#
+# The two claims that are not counts are claims about the LIST, and they are
+# checked here because the roster gate enforces the same thing from the other
+# side: every gate on disk is in `release.ps1`'s list, so no gate is left out of
+# the release path.
+$gateCount = @(Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'mutate_0*.ps1' -File).Count
+Write-Output ('  (the roster has ' + $gateCount + ' numbered gates on disk)')
 $expect = @(
   @{ F = 'README.md';    S = '1163/1163'; N = 'wasm test count' }
   @{ F = 'README.md';    S = '1083/1083'; N = 'js/wasm-gc test count' }
@@ -109,13 +121,17 @@ $expect = @(
   @{ F = 'README.md';    S = '33 actionable'; N = 'core module actionable' }
   @{ F = 'README.md';    S = '**58** `actionable`'; N = 'per-function census total' }
   @{ F = 'README.md';    S = '24 of 24'; N = 'positive control' }
-  @{ F = 'README.md';    S = '79 of them'; N = 'mutation gates' }
+  @{ F = 'README.md';    S = ($gateCount.ToString() + ' of them'); N = 'mutation gates' }
+  @{ F = 'README.md';    S = ('**' + $gateCount + ' mutation gates**'); N = 'mutation gates (the second mention)' }
+  @{ F = 'README.md';    S = ('and all ' + $gateCount + ' are inside the'); N = 'every gate is in the release list' }
   @{ F = 'README.zh.md'; S = '1163/1163'; N = 'wasm test count (zh)' }
   @{ F = 'README.zh.md'; S = '1083/1083'; N = 'js/wasm-gc test count (zh)' }
   @{ F = 'README.zh.md'; S = '解析 957 个'; N = 'core parsed (zh)' }
   @{ F = 'README.zh.md'; S = '**58** 条'; N = 'per-function census total (zh)' }
   @{ F = 'README.zh.md'; S = '24 / 24'; N = 'positive control (zh)' }
-  @{ F = 'README.zh.md'; S = '**79** 个'; N = 'mutation gates (zh)' }
+  @{ F = 'README.zh.md'; S = ('**' + $gateCount + '** 个'); N = 'mutation gates (zh)' }
+  @{ F = 'README.zh.md'; S = ('**' + $gateCount + ' 道变异门**'); N = 'mutation gates (zh, the second mention)' }
+  @{ F = 'README.zh.md'; S = ('而且 ' + $gateCount + ' 个全在'); N = 'every gate is in the release list (zh)' }
 )
 foreach ($e in $expect) {
   $p = Join-Path $root $e.F

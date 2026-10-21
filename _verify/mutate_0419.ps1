@@ -155,6 +155,15 @@ load-bearing from 0.4.19/0.4.21 until 0.4.34, and none of them is any more. The
             is_fn = true
 '@
     Expect = 'SURVIVED'
+    Prove = @'
+The tuple arm and the function-type arm consume EXACTLY the same tokens for every
+annotation this lens can read. A tuple `(Int, String)` has no `->` after its close,
+so `fn_type_annotation` renders it and returns just as the tuple arm consumed it
+and returned "". Both reach `ann_to_ty` as an unknown, so `n_parse` cannot
+distinguish them and the mutation is genuinely non-discriminating. The tuple test
+is KEPT regardless -- not as a kill for this mutation, but as a regression test
+for a future change that breaks tuple parsing for real.
+'@.Replace("`r`n", "`n")
   }
 
 )
