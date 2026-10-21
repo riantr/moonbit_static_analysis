@@ -61,18 +61,32 @@ $F = 'src\interp\interp.mbt'
 
 $muts = @(
   # --- M1: a missing `else` stops falling through ---------------------------
-  # `None => falls = true` is the statement that a missing else falls through:
-  # when no condition holds, nothing runs and control continues. Indent 12/10/10.
+  # `None => flows.push(FNormal)` is the statement that a missing else falls
+  # through: when no condition holds, nothing runs and control continues.
+  #
+  # RE-ANCHORED at 0495. The statement this mutation names was `None => falls =
+  # true`, and 0495 REPLACED the `falls` flag with the branch FLOWS and
+  # `join_flow` -- because a join that answered "terminated" whenever the
+  # branches did not agree on a terminator was wrong about `continue` and
+  # `break` (see `join_flow`'s own note). The MUTATION is the same one: the
+  # missing-else arm stops contributing a fall-through flow, so the join
+  # reports the branches as terminating. The ANCHOR is the current text.
   @{
     Name = 'M1 a missing else stops falling through'
     File = $F
     Find = @'
-            None => falls = true
+            // A MISSING else always falls through: when no branch is taken,
+            // nothing runs and control continues, so it must not make the
+            // statements after the `if` look dead either.
+            None => flows.push(FNormal)
           }
           env.clear()
 '@
     Repl = @'
-            None => falls = false
+            // A MISSING else always falls through: when no branch is taken,
+            // nothing runs and control continues, so it must not make the
+            // statements after the `if` look dead either.
+            None => flows.push(FReturn)
           }
           env.clear()
 '@
@@ -80,12 +94,19 @@ $muts = @(
 
   # --- M2: the join always terminates ---------------------------------------
   # The loud failure. Every statement after every `if` becomes dead code, so this
-  # turns a precision bug into a volume bug. Indent 10/8/6/4.
+  # turns a precision bug into a volume bug.
+  #
+  # RE-ANCHORED at 0495. The join was `self.flow = if falls { FNormal } else {
+  # FReturn }`, and 0495 replaced it with `self.flow = join_flow(flows)`. The
+  # MUTATION is the same one -- the join reports "terminated" no matter what the
+  # branches did -- and it is now expressed against the join's CALL SITE, which
+  # is where the decision is made. `join_flow` itself is covered by
+  # `mutate_0495.ps1` M3.
   @{
     Name = 'M2 the join always terminates'
     File = $F
     Find = @'
-          self.flow = if falls { FNormal } else { FReturn }
+          self.flow = join_flow(flows)
         }
       }
     SWhile(cond, body) => {
@@ -103,11 +124,15 @@ $muts = @(
   # join were written as a bare `self.flow = FNormal`, every genuine
   # `unreachable code` in the language would stop being reported and nothing would
   # say so -- a check whose precondition can never hold.
+  #
+  # RE-ANCHORED at 0495, on the same call site as M2. The two mutations differ
+  # by ONE line and are the two directions of the same decision, which is why
+  # they share an anchor.
   @{
     Name = 'M3 the join always falls through'
     File = $F
     Find = @'
-          self.flow = if falls { FNormal } else { FReturn }
+          self.flow = join_flow(flows)
         }
       }
     SWhile(cond, body) => {
@@ -176,8 +201,14 @@ $muts = @(
 
   # --- M6: exec_alt's `else` always reports fall-through ---------------------
   # `exec_alt`'s terminal `else` is the last word on the whole chain, so it has to
-  # be able to say "terminated". The ABool(false) arm of SIf takes its flow from
-  # it. Indent 4/6/8/8/8/6/6/4 -- this whole block, so the string is unique.
+  # be able to say "terminated".
+  #
+  # RE-ANCHORED at 0495. The block used to end in `self.flow == FNormal` and
+  # `None => true`, and 0495 replaced the `falls` flag with the branch FLOWS:
+  # the terminal `else` now reports the FLOW it ended in, and a missing `else`
+  # contributes `FNormal`. The MUTATION is the same one -- the terminal `else`
+  # can no longer say "terminated" -- and it is now expressed against the flow
+  # it reports.
   @{
     Name = 'M6 exec_alt else always reports fall-through'
     File = $F
@@ -186,9 +217,9 @@ $muts = @(
       Some(e) => {
         self.flow = FNormal
         self.exec_block(e, env)
-        self.flow == FNormal
+        self.flow
       }
-      None => true
+      None => FNormal
     }
 '@
     Repl = @'
@@ -196,30 +227,21 @@ $muts = @(
       Some(e) => {
         self.flow = FNormal
         self.exec_block(e, env)
-        true
+        FNormal
       }
-      None => true
+      None => FNormal
     }
 '@
   }
 
   # --- M7: exec_alt's missing else stops falling through ---------------------
   # The same statement one level down, inside exec_alt's own unknown-condition
-  # arm -- a chain that still HAS an else-if. Indent 8/10/12/12/12/12/14/12/10/10/10/10/8/8/8.
+  # arm -- a chain that still HAS an else-if.
   #
-  # RE-ANCHORED BY 0490, and the reason is the 0468/0449 rule again: the code
-  # under test -- `None => falls = true` in exec_alt's unknown-condition arm --
-  # is UNCHANGED. 0490 gave the else-if chain a VALUE (`val = vjoin(...)`) and
-  # published it (`self.last_value = val`), so the block grew by two lines and
-  # the old thirteen-line anchor stopped matching. The release gate reported it
-  # as a PREFLIGHT MISS, which is the loud failure and the right one: the
-  # alternative -- a mutation that silently matched a DIFFERENT `match els` --
-  # is the failure this harness exists to prevent.
-  #
-  # So the anchor is re-pointed at the SAME decision in the NEW shape, which is
-  # what "re-anchored, not retired" means. It is not retired: the question
-  # ("does a missing else fall through, one level down?") is still asked and
-  # still has an answer.
+  # RE-ANCHORED at 0495, on the same statement as M1 but at exec_alt's depth.
+  # The MUTATION is the same one: the missing-else arm stops contributing a
+  # fall-through flow. The ANCHOR is the current text, and the two arms are
+  # distinguished by their indentation and their surrounding block.
   @{
     Name = 'M7 exec_alt missing else stops falling'
     File = $F
@@ -229,16 +251,14 @@ $muts = @(
             self.flow = FNormal
             self.exec_block(e, env)
             val = vjoin(val, self.last_value)
-            if self.flow == FNormal {
-              falls = true
-            }
+            flows.push(self.flow)
           }
           // A MISSING else always falls through: when no condition holds,
           // nothing runs and control continues.
-          None => falls = true
+          None => flows.push(FNormal)
         }
         self.last_value = val
-        falls
+        join_flow(flows)
 '@
     Repl = @'
         match els {
@@ -246,16 +266,14 @@ $muts = @(
             self.flow = FNormal
             self.exec_block(e, env)
             val = vjoin(val, self.last_value)
-            if self.flow == FNormal {
-              falls = true
-            }
+            flows.push(self.flow)
           }
           // A MISSING else always falls through: when no condition holds,
           // nothing runs and control continues.
-          None => falls = false
+          None => flows.push(FReturn)
         }
         self.last_value = val
-        falls
+        join_flow(flows)
 '@
   }
 
@@ -266,13 +284,10 @@ $muts = @(
   # this terminal block handles one that does not.
   #
   # Its Find string is M6's, on purpose: the two mutations differ by ONE line
-  # inside the same eight-line block, and they are the two directions of the
-  # same decision. M6 makes the terminal arm unable to say "terminated"; M8 makes
-  # it unable to say "falls through". A block that can say neither is useless,
-  # and neither mutation is visible without the other's fixture.
-  #
-  # (The first version of this entry carried M6's REPLACED text instead, so the
-  # pre-flight aborted in milliseconds. Which is the point of the pre-flight.)
+  # inside the same block, and they are the two directions of the same decision.
+  # M6 makes the terminal arm unable to say "terminated"; M8 makes it unable to
+  # say "falls through". A block that can say neither is useless, and neither
+  # mutation is visible without the other's fixture.
   @{
     Name = 'M8 exec_alt terminal missing else stops falling'
     File = $F
@@ -281,9 +296,9 @@ $muts = @(
       Some(e) => {
         self.flow = FNormal
         self.exec_block(e, env)
-        self.flow == FNormal
+        self.flow
       }
-      None => true
+      None => FNormal
     }
 '@
     Repl = @'
@@ -291,9 +306,9 @@ $muts = @(
       Some(e) => {
         self.flow = FNormal
         self.exec_block(e, env)
-        self.flow == FNormal
+        self.flow
       }
-      None => false
+      None => FReturn
     }
 '@
   }

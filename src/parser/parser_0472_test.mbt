@@ -151,9 +151,27 @@ test "0472: a continue with a value also leaves the next line alone" {
 /// A BARE `continue` IS STILL AN `SContinue`, not a block. The early return matters: wrapping
 /// every bare continue in a one-element `SBlock` would change the tree shape everywhere
 /// `continue` appears, for no reading gained.
+///
+/// 0495 AND THE PAYLOAD. The valued form used to be a block -- `SBlock([SContinue,
+/// SExpr(a), SExpr(b)])` -- and the interpreter read the carried values as
+/// statements after a terminator, which it reported as `unreachable code` on
+/// three corpora. The values are the terminator's own payload now, so the BARE
+/// form is the one that carries nothing, and that is what this row pins.
 test "0472: a bare continue is still SContinue and not an SBlock" {
   let r = @parser.parse(
     "///|\nfn f(n : Int) -> Unit {\n  while n > 0 {\n    continue\n  }\n}\n",
   )
   assert_eq(r.first_error, 0)
+  match r.tree.body[0].kind {
+    @ast.SFunc(_, _, _, body, _) =>
+      match body[0].kind {
+        @ast.SWhile(_, lbody) =>
+          match lbody[0].kind {
+            @ast.SContinue(vals) => assert_eq(vals.length(), 0)
+            _ => assert_true(false)
+          }
+        _ => assert_true(false)
+      }
+    _ => assert_true(false)
+  }
 }

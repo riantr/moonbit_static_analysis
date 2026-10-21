@@ -49,16 +49,23 @@ Invoke-MutationGate -Name '0489' -Target 'wasm' -Mutations @(
   # lens is back to entering at the module -- and the uncalled body is never
   # executed. This is the mutation the whole increment exists to prevent, and
   # it is the one that would make the flag a no-op.
+  #
+  # RE-ANCHORED 0495. The per-function pass now carries the function's INDEX:
+  # `analyze_entry` takes the position so that a method definition's SIGNATURE
+  # can be looked up BY POSITION rather than by name (`sig_at`). The loop therefore
+  # reads `for i, f in wr.fns { it.analyze_entry(f, tr, i) }`, and the old anchor
+  # was ABSENT. The MUTATION is the same claim as before: both passes stop
+  # analysing anything, so the lens is back to entering at the module.
   @{
     Name = 'M1 the per-function pass analyses no function at all'
     File = $INTERP
     Find = @'
-  for f in wr.fns {
-    it.analyze_entry(f, tr)
+  for i, f in wr.fns {
+    it.analyze_entry(f, tr, i)
   }
   it.sink = saved_sink
-  for f in wr.fns {
-    it.analyze_entry(f, tr)
+  for i, f in wr.fns {
+    it.analyze_entry(f, tr, i)
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
@@ -114,14 +121,25 @@ Invoke-MutationGate -Name '0489' -Target 'wasm' -Mutations @(
   # function-typed parameter, or a local `let f = fn(...)` -- is a call to a
   # BOUND name. `Interp::call` dispatched only through the top-level method
   # table, so the call was `undefined function 'cb'`.
+  #
+  # RE-ANCHORED 0495. The frame check moved OUT of `Interp::call` and into
+  # `Interp::eval_call` -- one entry point for every call, so the pipe operator
+  # and the ordinary call share it -- and the line's INDENTATION changed with
+  # the move, so the old six-space anchor was ABSENT. The claim is the same one:
+  # a name bound in the current frame is a call to a BOUND name, and the frame
+  # is consulted before the method table.
   @{
     Name = 'M4 a call to a function-typed parameter is undefined again'
     File = $INTERP
     Find = @'
-      if !self.methods.contains(name) && env.contains(name) {
+  if !self.methods.contains(name) && env.contains(name) {
+    return AAny
+  }
 '@.Replace("`r`n", "`n")
     Repl = @'
-      if false {
+  if false {
+    return AAny
+  }
 '@.Replace("`r`n", "`n")
     MustRed = 'a call to a function-typed parameter is not an undefined function'
   }

@@ -1,4 +1,26 @@
 ///|
+/// Parse a non-negative count. `None` when the text is not one.
+///
+/// The flag is REFUSED rather than silently taken as zero: a scan that printed
+/// nothing because the flag was mistyped would look exactly like a clean file,
+/// which is the failure mode the cap itself exists to stop.
+fn parse_count(s : String) -> Int32? {
+  // Seven digits is the ceiling: the cap is a PRINTING limit, and a number
+  // that large is a typo rather than a request.
+  if s.length() == 0 || s.length() > 7 {
+    return None
+  }
+  let mut n = 0
+  for ch in s {
+    if !ch.is_ascii_digit() {
+      return None
+    }
+    n = n * 10 + (ch.to_int() - '0'.to_int())
+  }
+  Some(n)
+}
+
+///|
 async fn main {
   let args = @env.args()
   // NOTE: this cannot exit non-zero. MoonBit exposes no process-exit entry point
@@ -11,6 +33,7 @@ async fn main {
   //   moonx riantr/moonbit_static_analysis@latest <target> [--exclude <dir>]...
   //                                          [--extern-iface-dir <dir>]...
   //                                          [--no-auto-fetch-deps]
+  //                                          [--findings-shown-per-file N]
   //   <target>                registry coordinate (author/module[@version]) or a path
   //   --exclude               a directory name to skip, repeatable
   //   --extern-iface-dir      a directory to scan for `.mbti` files whose declared
@@ -39,6 +62,15 @@ async fn main {
   //                           flag analyzes every function as if it were the
   //                           program's entry point, with its parameters bound
   //                           to fresh abstract values of their declared types.
+  //   --findings-shown-per-file N
+  //                           How many findings are PRINTED per file (default 40).
+  //                           This is a PRINTING limit: the SUMMARY counts come
+  //                           from every finding, so raising it reveals findings
+  //                           that were already counted and changes no summary
+  //                           number. It exists because the default cap hid the
+  //                           defects on one file -- the first forty findings were
+  //                           all notices and the thirty-eight defects behind them
+  //                           were never printed.
   let mut target = ""
   let excludes : Array[String] = []
   let extern_iface_dirs : Array[String] = []
@@ -47,6 +79,7 @@ async fn main {
   // anything else = on, writing exactly here.
   let mut mmd_out = ""
   let mut per_function = false
+  let mut findings_shown_per_file = @sa.default_findings_shown_per_file
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -64,6 +97,24 @@ async fn main {
       }
       i += 1
       extern_iface_dirs.push(args[i])
+    } else if a == "--findings-shown-per-file" {
+      if i + 1 >= args.length() {
+        println("ERROR\t--findings-shown-per-file needs a count")
+        return
+      }
+      i += 1
+      // A count that is not a number is refused rather than silently taken as
+      // zero: a scan that printed nothing because the flag was mistyped would
+      // look exactly like a clean file.
+      match parse_count(args[i]) {
+        Some(v) => findings_shown_per_file = v
+        None => {
+          println(
+            "ERROR\t--findings-shown-per-file needs a count, got '\{args[i]}'",
+          )
+          return
+        }
+      }
     } else if a == "--mmd" {
       // The path is REQUIRED here, and that is a decision rather than an
       // omission. An optional value would be ambiguous: in
@@ -99,5 +150,6 @@ async fn main {
   }
   @sa.scan(
     target, excludes, extern_iface_dirs, auto_fetch_deps, mmd_out, per_function,
+    findings_shown_per_file,
   )
 }

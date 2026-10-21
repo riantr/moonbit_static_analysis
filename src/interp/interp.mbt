@@ -174,6 +174,87 @@ priv enum Flow {
 } derive(Eq)
 
 ///|
+/// The flow after an `if` whose branches were all explored.
+///
+/// IT FALLS THROUGH if any branch does -- the standard join, and the whole
+/// point: a terminating `else` can no longer make the statements after the
+/// `if` unreachable when the then-branch reaches them.
+///
+/// WHEN EVERY BRANCH REALLY DOES TERMINATE, the flow is the terminator they
+/// AGREE on. It used to be `FReturn` unconditionally, and that was a claim
+/// about the FUNCTION -- "control leaves here" -- which a branch ending in
+/// `continue` or `break` does not make: those leave the LOOP.
+///
+/// MEASURED, moonbit_image 0.3.7 `bmp.mbt:353-423`:
+///
+///     for pos = 0, row = 0, col = 0, valid_row = true {
+///       if count == 0 {
+///         ...
+///         continue p, r, c, vr
+///       } else {
+///         ...
+///         continue p, r, c, vr
+///       }
+///     }
+///     Image::new(...)
+///
+/// Both arms end in `continue`, so the join claimed `FReturn` -- and the
+/// statement after the loop was reported `unreachable code`. It IS reached:
+/// the loop's `break` arm reaches it.
+///
+/// WHY IT MATTERS DOWNSTREAM, and this is not a detail. The `while` arm asks
+/// whether the loop was exited by a `break` or a `continue` -- that question
+/// is `FBreak | FContinue`, not `FReturn` -- and the `nobreak` arm asks
+/// whether the loop finished normally, which is `FNormal` and nothing else.
+/// A join that always said `FReturn` answered BOTH questions wrongly.
+///
+/// THE MIXED CASE -- one arm returns and another continues -- has no single
+/// answer, and `FReturn` is the honest one to report there: it is the flow
+/// that ends the frame.
+fn join_flow(flows : Array[Flow]) -> Flow {
+  if flows.length() == 0 {
+    return FNormal
+  }
+  let mut all_return = true
+  let mut all_continue = true
+  let mut all_break = true
+  let mut any_normal = false
+  for f in flows {
+    if f == FNormal {
+      any_normal = true
+    }
+    if f != FReturn {
+      all_return = false
+    }
+    if f != FContinue {
+      all_continue = false
+    }
+    if f != FBreak {
+      all_break = false
+    }
+  }
+  // FALLS THROUGH IF ANY BRANCH DOES. This is the rule the old `falls` flag
+  // carried, and it comes FIRST: a branch that falls through reaches the
+  // statements after the `if`, whatever the other branches do.
+  if any_normal {
+    return FNormal
+  }
+  if all_return {
+    return FReturn
+  }
+  if all_continue {
+    return FContinue
+  }
+  if all_break {
+    return FBreak
+  }
+  // A MIX: one arm returns and another leaves the loop. There is no single
+  // answer, and `FReturn` is the honest one to report -- it is the flow that
+  // ends the frame.
+  FReturn
+}
+
+///|
 priv struct MethodDef {
   name : String
   /// declared/inferred parameter types ("" = Any)
@@ -193,6 +274,13 @@ priv struct MethodDef {
   nopt : Int32
   /// the partial return used on recursive cycles (from the signature)
   cycle_ret : AbsVal
+  /// IS THIS NAME DECLARED MORE THAN ONCE IN THE FILE?
+  ///
+  /// A name with two declarations has NO SINGLE SIGNATURE, and the lens cannot
+  /// know which one is live -- the `#cfg` predicate decides, and this frontend
+  /// does not evaluate it. So the arity and parameter-type checks must not run
+  /// against either of them. See `duplicate_names`.
+  ambiguous : Bool
   body : Array[@ast.Stmt]
   line : Int32
 }
@@ -285,6 +373,37 @@ priv struct Interp {
   vst : Array[@core.Frame]
   mut ret_vals : Array[AbsVal]
   mut flow : Flow
+  /// DID THE BODY BEING EXECUTED REACH A `break`?
+  ///
+  /// THE QUESTION THE JOIN CANNOT ANSWER. A loop asks two things about its
+  /// body: "did it end by returning?" and "could it have left the loop?". The
+  /// second one is what decides whether the code AFTER the loop is reachable
+  /// when the loop's condition is constantly true -- a `for` with no condition
+  /// never ends on its own, so a `break` is the only way out.
+  ///
+  /// The JOINED FLOW cannot answer it, because the join collapses a MIX of
+  /// terminators into `FReturn`: a body with one branch that `break`s, one
+  /// that `continue`s and one that `return`s joins to `FReturn`, and the `break`
+  /// is gone.
+  ///
+  /// MEASURED, moonbitlang/async 0.22.4 `src/http/cookie.mbt:88`:
+  ///
+  ///     if attr_end == line.length() {
+  ///       break
+  ///     } else {
+  ///       continue attr_end + 1
+  ///     }
+  ///   }
+  ///   { name, value, path, .. }
+  ///
+  /// The block after the loop was reported `unreachable code`, on code `moon
+  /// check` accepts -- and the `break` reaches it. The same shape is
+  /// moonbit_image 0.3.7 `bmp.mbt:423` and `:533`.
+  ///
+  /// So the flag is set where the `break` is, and the loop reads it. It is
+  /// saved and restored around each loop body, so a nested loop's `break` is
+  /// not mistaken for the outer one's.
+  mut broke : Bool
   mut globals : Map[String, AbsVal]
 }
 
@@ -310,6 +429,7 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
     vst: [],
     ret_vals: [],
     flow: FNormal,
+    broke: false,
   }
 }
 
@@ -395,8 +515,11 @@ fn setup_interp(
     it.ctors.set(c, true)
   }
   // method table from the type lens's signatures (assembly point 2)
-  for f in wr.fns {
-    let sig : @types.Sig? = find_sig(tr, f.name)
+  // The names declared more than once have no single signature; see
+  // `duplicate_names`.
+  let dupes = duplicate_names(wr.fns)
+  for i, f in wr.fns {
+    let sig : @types.Sig? = sig_at(tr, i)
     let ptypes : Array[String] = []
     let pts = match sig {
       Some(s) => s.param_tys
@@ -421,6 +544,10 @@ fn setup_interp(
       pomittable: fn_pomittable(f),
       nopt: n_omittable(f),
       cycle_ret,
+      ambiguous: match dupes.get(f.name) {
+        Some(d) => d
+        None => false
+      },
       body: f.body,
       line: f.span.start.line,
     })
@@ -500,12 +627,12 @@ pub fn analyze_functions(
   // makes the report pass's virtual stacks complete.
   let saved_sink = it.sink
   it.sink = []
-  for f in wr.fns {
-    it.analyze_entry(f, tr)
+  for i, f in wr.fns {
+    it.analyze_entry(f, tr, i)
   }
   it.sink = saved_sink
-  for f in wr.fns {
-    it.analyze_entry(f, tr)
+  for i, f in wr.fns {
+    it.analyze_entry(f, tr, i)
   }
   it.sink
 }
@@ -517,8 +644,9 @@ fn Interp::analyze_entry(
   self : Interp,
   f : @walk.FnInfo,
   tr : @types.TypeResult,
+  idx : Int32,
 ) -> Unit {
-  let sig : @types.Sig? = find_sig(tr, f.name)
+  let sig : @types.Sig? = sig_at(tr, idx)
   let ptypes : Array[String] = []
   let vals : Array[AbsVal] = []
   // `sig.param_tys` is parallel to `f.params` BY CONSTRUCTION -- the type
@@ -558,6 +686,10 @@ fn Interp::analyze_entry(
     pomittable: fn_pomittable(f),
     nopt: n_omittable(f),
     cycle_ret,
+    // The entry function is not a CALL, so no arity check is made against it.
+    // The flag that matters for a call is on the TABLE's entry, and that is
+    // built by `setup_interp` -- where the duplicate names are known.
+    ambiguous: false,
     body: f.body,
     line: f.span.start.line,
   }
@@ -610,13 +742,38 @@ fn ret_name(t : @types.Ty) -> String {
 }
 
 ///|
-fn find_sig(tr : @types.TypeResult, name : String) -> @types.Sig? {
-  for s in tr.sigs {
-    if s.name == name {
-      return Some(s)
-    }
+/// THE SIGNATURE OF THE `i`-TH DECLARED FUNCTION, BY POSITION.
+///
+/// The lookup used to be BY NAME, and that is wrong for a file that declares the
+/// same name twice. MoonBit allows it -- `#cfg` is how real code reaches it --
+/// and moonbitlang/async 0.22.4 `src/internal/fd_util/fd_util.mbt` declares
+/// `close_ffi` twice:
+///
+///     #cfg(not(platform="windows"))
+///     extern "C" fn close_ffi(fd : Fd) -> Int = "close"
+///     #cfg(platform="windows")
+///     extern "C" fn close_ffi(fd : Fd, is_socket~ : Bool) -> Int = "moonbitlang_async_close_fd"
+///
+/// A name lookup returned the FIRST declaration's signature, while the
+/// parameter NAMES came from the walk's `FnInfo` for the declaration being
+/// registered -- the LAST one. The two halves of ONE method definition then
+/// described TWO different functions, and the arity check compared the call
+/// against the wrong one:
+///
+///     no method matching close_ffi(Any, Any)
+///
+/// on code `moon check` accepts. The call supplies two arguments; the first
+/// declaration declares one.
+///
+/// THE TYPE LENS'S `sigs` ARE PARALLEL TO THE WALK'S `fns` BY CONSTRUCTION: the
+/// type lens runs `run_fn` once per function in `wr.fns`, in order, and
+/// `run_fn` pushes exactly one signature. So the position IS the identity, and
+/// no name is needed.
+fn sig_at(tr : @types.TypeResult, i : Int32) -> @types.Sig? {
+  if i < 0 || i >= tr.sigs.length() {
+    return None
   }
-  None
+  Some(tr.sigs[i])
 }
 
 ///|
@@ -663,10 +820,40 @@ fn Interp::exec_block(
       FReturn | FBreak | FContinue => true
     }
     if terminated {
-      // behavior lens's flow insight: statements after a terminator are
-      // unreachable (reportUnreachable)
-      self.report(@core.FUnreachable, "unreachable code", s.span)
-      break
+      // THE LOOP'S UPDATE CLAUSE IS NOT DEAD CODE. A `continue` in a
+      // C-style `for` RUNS the update clause and repeats the loop, and a
+      // `break` skips it and leaves the loop -- so the clause is reached on
+      // one path and skipped on the other, and neither makes it unreachable.
+      //
+      // MEASURED, by RUNNING it: `_verify/settle_0495_perfunction.ps1` prints
+      // `i=0 i=1 i=2 i=3` and finishes, which is only possible if the update
+      // ran on the `continue`. Before this, the update clause was appended to
+      // the loop body as ordinary statements and was reported `unreachable
+      // code` -- `async 0.22.4 src/socket/addr_utils.mbt:262`.
+      match s.kind {
+        SForUpdate(updates) =>
+          if self.flow == FContinue {
+            // A `continue` runs the update and repeats the loop, so the loop
+            // is still live.
+            for u in updates {
+              self.exec_stmt(u, env)
+            }
+            self.flow = FNormal
+          } else if self.flow == FBreak {
+            // A `break` leaves the loop: the update does NOT run, and the
+            // code after the loop is reached.
+            self.flow = FNormal
+          }
+        // A `return` ends the frame: the update does not run and the flow
+        // stays FReturn.
+        _ => {
+          // behavior lens's flow insight: statements after a terminator are
+          // unreachable (reportUnreachable)
+          self.report(@core.FUnreachable, "unreachable code", s.span)
+          break
+        }
+      }
+      continue
     }
     self.exec_stmt(s, env)
   }
@@ -724,12 +911,21 @@ fn Interp::exec_stmt(
         ETupleField(base, _) => {
           let _ = self.eval(base, env)
         }
-        EComp(_, sources, body) => {
-          for s in sources {
-            let _ = self.eval(s, env)
-          }
-          let _ = self.eval(body, env)
-        }
+        // 0495 AND THE DEAD ARM THAT WAS HERE. This `match` is over the
+        // ASSIGNMENT'S TARGET, and a target is a name, a field, an index or a
+        // tuple field -- never a comprehension. An `EComp` arm could not fire.
+        //
+        // It was not harmless: it held a COPY of the comprehension-binding
+        // rule, and the mutation gate found it -- M8 (`a comprehension in an
+        // assignment binds no names`) SURVIVED, because no program reaches the
+        // arm. A surviving mutation of a rule nobody can reach is the rule
+        // being dead, and the honest response is to DELETE IT rather than to
+        // keep a copy of a rule in a place it cannot apply.
+        //
+        // THE RULE ITSELF IS NOT LOST: the right-hand side of the assignment
+        // is evaluated by `self.eval(rhs, env)` above, and the `EComp` arm of
+        // `eval` binds the pattern names while the body is evaluated. That is
+        // the arm gate 0495's M8 mutates, and it is the one that fires.
         _ => ()
       }
     }
@@ -737,13 +933,11 @@ fn Interp::exec_stmt(
       // ABool constants prune dead branches (assembly point 3)
       match self.eval(cond, env) {
         ABool(true) => self.exec_block(then, env)
-        ABool(false) => {
+        ABool(false) =>
           // Same join as the unknown-condition arm below, for the same reason:
           // the then-branch is not taken, so the `if` falls through exactly when
           // the elseifs/else chain does.
-          let falls = self.exec_alt(elseifs, els, env, 0)
-          self.flow = if falls { FNormal } else { FReturn }
-        }
+          self.flow = self.exec_alt(elseifs, els, env, 0)
         ABottom => ()
         cv => {
           if !vboolean(cv) {
@@ -769,7 +963,10 @@ fn Interp::exec_stmt(
           // unknown), so the value is their JOIN -- the same join the bindings
           // get, applied to the value instead of the environment.
           let mut val = self.last_value
-          let mut falls = self.flow == FNormal
+          // 0495 AND THE JOIN. The branch FLOWS are collected rather than a
+          // `falls` flag, because the terminator they agree on is what the
+          // join has to report -- and `FReturn` was not it. See `join_flow`.
+          let flows : Array[Flow] = [self.flow]
           let acc = env_then
           for ei in elseifs {
             let env_ei = copy_env(acc)
@@ -810,9 +1007,7 @@ fn Interp::exec_stmt(
             }
             self.exec_block(ei.body, env_ei)
             val = vjoin(val, self.last_value)
-            if self.flow == FNormal {
-              falls = true
-            }
+            flows.push(self.flow)
             let merged = Interp::merge_env(self, acc, env_ei)
             acc.clear()
             for k, v in merged {
@@ -825,9 +1020,7 @@ fn Interp::exec_stmt(
               self.flow = FNormal
               self.exec_block(e, env_e)
               val = vjoin(val, self.last_value)
-              if self.flow == FNormal {
-                falls = true
-              }
+              flows.push(self.flow)
               let merged = Interp::merge_env(self, acc, env_e)
               acc.clear()
               for k, v in merged {
@@ -837,7 +1030,7 @@ fn Interp::exec_stmt(
             // A MISSING else always falls through: when no branch is taken,
             // nothing runs and control continues, so it must not make the
             // statements after the `if` look dead either.
-            None => falls = true
+            None => flows.push(FNormal)
           }
           env.clear()
           for k, v in acc {
@@ -848,8 +1041,9 @@ fn Interp::exec_stmt(
           // join and the whole point: a terminating `else` can no longer make
           // the statements after the `if` unreachable when the then-branch
           // reaches them. When every branch really does terminate, the code
-          // after the `if` IS dead and FReturn keeps `exec_block` reporting it.
-          self.flow = if falls { FNormal } else { FReturn }
+          // after the `if` IS dead -- and the flow that says so is the one the
+          // branches AGREE on, not always `FReturn`. See `join_flow`.
+          self.flow = join_flow(flows)
         }
       }
     SWhile(cond, body) => {
@@ -864,7 +1058,15 @@ fn Interp::exec_stmt(
       // widening: run the body once in a widened copy; the pre-loop state
       // is the sound meet (the loop may run zero times)
       let wenv = widen_all(env)
+      // THE LOOP'S OWN `break`. Saved and restored around the body so a
+      // NESTED loop's `break` is not mistaken for this loop's -- the nested
+      // loop consumes its own, and the flag this loop reads is the one that
+      // was set when this loop's body began.
+      let saved_broke = self.broke
+      self.broke = false
       self.exec_block(body, wenv)
+      let body_broke = self.broke
+      self.broke = saved_broke || body_broke
       let merged = Interp::merge_env(self, env, wenv)
       env.clear()
       for k, v in merged {
@@ -902,7 +1104,19 @@ fn Interp::exec_stmt(
         FBreak | FContinue => true
         _ => false
       }
-      self.flow = if always && !broke { self.flow } else { FNormal }
+      // `body_broke` is the OTHER half of the question: the joined flow says
+      // the body ended in ONE terminator, and a body whose branches end in
+      // DIFFERENT ones joins to `FReturn` -- which loses the `break` that
+      // reaches the code after this loop.
+      //
+      // MEASURED, moonbitlang/async 0.22.4 `src/http/cookie.mbt:88`: the
+      // `break`/`continue` pair joins to `FReturn`, the statement after the
+      // loop was reported `unreachable code`, and the `break` reaches it.
+      self.flow = if always && !broke && !body_broke {
+        self.flow
+      } else {
+        FNormal
+      }
     }
     SFor(v, _, seq, body) => {
       let sv = self.eval(seq, env)
@@ -922,6 +1136,28 @@ fn Interp::exec_stmt(
       for k, v in merged {
         env.set(k, v)
       }
+      // A `for ... in` LOOP MAY RUN ZERO TIMES, so the statement after it is
+      // reachable whatever the body did. This is the same rule the `while` arm
+      // applies, and the reason it is stated here rather than inherited: the
+      // `while` arm resets the flow unless the condition is constantly TRUE,
+      // and a `for ... in` loop has no condition at all -- the sequence decides
+      // whether it runs, and an empty sequence is a sequence.
+      //
+      // MEASURED, proton 0.3.4 `internal/locale/locale.mbt:301`:
+      //
+      //     fn starts_with_ascii_digit(value : String) -> Bool {
+      //       for character in value {
+      //         return is_ascii_digit(character)
+      //       }
+      //       false
+      //     }
+      //
+      // The `false` is the function's value for an EMPTY string, and the
+      // per-function view reported `unreachable code` on it. The `while` arm
+      // had already been fixed for this reason at 0493 (class E); the `for ...
+      // in` arm was left with the body's flow intact, so a body that ends in
+      // `return` still marked the code after the loop as dead.
+      self.flow = FNormal
     }
     // `loop nobreak { .. }` -- execute the loop, then the block, in the SAME
     // environment the loop merged into. The block runs when the loop finished
@@ -980,15 +1216,76 @@ fn Interp::exec_stmt(
       self.ret_vals.push(ABottom)
       self.flow = FReturn
     }
-    SBreak => self.flow = FBreak
-    SContinue => self.flow = FContinue
+    // A `break`/`continue` THAT CARRIES VALUES. The values are EVALUATED --
+    // a name inside one is a real name -- and they are the TERMINATOR'S OWN
+    // PAYLOAD, not statements after it.
+    //
+    // 0495 AND THE 25 FINDINGS THIS REMOVES. The values used to be sibling
+    // statements inside a block, so the interpreter read the terminator, saw
+    // the flow end, and reported the first carried value as `unreachable
+    // code` -- on code `moon check` accepts:
+    //
+    //     moonbit_image  bmp.mbt:373   `continue p, r, c, vr`
+    //     async          conn.mbt:389  `continue received + n`
+    //
+    // WHAT IS NOT MODELLED, stated rather than claimed: the values are the
+    // loop variables' NEW values, and the interpreter does not assign them.
+    // It cannot: which names a `continue` refers to is a property of the loop
+    // HEADER, and the interpreter does not carry the header's declarations
+    // into the body. The loop's EXIT value is not modelled either, for the
+    // reason the parser records -- a `break` value would have to be JOINED
+    // with the `nobreak` block's value, and this subset makes no such claim.
+    SBreak(vals) => {
+      for v in vals {
+        let _ = self.eval(v, env)
+      }
+      // THE LOOP'S WAY OUT. The joined flow cannot say whether the body could
+      // have left the loop -- see the `broke` field.
+      self.broke = true
+      self.flow = FBreak
+    }
+    SContinue(vals) => {
+      for v in vals {
+        let _ = self.eval(v, env)
+      }
+      self.flow = FContinue
+    }
     SFunc(_, _, _, _, _) => ()
     // `let (a, b) = pair`: the initializer is evaluated ONCE (a second eval
     // would re-report the same finding), and every destructured name is set.
     SLetDestruct(names, init) => {
-      let v = self.eval(init, env)
+      let _ = self.eval(init, env)
+      // A DESTRUCTURED NAME HOLDS AN ELEMENT, NOT THE TUPLE. Binding the
+      // initializer's value to every name in the pattern was a CLAIM -- "this
+      // name holds a Tuple" -- and it is false for every name in the pattern.
+      //
+      // MEASURED, four corpora, the per-function view: 61 findings, every one
+      // of them a false positive on code `moon check` accepts. The tainted
+      // name reached a call as `Tuple` and the call's declared parameter type
+      // did not match it:
+      //
+      //     no method matching derive_label_dir_from_image_dir(Tuple)
+      //     no method matching lzw_read_code(Any, Tuple, Tuple, int)
+      //     no method matching -(Tuple, Tuple)
+      //
+      // The TYPE LENS already answers "Unknown" for a destructured name --
+      // "tuple element types are not modelled (no tuple Ty), so every
+      // destructured name starts Unknown in the current frame"
+      // (`src/types/infer.mbt`). This lens binding the whole tuple was
+      // contradicting its own sibling on the same line.
+      //
+      // `AAny` is the honest answer, and it is the answer the lens already
+      // gives a cross-file name, an enum constructor and an unknown type: the
+      // lens knows the name is BOUND and does not know what it holds.
+      // `vmatches` accepts `AAny` for every declared type, which is what
+      // removes the findings.
+      //
+      // THE COST, stated rather than hidden: the lens can no longer see a
+      // type error in a destructured element -- and it never could, because
+      // what it saw was a Tuple, not the element. A tuple-element type is
+      // recorded as a limit, not claimed as a capability.
       for n in names {
-        env.set(n, v)
+        env.set(n, AAny)
       }
     }
     // A local function definition. Its body is NOT executed here — it
@@ -1002,6 +1299,12 @@ fn Interp::exec_stmt(
     // flow-termination check, so a terminator inside the block still marks
     // the following statement unreachable.
     SBlock(body) => self.exec_block(body, env)
+    // A C-style `for`'s UPDATE clause. It runs at the end of an iteration, and
+    // `exec_block` runs it when a `continue` reached it.
+    SForUpdate(updates) =>
+      for u in updates {
+        self.exec_stmt(u, env)
+      }
   }
 }
 
@@ -1012,20 +1315,20 @@ fn Interp::exec_alt(
   els : Array[@ast.Stmt]?,
   env : Map[String, AbsVal],
   idx : Int32,
-) -> Bool {
+) -> Flow {
   if idx < elseifs.length() {
     match self.eval(elseifs[idx].cond, env) {
       ABool(true) => {
         self.flow = FNormal
         self.exec_block(elseifs[idx].body, env)
-        self.flow == FNormal
+        self.flow
       }
       ABool(false) => self.exec_alt(elseifs, els, env, idx + 1)
       // A BOTTOM condition reports nothing and, as before this join existed,
       // leaves the flow alone -- so it falls through. Whether a bottom
       // condition should suppress everything downstream is a separate question
       // and this fix does not answer it either way.
-      ABottom => true
+      ABottom => FNormal
       cv => {
         if !vboolean(cv) {
           self.report(
@@ -1040,7 +1343,9 @@ fn Interp::exec_alt(
         // The VALUE of the chain, joined across the branches -- the same join
         // the `if` arm does, for the same reason.
         let mut val = self.last_value
-        let mut falls = self.flow == FNormal
+        // 0495 AND THE JOIN: the branch FLOWS, not a `falls` flag. See
+        // `join_flow`.
+        let flows : Array[Flow] = [self.flow]
         let mut j = idx + 1
         // A `while` and not `for j in (idx + 1)..elseifs.length()`: the range
         // operator binds tighter than the call after it, so that expression
@@ -1063,9 +1368,7 @@ fn Interp::exec_alt(
           }
           self.exec_block(elseifs[j].body, env)
           val = vjoin(val, self.last_value)
-          if self.flow == FNormal {
-            falls = true
-          }
+          flows.push(self.flow)
           j += 1
         }
         match els {
@@ -1073,16 +1376,14 @@ fn Interp::exec_alt(
             self.flow = FNormal
             self.exec_block(e, env)
             val = vjoin(val, self.last_value)
-            if self.flow == FNormal {
-              falls = true
-            }
+            flows.push(self.flow)
           }
           // A MISSING else always falls through: when no condition holds,
           // nothing runs and control continues.
-          None => falls = true
+          None => flows.push(FNormal)
         }
         self.last_value = val
-        falls
+        join_flow(flows)
       }
     }
   } else {
@@ -1090,9 +1391,9 @@ fn Interp::exec_alt(
       Some(e) => {
         self.flow = FNormal
         self.exec_block(e, env)
-        self.flow == FNormal
+        self.flow
       }
-      None => true
+      None => FNormal
     }
   }
 }
@@ -1233,6 +1534,45 @@ fn Interp::eval(
       }
     }
     EBin(op, a, b) => {
+      // THE PIPE WITH A CALL ON ITS LEFT. `f <| x` applies `f` to `x`, and when
+      // `f` is a CALL, the right operand becomes an ARGUMENT of that call.
+      //
+      // SETTLED against the toolchain rather than assumed: `add2(1) <| 2`
+      // ACCEPTs where `add2` declares two parameters, so the pipe supplies the
+      // second; and `one(1) <| 2` REJECTs, where `one` declares one, so the
+      // pipe does not invent an argument. The direction is the settled one --
+      // `f <| x` applies the LEFT to the RIGHT -- see
+      // `_verify/settle_0464_pipe_operators.ps1`.
+      //
+      // MEASURED, moonbitlang/async 0.22.4
+      // `src/internal/event_loop/timer.js.mbt:25`:
+      //
+      //     set_timeout(duration) <| () => { .. }
+      //
+      // The call was checked with ONE argument against a two-parameter
+      // declaration, and reported:
+      //
+      //     no method matching set_timeout(int)
+      //
+      // on code `moon check` accepts. The pipe is the second argument.
+      if op == OpPipe {
+        match a.kind {
+          ECall(name, cargs, clabels) => {
+            let pvals : Array[AbsVal] = []
+            for x in cargs {
+              pvals.push(self.eval(x, env))
+            }
+            pvals.push(self.eval(b, env))
+            let plabels : Array[String] = []
+            for x in clabels {
+              plabels.push(x)
+            }
+            plabels.push("")
+            return self.eval_call(name, pvals, plabels, env, e.span)
+          }
+          _ => ()
+        }
+      }
       let l = self.eval(a, env)
       let r = self.eval(b, env)
       self.binop(op, l, r, e.span)
@@ -1242,36 +1582,7 @@ fn Interp::eval(
       for a in args {
         vals.push(self.eval(a, env))
       }
-      // A call to a name BOUND IN THIS FRAME -- a function-typed parameter, or
-      // a local `let f = fn(...)`. The name IS bound: the walk sees the
-      // binding, and the type lens types it. This lens used to dispatch only
-      // through the top-level method table, so a call to a callback parameter
-      // was reported as `undefined function 'on_select'` -- an ERROR, on code
-      // `moon check` accepts, and a finding the structural lens contradicted.
-      //
-      // The value of such a binding is unknown here (the fresh value for a
-      // function-typed parameter is `AAny`), so the honest answer for the
-      // call's RESULT is "a value of unknown type".
-      //
-      // The method table is consulted first, so a top-level function is still
-      // dispatched as one.
-      if !self.methods.contains(name) && env.contains(name) {
-        return AAny
-      }
-      // A qualified call whose TAIL is bound: `PixelFormat::RGBA8`. Same rule
-      // as the qualified READ above, and the same reason.
-      //
-      // NOT "any `@`-prefixed call is fine": the repository pins the opposite,
-      // because a cross-package CALL is a name the table must carry. With an
-      // empty table `@core.IfaceSymTab::empty()` is reported, and with the
-      // table carrying the full qualified name it is not
-      // (`pipeline_test.mbt`, "an extern_iface carrying the names removes the
-      // self-scan findings" and its negative control). The `@`-prefixed NAME
-      // read above is a different case, and it is not this one.
-      if !self.methods.contains(name) && self.tail_bound(name, env) {
-        return AAny
-      }
-      self.call(name, vals, labels, e.span)
+      self.eval_call(name, vals, labels, env, e.span)
     }
     // A method call. The receiver and every argument are EVALUATED, not skipped:
     // an undefined name inside `x.f(y)` is a real undefined name, and a branch
@@ -1337,11 +1648,38 @@ fn Interp::eval(
     // A comprehension builds a list, but the lens does not model iteration,
     // so the result is unknown. The sources and the body are still EVALUATED,
     // so a call with a side effect inside a comprehension is not skipped.
-    EComp(_, sources, body) => {
+    //
+    // 0495 AND THE PATTERN NAMES. The comprehension BINDS its parameter, and the
+    // body reads it. This arm dropped the names -- `EComp(_, sources, body)` --
+    // so every read of the bound name inside the body was an undefined
+    // variable.
+    //
+    // MEASURED, moonbitlang/async 0.22.4
+    // `src/internal/event_loop/event_loop.mbt:260`:
+    //
+    //     let leaked_handles = [
+    //       for handle in self.fds.values() => @debug.to_string(handle.kind)
+    //     ].join(", ")
+    //
+    // `handle` was reported `undefined variable 'handle'` -- on code `moon
+    // check` accepts.
+    //
+    // THE STRUCTURAL LENS ALREADY BINDS IT, and the type lens binds it too:
+    // `walk.mbt`'s `EComp` arm pushes a frame and binds each name before
+    // walking the sources and the body. This lens was the only one of the
+    // three that did not, so it contradicted the other two on the same line.
+    //
+    // The binding is in a COPY of the environment, because the comprehension's
+    // parameter is scoped to the body and does not outlive it.
+    EComp(vars, sources, body) => {
       for s in sources {
         let _ = self.eval(s, env)
       }
-      let _ = self.eval(body, env)
+      let cenv = copy_env(env)
+      for v in vars {
+        cenv.set(v, AAny)
+      }
+      let _ = self.eval(body, cenv)
       AAny
     }
     // A struct literal. Field VALUES are evaluated (an undefined name inside
@@ -1500,17 +1838,26 @@ fn Interp::binop(
         // abort the whole scan rather than produce a finding. An analyzer that
         // dies on one line is worse than one that says "unknown".
         OpMod => if j == 0 { ABottom } else { AInt(i % j) }
-        // `AType("float")` is WRONG as a description of MoonBit: Int/Int
-        // division yields an Int (`7 / 2` is 3, verified by running it).
+        // Int / Int IS Int. `7 / 2` is 3 -- MEASURED by running it -- and the
+        // "/ is always a float" rule was a false claim about MoonBit.
         //
-        // It is left as it is for the same reason as `walk.mbt`'s unfolded
-        // OpDiv. Returning AInt(i / j) here was implemented in 0.4.14 and
-        // measured across 933 files on four corpora: the report streams came
-        // out byte-identical, and no test could tell the two apart. The
-        // constant-evaluation layer simply does not reach an emitted finding
-        // for a division today. Deferred until it can be observed — an
-        // unmeasurable "fix" is indistinguishable from a guess.
-        OpDiv => AType("float")
+        // IT WAS KEPT FOR A MEASURED REASON, and the reason is now OVER:
+        // "returning AInt(i / j) here was implemented in 0.4.14 and measured
+        // across 933 files on four corpora: the report streams came out
+        // byte-identical, and no test could tell the two apart". The
+        // difference could not be OBSERVED then. IT CAN NOW BE OBSERVED, and
+        // the measurement that shows it is moonbit_image 0.3.7 `fim.mbt`:
+        //
+        //     let hs = h / 2              h : Int
+        //     fim_gray_a8(w, hs, even)    the parameter is `h : Int`
+        //
+        // reported `no method matching fim_gray_a8(Any, float, Any)` -- four
+        // findings, all of them false positives on code `moon check` accepts.
+        //
+        // The divide-by-zero guard is the one `OpMod` already has, for the
+        // same reason: MoonBit's compiler inserts one, so folding `1 / 0`
+        // here would abort the whole scan rather than produce a finding.
+        OpDiv => if j == 0 { ABottom } else { AInt(i / j) }
         OpLt => ABool(i < j)
         OpLe => ABool(i <= j)
         OpGt => ABool(i > j)
@@ -1570,7 +1917,11 @@ fn Interp::binop(
         return match op {
           OpLt | OpLe | OpGt | OpGe | OpEq | OpNe | OpAnd | OpOr =>
             AType("bool")
-          OpDiv => AType("float")
+          // A division with an UNKNOWN operand has an UNKNOWN result. "float"
+          // was a claim here, and it was the wrong one in both directions:
+          // `x / 2` where `x` is an `Int` is an `Int`, and `x / 2` where `x`
+          // is a `Float` is a `Float`. `AAny` claims neither.
+          OpDiv => AAny
           _ => AAny
         }
       }
@@ -1589,7 +1940,9 @@ fn Interp::binop(
         OpSub | OpMul | OpDiv | OpMod =>
           if numeric(l) && numeric(r) {
             if op == OpDiv {
-              AType("float")
+              // Int / Int IS Int. See the `OpDiv` arm of the constant-fold
+              // above and `div_type` below for the measurement that shows it.
+              AType(div_type(l, r))
             } else {
               AType(bin_widen(op, l, r))
             }
@@ -1676,19 +2029,40 @@ fn Interp::binop(
 }
 
 ///|
+/// The type of a division, given the two operand types.
+///
+/// MoonBit's `/` on two INTEGERS is INTEGER division -- `7 / 2` is 3 -- and
+/// only a `Float` operand makes the result a `Float`. The rule used to be "a
+/// division is always a float", and it was kept for a MEASURED reason: the
+/// difference could not be observed. It can be observed now, and the
+/// measurement that shows it is moonbit_image 0.3.7 `fim.mbt` -- four false
+/// positives, `no method matching fim_gray_a8(Any, float, Any)` and its
+/// siblings, on code `moon check` accepts.
+///
+/// The unknown case is `AAny`, and it is handled by the CALLER: this function
+/// is only reached with concrete operand types.
+fn div_type(l : AbsVal, r : AbsVal) -> String {
+  let lname = val_name(l)
+  let rname = val_name(r)
+  if lname == "float" || rname == "float" {
+    return "float"
+  }
+  "int"
+}
+
+///|
 /// The result type of a binary operator.
 ///
-/// The `/` arm returns "float" unconditionally, which is wrong for Int/Int
-/// (`7 / 2` is 3). Measured in 0.4.14: removing that arm changed nothing
-/// across 933 files on four corpora, byte for byte, so it stays until the
-/// constant-evaluation layer can be observed — the same reason as the `OpDiv`
-/// arms above. Do not "fix" this without also finding a way to SEE the
-/// difference.
+/// The `/` arm used to return "float" unconditionally, which is wrong for
+/// Int/Int (`7 / 2` is 3). It was measured in 0.4.14: removing that arm
+/// changed nothing across 933 files on four corpora, byte for byte, so it
+/// stayed until the difference could be OBSERVED. IT CAN NOW BE OBSERVED --
+/// see `div_type` -- and the arm follows the same rule.
 fn bin_widen(op : @ast.BOp, l : AbsVal, r : AbsVal) -> String {
   let lname = val_name(l)
   let rname = val_name(r)
   if op == OpDiv {
-    return "float"
+    return div_type(l, r)
   }
   if lname == "float" || rname == "float" {
     return "float"
@@ -1719,6 +2093,96 @@ fn bin_widen(op : @ast.BOp, l : AbsVal, r : AbsVal) -> String {
     return "str"
   }
   "int"
+}
+
+///|
+/// THE CALL DISPATCH, shared by an ordinary call and by the pipe's
+/// `call <| argument` shape.
+///
+/// It is ONE function because the two paths must agree: the pipe's shape is a
+/// call with one more argument, and a check that the ordinary call made and
+/// the piped call did not would report the same program twice or not at all.
+fn Interp::eval_call(
+  self : Interp,
+  name : String,
+  vals : Array[AbsVal],
+  labels : Array[String],
+  env : Map[String, AbsVal],
+  sp : @core.Span,
+) -> AbsVal {
+  // A call to a name BOUND IN THIS FRAME -- a function-typed parameter, or
+  // a local `let f = fn(...)`. The name IS bound: the walk sees the
+  // binding, and the type lens types it. This lens used to dispatch only
+  // through the top-level method table, so a call to a callback parameter
+  // was reported as `undefined function 'on_select'` -- an ERROR, on code
+  // `moon check` accepts, and a finding the structural lens contradicted.
+  //
+  // The value of such a binding is unknown here (the fresh value for a
+  // function-typed parameter is `AAny`), so the honest answer for the
+  // call's RESULT is "a value of unknown type".
+  //
+  // The method table is consulted first, so a top-level function is still
+  // dispatched as one.
+  if !self.methods.contains(name) && env.contains(name) {
+    return AAny
+  }
+  // A qualified call whose TAIL is bound: `PixelFormat::RGBA8`. Same rule
+  // as the qualified READ above, and the same reason.
+  //
+  // NOT "any `@`-prefixed call is fine": the repository pins the opposite,
+  // because a cross-package CALL is a name the table must carry. With an
+  // empty table `@core.IfaceSymTab::empty()` is reported, and with the
+  // table carrying the full qualified name it is not
+  // (`pipeline_test.mbt`, "an extern_iface carrying the names removes the
+  // self-scan findings" and its negative control). The `@`-prefixed NAME
+  // read above is a different case, and it is not this one.
+  if !self.methods.contains(name) && self.tail_bound(name, env) {
+    return AAny
+  }
+  self.call(name, vals, labels, sp)
+}
+
+///|
+/// THE NAMES DECLARED MORE THAN ONCE IN THIS FILE.
+///
+/// MoonBit allows two top-level functions of the same name, and `#cfg` is how
+/// real code reaches it. moonbitlang/async 0.22.4
+/// `src/internal/fd_util/fd_util.mbt:58,71`:
+///
+///     #cfg(not(platform="windows"))
+///     extern "C" fn close_ffi(fd : Fd) -> Int = "close"
+///     #cfg(platform="windows")
+///     extern "C" fn close_ffi(fd : Fd, is_socket~ : Bool) -> Int = "moonbitlang_async_close_fd"
+///
+/// A name with two declarations has NO SINGLE SIGNATURE, and the lens cannot
+/// know which one is live. So the arity and parameter-type checks must not run
+/// against either of them.
+///
+/// MEASURED, what happens when they do. The two call sites disagree about the
+/// arity, so whichever declaration the lens picks, ONE of them is reported:
+///
+///     close_ffi(fd, is_socket=kind is Socket)   -- fd_util.mbt:76
+///     no method matching close_ffi(Any, Any)
+///
+///     close_ffi(fd)                             -- fd_util.mbt:64
+///     no method matching close_ffi(Any)
+///
+/// Both are false positives on code `moon check` accepts, and the two
+/// findings are the SAME defect seen from the two sides: the lens picked one
+/// declaration and compared the other call site against it.
+///
+/// The dispatch for an ambiguous name is the one a cross-file name gets: an
+/// unknown-returning call. The name IS defined -- the file says so twice --
+/// and what the lens cannot say is which signature it has.
+fn duplicate_names(fns : Array[@walk.FnInfo]) -> Map[String, Bool] {
+  let out : Map[String, Bool] = Map([])
+  for f in fns {
+    match out.get(f.name) {
+      Some(_) => out.set(f.name, true)
+      None => out.set(f.name, false)
+    }
+  }
+  out
 }
 
 ///|
@@ -1772,6 +2236,16 @@ fn Interp::call(
   }
   match self.methods.get(name) {
     Some(def) => {
+      // A NAME DECLARED TWICE HAS NO SINGLE SIGNATURE, so the arity and the
+      // parameter types cannot be checked against either declaration. The
+      // dispatch is the one a cross-file name gets: an unknown-returning call.
+      //
+      // The name IS defined -- the file says so twice -- and what the lens
+      // cannot say is WHICH signature it has. See `duplicate_names` for the
+      // corpus sites and for the two findings this removes.
+      if def.ambiguous {
+        return AAny
+      }
       // THE ARGUMENT -> PARAMETER MAP.
       //
       // MoonBit lets a call supply its arguments BY LABEL, and when it does the
@@ -1867,7 +2341,8 @@ fn Interp::call(
             c += 1
           }
           if !claimed {
-            while next < declared && by_param[next] >= 0 {
+            while next < declared &&
+                  (by_param[next] >= 0 || omittable_at(def, next)) {
               next += 1
             }
             if next >= declared {
@@ -1895,17 +2370,28 @@ fn Interp::call(
           j2 += 1
         }
       } else {
-        // 1'. THE POSITIONAL COMPARISON, unchanged: every declared parameter
-        //     type must accept its argument (union-splitting lite; Any
-        //     parameters accept everything).
-        for i, pt in def.ptypes {
-          let arg = match vals.get(i) {
-            Some(v) => v
-            None => ABottom
+        // 1'. THE POSITIONAL COMPARISON: every POSITIONAL parameter type must
+        //     accept its argument (union-splitting lite; Any parameters accept
+        //     everything).
+        //
+        //     AND THE ARGUMENTS FILL THE POSITIONAL PARAMETERS -- NOT ALL OF
+        //     THEM. A parameter a call may OMIT is not filled positionally;
+        //     see `omittable_at` for the measurement and the corpus site.
+        let mut argi = 0
+        let mut pi = 0
+        while pi < declared {
+          if !omittable_at(def, pi) {
+            let pt = def.ptypes[pi]
+            let arg = match vals.get(argi) {
+              Some(v) => v
+              None => ABottom
+            }
+            if !(pt == "" || pt == "Any") && !vmatches(arg, pt) {
+              ok = false
+            }
+            argi += 1
           }
-          if !(pt == "" || pt == "Any") && !vmatches(arg, pt) {
-            ok = false
-          }
+          pi += 1
         }
       }
       // THE TYPE CHECK, per PARAMETER, for the labelled call. The positional
@@ -2175,12 +2661,39 @@ fn Interp::analyze_fn(
   // concrete. A function with no return annotation keeps the "None" answer,
   // because "it returns Unit" is the only claim an unannotated body makes,
   // and `cycle_ret` is `AAny` for exactly that case.
+  //
+  // 0495 AND THE EXTERN. There is ONE case where the body was never read and
+  // the "None" answer is therefore not a claim about Unit either: a function
+  // with NO BODY. An `extern "C"` declaration has no MoonBit body to execute,
+  // and a stub (`= "moonbitlang/async" "thread_pool/make_open_job"`) has none
+  // either. "None" says "the value None", which is a claim about a value the
+  // file never mentions.
+  //
+  // MEASURED, moonbitlang/async 0.22.4 `src/socket/ffi.mbt:16`:
+  //
+  //     extern "C" fn make_tcp_socket_ffi(family : AddrFamily) -> @fd_util.Fd = "..."
+  //
+  // The declared return type `@fd_util.Fd` is a CROSS-PACKAGE type, so the type
+  // lens cannot name it and `cycle_ret` is `AAny`. The extern's result was
+  // therefore "None", and the comparison two lines later read it as such:
+  //
+  //     no method matching <(None, int)
+  //
+  // on code `moon check` accepts -- the comparison is `if sock < 0`, and `sock`
+  // is a file descriptor.
+  //
+  // THE HONEST ANSWER IS `AAny`: the lens knows the call has a value and does
+  // not know what it holds. That is the same answer a cross-package name gets,
+  // and the operator arms already absorb it (`binop` returns early when either
+  // operand is `AAny`), so the comparison is no longer reported.
   let ret = if self.ret_vals.length() > 0 {
     join_vals(self.ret_vals)
   } else if self.last_value != ABottom {
     self.last_value
   } else if def.cycle_ret != AAny {
     def.cycle_ret
+  } else if def.body.length() == 0 {
+    AAny
   } else {
     join_vals(self.ret_vals)
   }
@@ -2260,6 +2773,49 @@ fn fn_pomittable(f : @walk.FnInfo) -> Array[Bool] {
     out.push(p.omittable)
   }
   out
+}
+
+///|
+/// MAY PARAMETER `i` BE OMITTED BY A CALL?
+///
+/// This is the question the positional alignment asks, and the answer is what
+/// separates a POSITIONAL parameter from an OMITTABLE one.
+///
+/// A parameter a call may OMIT (`name? : T`, or `name~ : T = default`) is NOT
+/// filled positionally: MoonBit binds it by label, or leaves it at its
+/// default. Counting it as a positional slot shifts every later argument one
+/// to the left.
+///
+/// MEASURED, moonbitlang/async 0.22.4
+/// `src/internal/event_loop/thread_pool.wasm.mbt:703`:
+///
+///     fn JobHandle::inotify_add_watch(
+///       inotify : @fd_util.Fd,
+///       path : @os_string.OsString,
+///       path_len? : Int = path.to_string().length(),
+///       is_dir : Bool,
+///     ) -> JobHandle
+///
+/// and the call `JobHandle::inotify_add_watch(inotify, path, is_dir)` -- three
+/// arguments, and the third was compared against `path_len? : Int`, so a Bool
+/// was checked against an Int:
+///
+///     no method matching JobHandle::inotify_add_watch(Any, Any, bool)
+///
+/// on code `moon check` accepts. The toolchain is the authority here and the
+/// corpus is the proof: it binds `is_dir` to `is_dir` and leaves `path_len?` at
+/// its default, which is only possible if the omittable parameter is not a
+/// positional slot.
+///
+/// Six sites in that one file share the shape, and the labelled call path has
+/// the same defect: a positional argument was matched against the omittable
+/// parameter and the parameter AFTER it was left unsupplied, which the
+/// dispatch then reported as a missing required argument.
+fn omittable_at(def : MethodDef, i : Int32) -> Bool {
+  if i < 0 || i >= def.pomittable.length() {
+    return false
+  }
+  def.pomittable[i]
 }
 
 ///|
@@ -2423,8 +2979,9 @@ pub fn analyzed_sigs(
   for c in enum_ctors {
     it.ctors.set(c, true)
   }
-  for f in wr.fns {
-    let sig : @types.Sig? = find_sig(tr, f.name)
+  let dupes = duplicate_names(wr.fns)
+  for i, f in wr.fns {
+    let sig : @types.Sig? = sig_at(tr, i)
     let ptypes : Array[String] = []
     let pts = match sig {
       Some(s) => s.param_tys
@@ -2449,6 +3006,10 @@ pub fn analyzed_sigs(
       pomittable: fn_pomittable(f),
       nopt: n_omittable(f),
       cycle_ret,
+      ambiguous: match dupes.get(f.name) {
+        Some(d) => d
+        None => false
+      },
       body: f.body,
       line: f.span.start.line,
     })

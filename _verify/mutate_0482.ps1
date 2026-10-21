@@ -97,18 +97,32 @@ Invoke-MutationGate -Name '0482' -Target 'wasm' -Mutations @(
   # replaced because the mutated parser then calls `parse_stmt` at end of input, where nothing
   # guarantees the cursor advances -- a mutation gate that can hang is worse than no mutation,
   # because it looks like a slow run rather than a bad question.
+  #
+  # RE-ANCHORED AT 0495. The clause used to be pushed into the loop body as
+  # ordinary statements --
+  #
+  #     for u in updates {
+  #       loop_body.push(u)
+  #     }
+  #
+  # -- and it is now its own statement, so the interpreter can tell it from a
+  # statement that FOLLOWS a `continue`: the first is reached, the second is
+  # not. THE MUTATION IS THE SAME ONE -- the clause is read, the length test
+  # runs, the statement is still pushed, and the clause still does not reach
+  # the tree. The chosen form empties the array first, so the clause is READ
+  # and CONSUMED and the body carries a statement with nothing in it.
   @{
     Name = 'M3 the update clause is read and then discarded'
     File = $PARSER
     Find = @'
-  for u in updates {
-    loop_body.push(u)
+  if updates.length() > 0 {
+    loop_body.push({ span: sp, kind: @ast.SForUpdate(updates), })
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
   updates = []
-  for u in updates {
-    loop_body.push(u)
+  if updates.length() > 0 {
+    loop_body.push({ span: sp, kind: @ast.SForUpdate(updates), })
   }
 '@.Replace("`r`n", "`n")
     MustRed = '0482: a newline-separated for header desugars to SLet + SWhile with its condition read'

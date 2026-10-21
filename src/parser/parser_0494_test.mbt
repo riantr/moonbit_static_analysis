@@ -125,8 +125,16 @@ test "0494: a comma-separated update list reaches the loop body" {
           // <init x2> + the SWhile the desugaring produces, as 0472 measured.
           assert_eq(stmts.length(), 3)
           match stmts[2].kind {
-            // the body statement + the two updates
-            @ast.SWhile(_, loop_body) => assert_eq(loop_body.length(), 3)
+            // the body statement + the update clause
+            // 0495: the update clause is its own statement -- and it carries
+            // BOTH updates, which is what this row is about.
+            @ast.SWhile(_, loop_body) => {
+              assert_eq(loop_body.length(), 2)
+              match loop_body[1].kind {
+                @ast.SForUpdate(updates) => assert_eq(updates.length(), 2)
+                _ => assert_true(false)
+              }
+            }
             _ => assert_true(false)
           }
         }
@@ -253,14 +261,12 @@ test "0494: a break may carry a value and the value is read" {
           match loop_stmt.kind {
             @ast.SFor(_, _, _, lbody) =>
               match lbody[0].kind {
-                @ast.SBlock(vals) => {
-                  // the break itself + the value it carries
-                  assert_eq(vals.length(), 2)
-                  match vals[0].kind {
-                    @ast.SBreak => ()
-                    _ => assert_true(false)
-                  }
-                }
+                // 0495: the carried value is the BREAK'S OWN PAYLOAD. It used
+                // to be a sibling statement inside an `SBlock`, and the
+                // interpreter read it as `unreachable code` -- 25 false
+                // positives on three corpora. The shape asserted here is the
+                // one that says so.
+                @ast.SBreak(vals) => assert_eq(vals.length(), 1)
                 _ => assert_true(false)
               }
             _ => assert_true(false)
@@ -273,8 +279,9 @@ test "0494: a break may carry a value and the value is read" {
 
 ///|
 /// A BARE `break` IS STILL A BARE BREAK -- the control on the row above. The
-/// valued form wraps the break in a block, so a reader that wrapped EVERY
-/// break would satisfy the valued row and change this one.
+/// valued form carries its value as the break's own payload, so a reader that
+/// made EVERY break carry a value would satisfy the valued row and change this
+/// one.
 test "0494: a bare break is still a bare break" {
   let r = @parser.parse(
     "fn f(n : Int) -> Int {\n  for i in n..<10 {\n    break\n  }\n  0\n}\n",
@@ -285,7 +292,9 @@ test "0494: a bare break is still a bare break" {
       match body[0].kind {
         @ast.SFor(_, _, _, lbody) =>
           match lbody[0].kind {
-            @ast.SBreak => ()
+            @ast.SBreak(vals) =>
+              // 0495: the bare form carries NOTHING.
+              assert_eq(vals.length(), 0)
             _ => assert_true(false)
           }
         _ => assert_true(false)

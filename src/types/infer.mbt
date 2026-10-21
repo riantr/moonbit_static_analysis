@@ -766,7 +766,17 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
         }
         None => ()
       }
-    SBreak | SContinue => ()
+    // The carried VALUES are typed. `continue m >> 60, i + 1` carries two
+    // expressions, and a name inside one is a real name: `continue
+    // undefined_name` must still report.
+    SBreak(vals) =>
+      for v in vals {
+        let _ = self.ty_of(v, TUnknown)
+      }
+    SContinue(vals) =>
+      for v in vals {
+        let _ = self.ty_of(v, TUnknown)
+      }
     SFunc(_, _, _, _, _) => ()
     // `let (a, b) = pair`: tuple element types are not modelled (no tuple
     // Ty), so every destructured name starts Unknown in the current frame
@@ -817,6 +827,13 @@ fn Infer::walk_stmt(self : Infer, s : @ast.Stmt) -> Unit {
     SBlock(body) =>
       for st in body {
         self.walk_stmt(st)
+      }
+    // A C-style `for`'s UPDATE clause. `i = i + 1` READS `i`, so the clause is
+    // typed -- it used to be typed as part of the loop body, which is where it
+    // still is.
+    SForUpdate(updates) =>
+      for u in updates {
+        self.walk_stmt(u)
       }
   }
 }

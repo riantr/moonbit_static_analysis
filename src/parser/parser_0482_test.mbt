@@ -56,8 +56,19 @@ test "0482: a newline-separated for header desugars to SLet + SWhile with its co
               }
               // The body statement, then the update clause.
               assert_eq(loop_body.length(), 2)
+              // 0495: the update clause is its own statement, so the
+              // interpreter can tell it from a statement that FOLLOWS a
+              // `continue` -- the first is reached, the second is not. The
+              // clause's being there is still what says the third clause was
+              // read and not mistaken for the first statement of the body.
               match loop_body[1].kind {
-                @ast.SAssign(_, _) => ()
+                @ast.SForUpdate(updates) => {
+                  assert_eq(updates.length(), 1)
+                  match updates[0].kind {
+                    @ast.SAssign(_, _) => ()
+                    _ => assert_true(false)
+                  }
+                }
                 _ => assert_true(false)
               }
             }
@@ -162,8 +173,16 @@ test "0482: a semicolon-separated for header is unchanged by 0482" {
                 _ => assert_true(false)
               }
               assert_eq(loop_body.length(), 2)
+              // 0495: the update clause is its own statement -- see the row
+              // above for why.
               match loop_body[1].kind {
-                @ast.SAssign(_, _) => ()
+                @ast.SForUpdate(updates) => {
+                  assert_eq(updates.length(), 1)
+                  match updates[0].kind {
+                    @ast.SAssign(_, _) => ()
+                    _ => assert_true(false)
+                  }
+                }
                 _ => assert_true(false)
               }
             }

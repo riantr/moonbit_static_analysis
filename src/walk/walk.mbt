@@ -945,7 +945,19 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
         Some(x) => self.walk_expr(x)
         None => ()
       }
-    SBreak | SContinue => ()
+    // The carried VALUES are walked. `continue m >> 60, i + 1` carries two
+    // expressions, and a name inside one is a real name: `continue
+    // undefined_name` must still report. Before 0495 the values were SIBLING
+    // STATEMENTS, and the walk treated them as statements -- which is how they
+    // came to be read as unreachable code.
+    SBreak(vals) =>
+      for v in vals {
+        self.walk_expr(v)
+      }
+    SContinue(vals) =>
+      for v in vals {
+        self.walk_expr(v)
+      }
     SFunc(_, _, _, _, _) => ()
     SLetDestruct(_, init) => self.walk_expr(init)
     // A local function owns a scope exactly like a top-level one. It is
@@ -1003,6 +1015,19 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
     SBlock(body) =>
       for st in body {
         self.walk_stmt(st)
+      }
+    // A C-style `for`'s UPDATE clause. Its statements are ordinary reads --
+    // `i = i + 1` READS `i` -- and they used to be walked as part of the loop
+    // body, which is where they still are: the node changed their SHAPE, not
+    // their place.
+    //
+    // The binding collector below does not need an arm for it: the clause may
+    // only ASSIGN the loop's declared names (settled, `_verify/
+    // settle_0494_parse_backlog.ps1` row `b3_control_for_update_binds_a_new_name`),
+    // and an assignment declares nothing.
+    SForUpdate(updates) =>
+      for u in updates {
+        self.walk_stmt(u)
       }
   }
 }

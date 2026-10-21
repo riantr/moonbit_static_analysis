@@ -1061,6 +1061,33 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
   // An `impl` / `trait` / `extend` has been seen at depth 0 and its body has not
   // closed yet. Everything declared in that span is a METHOD.
   let mut in_holder = false
+  // 0495 AND THE TRAIT'S NAME. A TRAIT's methods are declared inside its body,
+  // so the depth-0 rule could not see them, and a cross-package call to one
+  // was reported as an undefined function.
+  //
+  // MEASURED, moonbitlang/async 0.22.4:
+  //
+  //     src/http/server.mbt:155   @io.Writer::write(self, s)
+  //     src/fs/file.mbt:510       @io.Reader::read_all(file)
+  //     src/fs/file.mbt:539       @io.Writer::write(file, content.binary())
+  //
+  // three findings -- `undefined function '@io.Writer::write'` and its
+  // siblings -- on code `moon check` accepts. The `.mbti` DOES declare them:
+  //
+  //     pub(open) trait Writer {
+  //       async fn write(Self, &Data) -> Unit = _
+  //     }
+  //
+  // and the harvest reads `.mbti` files, so the names were available and
+  // unread.
+  //
+  // ONLY A TRAIT'S NAME IS RECORDED, and only a trait's methods are collected
+  // under it. An `impl`'s methods belong to the IMPLEMENTED type (`impl Eq for
+  // Locale` gives `Locale::equal`), which is a different name, and an
+  // `extend`'s methods belong to the extended one -- so neither is guessed
+  // here. The empty name is what says "not a trait", and the rule below asks
+  // for a non-empty one.
+  let mut holder_name = ""
   while i < toks.length() {
     match toks[i] {
       TLBrace => {
@@ -1079,6 +1106,7 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
           if depth == 0 {
             enum_body = false
             in_holder = false
+            holder_name = ""
           }
         }
       TLParen => if enum_body && depth == 1 { paren += 1 }
@@ -1095,11 +1123,28 @@ pub fn collect_declared_names(src : String) -> @core.IfaceSymTab {
           // only `trait` contributes a name.
           if n == "trait" {
             match declared_name_after_kw(toks, i) {
-              Some(d) => tab.types.set(d, true)
+              Some(d) => {
+                tab.types.set(d, true)
+                holder_name = d
+              }
               None => ()
             }
+          } else {
+            // An `impl` or an `extend`: the methods belong to a type this
+            // reader cannot name from the keyword alone, so the holder's name
+            // stays empty and no method is collected under it.
+            holder_name = ""
           }
           in_holder = true
+        } else if depth == 1 && in_holder && holder_name != "" && n == "fn" {
+          // A TRAIT'S METHOD: `Trait::method`. The use site spells it
+          // `@pkg.Trait::method`, and `IfaceSymTab::has_value` drops the
+          // package qualifier -- so this key is the one the table is asked
+          // for.
+          match declared_name_after_kw(toks, i) {
+            Some(d) => tab.values.set(holder_name + "::" + d, true)
+            None => ()
+          }
         } else if depth == 0 && n == "using" {
           // A re-export block. Collected here because this is where the
           // package's top-level names are enumerated, and a re-export is a
@@ -2858,6 +2903,14 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     // the file legible without asserting something the model cannot support is
     // the honest one. Recorded as a gap rather than guessed at.
     //
+    // 0495 AND WHAT THE VALUE'S SPELLING WAS NOT NEUTRAL. The value used to be
+    // a SIBLING STATEMENT -- `SBlock([SBreak, SExpr(v)])` -- because the block
+    // was the only way to carry "a terminator and something after it". The
+    // interpreter then read the terminator, saw the flow end, and reported the
+    // carried value as `unreachable code`: 25 findings on three corpora, every
+    // one a false positive on code `moon check` accepts. The value is the
+    // TERMINATOR'S OWN PAYLOAD, and that is where it lives now.
+    //
     // NO `skip_seps()` HERE, for the same reason the `continue` arm has none: a
     // bare `break` on its own line is followed by a `TNewline` and then the NEXT
     // STATEMENT, so skipping separators would read that statement's head as
@@ -2869,13 +2922,13 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
       _ => false
     }
     if bare {
-      return { span: sp, kind: @ast.SBreak, }
+      return { span: sp, kind: @ast.SBreak([]), }
     }
-    let vals : Array[@ast.Stmt] = [{ span: sp, kind: @ast.SBreak, }]
+    let vals : Array[@ast.Expr] = []
     let mut more = true
     while more {
       let v = self.parse_expr()
-      vals.push({ span: v.span, kind: @ast.SExpr(v), })
+      vals.push(v)
       if self.at(TComma) {
         let _ = self.bump()
         self.skip_seps()
@@ -2883,7 +2936,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
         more = false
       }
     }
-    return { span: sp, kind: @ast.SBlock(vals), }
+    return { span: sp, kind: @ast.SBreak(vals), }
   }
   if self.at_name("continue") {
     let _ = self.bump()
@@ -2923,13 +2976,13 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
       _ => false
     }
     if bare {
-      return { span: sp, kind: @ast.SContinue, }
+      return { span: sp, kind: @ast.SContinue([]), }
     }
-    let vals : Array[@ast.Stmt] = [{ span: sp, kind: @ast.SContinue, }]
+    let vals : Array[@ast.Expr] = []
     let mut more = true
     while more {
       let v = self.parse_expr()
-      vals.push({ span: v.span, kind: @ast.SExpr(v), })
+      vals.push(v)
       if self.at(TComma) {
         let _ = self.bump()
         self.skip_seps()
@@ -2937,7 +2990,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
         more = false
       }
     }
-    return { span: sp, kind: @ast.SBlock(vals), }
+    return { span: sp, kind: @ast.SContinue(vals), }
   }
   // `defer { ... }` and `defer <expr>` — a statement deferred to scope exit.
   //
@@ -3604,8 +3657,21 @@ fn Parser::parse_c_for(self : Parser) -> @ast.Stmt {
   for st in body {
     loop_body.push(st)
   }
-  for u in updates {
-    loop_body.push(u)
+  // 0495 AND THE UPDATE CLAUSE. It used to be pushed as ordinary statements,
+  // which made it a SIBLING of the body -- and a `continue` in the body then
+  // made the update clause look like dead code. It is not: MoonBit's
+  // `continue` in a C-style `for` RUNS the update clause.
+  //
+  // The clause is now its own statement, so the interpreter can tell it from
+  // a statement that FOLLOWS a `continue` -- the first is reached, the second
+  // is not.
+  //
+  // AND ONLY WHEN THERE IS ONE. A header with no update clause leaves the
+  // body EXACTLY as written, which is what `_verify/settle_0473_for_header_
+  // forms.ps1` settled and what `parser_0473_test.mbt` pins: an absent
+  // clause must not add a statement to the body.
+  if updates.length() > 0 {
+    loop_body.push({ span: sp, kind: @ast.SForUpdate(updates), })
   }
   stmts.push({ span: sp, kind: @ast.SWhile(cond, loop_body), })
   self.maybe_nobreak({ span: sp, kind: @ast.SBlock(stmts), })
@@ -4368,6 +4434,29 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
     let mut depth = 0
     let mut j = self.p
     let mut in_type = false
+    // 0495 AND THE `as` BINDING. A pattern may BIND a name with `as`:
+    // `is (HasReader(_) as reader)` binds `reader` to the whole pattern.
+    //
+    // MEASURED, moonbitlang/async 0.22.4 `src/pipe.mbt:84`:
+    //
+    //     if self.reader is (HasReader(_) as reader) {
+    //       reader.result = 0
+    //       reader.coro.wake()
+    //     }
+    //
+    // The two reads of `reader` were reported `undefined variable 'reader'` --
+    // on code `moon check` accepts. The name the pattern ITSELF introduces was
+    // not in scope.
+    //
+    // WHY THE DEPTH RULE MISSED IT: a name in the group is collected at
+    // `depth >= 2`, because the group's own `(` is a GROUPING paren and a bare
+    // name directly inside it is a CONSTRUCTOR of an or-pattern. The `as`
+    // binding sits at depth 1 -- `(` `HasReader` `(` `_` `)` `as` `reader` `)`
+    // -- and so it was skipped by the very rule that protects the or-pattern.
+    //
+    // THE FIX IS A FLAG, NOT A LOWER DEPTH: the name after `as` binds
+    // WHATEVER the depth, and every other name keeps the rule it had.
+    let mut after_as = false
     while j < self.toks.length() {
       match self.toks[j] {
         TLParen => depth += 1
@@ -4387,10 +4476,16 @@ fn Parser::parse_is_pattern(self : Parser) -> Array[String] {
         // and `PageUnavailable` reports two unused locals that do not exist.
         // A tuple pattern's bindings are one level in, inside `Some(`.
         TName(n) =>
-          if !in_type && depth >= 2 && self.pattern_binding_at(j) {
+          if !in_type && after_as && self.pattern_binding_at(j) {
+            found.push(n)
+          } else if !in_type && depth >= 2 && self.pattern_binding_at(j) {
             found.push(n)
           }
         _ => ()
+      }
+      after_as = match self.toks[j] {
+        TName(m) => m == "as"
+        _ => false
       }
       j += 1
     }

@@ -8,6 +8,8 @@ import {
 // Values
 pub fn aggregate(Array[Verdict]) -> Summary
 
+pub let default_findings_shown_per_file : Int32
+
 pub fn dir_of(String) -> String
 
 pub fn is_coordinate(String) -> Bool
@@ -26,9 +28,11 @@ pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool, String, Bool) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
+
+pub fn show_plan(Int32, Int32) -> (Int32, Bool)
 
 pub fn split_coord(String) -> (String, String)
 

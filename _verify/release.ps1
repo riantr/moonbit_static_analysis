@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -770,10 +770,11 @@ if ($SkipMutations) {
 # readable -- see `_verify/derive_planted_gap.ps1` and the 0494 section of
 # NARRATIVE.md.
 #
-# Its 48 actionable findings are NOT corpus defects. They are NAMED CONSTRUCTS THE
-# READER DOES NOT READ, and the accounting reconciles exactly: 43 in fully-parsed
-# files (the per-file `defects=` headers are not truncated) plus 5 pre-boundary
-# findings in the two partial files that have any. The inventory, by construct:
+# Its 48 actionable findings were NOT corpus defects. They were NAMED CONSTRUCTS
+# THE READER DID NOT READ, and the accounting reconciled exactly: 43 in
+# fully-parsed files (the per-file `defects=` headers are not truncated) plus 5
+# pre-boundary findings in the two partial files that have any. The inventory,
+# by construct, as it stood before 0495:
 #
 #   10  `undefined name 'rl'` / `'lr'`      the `is` pattern `(Node(..) as rl)` --
 #                                            a REST pattern bound to a name
@@ -792,6 +793,45 @@ if ($SkipMutations) {
 #   1   `undefined variable 'declare'`    the `declare` keyword
 #   1   `undefined name 'strconv'`         `@internal/strconv.parse_double(s)` --
 #                                            an absolute package path with a `/`
+#
+# AT 0495 IT IS 37, AND THE PIN MOVES DOWN WITH THE REASON ATTACHED.
+#
+# MEASURED, as an A/B of the SAME corpus with TWO wasms: the pre-0495 tree
+# (`git archive HEAD`, which at the time was 731659c) built on one side and the
+# 0495 tree on the other, both scanned over the same `.repos` path:
+#
+#     actionable  48 -> 37
+#     notices     9988 -> 9988   UNCHANGED
+#     unreliable  2956 -> 2956   UNCHANGED
+#     withheld    552 -> 552     UNCHANGED
+#     parsed      935 -> 935     UNCHANGED
+#     files       1029 -> 1029   UNCHANGED
+#
+# AND THE FINDING SETS DIFFER BY EXACTLY 11, WITH ZERO NEW ONES. Not "the count
+# went down" -- the SET is a strict subset, and the per-file `defects=` headers
+# (which are NOT truncated) show that exactly TWO of the 680 files with findings
+# changed at all:
+#
+#     internal/regex_engine/shared_types/rechar_set/tree.mbt   10 -> 0
+#     quickcheck/generator.mbt                                  1 -> 0
+#
+# The ten are `undefined name 'rl'` / `'lr'` -- the `is` pattern `(Node(..) as
+# rl)`, a REST pattern bound to a name, which is 0495's family G. The one is
+# `no visible binding for 'Arbitrary::arbitrary'` -- a TRAIT's method read as a
+# value, which is 0495's family E. Every other file's count is identical, and
+# the shown finding lines diff to GONE 11 / NEW 0. None of the eleven is
+# `behavior`-tagged, so the five behaviour-lens findings below are untouched.
+#
+# The 5 pre-boundary findings are untouched as well, so the accounting still
+# reconciles: 32 in fully-parsed files plus 5 pre-boundary is 37.
+#
+# => 判据: A PIN THAT MOVES DOWN IS A CLAIM THAT WAS TOO STRICT, AND THE PROOF
+# IS THE SET, NOT THE NUMBER. "48 -> 37" could have been eleven findings fixed
+# and eleven new ones raised, and the count alone cannot tell the two apart.
+# The A/B of the two wasms over the same corpus can, and it says GONE 11, NEW 0,
+# in two files, with every other file's count identical. A pin moved on a number
+# alone would have been a release that traded a corpus defect for a corpus
+# defect and called it a release.
 #
 # `notices=9988` is dominated by the `.mbt.md` literate files: a `test` block
 # inside a Markdown file is "outside the analyzer's MoonBit subset", which is a
@@ -812,7 +852,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1836 unreliable=0 withheld=0 total=1836'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=2131 unreliable=0 withheld=0 total=2131'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
-  'moonbit_core'    = 'files=1029 parsed=935 actionable=48 notices=9988 unreliable=2956 withheld=552 total=12992'
+  'moonbit_core'    = 'files=1029 parsed=935 actionable=37 notices=9988 unreliable=2956 withheld=552 total=12981'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'

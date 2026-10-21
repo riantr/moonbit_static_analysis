@@ -88,6 +88,77 @@
 
 $script:MutationGateFailures = @()
 
+# RULE 9, added 0495b: A FILE THAT ANOTHER PROCESS HAS OPEN IS NOT A FAILED GATE.
+#
+# MEASURED. The full release gate on 2026-10-21 failed at ONE gate, 0455, with
+# this and nothing else:
+#
+#     Exception calling "WriteAllText" with "3" argument(s): "The requested
+#     operation cannot be performed on a file with a user-mapped section open."
+#
+# M1 and M2 had already been KILLED, with their named tests confirmed, when the
+# WRITE of the next mutation's replacement threw. Windows refuses a write to a
+# file that a reader has MEMORY-MAPPED, and the reader here was the compiler:
+# `moon` had the source mapped while the gate was between its test runs. The
+# same gate, run alone in the same tree minutes earlier, was GREEN.
+#
+# WHY IT MATTERS MORE THAN IT LOOKS. The write that threw was not necessarily
+# the one that APPLIES a mutation -- it could have been the RESTORE. A restore
+# that throws leaves the target file MUTATED, and the next gate then measures a
+# tree nobody intended to measure. The tree was checked after the failure (the
+# target, `src/lexer/lexer.mbt`, was byte-identical to HEAD) -- but a check
+# after the fact is not a guard.
+#
+# So the I/O gets a retry, and the retry is on the TRANSIENT, not on the
+# verdict: the mutation still has to be applied, still has to kill, and the
+# restore still has to be proven byte-identical by SHA256 afterwards. Nothing
+# about the judgement changes. This is the same shape as the EMPTY-RUN retry
+# below -- "the machine misbehaved" is not a verdict -- and the same shape as
+# `release.ps1`'s `Read-TextWhenFree`, which was written for the same reason.
+#
+# The exception is an `IOException` (ERROR_USER_MAPPED_FILE / a sharing
+# violation). A genuinely unreadable or genuinely unwritable file still throws,
+# after the tries are spent.
+function Read-BytesWithRetry {
+  param([string]$Path, [int]$Tries = 12)
+  for ($i = 1; $i -le $Tries; $i++) {
+    try {
+      return [System.IO.File]::ReadAllBytes($Path)
+    } catch [System.IO.IOException] {
+      if ($i -eq $Tries) { throw }
+      Start-Sleep -Milliseconds (50 * $i)
+    }
+  }
+}
+
+function Write-BytesWithRetry {
+  param([string]$Path, [byte[]]$Bytes, [int]$Tries = 12)
+  for ($i = 1; $i -le $Tries; $i++) {
+    try {
+      [System.IO.File]::WriteAllBytes($Path, $Bytes)
+      return
+    } catch [System.IO.IOException] {
+      if ($i -eq $Tries) { throw }
+      Write-Output ('      the file was busy (another process has it mapped); retrying write ' + $i + '/' + $Tries)
+      Start-Sleep -Milliseconds (50 * $i)
+    }
+  }
+}
+
+function Write-TextWithRetry {
+  param([string]$Path, [string]$Text, [System.Text.Encoding]$Enc, [int]$Tries = 12)
+  for ($i = 1; $i -le $Tries; $i++) {
+    try {
+      [System.IO.File]::WriteAllText($Path, $Text, $Enc)
+      return
+    } catch [System.IO.IOException] {
+      if ($i -eq $Tries) { throw }
+      Write-Output ('      the file was busy (another process has it mapped); retrying write ' + $i + '/' + $Tries)
+      Start-Sleep -Milliseconds (50 * $i)
+    }
+  }
+}
+
 # RULE 6, in its own place because it needs the failure format and that format was
 # captured, not assumed.
 #
@@ -163,7 +234,7 @@ function Invoke-MutationGate {
       $script:MutationGateFailures += ($Name + ' (missing file ' + $f + ')')
       return
     }
-    $texts[$f] = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($p))
+    $texts[$f] = [System.Text.Encoding]::UTF8.GetString((Read-BytesWithRetry -Path $p))
   }
 
   # ---- pre-flight: every pattern must be present, in milliseconds -------------
@@ -339,7 +410,7 @@ function Invoke-MutationGate {
   $results = @()
   foreach ($m in $live) {
     $path = Join-Path $Root $m.File
-    $bytes0 = [System.IO.File]::ReadAllBytes($path)
+    $bytes0 = Read-BytesWithRetry -Path $path
     $sha0 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     $text = [System.Text.Encoding]::UTF8.GetString($bytes0)
     $eol = if ($text.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { $nl }
@@ -354,7 +425,7 @@ function Invoke-MutationGate {
       $script:MutationGateFailures += ($m.Name + ' (NO-OP)')
       continue
     }
-    [System.IO.File]::WriteAllText($path, $norm.Replace($findN, $replN).Replace($nl, $eol), $enc)
+    Write-TextWithRetry -Path $path -Text ($norm.Replace($findN, $replN).Replace($nl, $eol)) -Enc $enc
 
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $out = & $MoonExe test --target $Target 2>&1 | Out-String
@@ -435,7 +506,7 @@ function Invoke-MutationGate {
     }
 
     # Rule 4. Prove the restore byte-for-byte.
-    [System.IO.File]::WriteAllBytes($path, $bytes0)
+    Write-BytesWithRetry -Path $path -Bytes $bytes0
     if ($sha0 -ne (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash) {
       $detail += ' RESTORE-MISMATCH'
       $script:MutationGateFailures += ($m.Name + ' (restore)')

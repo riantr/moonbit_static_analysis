@@ -135,6 +135,12 @@ Invoke-MutationGate -Name '0494' -Target 'wasm' -Mutations @(
   # THE ANCHOR SPANS THE `bare` TEST AND THE RETURN, because the `bare` test
   # on its own appears in the `continue` arm too -- and an anchor that matches
   # two sites mutates the FIRST one, which is the wrong arm.
+  #
+  # RE-ANCHORED AT 0495. The return used to read `@ast.SBreak`; the break now
+  # carries its values as its own payload, so the bare form reads
+  # `@ast.SBreak([])`. The MUTATION IS THE SAME ONE -- "the `bare` test is
+  # always true, so a valued break is read as a bare one and its value is left
+  # in the token stream" -- and it still kills on the same named test.
   @{
     Name = 'M5 a break that carries a value is read as a bare break'
     File = $PARSER
@@ -144,7 +150,7 @@ Invoke-MutationGate -Name '0494' -Target 'wasm' -Mutations @(
       _ => false
     }
     if bare {
-      return { span: sp, kind: @ast.SBreak, }
+      return { span: sp, kind: @ast.SBreak([]), }
     }
 '@.Replace("`r`n", "`n")
     Repl = @'
@@ -153,7 +159,7 @@ Invoke-MutationGate -Name '0494' -Target 'wasm' -Mutations @(
       _ => true
     }
     if bare {
-      return { span: sp, kind: @ast.SBreak, }
+      return { span: sp, kind: @ast.SBreak([]), }
     }
 '@.Replace("`r`n", "`n")
     MustRed = '0494: a break may carry a value and the value is read'

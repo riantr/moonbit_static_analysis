@@ -116,8 +116,9 @@ pub(all) enum SKind {
   SNoBreak(Stmt, Array[Stmt])
   SReturn(Expr?)
   SRaise(Expr?)
-  SBreak
-  SContinue
+  SBreak(Array[Expr])
+  SContinue(Array[Expr])
+  SForUpdate(Array[Stmt])
   STail(Expr)
   SFunc(String, Array[Param], String, Array[Stmt], @core.Span)
   SLetDestruct(Array[String], Expr)

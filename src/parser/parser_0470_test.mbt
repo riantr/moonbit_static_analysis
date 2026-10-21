@@ -149,10 +149,16 @@ test "0470: a compound update clause stays an SAssign with its EBin wrapper" {
           match stmts[1].kind {
             @ast.SWhile(_, loop_body) =>
               // the update is appended after the body, so it is the LAST statement
+              // 0495: and it is its own statement, so the interpreter can tell
+              // it from a statement that FOLLOWS a `continue`.
               match loop_body[loop_body.length() - 1].kind {
-                @ast.SAssign(target, rhs) =>
-                  match (target.kind, rhs.kind) {
-                    (@ast.EName(n), @ast.EBin(_, _, _)) => assert_eq(n, "x")
+                @ast.SForUpdate(updates) =>
+                  match updates[0].kind {
+                    @ast.SAssign(target, rhs) =>
+                      match (target.kind, rhs.kind) {
+                        (@ast.EName(n), @ast.EBin(_, _, _)) => assert_eq(n, "x")
+                        _ => assert_true(false)
+                      }
                     _ => assert_true(false)
                   }
                 _ => assert_true(false)

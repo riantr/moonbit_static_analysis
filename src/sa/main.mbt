@@ -37,7 +37,33 @@ let progress_every : Int32 = 500
 /// Per-file findings shown before the scan stops printing them for that file.
 /// A file the frontend understood is a file whose findings are worth reading;
 /// a hundred of them is still noise, and the file is named either way.
-let findings_shown_per_file : Int32 = 40
+///
+/// This is the DEFAULT, and it is a default rather than a constant because the
+/// cap was hiding the findings that matter. MEASURED, riantr/moonbit_labeler
+/// 0.2.13, `extensions/labeler/labeler.mbt`: the file carries 212 findings,
+/// 174 of them notices, and the first forty printed are ALL notices -- so the
+/// thirty-eight defects behind them were never shown. The file's own header
+/// said `defects=38` and the reader saw none of them. A cap that hides the
+/// defects is not a cap, it is a blindfold.
+///
+/// `--findings-shown-per-file N` overrides it. The SUMMARY counts are
+/// unaffected either way: they come from `aggregate` over EVERY finding, and
+/// the cap is a PRINTING limit, never an analysis limit.
+pub let default_findings_shown_per_file : Int32 = 40
+
+///|
+/// How many of a file's findings are printed, and whether the file had more
+/// than that to say. Pure, so the cap's boundary can be pinned by a test
+/// without running a scan.
+///
+/// The cap is clamped at zero: a negative one would ask for a range of
+/// negative length, and the reader asked for "everything" or "nothing", never
+/// for less than nothing.
+pub fn show_plan(n : Int32, cap : Int32) -> (Int32, Bool) {
+  let c = if cap < 0 { 0 } else { cap }
+  let shown = if n < c { n } else { c }
+  (shown, shown < n)
+}
 
 ///|
 /// What the scan can honestly say about one file.
@@ -209,6 +235,12 @@ pub fn tally_partial_reasons(
 /// separately and pass `.repos` here; auto-fetching the target's own
 /// `moon.mod` imports is on by default and can be turned off with
 /// `auto_fetch_deps = false`.
+///
+/// `findings_shown_per_file` is how many findings are PRINTED per file. It is
+/// a printing limit and nothing else: the counts in the SUMMARY come from
+/// every finding, so raising it reveals findings that were already counted
+/// and changes no number in the summary. The default is
+/// `default_findings_shown_per_file`.
 pub async fn scan(
   target : String,
   excludes : Array[String],
@@ -216,6 +248,7 @@ pub async fn scan(
   auto_fetch_deps : Bool,
   mmd_out : String,
   per_function : Bool,
+  findings_shown_per_file : Int32,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -314,15 +347,11 @@ pub async fn scan(
         println(
           "FOUND\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\t\{v.path}",
         )
-        let shown = if n < findings_shown_per_file {
-          n
-        } else {
-          findings_shown_per_file
-        }
+        let (shown, more) = show_plan(n, findings_shown_per_file)
         for i in 0..<shown {
           println(v.findings[i].render())
         }
-        if shown < n {
+        if more {
           println("...  \{n - shown} more in this file")
         }
       }
@@ -337,15 +366,11 @@ pub async fn scan(
         println(
           "PARTIAL\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tread up to line \{v.region_line}, \{v.unreliable} after it not shown\t\{v.path}",
         )
-        let shown = if n < findings_shown_per_file {
-          n
-        } else {
-          findings_shown_per_file
-        }
+        let (shown, more) = show_plan(n, findings_shown_per_file)
         for i in 0..<shown {
           println(v.findings[i].render())
         }
-        if shown < n {
+        if more {
           println("...  \{n - shown} more before the boundary in this file")
         }
       }
@@ -413,7 +438,7 @@ pub async fn scan(
     )
   }
   if mmd_out != "" {
-    emit_mmd(mmd_out, verdicts, s, target, root)
+    emit_mmd(mmd_out, verdicts, s, target, root, findings_shown_per_file)
   }
 }
 
@@ -452,6 +477,7 @@ async fn emit_mmd(
   s : Summary,
   target : String,
   root : String,
+  findings_shown_per_file : Int32,
 ) -> Unit {
   let prov = provenance_for(target, root)
   let text = mermaid_states(

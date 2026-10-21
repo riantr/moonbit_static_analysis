@@ -88,6 +88,16 @@ $mutations = @(
   # yields no value; "None" is the answer only for a body that says it
   # returns Unit. This reverts the whole chain to the pre-fix shape, so the
   # extern function and the `match`-in-a-branch both go back to "None".
+  #
+  # RE-ANCHORED 0495. 0495's D4 fix inserted an ARM between the two: a function
+  # with no body and no nameable return type has a value of UNKNOWN type
+  # (`AAny`), not "None" -- so the chain now reads
+  # `... def.cycle_ret != AAny { def.cycle_ret } else if def.body.length() == 0
+  # { AAny } else { join_vals(self.ret_vals) }` and the old anchor was ABSENT.
+  # The D4 arm is KEPT in the mutation: this row pins the CLAIM THAT THE
+  # DECLARED RETURN TYPE IS THE ANSWER, and 0495's D4 claim is a different one.
+  # Removing only the `cycle_ret` arm puts the extern function and the
+  # `match`-in-a-branch back on "None".
   @{
     Name = 'M2 a body that yields no value answers None again'
     File = $INTERP
@@ -95,12 +105,16 @@ $mutations = @(
     self.last_value
   } else if def.cycle_ret != AAny {
     def.cycle_ret
+  } else if def.body.length() == 0 {
+    AAny
   } else {
     join_vals(self.ret_vals)
   }
 '@
     Repl = @'
     self.last_value
+  } else if def.body.length() == 0 {
+    AAny
   } else {
     join_vals(self.ret_vals)
   }
@@ -111,6 +125,20 @@ $mutations = @(
   # M3 -- CLASS D. The labels decide the binding, and the labels are read
   # from `ECall`'s third field. Making `any_label` false again is exactly the
   # pre-fix behaviour: the arguments are compared by position again.
+  #
+  # THE NAMED TEST CHANGED, AND THE REASON IS A 0495 FIX. The row this used to
+  # name -- "a labelled call that omits an optional parameter is accepted" --
+  # no longer discriminates, and the reason is 0495's D2 fix: an OMITTABLE
+  # parameter is not a positional slot, so the POSITIONAL path now skips the
+  # omittable ones. The labelled call `from_routes(routes=s, title="x",
+  # source="y")` compared by position therefore no longer produces an error
+  # either, and the row passes with the mutation in place -- the row stopped
+  # being able to tell the two mechanisms apart.
+  #
+  # The row that DOES tell them apart is the control on the label SET: a label
+  # the callee does not have can only be caught by READING THE LABELS. With
+  # `any_label` false the unknown label is accepted, so the expected error is
+  # not reported and the row goes red.
   @{
     Name = 'M3 the argument labels are invisible again'
     File = $INTERP
@@ -124,28 +152,50 @@ $mutations = @(
           any_label = false
         }
 '@
-    MustRed = 'a labelled call that omits an optional parameter is accepted'
+    MustRed = 'a label the callee does not have is a method error'
   }
 
   # M4 -- CLASS E. A loop may run zero times, so the body's flow is not the
   # flow after the loop. Removing the rule restores "the body always
   # terminates", and the statement after the loop is reported unreachable
   # again.
+  #
+  # RE-ANCHORED 0495. The block this mutation deleted is GONE -- 0495 replaced
+  # the one-line `self.flow = if always && !broke { ... }` with a form that
+  # carries a third term (`body_broke`) and a multi-line `if/else`, so the old
+  # anchor was ABSENT. Deleting the new block outright would orphan `always`
+  # and `broke` -- two unused variables, which is a warning and, under a
+  # `--deny-warn` build, a COMPILE-ERR rather than a kill. So the mutation is
+  # re-expressed as a PROGRAM that restores the SAME claim:
+  #
+  #   PRE-0493 (measured from `git show 8449509^`): the `SWhile` arm had NO
+  #   flow adjustment at all. `self.exec_block(body, wenv)` and nothing else,
+  #   so the body's flow WAS the flow after the loop -- a `while` whose body
+  #   ends in `return` left the frame terminated, and the statement after the
+  #   loop was reported unreachable. That is exactly class E.
+  #
+  #   THE MUTATION: the `else if !always` arm restores that -- when the
+  #   condition is NOT constantly true the loop may run zero times, and the
+  #   body's flow survives it. `always`, `broke` and `body_broke` all stay
+  #   READ, so the mutation introduces no unused variable.
   @{
     Name = 'M4 a while loop is treated as always terminating again'
     File = $INTERP
     Find = @'
-      let always = match cv {
-        ABool(b) => b
-        _ => false
+      self.flow = if always && !broke && !body_broke {
+        self.flow
+      } else {
+        FNormal
       }
-      let broke = match self.flow {
-        FBreak | FContinue => true
-        _ => false
-      }
-      self.flow = if always && !broke { self.flow } else { FNormal }
 '@
     Repl = @'
+      self.flow = if always && !broke && !body_broke {
+        self.flow
+      } else if !always {
+        self.flow
+      } else {
+        FNormal
+      }
 '@
     MustRed = 'the statement after a while that may run zero times is reachable'
   }

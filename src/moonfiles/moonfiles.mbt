@@ -1112,6 +1112,17 @@ pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
       tab.values.set(n, true)
     }
   }
+  // A TRAIT'S METHODS ARE VALUES TOO, and for the same reason: they are
+  // declared inside the trait's body, which this frontend skips.
+  //
+  // The name is `Trait::method`, because that is what a use site resolves to
+  // once the package qualifier is dropped (`unqualified`): `@io.Writer::write`
+  // becomes `Writer::write`.
+  for n in result.trait_members {
+    if !tab.values.contains(n) {
+      tab.values.set(n, true)
+    }
+  }
   // Re-exported types carry their MEMBERS under the name they really have, and
   // `has_value` / `has_type` follow the link. FIRST ONE WINS for a repeated
   // name -- see the collision note on `IfaceSymTab.aliases`.
@@ -1158,6 +1169,10 @@ priv struct IfaceScan {
   /// through the re-exported name. See the `IfaceSymTab.aliases` note for the
   /// finding this fixes and the settle that pins the behaviour.
   aliases : Array[(String, String)]
+  /// A TRAIT'S METHODS, as `Trait::method`. They are values, and they are
+  /// declared inside the trait's body -- a body this reader skips. See the
+  /// comment where they are collected for the corpus sites they unblock.
+  trait_members : Array[String]
 }
 
 ///|
@@ -1204,6 +1219,33 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   // no amount of reading more files would ever have fixed it.
   let ctors : Array[String] = []
   let mut in_ctor_body = false
+  // THE TRAIT WHOSE BODY IS BEING READ, and the methods found in it.
+  //
+  // A TRAIT'S METHODS ARE VALUES, and they are declared INSIDE the trait's
+  // body -- a body this reader skips, exactly like an enum's. So a cross-file
+  // call to one had no name to resolve against:
+  //
+  //     undefined function '@io.Writer::write'
+  //
+  // MEASURED, moonbitlang/async 0.22.4, three sites:
+  //
+  //     src/http/server.mbt:155   @io.Writer::write(self, s)
+  //     src/fs/file.mbt:510       @io.Reader::read_all(file)
+  //     src/fs/file.mbt:539       @io.Writer::write(file, content.binary())
+  //
+  // on code `moon check` accepts. The `.mbti` DOES declare them:
+  //
+  //     pub(open) trait Writer {
+  //       async fn write_once(Self, Bytes, offset~ : Int, len~ : Int) -> Int
+  //       async fn write(Self, &Data) -> Unit = _
+  //       async fn write_reader(Self, &Reader) -> Unit = _
+  //     }
+  //
+  // The name the use site resolves to is `Writer::write` -- the qualifier is
+  // dropped by `unqualified` -- so the collected name is the trait's name and
+  // the method's name, joined.
+  let mut trait_name = ""
+  let trait_members : Array[String] = []
   for i, line in lines {
     let lineno = i + 1
     let t = trim_sp(line)
@@ -1230,7 +1272,26 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
           ctors.push(head)
         }
       }
+      // A TRAIT'S METHOD, read with the same reader the top-level signatures
+      // use. The line is a signature -- `async fn write(Self, &Data) -> Unit = _`
+      // -- and the name it declares is a VALUE.
+      if trait_name != "" {
+        match iface_signature(t) {
+          Some((mname, _, _, _)) => {
+            let qualified = trait_name + "::" + mname
+            if !trait_members.contains(qualified) {
+              trait_members.push(qualified)
+            }
+          }
+          None => ()
+        }
+      }
       decl_depth += count_char(t, '{') - count_char(t, '}')
+      if decl_depth <= 0 {
+        // THE TRAIT BODY IS OVER. A `}` at depth 0 closes it, and the next
+        // declaration is not a method of it.
+        trait_name = ""
+      }
       continue
     }
     // attribute lines: #deprecated, #alias(new, ...), #callsite(...)
@@ -1373,6 +1434,11 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       if name != "" && !declared.contains(name) {
         declared.push(name)
       }
+      // A TRAIT OPENS A BODY OF METHODS. The body is read by the branch above,
+      // which is where the methods are collected.
+      if matched == "trait " {
+        trait_name = name
+      }
       // an alias `type Fd = Int` also references its right-hand side
       if matched == "type " {
         match after_params.split_once("=") {
@@ -1481,7 +1547,15 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       vst: [],
     })
   }
-  IfaceScan::{ reports, declared, sig_names, ctors, const_names, aliases, }
+  IfaceScan::{
+    reports,
+    declared,
+    sig_names,
+    ctors,
+    const_names,
+    aliases,
+    trait_members,
+  }
 }
 
 ///|

@@ -532,8 +532,67 @@ pub(all) enum SKind {
   /// else. The operand is still walked and type-checked, so a real defect
   /// inside `raise E(bad_call)` still reports.
   SRaise(Expr?)
-  SBreak
-  SContinue
+  /// `break` / `continue` -- WITH the values they carry, if any.
+  ///
+  /// MoonBit's `break` and `continue` may CARRY VALUES, and the values are
+  /// the loop variables' new values:
+  ///
+  ///     let i = for m = n, i = 0; m > 0; {
+  ///       continue m >> 60, i + 1
+  ///     } nobreak {
+  ///       i
+  ///     }
+  ///
+  /// The values used to be parsed as a BLOCK -- `SBlock([SContinue, SExpr(a),
+  /// SExpr(b)])` -- so the interpreter saw the terminator and then the carried
+  /// values as ORDINARY STATEMENTS AFTER IT, and reported `unreachable code`
+  /// on the first of them. MEASURED: 25 findings on three corpora, every one
+  /// of them a false positive on code `moon check` accepts:
+  ///
+  ///     moonbit_image  bmp.mbt:373   no -- `unreachable code` on `continue p, r, c, vr`
+  ///     async          conn.mbt:389  the same shape
+  ///
+  /// The values belong to the TERMINATOR and not to the block around it, which
+  /// is why they are a payload here rather than sibling statements.
+  ///
+  /// An EMPTY array is the bare form: `break` and `continue` with no value.
+  SBreak(Array[Expr])
+  SContinue(Array[Expr])
+  /// A C-STYLE `for`'s UPDATE clause -- `for i = 0; i < n; i = i + 1 { .. }`.
+  ///
+  /// The clause used to be APPENDED to the loop body as ordinary statements,
+  /// which made it a sibling of the body -- and a `continue` in the body made
+  /// the update clause look like dead code.
+  ///
+  /// IT IS NOT DEAD CODE, and that is a measurement rather than an opinion.
+  /// MoonBit's `continue` in a C-style `for` RUNS the update clause and
+  /// repeats the loop; `_verify/settle_0495_perfunction.ps1` settles it by
+  /// RUNNING a program that prints `i=0 i=1 i=2 i=3` and finishes, which is
+  /// only possible if the update ran on the `continue`.
+  ///
+  /// MEASURED, moonbitlang/async 0.22.4
+  /// `src/socket/addr_utils.mbt:262`:
+  ///
+  ///     for i = 0, zero_group_start = 0; i < 8; i = i + 1 {
+  ///       if addr[i * 2] == 0 && addr[i * 2 + 1] == 0 {
+  ///         continue
+  ///       } else {
+  ///         add_zero_group(zero_group_start, i)
+  ///         continue i + 1, i + 1
+  ///       }
+  ///     } nobreak {
+  ///       add_zero_group(zero_group_start, i)
+  ///     }
+  ///
+  /// The `i = i + 1` on the header line was reported `unreachable code`.
+  ///
+  /// ITS OWN NODE rather than a plain statement, because the interpreter has
+  /// to tell the update clause from a statement that FOLLOWS a `continue` --
+  /// and the first is reached and the second is not. A flag on `SBlock` would
+  /// have to be threaded through every reader anyway, and the moment one of
+  /// them forgets to check it, the failure is silent: a dead update clause
+  /// and a live one look the same in the tree.
+  SForUpdate(Array[Stmt])
   /// The body's OWN trailing expression — MoonBit's tail value.
   /// `fn f() -> Int { 1 }` is a function that RETURNS 1; before this node it
   /// was an `SExpr`, and `SExpr` discards its value (`Interp::exec_stmt`

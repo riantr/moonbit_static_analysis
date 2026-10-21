@@ -136,11 +136,17 @@ Invoke-MutationGate -Name '0466' -Target 'js' -Mutations @(
   # `is (a, .. rest)` -- 9 sites in 4 files exist and every one is an ARRAY pattern --
   # so no program in any corpus can observe it. Widening it would be teaching the
   # parser a shape with no evidence that anything writes it.
+  #
+  # RE-ANCHORED at 0495. The anchor was the TUPLE branch's own condition,
+  # `if !in_type && depth >= 2 && self.pattern_binding_at(j) {`, and 0495 gave the
+  # `is`-pattern reader an `as`-binding arm -- which made the tuple branch an
+  # `else if` rather than a separate `if`. The MUTATION is the same one: the rest
+  # binding widens to the TUPLE branch. The ANCHOR is the current text.
   @{
     Name = 'M5 `.. rest` also binds in a TUPLE pattern'
     File = $PARSER
-    Find = '        if !in_type && depth >= 2 && self.pattern_binding_at(j) {'
-    Repl = '        if !in_type && depth >= 2 && (self.pattern_binding_at(j) || self.rest_binding_at(j)) {'
+    Find = '          } else if !in_type && depth >= 2 && self.pattern_binding_at(j) {'
+    Repl = '          } else if !in_type && depth >= 2 && (self.pattern_binding_at(j) || self.rest_binding_at(j)) {'
     Expect = 'SURVIVED'
     Prove = 'Unreachable by construction rather than untested: no pinned corpus writes `is (a, .. rest)`. The 9 measured `..` rest sites are all in ARRAY patterns (async 0.22.4, 4 files) and the tuple branch needs depth >= 2. Widening it would add a shape no evidence suggests is written. If a corpus ever grows the form this survivor becomes killable and must then be declared KILLED.'
   }

@@ -4659,6 +4659,339 @@ that 0494 did not silently retire four gates' worth of protection. The alternati
 them -- would have been cheaper and would have left the four defects unguarded while the gate
 still reported green.
 
+## 0495: THE 116 FINDINGS THAT WERE AN INVENTORY OF THE LENS
 
+Direction 2 asked what the behavioural lens reports when it is pointed at a FUNCTION rather than
+at a module. Re-measured after 0494, the per-function view was non-zero on four of the seven
+pinned corpora:
 
+    moonbit_labeler  38      moonbit_image  35
+    async            40      proton          3
 
+116 findings in all. And NOT ONE of them is a defect in the code being analysed: every one of
+the 116 sites is in a file `moon check` accepts, in released and published packages. So the 116
+are an INVENTORY of what is still wrong with the LENS -- eight families, each one a claim the
+lens made about a program the toolchain accepts.
+
+MEASURED, the per-function view, BEFORE this increment: 116 actionable findings. AFTER it: **2**,
+and the 2 are the `#doc(hidden)` limit the repo already documents (`src/core/advice.mbt:76`) --
+`@locale.LocalePreferences::resolve`, which appears in NO `.mbti`, so it cannot be indexed from
+the command line. The two are at proton `facade_locale.mbt:70` and `core/app_command_host.mbt:114`.
+
+The MODULE view's pins did not move: moui notices=4225, labeler 791, image 218, async 1836,
+proton 2131, contract 34. So nothing was traded away to get the per-function number down.
+
+### THE EIGHT FAMILIES, AND THE COUNT EACH EXPLAINS
+
+    A   61   a destructured name bound to the WHOLE TUPLE
+    B   25   a `continue`/`break` that CARRIES A VALUE
+    C    8   a statement after a loop whose body always terminates
+    C2   5   the C-style `for`'s UPDATE clause
+    D   10   a call to an `extern`/FFI declaration
+    E    5   a cross-package qualified associated / trait call
+    F    4   an integer `/` typed as `float`
+    G    2   a name bound by an `is`-pattern `as`-binding
+    H    1   a name bound by an ITERATOR expression
+
+**A -- a destructured name is an ELEMENT, not the tuple.** `let (a, b) = pair()` binds `a` and
+`b` to the two ELEMENTS. The lens bound both of them to the whole tuple, so every use of a
+destructured name carried the abstract type "Tuple" into a call whose parameter was declared
+`Int` -- `no method matching lzw_read_code(Any, Tuple, Tuple, int)`. The fix binds the name to
+`AAny` -- the type lens's own "Unknown" answer for a destructured name (`src/types/infer.mbt`),
+so the two lenses stop contradicting each other on the same line.
+
+**B -- a `continue` that CARRIES A VALUE is not unreachable code.** `continue p, r, c, vr` sets
+the loop variables and continues. The values used to be parsed as SIBLING STATEMENTS, so the
+interpreter read the terminator, saw the flow end, and reported the first carried value as
+`unreachable code`. The terminator's payload is now the terminator's own node.
+
+**C and C2 -- a loop is not a terminator, and its update clause is reachable.** The `if` join
+reports the terminator the branches AGREE on, and falls through if ANY branch does. The C-style
+`for`'s update clause got its own AST node, emitted only when the clause exists.
+
+**D -- FOUR defects wearing one name.** This is the part worth reading, because the count said
+"10 findings about extern calls" and the reality was four unrelated causes, each isolated by its
+own probe before a line of it was written:
+
+  - **D1 the pipe.** `f <| x` applies f to x; when f is a CALL, the right operand becomes an
+    ARGUMENT of that call. The arity check never saw the argument the pipe supplied, so
+    `add2(1) <| 2` was rejected as one argument to a two-parameter function.
+  - **D2 the omittable parameter.** A parameter a call may OMIT (`name? : T = ...`) is bound by
+    label or left at its default -- it is NOT a positional slot. The corpus's own compiling code
+    is the proof: `f(a, b? : Int = 0, c)` called with two arguments means `c` got the second.
+  - **D3 the name declared TWICE.** A name with two declarations -- the `#cfg` pattern -- has NO
+    single signature. The lens picked one of them and reported the other's call site.
+  - **D4 the extern's result.** A function with no BODY and an unknown declared return type
+    yields `AAny`, not "None". "None" is a claim about a value the file never mentions.
+
+**E -- a trait's methods are VALUES.** The `.mbti` reader skipped trait bodies, so a
+cross-package call to a trait method had no name to resolve against:
+`undefined function '@io.Writer::write'`. The name a use site resolves to is `Trait::method`
+-- the package qualifier is dropped by `unqualified` -- and the reader now harvests it.
+
+**F -- an integer `/` is an integer.** `let hs = h / 2` with `h : Int` is an `Int`. The
+constant-fold path had the same defect separately: a division of two LITERALS was folded to a
+float.
+
+**G -- the `as`-binding.** `is (HasReader(_) as reader)` binds `reader` to the WHOLE matched
+value, not to the payload.
+
+**H -- the iterator expression.** `[ for handle in xs => f(handle) ]` binds `handle` for the
+body of the comprehension; the names now bind in a COPY of the environment.
+
+### THE SETTLE, AND THE TRAP THAT MADE IT VACUOUS
+
+`_verify/settle_0495_perfunction.ps1`: **36 check rows plus 6 execution rows**, 18 of the
+check rows being CONTROLS -- shapes the toolchain must REFUSE, so that "the analyzer must stay
+silent on it" cannot be satisfied by silencing everything. One row is MEASURED rather than
+claimed (`Expect = '?'`): `extern "C"` is a native-backend construct, and this machine cannot
+run the native target at all, so the AUTHORITY for that ACCEPT is the corpus --
+moonbitlang/async 0.22.4, `src/socket/ffi.mbt:16`, in a released and published package.
+
+**THE FIRST RUN OF THE SETTLE READ 23 OF 23 ROWS AS ACCEPT, AND EVERY ONE OF THEM WAS WRONG.**
+Not one row was right: the controls, whose whole job is to be refused, all accepted. The cause
+was in the HARNESS, and it is the same trap this repo has measured before:
+
+    A PACKAGE IS A DIRECTORY. `src/<pkg>` with its own `moon.pkg`.
+
+The runner had written `moon.pkg` into `src/` instead of into `src/<pkg>/`, so `moon check`
+found no package, printed **"no work to do"**, and exited 0. A `moon check` that read NOTHING
+reports success, and the settle read that success as the toolchain accepting the fixture.
+
+A VACUOUS ACCEPT IS WORSE THAN A RED ROW, because a red row says "this shape is refused" and a
+vacuous one says "this shape is accepted" -- and it says it about the compiler having read
+nothing at all. Two things came out of the measurement, and both are now in the script:
+
+  - the runner REFUSES a verdict of ACCEPT that came with "no work to do", and counts it
+    separately as `vacuous`, so this trap cannot pass silently again; and
+  - the row projects PIN their target (`preferred_target = "wasm"`), because one row's verdict
+    IS target-dependent: an `extern` declaration is refused outright by the wasm backend (4156)
+    and accepted by the js one. A row that reads "the default target" is a row that changes
+    meaning when the toolchain's default changes.
+
+TWO MORE FIXTURE FACTS, both measured, both of which had made a row wrong before it was
+settled:
+
+  - `pkgtype(kind: "executable")` belongs to the EXECUTION rows only. On a check row it adds
+    "Missing main function in the main package" (4067) to every single row -- which is how a
+    run reported 23 REJECTs that were all the same unrelated error.
+  - `print` IS NOT A BUILTIN in a standalone project; `println` IS. And the compiler's warnings
+    share stdout with the program's output, so the execution rows redirect stderr to a file of
+    its own and read STDOUT ONLY.
+
+### WHAT SETTLES REACHABILITY IS RUNNING THE PROGRAM
+
+MoonBit ACCEPTS code after a `return` -- the settle row `c4_control_code_after_a_return_is_accepted`
+ACCEPTED, and so did the row before it. The toolchain therefore does NOT settle reachability by
+compiling: it accepts BOTH a reachable and an unreachable statement. A settle built on
+accept/reject cannot tell the analyzer's `Unreachable` family from the truth, and the analyzer's
+claim is the one under examination.
+
+What settles it is RUNNING the program:
+
+    x1  a `continue` in a C-style `for` RUNS THE UPDATE CLAUSE -- the program prints
+        `i=0 i=1 i=2 i=3` and finishes. It could only finish if the update ran on the
+        `continue`; without it `i` would stay at 1 and the loop would never end.
+    x2  THE CONTROL FOR x1: the same loop with the `continue` removed also finishes, so the
+        two are distinguished by WHETHER THE CONTINUE IS THERE and not by the exit code.
+    x3  the statement after a loop that may run zero times IS reached -- the program prints 42.
+    x4  THE CONTROL FOR x3: the statement after a `return` is NOT reached -- it prints 1.
+    x5  FAMILY U: the statement after a `while true` that BREAKS is reached -- it prints 42.
+    x6  THE CONTROL FOR x5: a `while true` whose body RETURNS does not reach it -- it prints 1.
+
+x5 and x6 are the pair that settled the last of the three `Unreachable` findings. The loop's
+"could the body have broken out?" question was being answered from the JOINED flow, and the
+join collapses a mixed `break`/`return` into `FReturn` -- which loses the `break`. The signal
+is now separate from the join: a `mut broke` flag on the interpreter, set by the `break` arm,
+saved and restored around each loop body.
+
+### THE GATE, AND THE SURVIVOR THAT WAS A DEAD RULE
+
+`_verify/mutate_0495.ps1`: **14 mutations, all 14 KILLED, 0 survivors**, every restore
+byte-identical, "GATE OK: 0495", baseline 1134/1134. Each mutation NAMES the test that must
+go red, and each was confirmed `[named test confirmed]` -- a mutation that kills some other
+test is not evidence, because the test named is the one that pins the rule.
+
+M8 SURVIVED on the first run, and that is the most useful thing in this increment:
+
+    M8 a comprehension in an expression binds no names
+
+The mutation could not be killed because the rule it named was UNREACHABLE. The `EComp` arm
+inside the `SAssign` TARGET match could never fire -- a target is a name, a field, an index or
+a tuple field, never a comprehension -- so the arm was DEAD CODE, and the live rule is the
+`EComp` arm of `eval` (the assignment's RIGHT-HAND side is evaluated by `self.eval(rhs, env)`).
+The dead arm was DELETED, with a comment recording that gate M8's survivor is what found it.
+
+=> 判据: A SURVIVING MUTATION OF A RULE NOBODY CAN REACH IS THE RULE BEING DEAD. The
+alternative -- keeping the arm and adding a test that reaches it -- would have meant inventing a
+program shape the language does not have, to guard a rule that cannot fire. The survivor was
+not a coverage gap. It was a defect in the code under test, and the gate said so.
+
+**TWO OF THE FOURTEEN SURVIVED ON THE FIRST RUN FOR A DIFFERENT REASON**, and the reason was
+that the TESTS did not discriminate:
+
+  - M11 ("a name declared twice is arity-checked") and M12 ("an extern result is the value
+    None") both survived, because the tests that named them did not DISTINGUISH the wrong
+    answer from the right one. The omittable-parameter test gave the omittable parameter the
+    SAME type as the next one, so a rule that mixed the two up still produced the same
+    observable result; and the duplicate-name test had no one-argument call to check. Both
+    tests were given a case that separates the two answers, and both mutations then died.
+
+=> 判据: A TEST THAT CANNOT TELL THE WRONG ANSWER FROM THE RIGHT ONE IS NOT A TEST OF THE
+RULE. It passes with the rule broken. The fix is not to relax the mutation but to give the
+test a case where the two answers DIFFER, and that is a change to the test, made in the open
+where the mutation is named.
+
+### THE COUNTS, AFTER
+
+    per-function actionable findings   116 -> 2   (the 2 are the documented #doc(hidden) limit)
+    module-view corpus pins            UNCHANGED on all seven corpora
+    moon test --deny-warn              1134/1134 on wasm   (1096 at the start of this effort)
+    moon check --deny-warn             exit 0
+    self-scan (own source)             167/167 parsed, actionable=0
+    mutation gate 0495                 14 mutations, 14 killed, 0 survivors
+
+The remaining 2 are a DOCUMENTED LIMIT and not a blocker: fixing them would require indexing
+dependency SOURCE rather than `.mbti`, which `src/core/advice.mbt:76` already names as one of
+the two limits unfixable from the command line. Growing the analyzer into a source indexer to
+answer them would be a different project.
+## 0495b: FIVE GATES THAT 0495's OWN SOURCE CHANGES BROKE, AND WHAT THREE OF THEM WERE SAYING
+
+The release gate went RED on its first full run, and the cause was this increment's own work:
+five mutation gates failed at PREFLIGHT because 0495 moved the text they name. A preflight
+failure is the harness doing its job -- it aborts in milliseconds instead of spending a full
+`moon test` to learn that a pattern no longer matches -- and the five were 0425, 0466, 0472,
+0489 and 0493.
+
+**THE RULE FOR A MOVED ANCHOR** is the one 0494c wrote down, and it is not "fix the typo":
+re-anchor onto the CURRENT text, keep the SAME mutation, and then MEASURE that it still kills.
+Never retire a live guard, never invent an anchor that merely matches, and never let a
+re-anchor be a silent weakening. All 31 anchors across the five gates are now present and
+UNIQUE, checked by a preflight-only probe that reports presence, count and prose-match for every
+mutation without running a suite.
+
+**AND THEN THREE OF THEM FAILED FOR REASONS THAT HAD NOTHING TO DO WITH THE ANCHOR.** That is
+the part worth writing down, because a re-anchor that ends in a green gate can hide a gate that
+has stopped guarding anything.
+
+### 0425 M7 SURVIVED, AND THE SURVIVOR WAS RIGHT
+
+`exec_alt`'s missing else contributes a fall-through to the join, and 0495 re-anchored the
+mutation onto that line: `None => flows.push(FNormal)` becomes `None => flows.push(FReturn)`.
+The mutation SURVIVED -- 1054 of 1054 still green.
+
+The reason is arithmetic, and it is worth writing out because it is the whole point of the
+increment's `join_flow` change:
+
+  BEFORE 0495 the missing else was an ASSIGNMENT to a flag -- `None => falls = true` -- so it
+          OVERRODE whatever the branches had said. After, it is one more entry in a list of
+          flows, and `join_flow` takes the join: fall through if ANY branch does.
+
+So after 0495 the missing-else entry is REDUNDANT whenever some branch falls through -- and
+0.4.25's fixture for it ("a chain with no else at all falls through") has exactly such a
+branch (`let _ = 2`).
+
+**MEASURED, not inferred.** The pre-0495 tree (`git archive HEAD` at 731659c) with 0.4.25's M7
+mutation applied killed EXACTLY ONE test -- "0425: a chain with no else at all falls through" --
+and the same mutation on the 0495 tree kills NONE. The line had stopped being observable.
+
+It is still LOAD-BEARING, in the case no fixture covered: a chain with no else where EVERY
+branch terminates. There the missing else is the only fall-through, and without it the
+statement after the chain is reported `unreachable code` -- a false positive on code
+`moon check` accepts. So the fix was a FIXTURE, not a re-anchor: `src/pipeline/
+pipeline_0495_test.mbt` now carries "0495 J: a chain with no else falls through even when
+every branch returns", which is 0.4.25's program with ONE LINE changed (the else-if body
+returns instead of falling through), plus the control that a chain with an `else` really is
+dead after it. M7 is killed again.
+
+=> 判据: A FIXTURE THAT STOPS DISCRIMINATING IS A COVERAGE HOLE, AND NOBODY NOTICES EXCEPT A
+MUTATION. 0.4.25's row was green before 0495 and green after it, and it meant different things
+on the two sides of the change. The only instrument that could see the difference was a
+mutation that killed it. A gate that is green because the thing it measures stopped being
+measured is worse than a red one, because a red one is read.
+
+### 0472 M5 IS NOT EXPRESSIBLE ANY MORE, AND THAT IS A STRONGER CLAIM
+
+`mutate_0472.ps1`'s M5 rewrote the carried value of a `continue` from an expression into an
+assignment to an invented name -- the fabrication 0472 deliberately does NOT do. It came back
+**COMPILE-ERR**, and the compiler said why:
+
+    Constr Type Mismatch(constructor SAssign)
+      has type : @riantr/moonbit_static_analysis/src/ast.SKind
+      wanted   : @riantr/moonbit_static_analysis/src/ast.EKind
+
+0495 changed the carried values from SIBLING STATEMENTS to the TERMINATOR'S OWN PAYLOAD
+(`SContinue(Array[Expr])`). `SAssign` is a `Stmt` kind, and `Expr` has no assignment
+constructor at all -- so the mutation is not MOVED, it is IMPOSSIBLE. It is RETIRED, with the
+reason printed by the harness, because a claim enforced by a TYPE is stronger than a claim
+enforced by a line of code: there is no line left to mutate.
+
+The other half of the same claim -- "the values are READ" -- is enforced by `walk.mbt` and
+`infer.mbt`, and it was not guarded by anything. M6 is new and pins it: the walk does not walk
+the carried values, so the names inside them are unread, and the `UnusedLocal` verdict comes
+back. `UnusedLocal` is decided in `walk.mbt`'s `audit_frame` (`e.varuses == 0`), which is why
+that is the site the mutation takes.
+
+=> 判据: A MUTATION THAT NO LONGER COMPILES IS NOT A KILL, AND SOMETIMES IT IS NOT A LOSS
+EITHER. "COMPILE-ERR" is the harness saying it could not measure the mutant. Reading that as
+"the guard is gone" would have been wrong: the guard moved into the type system, where a
+mutation cannot reach it. The honest form is `Retired = "<reason>"` plus a NEW mutation at the
+site where the surviving half of the claim lives -- not a silent drop, and not an invented
+anchor.
+
+### 0493 M3's NAMED TEST STOPPED BEING THE RIGHT ONE
+
+0493's M3 -- "the argument labels are invisible again" -- kills by making `any_label` false,
+so the arguments are compared by POSITION again. It still kills, but the row it named
+("a labelled call that omits an optional parameter is accepted") no longer goes red, and
+rule 6 says a kill that does not redden the named test is not a kill.
+
+The reason is 0495's D2 fix: an OMITTABLE parameter is not a positional slot, so the positional
+path now SKIPS the omittable ones. The labelled call `from_routes(routes=s, title="x",
+source="y")` compared by position therefore no longer produces an error either -- the row
+stopped being able to tell the two mechanisms apart.
+
+The row that DOES tell them apart is the control on the label SET: a label the callee does not
+have can only be caught by READING THE LABELS. With `any_label` false the unknown label is
+accepted, the expected error is not reported, and the row goes red. M3's `MustRed` now names
+that row.
+
+=> 判据: A NAMED TEST IS A CLAIM ABOUT WHICH TEST DOES THE WORKING. When a fix elsewhere makes
+the named row stop discriminating, re-pointing the name at the row that still discriminates is
+correct -- and RECORDING WHY is the part that matters, because the next reader will otherwise
+assume the original row was redundant.
+### RULE 9, ADDED BY THE FULL RELEASE GATE: A FILE THAT ANOTHER PROCESS HAS OPEN IS NOT A FAILED GATE
+
+The full release gate -- all 78 mutation gates, the corpus pins and the self-scan -- failed on
+its first run at exactly ONE gate, 0455, and with this and nothing else:
+
+    Exception calling "WriteAllText" with "3" argument(s): "The requested operation
+    cannot be performed on a file with a user-mapped section open."
+
+M1 and M2 had already been KILLED, with their named tests confirmed, when the WRITE of the
+next mutation's replacement threw. Windows refuses a write to a file that a reader has
+MEMORY-MAPPED, and the reader was the compiler: `moon` had the source mapped while the gate
+was between its test runs. The same gate, run alone in the same tree minutes earlier, was
+GREEN, and it was GREEN again on the next run.
+
+**WHY IT MATTERS MORE THAN IT LOOKS.** The write that threw was not necessarily the one that
+APPLIES a mutation -- it could have been the RESTORE. A restore that throws leaves the target
+file MUTATED, and every gate after it then measures a tree nobody intended to measure. The
+tree WAS checked after the failure -- the target, `src/lexer/lexer.mbt`, was byte-identical to
+HEAD -- but a check after the fact is not a guard. The next gate would have measured a mutated
+file and reported a result about it.
+
+So the I/O gets a retry, and the retry is on the TRANSIENT rather than on the VERDICT: the
+mutation still has to be applied, still has to kill, and the restore still has to be proven
+byte-identical by SHA256 afterwards. Nothing about the judgement changes. `mutate_lib.ps1` now
+reads and writes through `Read-BytesWithRetry` / `Write-TextWithRetry` /
+`Write-BytesWithRetry`, which retry an `IOException` with a growing sleep and re-throw when
+the tries are spent -- a genuinely unwritable file still fails.
+
+=> 判据: A FLAKE IS A DEFECT UNTIL IT IS MEASURED, AND A FIX THAT HIDES IT IS WORSE THAN THE
+FLAKE. The tempting move is to re-run the gate and call the green run the result. That is the
+one move that leaves the defect in place -- and the defect here is not "the gate is noisy", it
+is "a restore can fail and leave a mutated file behind". The harness already had a retry for
+one shape of machine misbehaviour (the EMPTY RUN), and `release.ps1` already had one for
+another (`Read-TextWhenFree`, written for the same reason). This is the third shape, found by
+running the thing rather than by reasoning about it.
