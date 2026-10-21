@@ -4530,6 +4530,37 @@ So the escape reader takes at most FOUR hex digits, which is exactly the BMP. A
 supplementary-plane escape -- U+10000 and above, the range that needs a surrogate pair
 in UTF-16 -- is past the end of what it reads. `moon check` accepts every one of them.
 
+**THE OBSERVATION WAS RIGHT AND THE EXPLANATION WAS WRONG, AND 0496 IS THE INCREMENT THAT
+SAID SO. The sentence above says the reader "takes at most FOUR hex digits". It does
+not: it took AS MANY hex digits as the literal had, so `'\u{1F600}'` was read as
+U+1F600 and was never truncated. The refusal came from a COUNT, and the count was a
+UTF-16 one -- `s.length()`. MoonBit's `String::length()` counts UTF-16 CODE UNITS, the
+lexer builds its buffer by CODE POINTS, and an astral character is two code units, so
+the check `s.length() != 1` refused a literal that holds exactly one character.
+
+The difference is not cosmetic, and it is the difference between a fix and a boundary
+that moved. A fix written from "at most FOUR hex digits" would have BOUNDED THE DIGITS
+to four and still refused `'\u{10000}'` -- it would have changed where the reader stops
+rather than why it stops. 0496 replaced the count with a counter of the characters
+actually written, and the whole escape grammar came with it.
+
+THE SAME COUNT REFUSED THE ASTRAL CHARACTER LITERAL WRITTEN DIRECTLY, WITH NO ESCAPE AT
+ALL. `moonbitlang/core` `builtin/string_methods.mbt:117` is `c == '😂'`, and that is
+what stopped the file at line 117. The corpus carries BOTH forms -- the escaped one at
+`string/quickcheck_test.mbt:138` and the direct one at `string_methods.mbt:117` -- and a
+reader that had fixed only the escaped form would have left half of the corpus behind.
+Measured on a two-literal probe with the two wasms: the pre-0496 wasm cannot even
+PARSE a file containing either form, and the 0496 wasm reads it CLEAN.
+
+=> 判据: A RIGHT OBSERVATION CAN CARRY A WRONG EXPLANATION, AND THE EXPLANATION IS THE
+DANGEROUS PART. "Supplementary-plane escapes are not read" survived every check, because
+it IS true, and it was carried for two increments by a paragraph that also said WHY. The
+WHY was the thing to falsify, and the way to falsify it was to ask what the reader
+actually did with the digits -- which took one measurement of `String::length()` against
+`String::to_array().length()` to answer. A claim that cannot be broken by a measurement
+is not a claim, and a claim whose explanation is wrong will send the next fix to the
+wrong line.
+
 **THE PIN.** `moonbit_core` is now the SEVENTH corpus in `_verify/release.ps1`'s pin
 table, and the FIRST with a non-zero `actionable`: 48. Those 48 are not corpus defects
 and not analyzer defects -- they are NAMED CONSTRUCTS THE READER DOES NOT READ, and the
@@ -4995,3 +5026,642 @@ is "a restore can fail and leave a mutated file behind". The harness already had
 one shape of machine misbehaviour (the EMPTY RUN), and `release.ps1` already had one for
 another (`Read-TextWhenFree`, written for the same reason). This is the third shape, found by
 running the thing rather than by reasoning about it.
+
+## 0496: THE ESCAPE, THE LEXICAL MATCH, AND THE LAMBDA THAT BINDS INSIDE AN INTERPOLATION
+
+The standing backlog item was the LABELLED CAPTURE -- the `after=` binding of MoonBit's
+lexical match -- and the named witness was a character literal with more than four hex
+digits. Both were real, and the item turned out to be THREE increments' worth of work
+with a CRASH in the middle of it.
+
+**THE SCOPE WAS RE-DERIVED, AND THE STANDING NOTE WAS WRONG ON BOTH COUNTS.** `after=`
+appears on 283 lines across 22 files under `.repos`. Classified by hand, the real
+construct is 84 sites in FIVE pinned `moonbitlang/core` files and ZERO in the other six
+corpora:
+
+    string/internal/regex_parser/parser.mbt     61
+    diff/diff_align_test.mbt                    13
+    diff/diff_word_test.mbt                      5
+    internal/strconv/strconv_int.mbt             3
+    debug/debug_test.mbt                         2
+
+moui's thirteen "hits" are `let after = ...`, `receipt.after` and a comment; labeler's two
+are a `let after` and a doc comment. The note said "18 sites in 3 PINNED core files", and
+18 is 13 + 5 -- the two diff test files alone, with the file that holds 61 of the 84
+sites left out of the count entirely.
+
+=> 判据: A GREP IS NOT A SCOPE. It counts local variables, field accesses and comments
+alongside the construct, and a count that includes those cannot be used to decide what
+to fix. The construct is `lexmatch <subject> [with longest] { (re"..." as t, after=next)
+=> ... }`, and it lives in five files of one corpus -- which is a different statement
+from "22 files" and a different one again from "3 files".
+
+### A -- THE CHARACTER LITERAL'S ESCAPE, AND THE CRASH UNDER IT
+
+**THE OBSERVATION WAS RIGHT AND THE EXPLANATION WAS WRONG.** The 0494 block said the
+escape reader "takes at most FOUR hex digits, which is exactly the BMP". It does not:
+it took AS MANY hex digits as the literal had, so `'\u{1F600}'` was read as U+1F600 and
+was never truncated. The refusal came from a COUNT, and the count was a UTF-16 one.
+MoonBit's `String::length()` counts UTF-16 CODE UNITS and `String::to_array()` counts
+CODE POINTS, and the lexer builds its buffer by CODE POINTS:
+
+    "\u{1F600}".to_string().length()            -> 2
+    "\u{1F600}".to_string().to_array().length() -> 1
+
+So the check `s.length() != 1` refused a literal holding exactly one character. A fix
+written from the wrong explanation would have BOUNDED THE DIGITS to four and still
+refused `'\u{10000}'` -- it would have moved the boundary instead of removing it. The
+correction is written in place, at the 0494 block, and the mechanism is now a counter of
+the characters actually written.
+
+**AND THE SAME COUNT REFUSED THE ASTRAL CHARACTER WRITTEN DIRECTLY, WITH NO ESCAPE AT
+ALL.** `builtin/string_methods.mbt:117` is `c == '😂'`, and that is what stopped the file
+at line 117. The corpus carries BOTH forms -- the escaped one at
+`string/quickcheck_test.mbt:138` and the direct one at `string_methods.mbt:117` -- and a
+reader that fixed only the escaped form would have left half the corpus behind.
+
+**THE CRASH WAS WORSE THAN THE WRONG ANSWER.** `'\u{110000}'` -- a code point past the
+last one -- reached `v.unsafe_to_char()`, which is not a conversion but a TRAP. The
+scanner printed `RuntimeError: unreachable` and STOPPED, so every file after it in the
+scan went unread. A wrong answer is one finding; a crash is the loss of the run.
+
+**THE WHOLE GRAMMAR WAS SETTLED, NOT JUST THE NAMED CASE.** `_verify/settle_0496_unicode_escape.ps1`,
+32 rows / 5 controls, GATE OK, one form per row:
+
+    \xNN        EXACTLY two hex digits      '\x4'      REJECT(3001)
+    \u{...}     ONE to SIX hex digits       '\u{}'     REJECT(3001)
+    \uXXXX      EXACTLY four hex digits     '\u07f'    REJECT(3001)
+    the braced form's bound is the CODE POINT's, not the digit count's:
+                '\u{10FFFF}'  six digits, ACCEPT;   '\u{FFFFFF}'  six digits, REJECT(4064)
+    a byte literal takes NO unicode escape:  b'\u{41}'  REJECT(3001)
+    a surrogate is not a scalar value:      '\u{D800}'  REJECT(4064)
+
+The implementation follows the grammar rather than the named case: the escape branch is
+now `e == 'x' || e == 'u'` (so a MALFORMED unicode escape is reported as malformed
+instead of falling through and writing the letter `u`), the braced form requires its
+closer, the digit bounds are per form -- (2,2) / (1,6) / (4,4) -- and the digits past the
+limit are CONSUMED but not accumulated, so a seventh digit flags a malformed escape
+instead of overflowing an `Int32`. The value is then checked against
+`v > 0x10FFFF || (v >= 0xD800 && v <= 0xDFFF)`, and there are TWO reports -- "character
+literal has a malformed escape" and "character literal is not a valid Unicode code
+point" -- one per literal, because the escape is the problem and the length is a
+consequence of it.
+
+**TWO OF THE MUTATIONS CANNOT BE "REMOVE THE GUARD".** A mutation that lets an
+out-of-range code point through makes the SUITE DIE, and a suite that dies is
+COMPILE-ERR and not a kill. So the crash guard is mutated on its BOUND: an off-by-one
+still refuses the value (nothing crashes) and refuses the LAST LEGAL CODE POINT as well,
+which is a red test.
+
+### B -- `lexmatch`, READ AS A CONSTRUCT
+
+`lexmatch` was read as an ordinary NAME, so the four corpus sites produced
+`undefined name 'lexmatch'` -- on code `moon check` accepts:
+
+    internal/strconv/strconv_int.mbt:174
+    diff/diff_align_test.mbt:56 and :94
+    diff/diff_word_test.mbt:33
+
+`_verify/settle_0496_lexmatch.ps1`, 15 rows / 4 controls, GATE OK, settled the grammar:
+`lexmatch s {..}` and `lexmatch s with longest {..}` ACCEPT; `lexmatch s with {..}`
+REJECT(4180), because `with` needs `longest`; the same arm in a plain `match` REJECT(3002);
+and `as _` REJECT(3002), because a capture's name must be an identifier.
+
+**THE ARMS ARE SKIPPED WHOLE, EXACTLY AS A `match`'s ARE, AND THE SUBJECT IS CARRIED.**
+The shape is identical to `EMatch` -- subject real, arms skipped, value from the arms,
+unknown type, `ABottom` -- so the implementation reuses `@ast.EMatch(subject)` rather
+than adding a variant that would have rippled through walk/types/infer/interp and the
+`.mbti` for no new information. The NOTICE says `lexmatch` rather than `match`, because
+that is what was read.
+
+**THE `after=` ARM PATTERNS ARE DELIBERATELY NOT BOUND.** A binding nobody can observe
+is a claim, not a feature: the arms are skipped, so binding them would change no finding
+and would cost a pattern reader the subset does not otherwise have.
+
+**TWO OF MY OWN EXPECTATIONS WERE WRONG AND WERE CORRECTED IN PLACE.** `as _` is
+REJECT(3002) -- a capture's name must be an identifier -- and `after=rest` with a
+`String` subject is ACCEPT when the arm does not return the binding; the 4014 I had
+expected was the arm's RETURN type, not the binding.
+
+### C -- THE FALSE POSITIVE THAT B UNCOVERED
+
+With the `lexmatch` fix, `moonbitlang/core` `builtin/autoloc.mbt` became readable past
+its old boundary -- the old parse boundary was line 74, and line 74 is where the
+`lexmatch` at line 63 used to stop the reader -- and the file then reported:
+
+    no visible binding for 'sb'    at builtin/autoloc.mbt:83
+
+    $|{"filename":\{sb => self.filename.escape_to(sb)},...}
+
+`sb` is the lambda's own PARAMETER. It is a binding, and a use of it is a read of the
+parameter -- not a read of the enclosing frame. The root cause was in the collector: the
+name is flushed at the first character that is not part of it, and in `sb => sb` that
+character is the SPACE, so the `=>` had not been seen when the name was decided. The fix
+is a lookahead over the whitespace to the `=>`, a per-interpolation set of BOUND names,
+and a skip in the name flush. Two spellings need two paths, and both are needed:
+`sb=>sb` reaches the `=` with the name still pending, and `sb => sb` reaches it with the
+name already flushed.
+
+**THE LIMIT IS STATED RATHER THAN LEFT.** The suppression runs to the end of the
+interpolation, so a name that is a lambda parameter in one part of an interpolation and
+an enclosing read in another part of the SAME interpolation is not reported. The corpus
+has exactly ONE interpolation with a lambda in it, so nothing else can be affected; a
+read BEFORE the lambda is still recorded, and two interpolations of one string are two
+scopes.
+
+**THE 0488 COMMENT WAS CORRECTED IN PLACE.** It said the shape
+`\{xs.map(x => x + 1).length()}` "must still record `x`". That is now WRONG, and it was
+the author's inference rather than the settle's claim: row F4 of
+`settle_0488_append_nextline.ps1` is an ACCEPT row, so it says the TOOLCHAIN takes the
+program and it does not pin the analyzer's name list at all. The settle is unaffected and
+still passes. `x` is a lambda parameter, so it is BOUND, not READ; and `\{a == b}` still
+records both names, because `==` is a comparison and a comparison READS its operands.
+
+### THE CORPUS, THE PIN, AND THE GATE
+
+The A/B of two wasms over the same corpus -- the pre-0496 tree (`git archive HEAD`, then
+`be21ecd`) on one side, the 0496 tree on the other:
+
+    actionable  37 -> 33        parsed     935 -> 957
+    notices     9988 -> 10228   unreliable 2956 -> 2432
+    withheld    552 -> 464      files      1029 -> 1029   UNCHANGED
+
+The finding set is a STRICT SUBSET: GONE 4, NEW 0, and the four are all
+`undefined name 'lexmatch'`. The other six corpora are BYTE-IDENTICAL to their pins.
+
+The +22 parsed files reconcile file by file: nineteen moved from PARTIAL to FOUND, three
+were PARTIAL with no findings (so the scan printed no row for them at all) and are FOUND
+now, and two stayed PARTIAL and read FURTHER -- `builtin/string_methods.mbt` from line
+117 to line 1465, and `string/internal/regex_parser/parser.mbt` with its post-boundary
+findings down from 51 to 14, because its 61 `lexmatch` arms are now read-and-skipped
+whole. NONE of the twenty-two carries a finding.
+
+**THE GATE: 13 MUTATIONS, 12 KILLED, 1 SURVIVED AS DECLARED.** `_verify/mutate_0496.ps1`
+names the test that must go red for each mutation, and every named test confirmed:
+
+    M1 the escape counts UTF-16 units instead of characters      KILLED
+    M2 the length check also consults the UTF-16 length           KILLED
+    M3 the last code point is refused                            KILLED
+    M4 a surrogate is accepted                                   KILLED
+    M5 the braced form takes five digits                         KILLED
+    M6 the hex escape takes three digits                         KILLED
+    M7 a byte literal takes a unicode escape                     KILLED
+    M8 the arrow is not recognised                               KILLED
+    M9 a bound name is still recorded as a read                   KILLED
+    M10 a lexmatch is read as a name                             KILLED
+    M11 the with-longest clause is not consumed                  KILLED
+    M12 a lexmatch says it was a match                           KILLED
+    M13 the keyword list loses lexmatch                          SURVIVED (declared)
+
+**M13 SURVIVES, AND THE PROBE MEASURED WHY IT IS A SURVIVOR RATHER THAN A HOLE.** The
+mutation drops `"lexmatch"` from `is_moonbit_keyword`. Every `lexmatch` in the pinned
+corpus is in EXPRESSION position, where the parser arm (M10) consumes it, so no name
+ever reaches the frame and the corpus's four findings stay at four with the entry
+removed. The entry is DEFENSIVE; the ARM is load-bearing.
+
+But the survivor's falsification condition -- "a `lexmatch` ever appears in a pattern or
+inside an interpolation" -- is now MEASURED rather than hypothetical. A two-name probe,
+`\{lexmatch}` beside `\{notakeyword}`, scanned with the 0496 wasm: the control produces
+`no visible binding for 'notakeyword'` and the `lexmatch` produces NOTHING. So in the
+interpolation position the keyword entry IS the only thing standing between the word and
+a finding. The survivor is therefore CORPUS-SCOPED, not universal, and it is kept as a
+declared survivor because that is what it is.
+
+=> 判据: A SURVIVOR WITH A PROVE IS A DIFFERENT THING FROM A SURVIVOR WITH NO PROVE, AND
+THE PROVE HAS TO SAY WHERE IT STOPS BEING TRUE. M13's argument was that the keyword entry
+is defensive while the parser arm is load-bearing, and that is exactly what the gate
+measured -- 1163/1163 still green. A survivor that is merely tolerated is a hole; a
+survivor that comes with the condition under which it would stop surviving is a
+measurement. The condition was then MEASURED rather than left hypothetical, and what it
+found is that the entry matters in a position the corpus does not contain. That is worth
+more than a green gate, because the next corpus that contains one will find it.
+
+### THE FULL RELEASE GATE FOUND THREE MORE DEFECTS, AND ALL THREE WERE IN THE HARNESS
+
+The full gate failed at exactly one stage -- `grammar probe control` -- and the mutation
+gates were skipped because of it. That control is the one that proves the grammar probe's
+REAL GAP tally can fire at all, so a red there is not a nuisance: it means the probe's own
+verdicts cannot be trusted.
+
+**THE FAILURE WAS NOT A CORPUS PROBLEM, AND THE MESSAGE SAID IT WAS.** The control
+printed:
+
+    - no corpus file is both legal MoonBit and unread by this frontend, so there is
+      no row left that can prove the REAL GAP tally fires.
+
+    - pin a NEW corpus that still contains a gap this frontend cannot read, or
+
+That message is ACTIONABLE, which is exactly why it had to be doubted first. And it was
+wrong: 0496's tree still has 55 PARTIAL files in `moonbit_core`, so the corpus had not run
+out of gaps. Three defects, all in the harness, and all three had been waiting for a
+corpus state that could show them.
+
+**DEFECT ONE -- THE SEARCH RAN OUT OF BUDGET, AND THE CONTROL BLAMED THE CORPUS.** The
+derivation's check cap was 12, and it had been calibrated to a corpus state where the
+planted gap sat at check ~4. 0496 closed the escape gap the control had been planting
+(`string/quickcheck_test.mbt:138`), so the search walked on: five method-heavy unreadable
+files first -- `string/internal/regex_parser/parser.mbt`, `sorted_set/set.mbt`,
+`sorted_map/map.mbt`, `set/linked_hash_set.mbt`, `ref/ref.mbt` -- and reached
+`range/quickcheck_test.mbt` at check **123**. The cap stopped it at 12. The log said
+"stopped at the 12-check cap; unreadable files remain" TWO LINES ABOVE a message claiming
+the corpus had no gaps left.
+
+=> 判据: A MESSAGE THAT NAMES A REMEDY IS THE FIRST THING TO DOUBT. "Pin a NEW corpus"
+was actionable, so it was believable, and believing it would have meant pinning a
+seventh corpus to work around a number that was twelve. The gap was at 123 and the cap
+was 12; the corpus was never the problem. The cap is now **500**, measured: the gap is at
+123 and one check costs ~0.3s, so the whole corpus can be walked in under three minutes.
+
+**DEFECT TWO -- THE CORPUS WAS READ WITH THE WRONG ENCODING.** `File.ReadAllLines` does
+NOT read UTF-8: its default encoding is `Encoding.Default` -- the ANSI codepage of the
+machine -- and it only switches to UTF-8 when the file carries a BOM. The pinned corpus
+files have no BOM, so every non-ASCII byte in them was decoded as GBK on this machine and
+re-encoded on the way into the probe package. The new candidate carries an em dash in a
+doc comment, and the bytes that came out are not valid UTF-8:
+
+    moon check  ->  [3001] "Could not read the file because it contains invalid UTF-8 streams"
+                   -> MOON-BAD
+    the scanner ->  parsed=1, CLEAN
+                   -> SELF-OK
+
+So the planted row was NEITHER a gap NOR a too-permissive row, and the control failed on a
+row that had never been one -- with the corpus named as the culprit. The read is now
+explicitly UTF-8.
+
+**DEFECT THREE -- THE PROBE WROTE THE SAME WRONG BYTES.** The probe wrote each case with
+`Set-Content`, which writes the ANSI codepage on Windows PowerShell 5.1. Same corruption,
+on the write side. The cases are now written as UTF-8 without a BOM.
+
+**AND THE READ HAD NO RETRY, WHICH IS THE OPEN BOARD ITEM.** `File.ReadAllLines` THROWS
+when another process holds the file open, and the old code caught that and skipped the
+file SILENTLY -- one more unreadable file per locked read, and a gap the search could not
+reach for a reason that had nothing to do with the gap. That is rule 9, the rule the
+mutation harness got after the 0455 gate failed on a memory-mapped file; it is now
+applied here too, with the retry on the TRANSIENT and the verdict untouched.
+
+**AND THE CONTROL NOW SAYS WHICH OF THE TWO FAILURES IT IS.** The derivation reports
+whether it stopped on the cap, and the control's failure message branches on it: the
+search ran out of budget (fixable) is a different fact from the corpus ran out of gaps
+(worth recording). The second branch would have been untested code -- the very complaint
+this file makes about its own `--SimulateExhaustion` switch -- so a `--SimulateCapHit`
+switch exercises it. Both were run: each FAILS, and they say different things.
+
+**THE FIVE ASSERTIONS ARE UNCHANGED.** The planted row is still derived at run time from
+the pinned corpora, the control still fails when no live gap can be found, and the
+control now passes on a row that is real corpus code:
+
+    core:range/quickcheck_test.mbt:69   item 127-158
+      fn anchors(min : BigInt, max : BigInt) -> Array[BigInt] { ... }
+    MOON-OK (moon check: 0 errors, one `unused_value` warning)
+    SELF-FAIL (the scanner: parsed=0, 13 findings withheld)
+
+The gap is the `N` SUFFIX on an integer literal -- `0N`, `1N`, `-1N`, `2N` -- which is the
+family the 0494 inventory listed as "7 `undefined name 'N'`". `moon check` accepts it.
+
+=> 判据: A READER THAT IS WRONG IN A WAY THE DATA NEVER EXERCISES IS NOT A READER THAT
+IS RIGHT. The ANSI read was wrong for every corpus file with a non-ASCII character in it,
+and the corpus is full of them -- em dashes, Chinese comments, the occasional box
+drawing. It was invisible because the planted rows happened to be ASCII: a top-level `let`
+of char literals, then a `fn` with an `N` suffix. Nothing about those two rows was
+special, and nothing about them was SAFE. A defect that only shows up on the day the data
+changes shape is a defect that was always there.
+
+=> 判据: A CONTROL THAT FAILS IS A CLAIM, AND THE CLAIM IS THE FIRST THING TO CHECK. The
+control did not fail because the corpus changed; it failed because the CONTROL was
+looking in a place the corpus had left. The gate caught a gate lying to itself, which is
+the better story -- and the fix was to the harness, not to the corpus and not to the
+assertions.
+
+### THE GATE FOUND THREE MORE GATES THAT 0496's OWN SOURCE CHANGES BROKE
+
+The next full run went red at three gates, and each one failed in **one second** --
+which is the tell that it ABORTED rather than ran:
+
+    0459   ABORT: 1 pattern(s) absent. No suite was run.
+    0480   ABORT: 3 pattern(s) absent. No suite was run.
+    0488   ABORT: 2 pattern(s) absent. No suite was run.
+
+All three are the ESCAPE gates -- 0459 settled the braced form, 0480 the unbraced one,
+0488 the interpolation collector that 0496's third fix also touched -- and all three were
+broken the same way 0495 broke five: **0496 moved the text they anchor to**. A moved
+anchor is not a typo to fix. It is re-anchored onto the current text with the **same**
+mutation, and then MEASURED to see that it still kills.
+
+    0459 M4   `let braced_u = e == 'u' &&`  ->  `let braced_u = !byte_form &&` + `e == 'u' &&`
+    0480 M1   the fifth-character test     ->  the unbraced form's digit bound `(4, 4)`
+    0480 M2   `let bare_u = !byte_form &&`  ->  `bare_u` was DELETED; the byte form is now
+                                              refused by `if byte_form && e == 'u'`
+    0480 M3   the first two digit checks   ->  the same `(4, 4)` bound
+    0488 M5   the label branch's condition ->  the same branch, minus the `=>` carve-out
+    0488 M6   the `!= '='` AND `!= '>'`     ->  the `!= '='` alone, because `=>` moved
+
+All six were re-anchored, and all six still KILL, with the named test confirmed:
+
+    0459   6 killed, 0 survivors
+    0480   4 killed, 0 survivors      (was 3 killed + 1 declared survivor)
+    0488   6 killed, 0 survivors
+
+**AND 0480's M3 IS THE ONE THAT MATTERS MOST.** It was a declared SURVIVED, and its
+proof said, in its own words, that it "expires the moment the guard is rewritten" and
+that the survivor "has to be re-argued rather than inherited". 0496 REWROTE THE GUARD.
+
+The old proof was this: dropping the first two digit checks changes nothing, because the
+old digit loop stopped at the first NON-hex and wrote NOTHING when it consumed none -- so
+an escape admitted by a weakened guard contributed no character, and the one-character
+check refused the literal either way. That was a claim about the SHAPE of the old guard.
+
+0496's guard does not have that shape. It counts the characters it writes, and the digit
+count is a PER-FORM BOUND -- `(4, 4)` for the unbraced form -- checked against the digits
+that were actually read. Lower the bound to `(2, 4)` and `'\u07f'` -- three digits, where
+the toolchain REJECTs it with 3001 -- is read as U+007F: ONE character, no report. A
+false ACCEPTANCE, and exactly what the row is named for.
+
+So M3 is a KILL now, and the PROVE IS DELETED RATHER THAN REWORDED.
+
+=> 判据: A PROOF THAT NO LONGER HOLDS IS NOT A WEAKER PROOF -- IT IS NO PROOF. The survivor
+was honest about its own expiry date, and the honest thing to do on the expiry date is to
+re-argue it, not to extend the lease. A reworded proof is the worst outcome available:
+it keeps the green gate, keeps the word "survivor" in the table, and hides the fact that
+the thing it was reasoning about no longer exists. The mutation became STRONGER, not
+weaker -- the same weakening of the same guard now produces a false ACCEPTANCE instead
+of a differently-refused literal -- and the gate says so.
+
+**AND 0488's `=>` CARVE-OUT MOVED, SO A NEW MUTATION CLOSES THE TRIO.** 0496 gave the
+arrow its own branch in the collector, above the label branch. 0488's M6 covered the
+`==` and `=>` carve-outs together; it now covers `==` alone, and the `=>` half moved to
+0496. That is not a coverage loss, because the `=>` branch was never mutation-covered at
+all -- and that is a gap worth naming rather than a gap worth patching quietly:
+
+    0496 M8    the LOOKAHEAD          -- the SPACED spelling `sb => sb`
+    0496 M9    the BOUND-NAME skip    -- a USE of a bound name is not a read
+    0496 M9b   the `=>` BRANCH        -- the TIGHT spelling `sb=>sb`
+
+M8 and M9 CANNOT SEE THE `=>` BRANCH GO AWAY. Delete that branch and M8's mutation
+changes nothing (the tight spelling no longer reaches the lookahead either) and M9's
+mutation changes nothing (the bound name is never bound). Both would SURVIVE a deleted
+branch, and a survivor that cannot see a deletion is not guarding the thing it names.
+M9b sees it: the arrow's `== '>'` test becomes `== 'x'`, the branch stops firing, the
+name falls through to the label branch and is dropped as a LABEL instead of being BOUND,
+and the USE of it later in the same interpolation comes back as a read of the enclosing
+frame.
+
+=> 判据: TWO MUTATIONS THAT BOTH BREAK THE SAME GUARD CAN STILL BE ONE MUTATION AND ONE
+GAP. M8 and M9 look like a pair because they are about the same feature, and a reader
+would say the tight spelling is covered. It is not: the two mutations cover the two
+SPELLINGS of one path, and the path that reaches the collector without a space -- the
+one the corpus actually uses, in `builtin/autoloc.mbt:83` -- had no mutation at all
+until this one. Coverage is a property of the CLAIM, not of the feature it belongs to.
+
+### THE COUNTS, AFTER
+
+    test suite                 1163 passed, 0 failed   (1136 before 0496; +27)
+    mutation gates             79 in the release gate (78 before 0496)
+    moonbit_core actionable    33   (37 before 0496)
+    the other six corpora      BYTE-IDENTICAL
+    0496's own gate            14 mutations: 13 KILLED, 1 declared survivor with its proof
+    gates re-anchored          6 (0459 M4, 0480 M1-M3, 0488 M5-M6) -- the SAME mutations,
+                               re-anchored on the current text and MEASURED to still kill
+    harness defects found      3 in the grammar probe's own machinery -- its check
+                               budget, the corpus read's encoding, and the probe's
+                               write encoding -- and the probe's read gained the
+                               rule-9 retry the board had been carrying
+
+=> 判据: AN UNCOVERING IS NOT A REGRESSION. `builtin/autoloc.mbt`'s `no visible binding
+for 'sb'` was WITHHELD behind a parse boundary, so the inventory could not see it; 0496's
+`lexmatch` fix made the file readable and the withheld finding appeared. It was FIXED in
+this increment rather than pinned, because pinning `actionable=1` would have frozen a
+defect in the analyzer into the pin and called it a corpus fact. This is the same shape
+as the 0488 `radix` finding, and the rule is the 0488 rule, written there for exactly
+this reason.
+
+=> 判据: A CRASH IS WORSE THAN A WRONG ANSWER, AND IT IS INVISIBLE UNTIL IT IS MEASURED.
+One `'\u{110000}'` took the whole scan down, and the scan still reported a SUMMARY line
+for the files it had managed to read -- so the failure looked like a corpus that happened
+to have fewer findings. The bound check is not a refinement of the escape rule; it is the
+difference between a scanner that answers and a scanner that stops.
+
+## 0496b: THE CENSUS THAT WAS MEASURED OVER SIX CORPORA, AND THE 58 THAT WERE NEVER COUNTED
+
+### THE CLAIM, AND WHERE IT LIVES
+
+The 0.4.31 README says, in the `--per-function` box:
+
+> the per-function view was measured across the pinned corpora and reported **116**
+> `actionable` findings ... They were an *inventory of what is still wrong with the
+> behavioral lens*, and 0.4.31 emptied it.
+
+and, under the 0.4.31 changelog:
+
+```
+    per-function actionable findings   116 -> 2   (the 2 are the documented #doc(hidden) limit)
+```
+
+**THE CENSUS THAT PRODUCED THOSE TWO COVERED SIX CORPORA.** The script that ran it --
+`_verify/_dir2_corpora.ps1`, an untracked scratch file, so no history and no pin --
+lists exactly six: `moui`, `moonbit_labeler`, `moonbit_image`, `async`, `proton`,
+`proton_contract`. `moonbit_core` is not in it. The README's own vocabulary calls
+the corpora "the seven pinned corpora" three paragraphs above the claim, so the
+sentence "measured across the pinned corpora" was read -- correctly -- as seven.
+
+The seventh corpus carries MORE findings than all six put together. So the claim was
+true of the corpora that were measured and false of the ones that were not, and the
+inventory that 0.4.31 declared empty was not empty.
+
+### THE MEASUREMENT: TWO WASMS, ONE CORPUS, TWO CENSUSES
+
+The pre-0496 tree is `git archive HEAD` = `be21ecd` = v0.4.31. Its wasm was built
+beside the 0496 one and BOTH were pointed at the same corpus with the same flags:
+
+```
+                        pre-0496 (be21ecd)        0496
+    files                     1029                 1029      UNCHANGED
+    parsed                     935                  957      +22
+    actionable                  64                   56       -8
+    notices                   9988                10228
+    unreliable                3139                 2612
+    withheld                   597                  513
+    total                    13191                12896
+```
+
+The finding sets differ by exactly **8**, with **zero new**: all eight are
+`undefined variable 'lexmatch'` -- the 0496-B false positive, at
+`string/internal/regex_parser/parser.mbt:32`, `internal/strconv/strconv_bool.mbt:18`,
+`internal/strconv/strconv_int.mbt:174`, `internal/strconv/strconv_number.mbt:175`,
+`diff/diff_align_test.mbt:56` and `:94`, `diff/diff_word_test.mbt:33`, and
+`builtin/autoloc.mbt:63`.
+
+**SO 0496 MADE THE CENSUS BETTER, NOT WORSE: 64 -> 56 over the increment, and 66 -> 58
+over the seven corpora.** The number that went UP is not a number that went up; it is a
+number that had never been counted. The module view's numbers went 37 -> 33 over the
+same increment, and the two views agree on `files`, `parsed` and `notices` -- which they
+must, because the notices are the parse-boundary findings and the parse is the same in
+both views -- and they differ on `unreliable`, `withheld` and `actionable`, which is
+where the per-function entry does its extra work.
+
+### THE TWELVE FAMILIES
+
+`_verify/census_perfunction.ps1` -- TRACKED, so the seventh corpus cannot be dropped
+again -- runs the per-function scan over all seven and puts every actionable finding
+into a named family. A finding that lands in no family is printed as UNCLASSIFIED and
+makes the script exit 1, because a census that silently buckets what it does not
+understand cannot be compared with the next one.
+
+```
+    PER-FUNCTION CENSUS actionable = 58
+      per corpus: moonbit_core=56 proton=2
+
+    A  a hex float literal is not read                     12
+    B  a BigInt literal's N suffix is not read               5
+    C  == between two arrays                                 6
+    D  a + the operator table does not have                  3
+    E  a * on a struct                                       3
+    F  a name the analyzer cannot see                        9
+    G  unreachable code                                     11
+    H  a local that is assigned and never read               2
+    I  abs on a Double                                       1
+    J  a * on two function values                            1
+    K  a local call with a named argument                    3
+    L  the documented #doc(hidden) limit                     2
+```
+
+Family A is twelve sites of ONE reader gap: `0x1.0p1023` is a C99 hex float, and the
+lexer reads `0x1` and then an identifier, so the exponent part is reported as an
+undefined name -- four times as `'p1023'`, three as `'p'`, three as `'P'`, once as the
+whole mantissa `'F6A8885A308CA8A54'`. Family B is the same shape on a different
+literal: `0N` and `-1N` are BigInt literals and the suffix `N` is read as a name.
+
+Family G -- eleven `unreachable code` -- is the lens's OWN claim and it is not a
+scope limit: the lens says the statement cannot be reached, and there are eleven
+sites where it says so. Family H is the same: two locals assigned and never read.
+Those thirteen are findings about the code; the other forty-three are the analyzer
+describing its own edges.
+
+### THE PROOF THAT NONE OF THE FIFTY-SIX IS A DEFECT IN THE ANALYSED CODE
+
+The claim needs two halves and only one of them is visible in a number:
+
+1. **ACCEPTED** -- `moon check` reports no diagnostic at any of the 56 sites.
+2. **READ** -- `moon check` actually LOOKED at those files.
+
+The second half is the one that cannot be shown by a count. A file with no diagnostic
+is indistinguishable from a file nobody opened. So `_verify/control_perfunction_census.ps1`
+OPENS the file: a deliberate type error is appended to one of the twenty-four files
+that carry a finding, and the error MUST come back for THAT file. One file at a time,
+because a broken package makes the toolchain stop type-checking the packages that
+depend on it -- and a run that finishes suspiciously fast did not run the suite. (The
+first version of this control injected into all twenty-four at once, got four errors
+instead of twenty-four, and finished in **1 s** where its neighbour took 16 s.)
+
+    files carrying an actionable finding: 24
+    BASELINE   moon check --target all on an untouched COPY
+               elapsed=22s  errors=1
+               ERROR json/README.mbt.md:48
+    the positive control
+               read by moon check: 24 of 24
+    after restore: errors=1  json/README.mbt.md:48
+
+The corpus's own single error is in `json/README.mbt.md` -- a `.mbt.md` literate file,
+and not one of the twenty-four. So the twenty-four carry nothing, and the control
+proves they are read. The corpus is COPIED; the pinned directory is never touched.
+The known error is the control FOR the control: if the corpus ever grows a real
+error, the control refuses to absorb it and fails.
+
+### FIVE FILES THAT THE JS TARGET NEVER COMPILES
+
+The control first ran against `--target js` and **five of the twenty-four produced no
+probe error** -- which reads exactly like "the file is not read", and is not.
+MoonBit's per-file `targets` options in `moon.pkg` decide which files a target
+compiles:
+
+```
+    bigint/bigint_default.mbt     [ "not", "js", "wasm", "native" ]   -> the wasm-gc target
+    bigint/bigint_wide.mbt        [ "native", "wasm" ]
+    bigint/decimal_wide.mbt       [ "native", "wasm" ]
+    builtin/double_scalbn.mbt     [ "not", "js" ]
+    math/algebraic_double_nonjs.mbt  [ "not", "js" ]
+```
+
+Under `--target all` all twenty-four are reported. **A FILE THAT NO TARGET COMPILES
+IS NOT A FILE THE CHECKER ACCEPTED** -- it is a file the checker never saw, and the
+difference between the two is exactly the difference between "accepted" and "not
+read". The same five carry 8 of the 56 findings (families A, D and E), so a control
+run on the wrong target would have concluded that a fifth of the corpus was unchecked.
+
+=> 判据: A FILE WITH NO DIAGNOSTIC IS NOT EVIDENCE THAT IT WAS READ. The census's claim
+that none of the 56 is a defect in the analysed code has two halves -- `moon check`
+accepts the file, and `moon check` OPENED the file -- and the second half is the one a
+number cannot carry. Five of the twenty-four looked unchecked under `--target js` and
+were not: MoonBit's per-file `targets` options simply do not compile them there. A
+control that measures the wrong target produces a confident false negative, and the
+only defence is to ask the checker to demonstrate that it is looking.
+
+### THE TWO ARTEFACTS THAT MAKE IT IMPOSSIBLE TO MISS THE SEVENTH AGAIN
+
+- `_verify/census_perfunction.ps1` -- the census over SEVEN corpora, TRACKED, with the
+  families named and an UNCLASSIFIED finding failing the run.
+- `_verify/control_perfunction_census.ps1` -- the positive control that proves the
+  files are read.
+- `release.ps1` gained a stage for each: `per-function census vs pinned baseline`
+  (per corpus, 0/0/0/0/2/0/56, total 58) and `per-function census control (the files
+  are READ by moon check)`.
+
+**THE PIN IS THE POINT.** The corpus pins in `release.ps1` are the MODULE view's
+numbers, and the per-function view had none. A published number that is not gated is
+a number that can go missing silently, and this one did.
+
+=> 判据: A CENSUS OF THE CORPORA YOU HAVE IS NOT A CENSUS OF THE CORPORA YOU PIN. The
+0.4.31 release emptied the inventory over six corpora and published the emptiness,
+because the seventh corpus was not in the census script -- an untracked scratch file,
+with no pin and no history to read. The number was true and the sentence around it was
+not. The fix is not a better sentence; it is a census that is TRACKED, that names the
+corpora it covers, that fails on a finding it cannot classify, and that the release
+gate PINS.
+
+### THE FULL GATE ABORTED AT A STAGE THAT CANNOT PASS BEFORE THE PUBLISH, AND THE REPO HAD SAID SO
+
+The first full run of the release gate on this tree aborted at exactly one stage:
+
+```
+    === published package self-scan ===
+    ABORT: the scan produced no output. That is not a clean scan.
+```
+
+That stage asks the registry for the version in `moon.mod` and asserts that the tree it read
+IS that version. `moon.mod` had already been bumped to 0.4.32, which is not published yet, so
+the registry had nothing to serve. **THE ORDER OF THE RELEASE IS THE REASON, AND THE REASON WAS
+ALREADY WRITTEN DOWN** -- `_verify/release.ps1` says, in a comment that predates this
+increment:
+
+> THIS STAGE IS A POST-PUBLISH CHECK, and the ORDER of the release is what makes that true. So
+> once `moon.mod` names a version that has not been published yet, this stage CANNOT pass: the
+> registry has nothing to serve, `moonx` prints nothing, and the stage aborts with "moonx
+> produced no output. That is not a clean scan." ... So the release order is: 1. the local gate
+> -- and `-SkipMutations` runs the corpus pins and the own-source self-scan, which is what has to
+> be green BEFORE the version is bumped; 2. bump `moon.mod`, sync the READMEs, commit, tag, push
+> the tag -- CI publishes; 3. THIS STAGE, against the version that was just published.
+
+This release bumped the version before the gate run, so the stage aborted on an ORDERING FACT
+and not on a defect -- and because the corpus comparison is gated on `$failed`, the pins **and
+the two new stages** never ran in that pass. The 79 mutation gates had all gone green in it,
+and the gate was re-run with `-SkipMutations`, which is the run that measured the pins, the
+census and the control. The published-package self-scan is then run against 0.4.32 after CI
+publishes it, which is what stage 5b is FOR.
+
+=> 判据: A GATE THAT CANNOT PASS YET IS NOT A RED GATE, AND THE ORDER IS PART OF THE GATE. The
+stage printed "the scan produced no output", which is the line a registry that serves nothing
+and a broken scan both print; only the coordinate run tells them apart. The stage was not
+weakened, and the abort was not read as a regression -- it was read as what it was, an ordering
+fact the release script had already documented in its own comments, and the fix was to run the
+gate the way the script says to run it.
+
+### THE COUNTS, AFTER
+
+```
+    per-function census, SEVEN corpora   66 -> 58   (core 64 -> 56; proton 2 -> 2)
+    the module view                      moonbit_core 37 -> 33; the other six BYTE-IDENTICAL
+    families                             12, and every one of the 58 is in a named family
+    the files that carry them            24, and moon check READS 24 of 24
+    the corpus's own errors              1, in json/README.mbt.md, and not one of the 24
+    the census is now                    TRACKED, PINNED, and it fails on an UNCLASSIFIED finding
+```
+

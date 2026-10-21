@@ -88,11 +88,18 @@ Invoke-MutationGate -Name '0459' -Target 'js' -Mutations @(
   # `other => other` and `'\u{0}'` becomes the four-character payload `u{0}`.
   # 19 corpus files write the brace form; this is the mutation that would let them
   # look covered by the same commit that fixed the other 58.
+  #
+  # 0496 RE-ANCHORED THIS ONE, and the MUTATION IS THE SAME ONE. 0496 added
+  # `!byte_form &&` to the binding -- a byte literal takes no unicode escape at
+  # all, which is the toolchain's rule -- so the old anchor text
+  # `let braced_u = e == 'u' &&` no longer exists. The mutation is re-anchored on
+  # the line that STILL decides the braced form, and the line above it is carried
+  # in the anchor so the text is unique.
   @{
     Name = 'M4 the braced unicode escape is not decoded'
     File = $LEXER
-    Find = "      let braced_u = e == 'u' &&"
-    Repl = "      let braced_u = e == 'z' &&"
+    Find = "      let braced_u = !byte_form &&`n        e == 'u' &&"
+    Repl = "      let braced_u = !byte_form &&`n        e == 'z' &&"
     MustRed = '0459: a braced unicode escape is one character'
   }
 

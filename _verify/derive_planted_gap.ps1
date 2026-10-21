@@ -103,7 +103,7 @@ $ErrorActionPreference = 'Continue'
 # version, so it cannot drift under you the way a `@latest` would).
 #
 # MEASURED YIELD OF THE NEW CORPUS, on the 0494 tree: 74 PARTIAL files, and the
-# FIRST candidate that survives the descent is `string/quickcheck_test.mbt:138`,
+# FIRST candidate that survives the descent was `string/quickcheck_test.mbt:138`,
 # the top-level
 #
 #     let qc_boundary_chars : Array[Char] = [
@@ -112,7 +112,7 @@ $ErrorActionPreference = 'Continue'
 #
 # The WHOLE FILE is rejected first (it mentions `@quickcheck`), and the ITEM is
 # accepted: it is a `let` of nothing but char literals, so `moon check` calls it
-# legal MoonBit with 0 errors, and the frontend cannot read it. The gap is
+# legal MoonBit with 0 errors, and the frontend cannot read it. The gap was
 # PRECISE and was measured on the construct itself, not inferred from the file:
 #
 #     '\u{7F}'      (2 hex digits)  read
@@ -128,6 +128,47 @@ $ErrorActionPreference = 'Continue'
 # supplementary-plane escape -- U+10000 and above, the range that needs a
 # surrogate pair in UTF-16 -- is past the end of what it reads. `moon check`
 # accepts all of them.
+#
+# => 0496 CORRECTED THE PARAGRAPH ABOVE, AND THE MOVE IS THE FIFTH. The escape
+# gap was REAL, and 0496 CLOSED it -- the reader now counts CHARACTERS instead of
+# UTF-16 CODE UNITS, so `'\u{1F600}'` is one character and is read. The sentence
+# "the escape reader takes at most FOUR hex digits" was the WRONG EXPLANATION of a
+# right observation: the reader took as many digits as the literal had, and the
+# refusal came from a UTF-16 COUNT. The correction is written in the 0494 block of
+# NARRATIVE.md beside the original claim, and the same correction is in the
+# `lexer.mbt` source.
+#
+# THE GAP MOVED, AND THE CORPUS DID NOT RUN OUT. On 0496's tree `core` still has
+# 55 PARTIAL files and the other six corpora have NONE, so `core` is the only
+# place a planted gap can come from -- and the row that survives the descent
+# there is now:
+#
+#     core  range/quickcheck_test.mbt:69   item 127-158
+#           fn anchors(min : BigInt, max : BigInt) -> Array[BigInt] { ... }
+#
+# MOON-OK (`moon check` reports 0 errors and one `unused_value` warning) and
+# SELF-FAIL (the scanner reports `parsed=0`, 13 findings withheld), because the
+# item uses the `N` SUFFIX on an integer literal -- `0N`, `1N`, `-1N`, `2N` --
+# which is the family the 0494 inventory listed as "7 `undefined name 'N'`".
+# `moon check` accepts it.
+#
+# AND THE MOVE COST THE SEARCH ITS BUDGET, WHICH IS THE PART THAT ACTUALLY
+# MATTERED. Every previous move was cheap because the row sat near the FRONT of
+# the search order. It does not any more: with `string/quickcheck_test.mbt`
+# whole, the search walks `string/internal/regex_parser/parser.mbt`,
+# `sorted_set/set.mbt`, `sorted_map/map.mbt`, `set/linked_hash_set.mbt` and
+# `ref/ref.mbt` first -- 122 checks -- before it reaches
+# `range/quickcheck_test.mbt` at check 123.
+#
+# The check cap was 12, and it was calibrated to a corpus state where the gap sat
+# at check ~4. So 0496 did NOT run out of gaps: the SEARCH ran out of BUDGET, and
+# the control reported the first of those two things rather than the true one.
+# The cap is now 500, and that number is MEASURED rather than chosen: the gap is
+# at 123 and one check costs ~0.3s (`moon check` plus a scanner run on a
+# one-file package), so the whole corpus can be walked in under three minutes.
+# A cap that can be reached is a BUDGET; a cap that stops the search short of a
+# gap that is still there is a FALSE RED, and a false red is the one thing this
+# control must not be.
 #
 # The other corpora stay in the list, in the order they were tried, because a
 # corpus that gains a gap later must be found without touching this file.
@@ -177,6 +218,45 @@ function Get-GpHead([string]$line) {
   $t = $line.Trim()
   if ($t.Length -gt 44) { $t = $t.Substring(0, 44) + '...' }
   return $t
+}
+
+# Read a corpus file as UTF-8, and RETRY while another process holds it open.
+#
+# THE ENCODING WAS WRONG, AND IT WAS WRONG INVISIBLY. `File.ReadAllLines` does
+# NOT read UTF-8: its default encoding is `Encoding.Default` -- the ANSI
+# codepage of the machine -- and it only switches to UTF-8 when the file
+# carries a BOM. The pinned corpus files have no BOM, so every non-ASCII byte
+# in them was decoded with the ANSI codepage (GBK on this machine) and
+# re-encoded on the way into the probe package.
+#
+# That is not cosmetic. A candidate carrying an em dash in a doc comment came
+# out as bytes that are NOT valid UTF-8, so `moon check` refused the file with
+# [3001] "Could not read the file because it contains invalid UTF-8 streams"
+# (MOON-BAD) while this frontend read it happily (SELF-OK). The planted row was
+# then NEITHER a gap NOR a too-permissive row, and the control failed on a row
+# that had never been one -- and the failure message blamed the corpus.
+#
+# It was invisible while the planted rows happened to be ASCII. That is the
+# whole shape of the defect: a reader that is wrong in a way the data never
+# exercises, and a control that cannot see the difference.
+#
+# THE RETRY IS RULE 9, THE SAME RULE THE MUTATION HARNESS GOT. `ReadAllLines`
+# THROWS when another process holds the file open, and the old code caught that
+# and skipped the file SILENTLY -- one more unreadable file per locked read, and
+# a gap the search could not reach for a reason that had nothing to do with the
+# gap. The retry is on the TRANSIENT, not on the verdict: a genuinely unreadable
+# file still fails, and the caller still logs the skip.
+function Read-CorpusLinesUtf8 {
+  param([string]$Path, [int]$Tries = 12)
+  $utf8 = New-Object System.Text.UTF8Encoding($false)
+  for ($i = 1; $i -le $Tries; $i++) {
+    try {
+      return [System.IO.File]::ReadAllLines($Path, $utf8)
+    } catch [System.IO.IOException] {
+      if ($i -eq $Tries) { throw }
+      Start-Sleep -Milliseconds (50 * $i)
+    }
+  }
 }
 
 # Enumerate the units that CONTAIN the blocker, in the order they are tried.
@@ -271,7 +351,13 @@ function Get-GapCandidates {
 }
 
 function Get-DerivedPlantedGap {
-  param([int]$MaxChecksPerCorpus = 12)
+  # The check budget. It was 12 and it is now 500, and the change is MEASURED
+  # rather than chosen: on 0496's tree the planted gap sits at check 123, because
+  # the search walks five unreadable files that are all method-heavy before it
+  # reaches the one that carries the gap. One check costs ~0.3s, so 500 checks
+  # is under three minutes -- affordable, and enough that the budget can never
+  # be the reason the control reports a gap that is still there.
+  param([int]$MaxChecksPerCorpus = 500)
 
   $repos = $script:GP_REPOS
   $wasm = $script:GP_WASM
@@ -279,8 +365,13 @@ function Get-DerivedPlantedGap {
   $moonrun = $script:GP_MOONRUN
 
   $log = @()
+  # `CapHit` says the SEARCH ran out of budget. It is different from "the corpus
+  # ran out of gaps", and the control's failure message must not confuse them:
+  # one is a fixable budget, the other is a fact worth recording.
+  $capHitAny = $false
+  $totalChecks = 0
   if (-not (Test-Path -LiteralPath $wasm)) {
-    return [pscustomobject]@{ Found = $false; Text = ''; Provenance = ''; Checks = 0; CorporaScanned = @(); Log = @('no scanner wasm at ' + $wasm) }
+    return [pscustomobject]@{ Found = $false; Text = ''; Provenance = ''; Checks = 0; CapHit = $false; CorporaScanned = @(); Log = @('no scanner wasm at ' + $wasm) }
   }
 
   $base = Join-Path $env:TEMP ('gapderive_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -308,9 +399,10 @@ function Get-DerivedPlantedGap {
     foreach ($p in $partial) {
       if ($capHit) { break }
       # A failed read must NOT leave the previous file's lines alive, so the read
-      # is checked rather than assumed.
+      # is checked rather than assumed. UTF-8, with a retry while the file is
+      # locked -- see `Read-CorpusLinesUtf8`.
       $src = $null
-      try { $src = [IO.File]::ReadAllLines($p.Path) } catch { $src = $null }
+      try { $src = Read-CorpusLinesUtf8 -Path $p.Path } catch { $src = $null }
       if ($null -eq $src) { $log += ("{0,-9} skip file   READ-FAIL {1}" -f $k, $p.Path); continue }
       $n = $p.Line - 1
       if ($n -lt 0 -or $n -ge $src.Length) { continue }
@@ -338,9 +430,11 @@ function Get-DerivedPlantedGap {
         if ($tried -ge $MaxChecksPerCorpus) {
           $log += ("{0,-9} stopped at the {1}-check cap; unreadable files remain" -f $k, $MaxChecksPerCorpus)
           $capHit = $true
+          $capHitAny = $true
           break
         }
         $tried++
+        $totalChecks++
 
         $tag = ('{0}_{1}_{2}' -f $k, ($rel -replace '[^A-Za-z0-9]', '_'), $c.Mode)
         $d = Join-Path $base $tag
@@ -366,7 +460,8 @@ function Get-DerivedPlantedGap {
         if ($moonOk -and -not $selfOk) {
           $log += ("{0,-9} USE  {1,-5} {2,-24} {3,-10} {4}" -f $k, $c.Mode, $c.Label, 'MOON-OK/SELF-FAIL', $site)
           return [pscustomobject]@{
-            Found = $true; Text = $c.Text; Provenance = $site; Checks = $tried
+            Found = $true; Text = $c.Text; Provenance = $site; Checks = $totalChecks
+            CapHit = $false
             CorporaScanned = @($k); Log = $log; BlockedLine = $blocker; Corpus = $k
             Unit = $c.Label; Mode = $c.Mode
           }
@@ -378,7 +473,9 @@ function Get-DerivedPlantedGap {
   }
 
   return [pscustomobject]@{
-    Found = $false; Text = ''; Provenance = ''; Checks = 0; CorporaScanned = @(); Log = $log
+    Found = $false; Text = ''; Provenance = ''; Checks = $totalChecks
+    CapHit = $capHitAny
+    CorporaScanned = @(); Log = $log
   }
 }
 

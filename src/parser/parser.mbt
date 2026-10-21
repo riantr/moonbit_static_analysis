@@ -6577,6 +6577,71 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       )
       { span: sp, kind: @ast.EMatch(subject), }
     }
+    // 0496 -- `lexmatch`, THE LEXICAL MATCH. `lexmatch <subject> [with longest] { arms }`
+    // is MoonBit's regex-lexer form of a match: the arms are patterns whose first
+    // element is a REGEX LITERAL and whose second is the LABELLED `after=` binding
+    // that names the input AFTER the match.
+    //
+    //     lexmatch rest with longest {
+    //       (re"^//+" as t, after=next) => { ...; next }
+    //       (re"^[A-Za-z_][A-Za-z0-9_]*" as t, after=next) => { ...; next }
+    //       _ => abort("unreachable")
+    //     }
+    //
+    // IT IS NOT A NAME, and reading it as one produced `undefined name 'lexmatch'`
+    // -- a FALSE POSITIVE on code `moon check` accepts. Four sites in the PINNED
+    // corpus, all in `moonbitlang/core`:
+    //
+    //     internal/strconv/strconv_int.mbt:174
+    //     diff/diff_align_test.mbt:56 and :94
+    //     diff/diff_word_test.mbt:33
+    //
+    // THE SCOPE IS MEASURED, NOT INHERITED. The standing note said "18 sites in 3
+    // PINNED core files", and a grep for `after=` gives 283 lines in 22 files --
+    // but a grep counts LOCAL VARIABLES and COMMENTS too: moui's 13 hits are
+    // `let after = ...`, `receipt.after` and `// after = 83*46 - 2`, and
+    // labeler's two are a `let after` and a doc comment. The real construct is 84
+    // sites in FIVE pinned `moonbitlang/core` files and ZERO in the other six
+    // pinned corpora.
+    //
+    // The grammar is settled, one form per probe (`_verify/settle_0496_lexmatch.ps1`):
+    //
+    //     lexmatch s { .. }                ACCEPT
+    //     lexmatch s with longest { .. }   ACCEPT
+    //     lexmatch s with { .. }           REJECT(4180) -- `with` needs `longest`
+    //
+    // SO IT IS READ LIKE A `match`: the subject is PARSED (its reads are real), the
+    // arms are SKIPPED whole (the subset has no arm patterns), and the value comes
+    // from the arms -- which is exactly what `@ast.EMatch` says. The notice says
+    // `lexmatch` rather than `match`, because that is what was read.
+    //
+    // WHAT IS NOT DONE, AND MEASURED BEFORE IT COULD BE: the arm PATTERNS. The
+    // `as t` capture and the `after=next` label bind names, and the corpus reads
+    // them in the arm bodies -- but the arms are skipped, exactly as a `match`'s
+    // are, so binding them would change no finding and cost a pattern reader the
+    // subset does not otherwise have. A binding nobody can observe is a claim, not
+    // a feature.
+    TName("lexmatch") => {
+      self.skip_seps()
+      let subject = self.parse_expr()
+      // `with longest`. The `with` needs its `longest`, so the pair is read
+      // together -- and a `with` that is NOT followed by `longest` is REJECTed by
+      // the toolchain (4180) and is left unread here rather than guessed at.
+      if self.at_name("with") {
+        let _ = self.bump()
+        self.skip_seps()
+        if self.at_name("longest") {
+          let _ = self.bump()
+        }
+      }
+      self.skip_seps()
+      self.skip_braces()
+      self.note_skip(
+        "lexmatch expression is outside the analyzed subset; it was read but not analysed",
+        sp,
+      )
+      { span: sp, kind: @ast.EMatch(subject), }
+    }
     TName("fn") =>
       // An anonymous function literal in expression position:
       // `arr.iter(fn(x) { x + 1 })`. The subset has no closure node, so the

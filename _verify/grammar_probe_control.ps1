@@ -28,7 +28,7 @@
 #
 # --- THE PLANTED ROW IS DERIVED, NOT HARDCODED ------------------------------
 #
-# `ctrl_real_gap` has been moved FOUR times, which is why the rule is written
+# `ctrl_real_gap` has been moved FIVE times, which is why the rule is written
 # here rather than left tacit:
 #
 #   1. A lambda with an explicit parameter type,
@@ -41,12 +41,39 @@
 #   4. An anonymous `fn` as a CALL-ARGUMENT value. 0467 fixed the `async`
 #      parameter annotation ABOVE it, so the parse reached past it and the row
 #      closed -- the fourth RED in a row.
+#   5. The CHARACTER LITERAL's escape, `'\u{1F600}'`. 0496 fixed the reader's
+#      character count -- it counted UTF-16 CODE UNITS where the buffer holds
+#      CODE POINTS -- so the escape is read and the row closed -- the fifth RED
+#      in a row, and the first one the corpus supplied rather than a hand-built
+#      fixture.
 #
-# Four moves, each costing a hand-built fixture and a full release-gate round
+# Five moves, each costing a hand-built fixture and a full release-gate round
 # trip. The fourth was also the one that could not be fixed by hand: after 0467,
 # every MOON-OK case in the probe's own bank of ~26 known forms was SELF-OK, and
 # ~20 hand-written candidates were either rejected by `moon check` (my fixture
 # was invalid MoonBit) or already read. There was no gap left to plant on.
+#
+# => THE FIFTH MOVE ALSO MOVED THE GAP OUT OF REACH, AND THAT IS THE PART WORTH
+# READING TWICE. Every earlier move was cheap because the row sat near the FRONT
+# of the derivation's search order. The escape row was `string/quickcheck_test.mbt`,
+# and with that file whole the search walks five method-heavy unreadable files
+# first -- 122 checks -- before it reaches `range/quickcheck_test.mbt` at check
+# 123. The derivation's check cap was 12, calibrated to a corpus where the gap
+# sat at check ~4.
+#
+# So the fifth RED did NOT mean "the corpus has no gaps left". It meant the
+# SEARCH ran out of budget, and the control's message -- "no corpus file is
+# both legal MoonBit and unread by this frontend" -- was a claim the log
+# contradicted two lines above it ("unreadable files remain"). A control that
+# reports the wrong reason is worse than one that reports no reason, because
+# the wrong reason is actionable and gets acted on: the honest answer was "pin
+# a NEW corpus", which was not true.
+#
+# THE FIX IS THE BUDGET, NOT THE ASSERTIONS. The cap in
+# `_verify/derive_planted_gap.ps1` is now 500 -- measured: the gap is at 123 and
+# a check costs ~0.3s -- and the derivation now reports WHETHER it stopped on
+# the cap, so this control can tell the two failures apart. The five assertions
+# below are UNCHANGED, and the failure path still fails.
 #
 # So the row is now a SLOT and its SOURCE is derived at RUN time by
 # `_verify/derive_planted_gap.ps1`, which takes a file from the PINNED CORPORA
@@ -89,7 +116,13 @@
 #                         it would be untested code guarding the control's whole
 #                         meaning. Same reasoning as the probe's canary. The gate
 #                         runs with no arguments, so normal behaviour is unchanged.
-param([switch]$SimulateExhaustion)
+#   -SimulateCapHit       force the OTHER failure path -- the derivation stopped
+#                         at its check cap while unreadable files remained -- which
+#                         must also FAIL, and must say a DIFFERENT thing. 0496 added
+#                         that path, and a new failure branch that is never
+#                         exercised is the same untested code this file complains
+#                         about above.
+param([switch]$SimulateExhaustion, [switch]$SimulateCapHit)
 $ErrorActionPreference = 'Stop'
 
 $probe = Join-Path $PSScriptRoot 'grammar_probe.ps1'
@@ -101,12 +134,21 @@ Write-Output '=== grammar probe control ==='
 Write-Output ''
 Write-Output 'deriving a live planted gap from the pinned corpora (a file this frontend cannot read)...'
 . $derive
-$gap = Get-DerivedPlantedGap
+# The simulated paths REPLACE the derivation's result entirely, so running it
+# anyway would cost a minute of corpus scans for a row that is then thrown away.
+$gap = if ($SimulateExhaustion -or $SimulateCapHit) { $null } else { Get-DerivedPlantedGap }
 if ($SimulateExhaustion) {
   $gap = [pscustomobject]@{
-    Found = $false; Text = ''; Provenance = ''; Checks = 0; CorporaScanned = @()
+    Found = $false; Text = ''; Provenance = ''; Checks = 0; CapHit = $false; CorporaScanned = @()
     Unit = ''; Mode = ''
     Log = @('SIMULATED exhaustion: the derivation was short-circuited on purpose', '         so the "no usable planted row" path can be exercised')
+  }
+}
+if ($SimulateCapHit) {
+  $gap = [pscustomobject]@{
+    Found = $false; Text = ''; Provenance = ''; Checks = 500; CapHit = $true; CorporaScanned = @()
+    Unit = ''; Mode = ''
+    Log = @('SIMULATED cap-hit: the derivation was short-circuited on purpose', '         so the "the search ran out of budget" path can be exercised')
   }
 }
 foreach ($l in $gap.Log) { Write-Output ('  ' + $l) }
@@ -114,16 +156,28 @@ foreach ($l in $gap.Log) { Write-Output ('  ' + $l) }
 if (-not $gap.Found) {
   Write-Output ''
   Write-Output 'grammar probe control: FAIL'
-  Write-Output '  - no corpus file is both legal MoonBit and unread by this frontend, so there is'
-  Write-Output '    no row left that can prove the REAL GAP tally fires.'
-  Write-Output ''
-  Write-Output 'This is NOT a licence to weaken the assertions below, and NOT a licence to'
-  Write-Output 'hardcode a replacement row. Either of those makes the control green without'
-  Write-Output 'making it evidence. The real options are:'
-  Write-Output '  - pin a NEW corpus that still contains a gap this frontend cannot read, or'
-  Write-Output '  - accept in writing that this frontend now reads every pinned corpus, and that'
-  Write-Output '    the probe can no longer be shown to detect a gap at all -- a fact worth'
-  Write-Output '    recording, not a reason to fake the demonstration.'
+  if ($gap.CapHit) {
+    Write-Output '  - the SEARCH ran out of budget, not the corpus: the derivation stopped at'
+    Write-Output ('    its check cap after ' + $gap.Checks + ' checks while unreadable files')
+    Write-Output '    remained, so the row that can prove the REAL GAP tally fires may still'
+    Write-Output '    be there and was simply not reached.'
+    Write-Output ''
+    Write-Output 'This is NOT a licence to weaken the assertions below, and NOT a licence to'
+    Write-Output 'hardcode a replacement row. The fix is to RAISE THE BUDGET -- the check cap'
+    Write-Output 'in `_verify\derive_planted_gap.ps1` -- and re-run, not to change what this'
+    Write-Output 'control asserts.'
+  } else {
+    Write-Output '  - no corpus file is both legal MoonBit and unread by this frontend, so there is'
+    Write-Output '    no row left that can prove the REAL GAP tally fires.'
+    Write-Output ''
+    Write-Output 'This is NOT a licence to weaken the assertions below, and NOT a licence to'
+    Write-Output 'hardcode a replacement row. Either of those makes the control green without'
+    Write-Output 'making it evidence. The real options are:'
+    Write-Output '  - pin a NEW corpus that still contains a gap this frontend cannot read, or'
+    Write-Output '  - accept in writing that this frontend now reads every pinned corpus, and that'
+    Write-Output '    the probe can no longer be shown to detect a gap at all -- a fact worth'
+    Write-Output '    recording, not a reason to fake the demonstration.'
+  }
   exit 1
 }
 Write-Output ('  planted from {0}:{1}' -f $gap.Corpus, $gap.Provenance)

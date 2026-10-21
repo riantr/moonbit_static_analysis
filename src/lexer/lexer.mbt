@@ -198,6 +198,22 @@ priv struct Lexer {
   /// Names referenced by `\{...}` interpolations of the string literal being
   /// lexed RIGHT NOW. Reset per string; handed to that string's `TStr`.
   mut interp_names : Array[String]
+  /// 0496 -- The names a LAMBDA inside the CURRENT interpolation binds. A lambda
+  /// parameter is a BINDING and not a READ, so a name it binds must not be
+  /// resolved against the enclosing frame.
+  ///
+  /// Reset per INTERPOLATION -- not per string -- because two interpolations of
+  /// one string are two scopes: a lambda in the first binds nothing in the
+  /// second.
+  ///
+  /// THE LIMIT, STATED RATHER THAN LEFT: the suppression runs to the END of the
+  /// interpolation, so a name that is a lambda parameter in one part of an
+  /// interpolation and an enclosing read in ANOTHER part of the SAME
+  /// interpolation is not reported. It is not lost in the other direction --
+  /// a read BEFORE the lambda is still recorded -- and the corpus has exactly
+  /// ONE interpolation with a lambda in it (`moonbitlang/core`
+  /// `builtin/autoloc.mbt:83`), so nothing else can be affected.
+  mut interp_bound : Array[String]
 }
 
 ///|
@@ -213,6 +229,7 @@ pub fn lex(
     spans: [],
     reports: [],
     interp_names: [],
+    interp_bound: [],
   }
   for c in src {
     lx.chars.push(c)
@@ -975,6 +992,9 @@ fn Lexer::lex_template_string(self : Lexer) -> Tok {
 ///|
 fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
   let mut depth = 0
+  // 0496 -- THE INTERPOLATION'S OWN LAMBDA BINDINGS. Reset HERE, per
+  // interpolation, because two interpolations of one string are two scopes.
+  self.interp_bound = []
   // The identifier being read at this level, if any. Names are recorded when
   // the identifier ENDS, which is what keeps `m.length` from being recorded
   // as one name `mlength` — and, separately, keeps `length` from being
@@ -1042,8 +1062,36 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       after_dot = true
     } else if c == '=' &&
       self.pos < self.chars.length() &&
-      self.chars[self.pos] != '=' &&
-      self.chars[self.pos] != '>' {
+      self.chars[self.pos] == '>' {
+      // 0496 -- A LAMBDA HEAD IS A BINDING, NOT A READ. `sb => ...` inside an
+      // interpolation BINDS `sb`; it does not read it, and the name is not a
+      // binding of the ENCLOSING frame either -- which is why resolving it
+      // against that frame reported `no visible binding for 'sb'` on code
+      // `moon check` accepts.
+      //
+      // MEASURED, moonbitlang/core `builtin/autoloc.mbt:83`:
+      //
+      //     $|{"filename":\{sb => self.filename.escape_to(sb)},...}
+      //
+      // `sb` is the lambda's own parameter. The finding was WITHHELD for as long
+      // as the file stopped at line 74 -- and line 74 is where the `lexmatch` at
+      // line 63 used to stop the reader -- so 0496's `lexmatch` fix uncovered it.
+      // The same uncovering the 0488 comment records for `radix`: a real false
+      // positive that an inventory of PARTIAL files could not see.
+      //
+      // THE HEAD IS NOT RECORDED, and the name goes into `interp_bound` so that
+      // its USES inside the lambda's body are not recorded either -- a use of a
+      // name the lambda itself binds is a read of the lambda's parameter, not
+      // of the frame around it.
+      if cur != "" && !cur_is_member && !after_at {
+        if !self.interp_bound.contains(cur) {
+          self.interp_bound.push(cur)
+        }
+      }
+      cur = ""
+    } else if c == '=' &&
+      self.pos < self.chars.length() &&
+      self.chars[self.pos] != '=' {
       // A LABEL, NOT A READ. 0488. `\{value.to_string(radix=16)}` supplies 16 to the
       // parameter named `radix` -- MoonBit's labelled-argument call syntax, the
       // counterpart of the `protocol~ : Protocol` declaration this same corpus writes
@@ -1059,9 +1107,28 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       //
       // THE `==` AND `=>` CARVE-OUTS ARE SETTLED, NOT GUESSED --
       // `_verify/settle_0488_append_nextline.ps1` rows F3 and F4: `\{a == b}` must
-      // still record both names, and `\{xs.map(x => x + 1).length()}` must still
-      // record `x`. Only a BARE `=` names a label. `self.pos` already points PAST
-      // this `=`, so the lookahead sees the character after it.
+      // still record both names, and `\{xs.map(x => x + 1).length()}` must still be
+      // ACCEPTED by the toolchain. Only a BARE `=` names a label. `self.pos`
+      // already points PAST this `=`, so the lookahead sees the character after it.
+      //
+      // 0496 -- CORRECTION TO THE PHRASE THIS COMMENT USED TO CARRY. It said the
+      // F4 shape "must still record `x`". THAT IS NOW WRONG. The sentence was
+      // the author's INFERENCE, not the settle's claim: row F4 is an ACCEPT row,
+      // so it says the TOOLCHAIN takes the program, and it does not pin the
+      // analyzer's name list at all. The settle is unaffected by 0496 and still
+      // passes.
+      //
+      // `x` in `x => x + 1` is a LAMBDA PARAMETER. It is a BINDING, and a use of
+      // it is a read of the PARAMETER -- not a read of the frame around the
+      // interpolation. 0496 measures the same shape on real corpus code
+      // (`moonbitlang/core` `builtin/autoloc.mbt:83`, `$|{"filename":\{sb =>
+      // self.filename.escape_to(sb)},...}`), and treating the parameter as a read
+      // of the enclosing frame produced `no visible binding for 'sb'` -- a false
+      // positive on code `moon check` accepts.
+      //
+      // SO `x` IS NOT RECORDED, and the `=>` carve-out means "this name is
+      // BOUND", not "this name is READ". `\{a == b}` still records both names:
+      // `==` is a comparison, and a comparison READS its operands.
       cur = ""
     } else {
       self.flush_interp_name(cur, cur_is_member, after_at)
@@ -1069,6 +1136,30 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
     }
   }
   self.flush_interp_name(cur, cur_is_member, after_at)
+}
+
+///|
+/// Is the identifier that was just read the HEAD of a lambda? `sb => ...` BINDS
+/// `sb`; it does not read it.
+///
+/// 0496. The name is flushed at the first character that is not part of it, and
+/// in `sb => ...` that character is the SPACE -- so the `=>` has not been seen
+/// yet when the name is decided. The test therefore LOOKS AHEAD over the
+/// whitespace to the `=>`.
+///
+/// The two spellings need two different tests, and the collector has both:
+/// `sb=>` reaches the `=` with the name still pending, and `sb =>` reaches it
+/// with the name already flushed. The first is the `=>` branch of the
+/// collector; the second is this one.
+fn Lexer::at_lambda_head_after(self : Lexer) -> Bool {
+  let mut j = self.pos
+  while j < self.chars.length() &&
+        (self.chars[j] == ' ' || self.chars[j] == '\t') {
+    j += 1
+  }
+  j + 1 < self.chars.length() &&
+  self.chars[j] == '=' &&
+  self.chars[j + 1] == '>'
 }
 
 ///|
@@ -1087,6 +1178,31 @@ fn Lexer::flush_interp_name(
     return
   }
   if is_moonbit_keyword(name) {
+    return
+  }
+  // 0496 -- A LAMBDA HEAD IS A BINDING, NOT A READ. `sb => ...` inside an
+  // interpolation binds `sb`; the name is not a read of the enclosing frame,
+  // and resolving it against that frame reported `no visible binding for 'sb'`
+  // on code `moon check` accepts.
+  //
+  // MEASURED, moonbitlang/core `builtin/autoloc.mbt:83`:
+  //
+  //     $|{"filename":\{sb => self.filename.escape_to(sb)},...}
+  //
+  // `sb` is the lambda's own parameter. The finding sat WITHHELD for as long as
+  // the file stopped at line 74 -- and line 74 is where the `lexmatch` at line
+  // 63 used to stop the reader -- so 0496's `lexmatch` fix uncovered it. The
+  // same uncovering the 0488 comment records for `radix`: a real false positive
+  // that an inventory of PARTIAL files could not see.
+  if self.at_lambda_head_after() {
+    if !self.interp_bound.contains(name) {
+      self.interp_bound.push(name)
+    }
+    return
+  }
+  // A name the interpolation's own lambda BINDS is not a read of the frame
+  // either: a use of it is a read of the lambda's parameter.
+  if self.interp_bound.contains(name) {
     return
   }
   if !self.interp_names.contains(name) {
@@ -1114,6 +1230,15 @@ pub fn is_moonbit_keyword(s : String) -> Bool {
     "if"
     | "else"
     | "match"
+    // 0496 -- `lexmatch` IS SYNTAX, NOT A NAME. It is MoonBit's lexical match --
+    // `lexmatch <subject> [with longest] { arms }` -- and reading it as an
+    // identifier produced `undefined name 'lexmatch'` at four sites in the PINNED
+    // corpus (`moonbitlang/core`: `internal/strconv/strconv_int.mbt:174`,
+    // `diff/diff_align_test.mbt:56` and `:94`, `diff/diff_word_test.mbt:33`), on
+    // code `moon check` accepts. The parser has a production for it
+    // (`parser.mbt`, the `TName("lexmatch")` arm); this entry says the same thing
+    // to the places that ask "is this a name to resolve?".
+    | "lexmatch"
     | "fn"
     | "let"
     | "return"
@@ -1252,6 +1377,25 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
   self.col += 1
   let buf = StringBuilder()
   let mut terminated = false
+  // 0496 -- THE CHARACTER COUNT IS A CHARACTER COUNT, and it is NOT `s.length()`.
+  // MoonBit's `String::length()` counts UTF-16 CODE UNITS while `String::to_array()`
+  // -- and therefore this lexer's `chars`, which is built by `for c in src` -- counts
+  // CODE POINTS. The two DISAGREE for every supplementary-plane character, and
+  // U+1F600 is two units and one point. Measured, not inferred:
+  //
+  //     "\u{1F600}".to_string().length()          -> 2
+  //     "\u{1F600}".to_string().to_array().length() -> 1
+  //
+  // So the length check below counted an ASTRAL CHARACTER AS TWO and refused a
+  // literal the toolchain accepts. The count is taken HERE, where each character
+  // is written, because that is the only place the number of CHARACTERS is known.
+  let mut chars = 0
+  // 0496 -- TWO REPORTS, NOT ONE. A malformed escape (wrong digit count, a
+  // missing `}`, a unicode escape in a BYTE literal) and a code point that is not
+  // a Unicode scalar value are different facts, and the toolchain distinguishes
+  // them too: 3001 for the syntax and 4064 for the value.
+  let mut malformed = false
+  let mut bad_point = false
   while self.pos < self.chars.length() {
     let c = self.chars[self.pos]
     if c == '\n' {
@@ -1307,23 +1451,26 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
       // settle and not in the test because a test on an astral fixture measures how the
       // string builder counts astral characters, which is 0459's trap written down and
       // repeated once. See `lexer_0480_test.mbt`.
-      let braced_u = e == 'u' &&
+      // 0496 -- AND NOT IN A BYTE LITERAL. The toolchain REJECTs `b'\u{41}'`
+      // (3001, measured) and `b'\u000C'` (3001, settled at 0480), and the
+      // UNBRACED form was already refused by `bare_u`'s `!byte_form` -- but the
+      // BRACED form was not, so `b'\u{41}'` was read as a CHARACTER.
+      let braced_u = !byte_form &&
+        e == 'u' &&
         self.pos + 1 < self.chars.length() &&
         self.chars[self.pos + 1] == '{'
-      // The UNBRACED spelling is a CHARACTER literal escape and not a BYTE one. The byte
-      // branch above routes `b'...'` into this same reader, so without the context flag a
-      // guard widened here would silently widen it there as well -- and the toolchain
-      // disagrees: `b'\x0C'` ACCEPTs and `b'\u000C'` is REJECT(3001), measured, while
-      // `'\u000C'` ACCEPTs. Two literals, one reader, one flag.
-      let bare_u = !byte_form &&
-        e == 'u' &&
-        self.pos + 5 < self.chars.length() &&
-        hex_value(self.chars[self.pos + 1]) >= 0 &&
-        hex_value(self.chars[self.pos + 2]) >= 0 &&
-        hex_value(self.chars[self.pos + 3]) >= 0 &&
-        hex_value(self.chars[self.pos + 4]) >= 0 &&
-        hex_value(self.chars[self.pos + 5]) < 0
-      if e == 'x' || braced_u || bare_u {
+      // 0496 -- `e == 'u'` ALWAYS COMES HERE, whatever follows it. The condition
+      // used to be `e == 'x' || braced_u || bare_u`, and both of those mean "this
+      // escape is ALREADY KNOWN TO BE WELL FORMED" -- so a MALFORMED unicode
+      // escape fell through to `other => other`, wrote the letter `u`, and was
+      // then reported as "must hold exactly one character": a refusal for the
+      // wrong reason, and one that could not tell a malformed escape from a
+      // well-formed one.
+      //
+      // The digit count is therefore READ HERE and checked against the
+      // toolchain's rule below, rather than guessed at by the guard that used to
+      // decide whether to come here at all.
+      if e == 'x' || e == 'u' {
         // NOT `e == 'u'`: that was true for the unbraced form too, and this branch
         // consumes a `{` when it is set. 0459 got away with it because the `u` arm was
         // only reachable when a brace actually followed.
@@ -1332,8 +1479,28 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
           self.pos += 1
           self.col += 1
         }
+        // 0496 -- THE TOOLCHAIN'S RULE, ONE FORM PER PROBE:
+        //
+        //     \xNN        EXACTLY two hex digits    `'\x4'`     REJECT(3001)
+        //     \u{...}     ONE to SIX hex digits      `'\u{}'`    REJECT(3001)
+        //     \uXXXX      EXACTLY four hex digits    `'\u07f'`   REJECT(3001)
+        //
+        // The braced form's bound is the CODE POINT's, not the digit count's:
+        // `'\u{10FFFF}'` is six digits and ACCEPTed, `'\u{FFFFFF}'` is six
+        // digits and REJECTed (4064) because the VALUE is past the last code
+        // point.
+        let (lo, hi) = if e == 'x' {
+          (2, 2)
+        } else if braced {
+          (1, 6)
+        } else {
+          (4, 4)
+        }
         let mut v = 0
         let mut digits = 0
+        // The digits past the limit are CONSUMED and not accumulated: the token
+        // stream has to stay in step, and a seventh digit would overflow `v`
+        // (an Int32) on the way to a value that is out of range anyway.
         while self.pos + 1 < self.chars.length() {
           let h = hex_value(self.chars[self.pos + 1])
           if h < 0 {
@@ -1341,12 +1508,18 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
           }
           self.pos += 1
           self.col += 1
-          v = v * 16 + h
+          if digits < hi {
+            v = v * 16 + h
+          }
           digits += 1
         }
-        if braced &&
+        // 0496 -- THE BRACED FORM NEEDS ITS CLOSER. `'\u{7F'` -- no `}` -- is
+        // REJECTed by the toolchain (3001, measured) and used to be read as the
+        // character U+007F and then the end of the literal.
+        let closed = braced &&
           self.pos + 1 < self.chars.length() &&
-          self.chars[self.pos + 1] == '}' {
+          self.chars[self.pos + 1] == '}'
+        if closed {
           self.pos += 1
           self.col += 1
         }
@@ -1355,8 +1528,31 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
         // three-character payload in the first place, and the payload is now
         // checked for length. Digits are still consumed so a bad escape does not
         // leak its characters into the literal as a second payload.
-        if digits > 0 {
+        //
+        // 0496 -- AND NOW THE ESCAPE IS CHECKED AGAINST THE TOOLCHAIN'S RULE
+        // BEFORE IT IS WRITTEN, so a bad escape is a REPORT and not a character.
+        if byte_form && e == 'u' {
+          // A BYTE LITERAL TAKES NO UNICODE ESCAPE. `b'\u{41}'` and
+          // `b'\u000C'` are both REJECTed (3001, measured).
+          malformed = true
+        } else if digits < lo || digits > hi || (braced && !closed) {
+          malformed = true
+        } else if v > 0x10FFFF || (v >= 0xD800 && v <= 0xDFFF) {
+          // 0496 -- NOT A UNICODE SCALAR VALUE. Above U+10FFFF there is no code
+          // point at all, and U+D800..U+DFFF is the surrogate range, which
+          // Unicode excludes from scalar values. The toolchain REJECTs both
+          // with 4064.
+          //
+          // THIS IS ALSO WHERE THE CRASH WAS. `v.unsafe_to_char()` on a value
+          // past the last code point is not a conversion, it is a trap, and the
+          // trap took the whole SCAN down with it: one `'\u{110000}'` made the
+          // scanner print `RuntimeError: unreachable` and stop, so every file
+          // after it went unread. A crash is worse than a wrong answer, because
+          // a wrong answer is one finding and a crash is the loss of the run.
+          bad_point = true
+        } else {
           buf.write_char(v.unsafe_to_char())
+          chars += 1
         }
       } else {
         buf.write_char(
@@ -1367,9 +1563,11 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
             other => other
           },
         )
+        chars += 1
       }
     } else {
       buf.write_char(c)
+      chars += 1
     }
     self.pos += 1
     self.col += 1
@@ -1383,7 +1581,30 @@ fn Lexer::lex_char(self : Lexer, byte_form : Bool) -> Tok {
       span: @core.span_at(l, c0, 1),
       vst: [],
     })
-  } else if s.length() != 1 {
+  } else if malformed {
+    // 0496 -- ONE REPORT PER LITERAL. The escape is the problem and the length
+    // is a consequence of it, so the length is not reported as well.
+    self.reports.push(@report.Report::{
+      family: @core.FParse,
+      lenses: [@core.LStructural],
+      message: "character literal has a malformed escape",
+      span: @core.span_at(l, c0, self.col - c0),
+      vst: [],
+    })
+  } else if bad_point {
+    self.reports.push(@report.Report::{
+      family: @core.FParse,
+      lenses: [@core.LStructural],
+      message: "character literal is not a valid Unicode code point",
+      span: @core.span_at(l, c0, self.col - c0),
+      vst: [],
+    })
+  } else if chars != 1 {
+    // 0496 -- `chars`, NOT `s.length()`. See the note on the counter: MoonBit's
+    // `String::length()` counts UTF-16 code units and an astral character is
+    // two of them, so the old check refused `'\u{1F600}'` -- a character
+    // literal the toolchain accepts, on code the standard library itself
+    // writes (`moonbitlang/core` `string/quickcheck_test.mbt:138`).
     self.reports.push(@report.Report::{
       family: @core.FParse,
       lenses: [@core.LStructural],

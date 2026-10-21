@@ -280,7 +280,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -833,10 +833,104 @@ if ($SkipMutations) {
 # alone would have been a release that traded a corpus defect for a corpus
 # defect and called it a release.
 #
-# `notices=9988` is dominated by the `.mbt.md` literate files: a `test` block
+# AT 0496 IT IS 33, AND THE PIN MOVES DOWN AGAIN -- WITH THE REASON ATTACHED.
+#
+# MEASURED, as an A/B of the SAME corpus with TWO wasms: the pre-0496 tree
+# (`git archive HEAD`, which at the time was be21ecd) built on one side and the
+# 0496 tree on the other, both scanned over the same `.repos` path:
+#
+#     actionable  37 -> 33
+#     parsed      935 -> 957
+#     notices     9988 -> 10228
+#     unreliable  2956 -> 2432
+#     withheld    552 -> 464
+#     files       1029 -> 1029   UNCHANGED
+#
+# AND THE FINDING SET IS A STRICT SUBSET: GONE 4, NEW 0. The four are all
+# `undefined name 'lexmatch'`, and they are the ONLY per-file `defects=` headers
+# that changed at all:
+#
+#     diff/diff_align_test.mbt            2 -> 0
+#     diff/diff_word_test.mbt             1 -> 0
+#     internal/strconv/strconv_int.mbt    1 -> 0
+#
+# THE +22 PARSED FILES RECONCILE FILE BY FILE, and the reconciliation is exact:
+#
+#     19  PARTIAL -> FOUND
+#     3   PARTIAL with NO findings (so no header row at all) -> FOUND
+#     2   stayed PARTIAL and read FURTHER
+#     0   new findings on any of the twenty-two
+#
+# The 19 are
+#
+#     argparse/options_test.mbt                    json/from_json_test.mbt
+#     buffer/buffer_test.mbt                       string/quickcheck_test.mbt
+#     builtin/autoloc.mbt                          string/view_test.mbt
+#     builtin/bytes_test.mbt                       internal/strconv/strconv_number.mbt
+#     builtin/char.mbt                             char/char_coverage_test.mbt
+#     builtin/char_test.mbt                        char/char_test.mbt
+#     builtin/clamped_view_test.mbt                builtin/intrinsics_test.mbt
+#     builtin/hasher_test.mbt                      builtin/show_test.mbt
+#     builtin/string_char_set_quickcheck_test.mbt  builtin/string_test.mbt
+#     builtin/stringview_test.mbt
+#
+# The 3 are the files that were PARTIAL with nothing to show for it, so the scan
+# printed no row for them at all and they are invisible in the row diff:
+#
+#     char/predicate_reference_test.mbt
+#     encoding/utf16/utf16_v128_bench_test.mbt
+#     internal/strconv/strconv_bool.mbt
+#
+# The 2 are the same defect seen from the other side -- still PARTIAL, but they
+# read FURTHER:
+#
+#     builtin/string_methods.mbt                 line 117 -> line 1465
+#     string/internal/regex_parser/parser.mbt    51 -> 14 findings after the
+#                                                 boundary
+#
+# THE CAUSE OF THE 22 IS THE CHARACTER COUNT, AND IT COVERS BOTH FORMS OF AN
+# ASTRAL CHARACTER LITERAL -- the ESCAPED one and the one written DIRECTLY.
+# `string/quickcheck_test.mbt:138` writes the escaped form (`'\u{1F600}'`,
+# `'\u{10FFFF}'`); `builtin/string_methods.mbt:117` writes the direct one
+# (`c == '😂'`), and that direct one is what stopped the file at line 117.
+# Measured with the two wasms on a two-literal probe: the pre-0496 wasm cannot
+# even PARSE a file containing either form (`parsed=0`, 2 withheld), and the 0496
+# wasm reads it CLEAN.
+#
+# THE `lexmatch` ARM IS WHAT REMOVES THE FOUR FINDINGS, and it is also what
+# collapses the post-boundary findings of `string/internal/regex_parser/parser.mbt`
+# from 51 to 14: that file's 61 `lexmatch` arms are now read-and-skipped whole,
+# so the findings inside them are gone.
+#
+# `builtin/autoloc.mbt` was PARTIAL at line 74 -- where the `lexmatch` at line
+# 63 stopped the reader -- so its findings were WITHHELD and the inventory could
+# not see them. 0496's `lexmatch` fix made the file readable and the withheld
+# finding appeared: `no visible binding for 'sb'`, a LAMBDA PARAMETER inside an
+# interpolation, on code `moon check` accepts. 0496 FIXED it rather than pinning
+# `actionable=1` as though the finding were correct -- the 0488 rule, and the
+# same uncovering the 0488 comment records for `radix`.
+#
+# => 判据: +22 PARSED IS NOT A NUMBER, IT IS A LIST. "935 -> 957" could have
+# been twenty-two files that stopped being read, and the summary line cannot
+# tell the two apart. Nineteen files moved from PARTIAL to FOUND, three more
+# were PARTIAL-with-no-findings before and FOUND after, and every one of the
+# twenty-two is a file the character reader could not finish. The two that
+# stayed PARTIAL read FURTHER, which is the same defect seen from the other
+# side. And NONE of the twenty-two carries a finding: the code that became
+# readable produced nothing. So the pin moved down by four and the reader moved
+# up by twenty-two at the same time, and a pin that had moved on the summary
+# line alone would have said "fewer findings" without saying "more code read".
+#
+# => 判据: AN UNCOVERING IS NOT A REGRESSION. A false positive that was
+# WITHHELD behind a parse boundary is not a finding, and fixing it is not
+# "hiding a problem" -- the problem was in the ANALYZER, and the increment
+# removed it. Pinning `actionable=1` for `no visible binding for 'sb'` would
+# have frozen a defect into the pin and called it a corpus fact.
+#
+# `notices=10228` is dominated by the `.mbt.md` literate files: a `test` block
 # inside a Markdown file is "outside the analyzer's MoonBit subset", which is a
-# notice, not a defect. `unreliable=2956` is the post-boundary tail of the 94
-# partial files.
+# notice, not a defect. `unreliable=2432` is the post-boundary tail of the 72
+# partial files -- 94 at 0495, 72 now, because twenty-two of them are whole.
 #
 # And the SEVEN corpus pins now carry BEHAVIOUR-LENS signal, which the six did
 # not: core contributes 5 findings tagged `behavior`, and all five are
@@ -852,7 +946,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1836 unreliable=0 withheld=0 total=1836'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=2131 unreliable=0 withheld=0 total=2131'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
-  'moonbit_core'    = 'files=1029 parsed=935 actionable=37 notices=9988 unreliable=2956 withheld=552 total=12981'
+  'moonbit_core'    = 'files=1029 parsed=957 actionable=33 notices=10228 unreliable=2432 withheld=464 total=12693'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -886,6 +980,79 @@ if ($failed.Count -eq 0) {
     $script:stageOk = $false
   }
   if (-not $script:lastOk) { $failed += 'corpus' }
+}
+
+# --- 6b  the per-function census, and the CONTROL for it -----------------------
+# The census is pinned because it was NOT pinned once, and the cost of that is
+# written in NARRATIVE.md: the 0.4.31 README claimed the per-function view had
+# been measured "across the pinned corpora" and that the inventory was empty
+# but for two findings, and the census that produced those two covered SIX
+# corpora. The seventh carries more findings than all six put together. A
+# published number that is not gated is a number that can go missing silently.
+$PERFN = [ordered]@{
+  'moui'            = '0'
+  'moonbit_labeler' = '0'
+  'moonbit_image'   = '0'
+  'async'           = '0'
+  'proton'          = '2'
+  'proton_contract' = '0'
+  'moonbit_core'    = '56'
+}
+$PERFN_TOTAL = '58'
+
+if ($failed.Count -eq 0) {
+  $CS = Join-Path $root '_verify\census_perfunction.ps1'
+  if (-not (Test-Path $CS)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\census_perfunction.ps1'
+    $failed += 'perfunction-census'
+  } else {
+    Stage 'per-function census vs pinned baseline' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $CS 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      $total = ''
+      $perCorpus = ''
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '^PER-FUNCTION CENSUS actionable = (\d+)') { $total = $Matches[1] }
+        elseif ($ln -match '^\s+per corpus: (.+)$') { $perCorpus = $Matches[1] }
+        elseif ($ln -match '^\s+(\S+)\s+actionable=\d+\s+files=') {
+          $name = $Matches[1]
+          $n = [int]([regex]::Match($ln, 'actionable=(\d+)').Groups[1].Value)
+          $want = [int]$PERFN[$name]
+          if ($n -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $name, $n) }
+          else { Write-Output ("  [DRIFT ] {0,-16} pinned {1}, actual {2}" -f $name, $want, $n); $script:stageOk = $false }
+        }
+      }
+      if ($total -eq '') { Write-Output '  FAIL: the census printed no total.'; $script:stageOk = $false }
+      elseif ($total -ne $PERFN_TOTAL) { Write-Output ("  FAIL: total {0}, pinned {1}." -f $total, $PERFN_TOTAL); $script:stageOk = $false }
+      else { Write-Output ("  TOTAL {0}   ({1})" -f $total, $perCorpus) }
+      if ($code -ne 0) { Write-Output '  FAIL: the census script exited non-zero (an UNCLASSIFIED finding).'; $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'perfunction-census' }
+  }
+}
+
+if ($failed.Count -eq 0) {
+  $PC = Join-Path $root '_verify\control_perfunction_census.ps1'
+  if (-not (Test-Path $PC)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\control_perfunction_census.ps1'
+    $failed += 'perfunction-control'
+  } else {
+    Stage 'per-function census control (the files are READ by moon check)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PC 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '^(GATE OK|GATE FAILED|read by moon check|BASELINE FAILED|RESTORE FAILED|  NOT READ)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'perfunction-control' }
+  }
 }
 
 # --- verdict -----------------------------------------------------------------

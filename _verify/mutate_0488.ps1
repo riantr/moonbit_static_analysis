@@ -148,14 +148,20 @@ Invoke-MutationGate -Name '0488' -Target 'wasm' -Mutations @(
   # M5 DEFECT C. A bare `=` is no longer treated as a label, so `\{value.to_string(radix=16)}` flushes
   # `radix` as a READ and `no visible binding for 'radix'` comes back -- the finding that reached
   # the inventory as async's first `actionable` and was fixed in the same increment.
+  #
+  # 0496 RE-ANCHORED THIS ONE, AND THE CLAIM IS THE SAME ONE. 0496 moved the `=>` carve-out OUT
+  # of this branch and into a branch of its own ABOVE it -- the arrow and the label are now two
+  # different conditions -- so the `self.chars[self.pos] != '>'` line is gone from here. The
+  # condition that remains is the one that says "this `=` is not part of a `==`", and that is
+  # what the mutation disables: the branch stops firing, the name falls through to the generic
+  # `else`, and it is flushed as a READ.
   @{
     Name = 'M5 a labelled argument is read as a name again'
     File = $LEXER
     Find = @'
     } else if c == '=' &&
       self.pos < self.chars.length() &&
-      self.chars[self.pos] != '=' &&
-      self.chars[self.pos] != '>' {
+      self.chars[self.pos] != '=' {
 '@.Replace("`r`n", "`n")
     Repl = @'
     } else if false {
@@ -168,12 +174,18 @@ Invoke-MutationGate -Name '0488' -Target 'wasm' -Mutations @(
   # reads that are real, so `\{a == b}` and `\{nothing.map(x => x + 1).length()}` stop being reported
   # and the toolchain still accepts them. This is the row that says the fix is a carve-out and not a
   # blanket, and it is the positive control for M5's row.
+  #
+  # 0496 RE-ANCHORED THIS ONE. The `=>` carve-out moved to a branch of its own, so this row now
+  # covers the `==` half: the label branch's `!= '='` test is what keeps `\{a == b}` reading both
+  # of its names, and the mutation makes every `=` a label. The `=>` half is 0496's `=>` branch,
+  # and it is pinned by 0496's own M14 -- which is why the two rows together still cover what
+  # this one covered alone, and why the claim below says so rather than implying that this
+  # mutation still disables the arrow.
   @{
     Name = 'M6 every = is treated as a label, so == and => stop reading their names'
     File = $LEXER
     Find = @'
-      self.chars[self.pos] != '=' &&
-      self.chars[self.pos] != '>' {
+      self.chars[self.pos] != '=' {
 '@.Replace("`r`n", "`n")
     Repl = @'
       true {

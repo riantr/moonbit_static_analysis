@@ -138,9 +138,17 @@ foreach ($k in $PROBE_CASES.Keys) {
   if (-not $isCanary -and -not [string]::IsNullOrEmpty($Only) -and $k -notlike "*$Only*") { continue }
   $d = Join-Path $base $k
   New-Item -ItemType Directory -Force -Path $d | Out-Null
-  Set-Content -LiteralPath (Join-Path $d 'moon.mod') -Value "name = `"mbprobe/$k`"`n`nversion = `"0.1.0`"`n" -NoNewline
-  Set-Content -LiteralPath (Join-Path $d 'moon.pkg') -Value "supported_targets = `"+all`"`n" -NoNewline
-  Set-Content -LiteralPath (Join-Path $d 'subject.mbt') -Value $PROBE_CASES[$k] -NoNewline
+  # UTF-8, and NOT `Set-Content`: on Windows PowerShell 5.1 `Set-Content` writes
+  # the ANSI codepage, so a case carrying a non-ASCII character was written as
+  # GBK and came out as bytes the toolchain refuses to read -- [3001] "Could not
+  # read the file because it contains invalid UTF-8 streams" -- which made a
+  # legal MoonBit form score MOON-BAD. The planted row that carried an em dash
+  # in a doc comment is what exposed it; see `Read-CorpusLinesUtf8` in
+  # `_verify\derive_planted_gap.ps1` for the same defect on the READ side.
+  $utf8 = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText((Join-Path $d 'moon.mod'), ("name = `"mbprobe/$k`"`n`nversion = `"0.1.0`"`n"), $utf8)
+  [System.IO.File]::WriteAllText((Join-Path $d 'moon.pkg'), "supported_targets = `"+all`"`n", $utf8)
+  [System.IO.File]::WriteAllText((Join-Path $d 'subject.mbt'), $PROBE_CASES[$k], $utf8)
 
   Push-Location $d
   $mo = (& $moon check 2>&1 | Out-String)
