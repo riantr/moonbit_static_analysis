@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.31 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.32 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -175,16 +175,26 @@ unchanged: the same corpora produce byte-identical numbers with and without
 the flag.
 
 > **The view is not yet sound — read this before using the numbers.** Measured
-> across the pinned corpora it reported **116** `actionable` where the module
-> view reports 0. Those are not 116 defects; they are an inventory of what is
-> wrong with the behavioral lens, and 0.4.31 emptied it — eight families, each
-> fixed with a control that must still report. What is left is **two**, and
-> both are the documented `#doc(hidden)` limit: a cross-package hidden function
-> cannot be indexed from the dependency's *source*, only from its `.mbti`.
-> Use the flag to *see* the lens; do not gate a build on it.
+> across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and
+> **pinned** by the release gate, it reports **58** `actionable` where the module
+> view reports 33. **Not one of the 58 is a defect in the analysed code.** They
+> are twelve families of the lens's own edges: a hex float literal and a BigInt
+> literal's `N` suffix are not read, `==` between two arrays is not modelled,
+> nine names the analyzer cannot see, and so on. The claim that they are not
+> defects is *measured*: `moon check --target all` reports exactly one error on
+> `moonbitlang/core`, in `json/README.mbt.md`, and it is not one of the
+> twenty-four files that carry a finding — and a positive control appends a
+> deliberate type error to each of those files, in a copy, and requires the
+> error back, **24 of 24**. Two of the 58 are the documented `#doc(hidden)`
+> limit: a cross-package hidden function cannot be indexed from the dependency's
+> *source*, only from its `.mbti`. Use the flag to *see* the lens; do not gate a
+> build on it.
 >
-> (This note said **58** and "What remains is **one** class" until 0.4.30
-> fixed the sibling-file class: 51 of the 58 were that one class.)
+> (This note said **116** and "the inventory is empty but for two" until 0.4.32
+> measured the census over **seven** corpora. The census that produced the two
+> covered **six** — `moonbit_core` was not in it, and it carries more findings
+> than all six put together. A published number that is not gated is a number
+> that can go missing silently.)
 
 ## What the numbers mean, and what they do not
 

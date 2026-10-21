@@ -28,7 +28,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.31
+moon add riantr/moonbit_static_analysis@0.4.32
 ```
 
 ```moonbit
@@ -323,7 +323,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1136/1136 on wasm; 1056/1056 on js and wasm-gc
+moon test --deny-warn                # 1163/1163 on wasm; 1083/1083 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -453,7 +453,7 @@ The module is published through the following channels (one source, three syncs)
   `moon test --target js --deny-warn`, `moon build --target wasm`), runs `moon publish`, and
   creates the GitHub Release. The credential is the `MOONCAKES_RIANTR_TOKEN` secret, whose
   VALUE is the whole contents of `~/.moon/credentials.json` — not a bare token. (After
-  publishing, `riantr/moonbit_static_analysis@0.4.31` can be imported by any MoonBit module;
+  publishing, `riantr/moonbit_static_analysis@0.4.32` can be imported by any MoonBit module;
   `src/cli` ships a SKILL.md and is listed on
   [skills.mooncakes.io](https://skills.mooncakes.io).)
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
@@ -566,38 +566,55 @@ either hiding the other. The default (module) view is unchanged: the same
 corpora produce byte-identical numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** The
-> per-function view was measured across the pinned corpora and reported **116**
-> `actionable` findings, where the module view reports 0. Those 116 are not 116
-> defects in the analysed code — every one of them sits in a file that
-> `moon check` accepts, in released, published packages. They were an
-> *inventory of what is still wrong with the behavioral lens*, and 0.4.31
-> emptied it.
+> per-function view is measured across **all seven** pinned corpora by
+> `_verify/census_perfunction.ps1`, and the release gate **pins** the number.
+> Today it reports **58** `actionable` findings, where the module view reports
+> 33 (all 33 of them in `moonbit_core`). **Not one of the 58 is a defect in the
+> analysed code.**
 >
 > | family | n | what the lens claimed |
 > |---|---:|---|
-> | A | 61 | a destructured name is bound to the **whole tuple**, not to an element |
-> | B | 25 | a `continue`/`break` that **carries a value** is unreachable code |
-> | C | 8 | a statement after a loop whose body always terminates is dead |
-> | D | 10 | an `extern`/FFI call, an omittable parameter read as a positional slot, a name declared **twice**, and a function with no body — **four** defects wearing one name |
-> | E | 5 | a trait's method is not a value, so a qualified call is an undefined function |
-> | F | 4 | an integer `/` is typed as `float` |
-> | G | 2 | a name bound by an `is`-pattern `as`-binding is not bound |
-> | H | 1 | a comprehension does not bind its pattern |
+> | A | 12 | a hex float literal (`0x1.0p1023`) is not read, so its exponent part is reported as an undefined name |
+> | B | 5 | a BigInt literal's `N` suffix (`0N`) is not read |
+> | C | 6 | `==` between two arrays |
+> | D | 3 | `Int + Char` and `List + List` |
+> | E | 3 | `*` on a struct |
+> | F | 9 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index, a module qualifier |
+> | G | 11 | unreachable code — the lens's own claim about the code |
+> | H | 2 | a local assigned and never read — the lens's own claim about the code |
+> | I | 1 | `abs` on a `Double` |
+> | J | 1 | `*` on two function values |
+> | K | 3 | a local call with a named argument |
+> | L | 2 | the documented `#doc(hidden)` limit |
 >
-> **What is left is two, and both are the documented limit rather than a
-> defect**: a cross-package `#doc(hidden)` function cannot be indexed from the
-> dependency's *source* — only from its `.mbti` — so
+> **"Accepted" is measured, not assumed.** `moon check --target all` on
+> `moonbitlang/core` reports exactly **one** error, in `json/README.mbt.md`, and
+> it is not one of the **twenty-four** files that carry a finding. That is only
+> half of it: a file with no diagnostic is indistinguishable from a file nobody
+> opened, so `_verify/control_perfunction_census.ps1` appends a deliberate type
+> error to each of those files **in a copy** and requires the error back —
+> **24 of 24**. Under `--target js` five of them would report nothing at all,
+> because MoonBit's per-file `targets` options do not compile them for that
+> target; a file no target compiles is a file the checker never saw.
+>
+> **The two in family L are the documented limit rather than a defect**: a
+> cross-package `#doc(hidden)` function cannot be indexed from the dependency's
+> *source* — only from its `.mbti` — so
 > `@locale.LocalePreferences::resolve` is still reported as an undefined
 > function in `proton` 0.3.4 (`facade_locale.mbt:70`,
 > `core/app_command_host.mbt:114`). Answering them would mean growing the
 > analyzer into a source indexer, which is a different project. Use the view to
 > see the lens, not to gate a build.
 >
-> (This note said **58** and "what remains is **one** class" until 0.4.30 fixed
-> the sibling-file class, and **7** and "four smaller classes" after that. The
-> number kept falling because the note was describing an *inventory*, and an
-> inventory is not one class of defect — it is eight of them, and measuring them
-> one at a time is what emptied it.)
+> (This note said **116** and "what remains is **one** class" until 0.4.30 fixed
+> the sibling-file class, and **7** and "four smaller classes" after that, and
+> then **2** until 0.4.32 measured the census over **seven** corpora instead of
+> six. The census that produced the two covered six: `moonbit_core` was not in
+> it, and it carries more findings than all six put together. The 0.4.31 number
+> was true of the corpora that were measured and false of the ones that were
+> not — and a published number that is not gated is a number that can go missing
+> silently, so the census is now tracked, pinned, and fails on a finding it
+> cannot classify.)
 
 **Measured** (before and after the trusted-region gate, same trees):
 
@@ -822,6 +839,110 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+### 0.4.32 — the escape that was counting UTF-16 units, the lexical match, and the census that was measured over six corpora
+
+#### The character literal's escape: the whole grammar, and a CRASH under it
+
+The standing note for this item said the reader "takes at most FOUR hex digits, which is
+exactly the BMP". **The observation was right and the explanation was wrong**, and the
+explanation was the dangerous part: a fix written from that note would have bounded the
+digits and **still refused `'\u{10000}'`**.
+
+The mechanism, measured in MoonBit: `"\u{1F600}".to_string().length()` is **2** — UTF-16
+code units — while `.to_array().length()` is **1** — code points. The reader took as many
+hex digits as there were and then checked `s.length() != 1`, which is a **UTF-16 count**.
+The escape form was never the problem; the *count* was.
+
+So the reader now implements the toolchain's whole escape grammar (29 forms, each settled
+against `moon check`) and counts **characters**. `\xNN` takes exactly two digits; `\u{...}`
+takes one to six, with the value at most U+10FFFF and no surrogates; `\uXXXX` takes exactly
+four; the byte form takes no `\u` at all. Digits past the limit are consumed but not
+accumulated, and a seventh digit flags the literal malformed.
+
+**There was a CRASH under all of this.** `'\u{110000}'` reached `v.unsafe_to_char()` and
+raised `RuntimeError: unreachable`, which aborted the **whole scan** — every later file
+went unread, and the scan still printed a SUMMARY line, so the failure looked like a corpus
+that happened to have fewer findings. The bound is not a refinement of the escape rule; it
+is the difference between a scanner that answers and a scanner that stops.
+
+**The character count also unblocks the astral literal that is written out.** It was not
+only the escaped form: `builtin/string_methods.mbt:117` is `c == '😂'`, and that is what
+stopped the file at line 117. A reader that fixed only the escaped form would have left
+half the corpus behind.
+
+#### `lexmatch` is a construct, not a name
+
+The named item was the labelled capture `(re"..." as t, after=next)`. The scope was
+**re-derived** first: `after=` appears on 283 lines across 22 files in the corpus, and
+hand-classifying them found **84 real sites in five files of one corpus** and **zero** in
+the other six. The standing note said "18 sites in 3 PINNED core files"; 18 is the two
+`diff` test files alone, so both the count and the file count were wrong.
+
+`lexmatch` was read as a plain name, so the parser reported `undefined name 'lexmatch'` at
+four corpus sites — on code `moon check` accepts. It is now read as a construct: the
+subject, an optional `with longest`, and the arms, which are skipped whole. The expression
+is noted as outside the analyzed subset, and it reuses `@ast.EMatch` — the shape is
+identical, so a new variant would have rippled through walk/types/infer/interp and the
+`.mbti` for no new information.
+
+#### A lambda parameter inside an interpolation is a BINDING, not a read
+
+Fixing `lexmatch` made `builtin/autoloc.mbt` readable past its old boundary, and the file
+then reported `no visible binding for 'sb'` at 83:5 — `sb` is a parameter of a lambda
+inside an interpolation:
+
+```
+$|{"filename":\{sb => self.filename.escape_to(sb)},...}
+```
+
+The collector flushed the name at the first non-identifier character, and in `sb => sb`
+that character is the **space**. Both spellings are handled (`sb=>sb` and `sb => sb`), and
+an uncovering is not a regression: the finding was withheld behind the old parse boundary,
+so it was **fixed** in this increment rather than pinned as `actionable=1`.
+
+#### The census was measured over six corpora, and the seventh was never counted
+
+The `--per-function` box above is rewritten, and the reason is worth reading: the census
+that produced 0.4.31's "116 → 2" covered **six** corpora, and `moonbit_core` was not in it.
+Measured over seven, the number at 0.4.31 was **66**. Two wasms over the same corpus make
+the direction unambiguous:
+
+```
+                        pre-0496 (be21ecd)        0496
+    files                     1029                 1029      UNCHANGED
+    parsed                     935                  957      +22
+    actionable                  64                   56       -8
+```
+
+The finding sets differ by exactly **8**, with **zero new**: all eight are
+`undefined variable 'lexmatch'`. So this increment made the census **better**, and the
+number that went up is a number that had never been counted.
+
+The 58 are classified into **twelve families** by a **tracked** census script that fails on
+a finding it cannot classify, and the release gate **pins** the number per corpus. None of
+them is a defect in the analysed code, and that claim is measured rather than asserted:
+`moon check --target all` reports exactly one error on `moonbitlang/core`, in
+`json/README.mbt.md`, and it is not one of the twenty-four files that carry a finding. A
+file with no diagnostic is indistinguishable from a file nobody opened, so a **positive
+control** appends a deliberate type error to each of those files, in a **copy**, and
+requires the error back — **24 of 24**. Under `--target js` five of them report nothing at
+all, because MoonBit's per-file `targets` options do not compile them for that target: a
+file no target compiles is a file the checker never saw.
+
+#### The counts, after
+
+```
+    test suite                 1163 passed, 0 failed   (1136 before 0496; +27)
+    per-function census        66 -> 58 over SEVEN corpora   (core 64 -> 56; proton 2 -> 2)
+    the 58                     12 families, and not one is a defect in the analysed code
+    the files that carry them  24, and moon check READS 24 of 24
+    the census                 TRACKED, PINNED, and it fails on an UNCLASSIFIED finding
+    module-view corpus pins    moonbit_core 33 (37 before 0496); the other six BYTE-IDENTICAL
+    mutation gates             79 in the release gate (78 before 0496)
+    0496's own gate            14 mutations: 13 KILLED, 1 declared survivor with its proof
+    gates re-anchored          6 (0459 M4, 0480 M1-M3, 0488 M5-M6)
+```
+
 ### 0.4.31 — the 116 findings were an inventory of the lens, and the inventory is empty
 
 At 0.4.30 the `--per-function` view reported 7 `actionable` on `moui` 0.1.12, in "four
@@ -910,12 +1031,24 @@ four corpora needs all of them. The default is unchanged.
 
 ```
     per-function actionable findings   116 -> 2   (the 2 are the documented #doc(hidden) limit)
+                                         ^^ CORRECTED IN 0.4.32 -- that census covered SIX corpora.
     module-view corpus pins            UNCHANGED on six corpora; moonbit_core 48 -> 37
     moon test --deny-warn              1136/1136 on wasm; 1056/1056 on js and wasm-gc
     moon check --deny-warn             exit 0
     self-scan (own source)             167/167 parsed, actionable=0
     mutation gates                     78 gates green; one mutation retired with its reason
 ```
+
+**The "2" was the census of six corpora, and the seventh was never counted.** The census
+that produced it covered `moui`, `moonbit_labeler`, `moonbit_image`, `async`, `proton` and
+`proton_contract`. `moonbit_core` was not in it — and `moonbit_core` carries more findings
+than all six put together. Measured over **seven** corpora, the number at 0.4.31 was
+**66**, not 2. The inventory this release declared empty was not empty.
+
+The fix is not a better sentence; it is a census that is **tracked** (so the seventh
+cannot be dropped again), that **names** the corpora it covers, that **fails** on a
+finding it cannot classify, and that the release gate **pins**. 0.4.32 adds both:
+`_verify/census_perfunction.ps1` and `_verify/control_perfunction_census.ps1`.
 
 ### 0.4.30 — the last 89 findings went to zero, and the behavioral lens turned out to be WRONG
 
