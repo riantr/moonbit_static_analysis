@@ -28,7 +28,7 @@ One pipeline runs through both: **structural walk → types/symbols → abstract
 ## Install / Quick start
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.30
+moon add riantr/moonbit_static_analysis@0.4.31
 ```
 
 ```moonbit
@@ -323,7 +323,7 @@ src/cli       executable entry (program demo + file-kind demo + sample machine a
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1096/1096 on wasm; 1024/1024 on js and wasm-gc
+moon test --deny-warn                # 1136/1136 on wasm; 1056/1056 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + pyroduct-shaped sample machine audit
 ```
 
@@ -357,16 +357,16 @@ probe's own verdicts; the own-source self-scan; the published-package self-scan'
 self-test; the scan of the package that was actually **published**; the corpus comparison
 against the pinned baselines; and then **every mutation gate**.
 
-That last part is the point, and it is measured rather than asserted. `_verify/` holds 249
-`.ps1` scripts, of which **77 are mutation gates** — and **all 77 are inside the gate list**
+That last part is the point, and it is measured rather than asserted. `_verify/` holds 251
+`.ps1` scripts, of which **78 are mutation gates** — and **all 78 are inside the gate list**
 in `release.ps1` (`$gates`): no mutation gate is left out of the release path, and no entry
-in the list points at a script that does not exist. The remaining 172 are one-off settles,
+in the list points at a script that does not exist. The remaining 173 are one-off settles,
 probes and evidence, plus the authoring tools (`mutate_lib.ps1`, `named_claims.ps1`,
 `prove_mustred.ps1`, `preflight_compile.ps1`); they are inputs, not release stages.
 
 Two switches change what it does:
 
-- `-SkipMutations` runs everything except the 77 mutation gates — the corpus pins and the
+- `-SkipMutations` runs everything except the 78 mutation gates — the corpus pins and the
   own-source self-scan, about eight minutes. Use it when the question is "did the corpus
   move?", not "is a gate red?".
 - `-SelfTest` exercises the harness's own stage function against a failing body, a
@@ -453,7 +453,7 @@ The module is published through the following channels (one source, three syncs)
   `moon test --target js --deny-warn`, `moon build --target wasm`), runs `moon publish`, and
   creates the GitHub Release. The credential is the `MOONCAKES_RIANTR_TOKEN` secret, whose
   VALUE is the whole contents of `~/.moon/credentials.json` — not a bare token. (After
-  publishing, `riantr/moonbit_static_analysis@0.4.30` can be imported by any MoonBit module;
+  publishing, `riantr/moonbit_static_analysis@0.4.31` can be imported by any MoonBit module;
   `src/cli` ships a SKILL.md and is listed on
   [skills.mooncakes.io](https://skills.mooncakes.io).)
 - **Gitee / GitHub**: `git push` to both; tags stay in lockstep with the moon.mod version.
@@ -546,7 +546,7 @@ another package never hit.
   was zero), so it is intentionally not part of the sum.
 
 **`--per-function`: enter the behavioral lens at each FUNCTION** (new in
-0.4.30 — this release). The behavioral lens normally enters at the **module**: a
+0.4.30). The behavioral lens normally enters at the **module**: a
 function body is executed only if something *calls* it from a top-level
 statement. A library module does not call its own functions at top level, so on
 a library the lens executed **zero** function bodies — on the six corpora pinned
@@ -566,20 +566,38 @@ either hiding the other. The default (module) view is unchanged: the same
 corpora produce byte-identical numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** The
-> per-function view reports 7 `actionable` on `moui` 0.1.12, where the module
-> view reports 0. Those 7 are not 7 defects — they are an *inventory of
-> what is still wrong with the behavioral lens*. Six classes of lens defect
-> have been fixed since the view was added (a list value against a list
-> parameter, a call that omitted an omittable parameter, a function whose body
-> is an `if`, a string concatenation, a string comparison, and a name used from
-> a *sibling file of the same package*, which the single-file lens could not
-> see). What remains is four smaller classes: a name bound by an `is`-pattern,
-> a `None` receiver, a cross-file constructor's arity, and unreachable code.
-> Use it to see the lens, not to gate a build.
+> per-function view was measured across the pinned corpora and reported **116**
+> `actionable` findings, where the module view reports 0. Those 116 are not 116
+> defects in the analysed code — every one of them sits in a file that
+> `moon check` accepts, in released, published packages. They were an
+> *inventory of what is still wrong with the behavioral lens*, and 0.4.31
+> emptied it.
+>
+> | family | n | what the lens claimed |
+> |---|---:|---|
+> | A | 61 | a destructured name is bound to the **whole tuple**, not to an element |
+> | B | 25 | a `continue`/`break` that **carries a value** is unreachable code |
+> | C | 8 | a statement after a loop whose body always terminates is dead |
+> | D | 10 | an `extern`/FFI call, an omittable parameter read as a positional slot, a name declared **twice**, and a function with no body — **four** defects wearing one name |
+> | E | 5 | a trait's method is not a value, so a qualified call is an undefined function |
+> | F | 4 | an integer `/` is typed as `float` |
+> | G | 2 | a name bound by an `is`-pattern `as`-binding is not bound |
+> | H | 1 | a comprehension does not bind its pattern |
+>
+> **What is left is two, and both are the documented limit rather than a
+> defect**: a cross-package `#doc(hidden)` function cannot be indexed from the
+> dependency's *source* — only from its `.mbti` — so
+> `@locale.LocalePreferences::resolve` is still reported as an undefined
+> function in `proton` 0.3.4 (`facade_locale.mbt:70`,
+> `core/app_command_host.mbt:114`). Answering them would mean growing the
+> analyzer into a source indexer, which is a different project. Use the view to
+> see the lens, not to gate a build.
 >
 > (This note said **58** and "what remains is **one** class" until 0.4.30 fixed
-> the sibling-file class: 51 of the 58 were that one class, and the seven that
-> remain are the four above plus the unreachable-code finding.)
+> the sibling-file class, and **7** and "four smaller classes" after that. The
+> number kept falling because the note was describing an *inventory*, and an
+> inventory is not one class of defect — it is eight of them, and measuring them
+> one at a time is what emptied it.)
 
 **Measured** (before and after the trusted-region gate, same trees):
 
@@ -803,6 +821,101 @@ Tests: 220 js / 292 wasm / 220 wasm-gc. Seven guards mutation-verified, and one
 of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
+
+### 0.4.31 — the 116 findings were an inventory of the lens, and the inventory is empty
+
+At 0.4.30 the `--per-function` view reported 7 `actionable` on `moui` 0.1.12, in "four
+smaller classes" of lens defect. That was the wrong way round: the number was small because
+the view had only been pointed at one corpus, and the *classes* were the real content. This
+release measures the view across the pinned corpora — **116 actionable findings** — classifies
+them into **eight families**, and fixes each one with a control that must still report.
+
+| family | n | what the lens claimed | the fix |
+|---|---:|---|---|
+| A | 61 | a destructured name is bound to the **whole tuple** | it is bound to an element — the type lens already answered "Unknown" |
+| B | 25 | a `continue`/`break` that **carries a value** is unreachable code | the carried values are the terminator's **own payload**, not sibling statements |
+| C | 8 | a statement after a loop whose body always terminates is dead | the loop's "may have broken out" is a **separate** signal from the joined flow |
+| D | 10 | an `extern`/FFI call, an omittable parameter read as a positional slot, a name declared **twice**, and a function with no body | **four** defects wearing one name, each isolated by its own probe |
+| E | 5 | a trait's method is not a value | the `.mbti` reader harvests the trait's methods as `Trait::method` |
+| F | 4 | an integer `/` is typed as `float` | `div_type`, and the constant fold beside it |
+| G | 2 | a name bound by an `is`-pattern `as`-binding is not bound | the `as` binding is collected at **any** depth |
+| H | 1 | a comprehension does not bind its pattern | the names are bound in a copy of the environment |
+
+**NOT ONE OF THE 116 WAS A DEFECT IN THE ANALYSED CODE.** Every one of them sits in a file
+`moon check` accepts, in released, published packages. They were an *inventory of the lens*,
+and the inventory is now empty but for two findings that are the documented `#doc(hidden)`
+limit — a cross-package hidden function cannot be indexed from the dependency's *source*,
+only from its `.mbti`, and answering them would mean growing the analyzer into a source
+indexer, which is a different project.
+
+#### The module view did not move — except on one corpus, and there it moved DOWN
+
+Six of the seven pinned corpora produce byte-identical module-view numbers, which is the whole
+point of keeping the two views separate. The seventh, `moonbit_core`, went from **48 actionable
+to 37**, and *how* that number moved is the part worth reading: two wasms were built, one from
+the pre-0495 tree and one from this one, and the **same** corpus was scanned by both.
+
+```
+    actionable  48 -> 37
+    notices     9988 -> 9988   UNCHANGED
+    unreliable  2956 -> 2956   UNCHANGED
+    withheld    552 -> 552     UNCHANGED
+    parsed      935 -> 935     UNCHANGED
+    files       1029 -> 1029   UNCHANGED
+```
+
+The finding **sets** differ by exactly 11, with **zero new ones**: ten `undefined name 'rl'`
+/ `'lr'` (the `is` pattern `(Node(..) as rl)`) and one `no visible binding for
+'Arbitrary::arbitrary'` (a trait's method read as a value). The per-file `defects=` headers,
+which are not truncated, show that exactly **two of the 680** files with findings changed at
+all, and every other file's count is identical. A count alone could not have told eleven
+findings fixed from eleven findings traded for eleven new ones; the set can, and it says the
+first.
+
+#### Five mutation gates that this increment's own source changes broke
+
+The full release gate went red on its first run, at five gates, and the cause was this
+increment's own work: 0495 moved the text those gates name. A moved anchor is not a typo to
+fix — it is re-anchored onto the current text with the **same** mutation, and then measured
+to see that it still kills. All 31 anchors across the five gates are present and unique.
+
+**And then three of the five failed for reasons that had nothing to do with the anchor**,
+which is the part worth reading, because a re-anchor that ends in a green gate can hide a gate
+that has stopped guarding anything.
+
+- **0.4.25's M7 SURVIVED, and the survivor was right.** 0495 replaced a `falls` flag with a
+  list of flows and a join, and the missing-else arm went from *assigning* the fall-through to
+  *contributing* one — so it became redundant whenever some branch falls through, which is
+  exactly where 0.4.25's fixture sat. The line still governs the case no fixture covered: a
+  chain with no else where **every** branch terminates. Measured on the pre-0495 tree, that
+  mutation killed exactly one test; on this tree it killed none. So the fix was a **fixture**,
+  not a re-anchor — and M7 is killed again.
+- **0472's M5 is not expressible any more.** The carried values of a `continue` are the
+  terminator's own payload now, `Array[Expr]`, and an assignment is a `Stmt` kind — so the
+  mutation cannot be written at all, and the compiler says so. The claim it pinned is now
+  enforced **by the type**, which is stronger than a line of code; it is retired with that
+  reason, and a **new** mutation pins the other half of the claim ("the values are read") at
+  the site where it now lives.
+- **0493's M3's named test stopped being the right one.** A fix elsewhere — an omittable
+  parameter is not a positional slot — made the row it named stop discriminating between the
+  two mechanisms. The row that still discriminates (a label the callee does not have) now
+  names it, and the reason is written down rather than assumed.
+
+#### A flag for the enumeration
+
+`--findings-shown-per-file N` — the per-file print cap was 40, and counting 116 findings across
+four corpora needs all of them. The default is unchanged.
+
+#### The counts, after
+
+```
+    per-function actionable findings   116 -> 2   (the 2 are the documented #doc(hidden) limit)
+    module-view corpus pins            UNCHANGED on six corpora; moonbit_core 48 -> 37
+    moon test --deny-warn              1136/1136 on wasm; 1056/1056 on js and wasm-gc
+    moon check --deny-warn             exit 0
+    self-scan (own source)             167/167 parsed, actionable=0
+    mutation gates                     78 gates green; one mutation retired with its reason
+```
 
 ### 0.4.30 — the last 89 findings went to zero, and the behavioral lens turned out to be WRONG
 

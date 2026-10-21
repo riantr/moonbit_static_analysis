@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.30 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.31 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -174,17 +174,14 @@ The two views are **separate, not additive**. The default (module) view is
 unchanged: the same corpora produce byte-identical numbers with and without
 the flag.
 
-> **The view is not yet sound — read this before using the numbers.** It
-> reports 7 `actionable` on `moui` 0.1.12 where the module view reports 0.
-> Those are not 7 defects; they are an inventory of what is still wrong with
-> the behavioral lens, which the entry made visible for the first time. Six
-> classes of lens defect have been fixed since (a list value against a list
-> parameter, a call that omitted an omittable parameter, a function whose body
-> is an `if`, a string concatenation, a string comparison, and a name used
-> from a sibling file of the same package, which the single-file lens could
-> not see). What remains is four smaller classes: a name bound by an
-> `is`-pattern, a `None` receiver, a cross-file constructor's arity, and
-> unreachable code. Use the flag to *see* the lens; do not gate a build on it.
+> **The view is not yet sound — read this before using the numbers.** Measured
+> across the pinned corpora it reported **116** `actionable` where the module
+> view reports 0. Those are not 116 defects; they are an inventory of what is
+> wrong with the behavioral lens, and 0.4.31 emptied it — eight families, each
+> fixed with a control that must still report. What is left is **two**, and
+> both are the documented `#doc(hidden)` limit: a cross-package hidden function
+> cannot be indexed from the dependency's *source*, only from its `.mbti`.
+> Use the flag to *see* the lens; do not gate a build on it.
 >
 > (This note said **58** and "What remains is **one** class" until 0.4.30
 > fixed the sibling-file class: 51 of the 58 were that one class.)
