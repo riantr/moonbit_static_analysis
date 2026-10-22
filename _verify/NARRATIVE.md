@@ -5958,3 +5958,159 @@ README's sentences were not true, and five of them had been true when they were 
 COMMENT. "Every version in the README must be current" is right for the version a reader
 INSTALLS and wrong for the version a reader is TOLD ABOUT IN PROSE -- and the gate that
 could not tell the two apart was one release away from being switched off.
+
+## 0499: THE PACKAGE SAID "FILES THAT MUST NEVER REACH THE REGISTRY", AND FOUR OF THEM DID
+
+### THE FILE IS NOT CALLED `.mooncakesignore`
+
+The packager's rule, from the toolchain's own release note (2026-09-21):
+
+> Packaging now follows conventional ignore-file rules: the `.moonignore` in a folder
+> -- or, if absent, `.gitignore` -- is used as the ignore file. By default, files and
+> folders starting with `.` are ignored (this rule can be overridden via the ignore
+> file), as is the `_build` folder (not overridable). The `exclude` and `include` fields
+> in `moon.mod` will be deprecated.
+
+MEASURED: `moon publish --help` and `moon package --help` expose no ignore flag; the
+release notes and the packaging docs name only `.moonignore`; and this repository has
+had a `.moonignore` since 0.3.4, whose own header already says "moon package does not
+read .gitignore".
+
+**There is no `.mooncakesignore`.** A file the packager never reads is a comment, so
+the rules went into the file that IS read. Two consequences that are easy to get wrong:
+
+- `.moonignore` **REPLACES** `.gitignore` as the ignore file -- it does not add to it.
+  Every rule that matters has to be in BOTH files.
+- The packager reads the **WORKING TREE**, not git. A dirty tree packages differently
+  from a clean one, and the two are not the same set.
+
+### FOUR SCRATCH FILES REACHED THE REGISTRY IN EVERY RELEASE UP TO 0.4.33
+
+MEASURED against the published 0.4.33 tree (413 files): four of them were
+`COMMIT_*.md` -- scratch commit messages, superseded by `CHANGELOG.md` since the 0497
+README restructure, and referenced by nothing (`git grep` finds no mention of any of
+them).
+
+They were **TRACKED**, and a tracked file is in the checkout CI publishes from, so they
+shipped in 0.4.30, 0.4.31 and 0.4.32 as well.
+
+Thirteen files left the index: the four at the root and nine `_verify/commitmsg*.txt`.
+They stay on disk (`git rm --cached`) and matching `.gitignore` rules keep them out.
+
+### WHAT ELSE WAS EXCLUDED, AND WHY THE EVIDENCE WAS NOT
+
+The scratch commit messages (23 on disk), the scan artifacts (24 `.mmd`), `pdf2md.zip`,
+a stray file named `$null`, the gate transcripts, the remeasure dumps, the release-run
+working copies, and the `_verify` working copies -- including `_verify/_work_*.mbt`,
+which are mutated **source** copies.
+
+The evidence is NOT excluded: the 79 mutation gates and their harness, the 70 settle
+scripts, `_verify/NARRATIVE.md` and the roster gate all still ship.
+
+**An ignore file that takes the evidence with it looks like a successful cleanup.**
+That is why the rules were chosen backwards -- from what MUST ship -- rather than from
+what looks like junk.
+
+One file is named individually, because no shape rule can catch it without excluding
+real test files: `src/lexer/lexer_0488_test.mbt` is SUPERSEDED (its rows live in
+`src/parser/parser_0488_test.mbt`, because a test file lives in the package it tests
+and `src/lexer` cannot see `@parser` -- Error 4020), and what is left is a comment-only
+stub whose own header says "It is NOT tracked and must not be committed".
+
+### THE PACKAGE CONTENTS ARE NOW A GATE
+
+`.moonignore` is a list of intentions, and a list of intentions that nothing exercises
+is a comment. `_verify/check_package_contents.ps1` runs `moon package --list` -- the
+same command `moon publish` packages from -- and asserts BOTH directions:
+
+- the junk is **out**: the scratch commit messages, the scan artifacts, the credential,
+  the gate transcripts, the remeasure dumps, the un-committable stub;
+- the evidence is **in**: the 79 mutation gates and the harness, the settle scripts, the
+  narrative, the roster gate, the prove-contracts gate, the four documents a reader is
+  sent to, the module manifest and the proof file;
+- and **every tracked file ships**, except the six the toolchain drops by default
+  (files and folders whose name starts with `.`).
+
+It is release stage 4e.
+
+**IT HAS BEEN SHOWN TO GO RED IN BOTH DIRECTIONS**, which is the point of asserting
+both:
+
+| the defect | what the gate said |
+|---|---|
+| the `COMMIT_*.md` rule commented out | `scratch commit messages (root)  23  FAIL` |
+| `_verify/NARRATIVE.md` excluded | `the narrative  0  FAIL (want 1)` and `tracked but not in the package: 1  FAIL` |
+
+### AND THE DECISION THAT WAS ASKED FOR: `IfaceSymTab`
+
+`moon prove src/core` cannot succeed while `IfaceSymTab` is in the proven package,
+because the toolchain's proof prelude has no `Map` theory. The question asked was
+whether to move it.
+
+**MEASURED, and the answer is no -- not on the 0.4.x line.** `@core.IfaceSymTab` is
+named by **20 exported API lines** (MEASURED across the published `.mbti` files): ten in
+`core` itself, and ten function signatures in SIX other packages -- `interp` (3),
+`moonfiles` (2), `pipeline` (2), `parser`, `types` and `walk`. Moving one struct would
+change the signature of ten exported functions in six packages.
+
+And it would not fix the thing. The defect is that the proof prelude has no `Map`
+theory; any package carrying a `Map` has the same wall. Moving `IfaceSymTab` only
+moves the wall, and the 19 lemmas -- which are about `Lens::rank`, `Lens::lower`,
+`Family::severity` and the `Span`/`Pos` helpers, and touch `IfaceSymTab` not at all --
+would end up in a package that is not the one with the symbol table.
+
+**THE CHEAPER HONEST OPTIONS, in the order they should be tried:**
+
+1. **REPORT THE TOOLCHAIN BUG.** There is a reproduction, and it is one line long:
+   `MOON_PROVE_PRELUDE_OVERRIDE` makes the codegen emit `type map 'a1 'a2`, but it emits
+   it **after** the record that uses it, and why3 needs it before. That is an ordering
+   bug in the proof codegen, and fixing it there helps every MoonBit user with a `Map`
+   in a proven package -- this one included -- for no API change at all.
+2. **IF THE PROOF MUST BE GREEN BEFORE THE TOOLCHAIN FIXES IT, RESTRUCTURE -- DO NOT
+   MOVE.** The 19 lemmas prove `pos`, `span_at`, `zero_span`, `Lens::rank`, `Lens::lower`
+   and `Family::severity`, and `Lens` and `Family` are plain `pub(all) enum`s with no
+   `Map`. A new package holding those four types, the six `#proof_pure` functions and
+   the 19 lemmas -- with `src/core` re-exporting the four names through `pub use`, the
+   way it already re-exports for `.mbti` names -- would prove, and would keep
+   `@core.Span` and friends working. That is **additive**. The re-export path has a
+   history of its own here (0487: "a RE-EXPORTED type carried its name but not its
+   MEMBERS"), which is the thing to test first.
+3. **DO NOT CHANGE THE REPRESENTATION.** `IfaceSymTab` is on the hot path of every
+   cross-file name resolution; replacing `Map` with an array of pairs would trade a
+   toolchain limitation for an analyzer slowdown.
+
+This is a **0.5.0** decision (a new package, a re-export layer, new prover
+semantics), not a 0.4.x patch -- which is what the README now says, with the reason and
+the date.
+
+### THE COUNTS, AFTER
+
+```
+    the package, before this change             811 entries
+    the package, after                          425 entries
+    tracked files                               406   (was 419)
+    tracked files not in the package               0   (except the 6 the toolchain drops by default)
+    scratch commit messages in the package        0   (was 23 on disk, 4 of them tracked)
+    scan artifacts in the package                 0   (was 24)
+    the credential in the package                 0
+    gate transcripts in the package               0
+    mutation gates in the package                79
+    the settle scripts in the package            70
+    the narrative in the package                  1
+    the roster gate in the package                1
+    exported API lines naming @core.IfaceSymTab  20   (10 in core, 10 in six other packages)
+```
+
+=> 判据: AN IGNORE FILE THAT NOTHING EXERCISES IS A COMMENT, AND THE PACKAGE IT
+DESCRIBES IS NOT THE PACKAGE THAT SHIPS. The rules existed since 0.3.4, and four scratch
+files still reached the registry in three releases, because a rule that is only written
+down is not a rule that is applied.
+
+=> 判据: AN IGNORE FILE THAT TAKES THE EVIDENCE WITH IT LOOKS LIKE A SUCCESSFUL CLEANUP.
+The package shrank by 386 entries and the gates, the settle scripts and the narrative
+all still ship -- and the gate that checks the package asserts each of them by name.
+
+=> 判据: MOVE THE SYMPTOM, AND THE WALL MOVES WITH IT. The proof fails because the
+prelude has no `Map` theory. Moving the one `Map` out of `src/core` would have changed
+the signature of ten exported functions in six packages and left the actual defect
+exactly where it was.

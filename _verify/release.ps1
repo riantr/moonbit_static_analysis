@@ -385,6 +385,43 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4e  WHAT THE REGISTRY WILL RECEIVE ---------------------------------------
+# `.moonignore` decides what gets packaged. A rule that is never exercised is a
+# comment, and an ignore file whose rules silently stop matching is a package
+# that silently grows.
+#
+# MEASURED 2026-10-23: four scratch `COMMIT_*.md` files were TRACKED, and a
+# tracked file is in the checkout CI publishes from -- so they reached the
+# registry in every published version up to and including 0.4.33. The rules
+# that exclude them are now in `.moonignore` and in `.gitignore`, and the
+# thirteen files that were tracked and should not have been were removed from
+# the index.
+#
+# This stage runs `moon package --list` -- the same command `moon publish`
+# packages from -- and asserts BOTH directions: the junk is out, and the
+# evidence is in. It is a LOCAL check of what would be published; stage 5b
+# below then scans what WAS published.
+if ($failed.Count -eq 0) {
+  $PK = Join-Path $root '_verify\check_package_contents.ps1'
+  if (-not (Test-Path $PK)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_package_contents.ps1'
+    $failed += 'package-contents'
+  } else {
+    Stage 'package contents: the junk stays out, the evidence stays in' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PK 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(PACKAGE OK|PACKAGE FAILED|\sFAIL)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'package-contents' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
 $gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496')
 if ($SkipMutations) {

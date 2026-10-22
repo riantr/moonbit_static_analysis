@@ -497,7 +497,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 `moon check --deny-warn`; all three test targets; `moon build --target wasm`; the grammar
 probe's own verdicts; the own-source self-scan; **this README's own links, anchors,
 versions and counts**; **the mutation-gate roster and a self-test that shows it can go
-red**; the published-package self-scan's own self-test; the corpus comparison against the
+red**; **what the registry will actually receive, and a check that the junk stays out of
+it**; the published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
 gate** — 79 of them.
 
@@ -508,6 +509,17 @@ directions, and its `-SelfTest` injects six defects into a copy of `_verify` —
 list does not name, a gate in the list that is not on disk, a gate off the shared harness,
 a guarantee deleted from the harness, a `--filter` in the harness, a stale count in the
 harness header — and requires each to be caught. **All six are.**
+
+**What the registry receives is checked too.** `.moonignore` decides what gets packaged,
+and a list of intentions that nothing exercises is a comment.
+`_verify/check_package_contents.ps1` runs `moon package --list` — the same command
+`moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
+messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
+that the evidence is **in** (the 79 mutation gates and their harness, the settle scripts, the
+narrative, the roster gate, the documents a reader is sent to), and that every tracked file
+ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
+23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
+takes the narrative out of it and the gate fails.
 
 Two switches change what it does: `-SkipMutations` runs everything except the mutation
 gates, and `-SelfTest` exercises the harness's own stage function against a failing body, a

@@ -47,3 +47,15 @@ _verify/_gatelogs/
 # secret, not a file in the tree. .moonignore covers the publish side of this.
 credentials.json
 *.credentials.json
+
+# Scratch commit messages. These are the release notes BEFORE the 0497 README
+# restructure moved them into CHANGELOG.md; the copies at the repository root
+# and under `_verify` are the ORIGINALS, and they are not source -- four of them
+# were tracked, and four of them reached the registry in every published version
+# up to and including 0.4.33 (MEASURED against the published 0.4.33 tree).
+#
+# The release record is CHANGELOG.md / CHANGELOG.zh.md, and the reasoning behind
+# each increment is _verify/NARRATIVE.md. Both ship. .moonignore keeps these out
+# of the package; these rules keep them out of the repository.
+COMMIT_*.md
+_verify/commitmsg*.txt

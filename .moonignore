@@ -13,6 +13,38 @@
 # None of those are credentials, but none belong in a public package either. The
 # build dir (_build) is already excluded by the toolchain itself; everything
 # below had to be named explicitly.
+#
+# THE FILE NAME IS NOT A CHOICE, AND IT IS NOT `.mooncakesignore`.
+#
+# The toolchain's packaging rule (release note 2026-09-21, "Added support for
+# .moonignore files"): "Packaging now follows conventional ignore-file rules: the
+# .moonignore in a folder -- or, if absent, .gitignore -- is used as the ignore
+# file. By default, files and folders starting with `.` are ignored (this rule can
+# be overridden via the ignore file), as is the _build folder (not overridable).
+# The `exclude` and `include` fields in moon.mod will be deprecated."
+#
+# So the packager reads THIS file. It is not `.mooncakesignore` -- `moon publish
+# --help` and `moon package --help` expose no ignore flag, the release notes and
+# the packaging docs name only `.moonignore`, and a file the packager never reads
+# is a comment.
+#
+# And it is NOT inherited from `.gitignore`: `.moonignore` REPLACES `.gitignore`
+# as the ignore file. `moon package` does not read `.gitignore`, so every rule
+# that matters has to appear in BOTH files, which is why the `_verify` rules
+# below repeat the ones already in `.gitignore`.
+#
+# WHAT IS EXCLUDED HERE, and what is not, was measured rather than guessed:
+#
+#   `moon package --list` on a dirty working tree   811 entries
+#   the published 0.4.33 tree                        413 files
+#
+# The difference is that CI checks out CLEAN, so the ~400 untracked scratch files
+# never reach the registry -- and the only TRACKED junk that did reach it was
+# FOUR `COMMIT_*.md` files, which shipped in every published version up to and
+# including 0.4.33. Those are the first rule below. The rest is defence in
+# depth: the release policy says every publish goes through CI, and a rule that
+# only holds because a checkout happens to be clean is a rule that holds by
+# accident.
 
 # Mooncakes credentials. `moon publish` would upload a live token otherwise --
 # verified, `moon package --list` listed this file before the rule existed.
@@ -30,3 +62,53 @@ _qa/
 # Machine-local formal-verification shims (same reasoning as .gitignore).
 .why3.conf
 cvc5wrap.ps1
+
+# Scratch commit messages. 23 of them at the repository root, of which FOUR ARE
+# TRACKED and therefore reached the registry in every published version up to
+# and including 0.4.33 (MEASURED against the published 0.4.33 tree). Nothing
+# links to them and nothing reads them -- the release record is CHANGELOG.md
+# and _verify/NARRATIVE.md, both of which ship.
+COMMIT_*.md
+
+# Scan artifacts. The name is provenance for a scan of SOME OTHER project;
+# shipping twenty-four of this project's own scans is noise, and each one is a
+# megabyte of somebody else's source quoted back.
+*.mmd
+
+# A downloaded archive, and a stray file written by a shell redirect that lost
+# its target. `$null` is a literal name, not a variable.
+pdf2md.zip
+$null
+
+# `_verify` scratch. One rule, because every scratch file in there is named with
+# a leading underscore -- the tracked exception is re-included on the next line.
+#
+# The gates themselves are NOT excluded, and deliberately so: `_verify/mutate_*.ps1`
+# (79 of them), `_verify/settle_*.ps1` and `_verify/NARRATIVE.md` are the
+# EVIDENCE for every number this project publishes, the README names
+# `_verify/check_gate_roster.ps1`, and the published-package self-scan reads the
+# shipped tree. The scratch is the working copy, not the evidence.
+_verify/_*
+!_verify/_split_release_narrative.ps1
+
+# Working copies of release runs and of the scratch commit messages, which are
+# NOT underscore-prefixed and so are not covered by the rule above.
+_verify/release_*.txt
+_verify/commitmsg*.txt
+
+# The per-file scan dumps `remeasure.ps1` writes. Also not underscore-prefixed.
+_verify/remeasure_out/
+
+# One file that must never ship, named individually because a shape rule would
+# have to exclude real test files too.
+#
+# `src/lexer/lexer_0488_test.mbt` is SUPERSEDED -- its rows live in
+# `src/parser/parser_0488_test.mbt`, because a test file lives in the package it
+# tests and `src/lexer` cannot see `@parser` (Error 4020). What is left is a
+# comment-only stub, and its own header says "It is NOT tracked and must not be
+# committed". It is not tracked. But `moon package` reads the WORKING TREE and
+# not git, so a LOCAL publish would ship a file the repository itself declares
+# un-committable. The published tree is built from a clean checkout, so this
+# only ever bit a local publish -- which is why it is named here rather than
+# left to the checkout being clean.
+src/lexer/lexer_0488_test.mbt
