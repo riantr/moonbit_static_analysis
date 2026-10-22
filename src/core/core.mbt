@@ -50,7 +50,10 @@ pub fn zero_span() -> Span {
 /// already failed to resolve, so this can never turn a resolvable path into an
 /// unresolved one. It can only rescue a path whose tail names something real —
 /// which is precisely what a unit enum variant is.
-#proof_pure
+// NOT `#proof_pure`: like `unqualified` below, the body builds a string with a
+// `StringBuilder`, which the prover rejects (error 4207). Two annotations on
+// two string-building functions, and both of them made the whole file stop
+// proving.
 pub fn path_tail(name : String) -> String {
   let mut out = ""
   let mut i = 0
@@ -287,7 +290,18 @@ pub fn IfaceSymTab::union(
 /// rather than introducing one. It fails toward silence on a name that only
 /// some other package declares, which is the right side to err on for a
 /// table whose entire job is suppressing "no visible binding".
-#proof_pure
+// NOT `#proof_pure`, and the reason is the body, not the signature: it
+// allocates a `StringBuilder` and writes into it, so it is not a pure
+// function and the prover rejects it (error 4207, "unsupported expression in
+// pure function body"). The annotation arrived with this function, and it made
+// `moon prove src/core` fail from that commit on -- a proof obligation on a
+// function that cannot discharge it, so the whole file stopped proving.
+//
+// The other `String` function in this file, `path_tail`, is the same shape and
+// carries the same note: a string in, a string built out.
+//
+// The six contracts that REMAIN are the ones the skill records: `pos`,
+// `span_at`, `zero_span`, `Lens::rank`, `Lens::lower`, `Family::severity`.
 pub fn unqualified(name : String) -> String {
   if !name.has_prefix("@") {
     return name

@@ -64,14 +64,14 @@ a defect in the analysed code. On that same tree `moon check --target all` repor
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.32
+moon add riantr/moonbit_static_analysis@0.4.33
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.32",
+  "riantr/moonbit_static_analysis@0.4.33",
 }
 ```
 
@@ -171,7 +171,10 @@ pyroduct's real self-audit (`moon run cmd/main -- audit`) prints:
 ```
 
 The "0 unexpected findings" line is a tripwire: any new structural / type / behavior finding
-on the real tables fails pyroduct's tests and forces a re-review.
+on the real tables fails pyroduct's tests and forces a re-review. The same run also lists
+the four **known-design** findings it always reports (two states that are only ever left,
+never entered) — they are omitted above because they are the model, not a defect, and
+because the line that matters is the last one.
 
 > The `pyroduct-shaped sample machine` printed at the end of `moon run src/cli` is this
 > module's own **8-state toy** (`statecheck.pyroduct_flavored()`), not pyroduct's real
@@ -223,9 +226,9 @@ time.
 `per_file` and `max_files` cap the drawing, `0` meaning no cap. **Whatever a cap leaves out
 is stated in the diagram**, in the header and in a note on the file, so a truncated diagram
 cannot be read as a clean one. Files are ranked by descending **actionable** count, not raw
-findings: on `moonbitlang/core` the largest raw-finding file is a 402-finding test file that
-is 402 notices and zero defects, and ranking by raw count put it first in a diagram whose
-job is to lead with what to fix.
+findings: on `moonbitlang/core` the largest raw-finding file is `builtin/int64_test.mbt` at
+**1022** findings — every one of them a notice, and none of them a defect — and ranking by
+raw count put it first in a diagram whose job is to lead with what to fix.
 
 ### Provenance — the artifact name
 
@@ -233,7 +236,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.32_0.1.20260920_20261009T155222Z.mmd
+moonbit_static_analysis_0.4.33_0.1.20260920_20261009T155222Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -338,9 +341,9 @@ way of naming another package never hit.
 ### What this tool does not compete with
 
 On `.mbt`, this tool does **not** compete with the toolchain's compiler: `moon check` has a
-real parser and ~90 built-in warnings at 100% coverage. This tool's `.mbt` frontend reads a
-**subset**, and on `moonbitlang/core` it parses **957 of 1029** files (93.0%); `.mbti` and
-`.mbt.md` are 100%.
+real parser and reads the **whole** language. On the same `moonbitlang/core` it reports
+**one** error and 251 warnings of two kinds; this tool's `.mbt` frontend reads a **subset**
+and parses **957 of 1029** files (93.0%); `.mbti` and `.mbt.md` are 100%.
 
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
@@ -492,10 +495,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 
 `_verify/release.ps1` runs: the harness's own self-test; `moon fmt --check`;
 `moon check --deny-warn`; all three test targets; `moon build --target wasm`; the grammar
-probe's own verdicts; the own-source self-scan; the published-package self-scan's own
-self-test; the corpus comparison against the pinned baselines; the per-function census and
-its control; and then **every mutation gate** — 79 of them, and all 79 are inside the
-gate list in `release.ps1`, so no mutation gate is left out of the release path.
+probe's own verdicts; the own-source self-scan; **this README's own links, anchors,
+versions and counts**; **the mutation-gate roster and a self-test that shows it can go
+red**; the published-package self-scan's own self-test; the corpus comparison against the
+pinned baselines; the per-function census and its control; and then **every mutation
+gate** — 79 of them.
+
+The roster is **checked, not asserted**: a gate that exists on disk but is missing from
+the list would never run, and a gate that does not run is indistinguishable from a gate
+that passes. `_verify/check_gate_roster.ps1` compares the two rosters in **both**
+directions, and its `-SelfTest` injects six defects into a copy of `_verify` — a gate the
+list does not name, a gate in the list that is not on disk, a gate off the shared harness,
+a guarantee deleted from the harness, a `--filter` in the harness, a stale count in the
+harness header — and requires each to be caught. **All six are.**
 
 Two switches change what it does: `-SkipMutations` runs everything except the mutation
 gates, and `-SelfTest` exercises the harness's own stage function against a failing body, a
@@ -504,16 +516,28 @@ guard**, and this is where that is shown.
 
 ### Formal verification (`moon prove`)
 
-`src/core` is a pure kernel (no Array-carrying structs, no strings) with
-`"proof-enabled": true` enabling MoonBit 2026 experimental formal verification;
-`src/core/core_proof.mbtp` is the logic side: predicates + **19 lemmas**.
+`src/core` is the proof subject: `src/core/moon.pkg` sets `proof_enabled = true`,
+which enables MoonBit 2026's experimental formal verification, and
+`src/core/core_proof.mbtp` is the logic side — predicates + **19 lemmas**. The 19
+lemmas were measured **21/21 goals VALID** (unsat) on 2026-10-03, each machine-checked
+with cvc5.
 
-```bash
-moon prove src/core --why3-config .why3.conf   # emits 19 VCs for cvc5/alt-ergo
-```
-
-**21/21 goals VALID** (unsat): the 19 lemmas plus the span_at/zero_span automatic safety
-VCs, each machine-checked with cvc5.
+> **The command does not run green today, and the reason is measured.**
+> `moon prove src/core --why3-config .why3.conf` fails with
+> `unbound type symbol 'map'`. `src/core` grew `IfaceSymTab` on 2026-10-08 — a struct
+> whose fields are `Map[String, Bool]` — and the toolchain's proof prelude has **no
+> `Map` theory**, so the generated Why3 file declares `map int bool` and neither
+> `moon prove` nor `why3` can load it. The 19 lemmas never touch `IfaceSymTab`: it is
+> the **package** that is proved, and the package carries the type. The fix is to move
+> `IfaceSymTab` out of the proof subject, and that changes this package's public API
+> (`@core.IfaceSymTab` is exported), so it is a version-line decision rather than a
+> patch.
+>
+> Two `#proof_pure` annotations were also **false**: on `path_tail` and `unqualified`,
+> whose bodies build a `StringBuilder`, which the prover rejects (error 4207). One
+> false annotation stops the whole file from proving, and both of those arrived on
+> 2026-10-09. They are removed, and `_verify/check_prove_contracts.ps1` now fails the
+> release if any `#proof_pure` body is one the prover rejects.
 
 ## Release history
 
@@ -534,7 +558,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 4. Open a pull request.
 
 The gate is not optional decoration: it runs **79 mutation gates**, each of which mutates
-the source, requires a named test to go red, and proves the restore byte-identically.
+the source, requires a test to go red, and proves the restore byte-identically. 389 of the
+426 live mutations expect a kill; **312 of them also name the test that must go red**, so
+the gate log says *which* test was the guard and not merely that something was.
 
 ## License
 

@@ -50,9 +50,12 @@ async fn main {
   //                           authoritative text report, and a diagram may be a
   //                           deliberate subset (see `mermaid_states`' file cap),
   //                           so it is never the only output.
-  //   --mmd-auto              Same, but pick the name —
-  //                           `<label>-<version>_<stamp>.mmd` in the working
-  //                           directory. Never inside the analysed tree: this
+  //   --mmd-auto              Same, but pick the name and write it to the
+  //                           working directory -- and the name is the SAME
+  //                           one `scan_artifact_name` builds:
+  //                           `<package>_<version>_<moonbit>_<stamp>.mmd`, with
+  //                           `unknown` for anything it could not determine.
+  //                           Never inside the analysed tree: this
   //                           module only ever READS the target's files.
   //   --per-function          Enter the BEHAVIORAL lens at each FUNCTION rather
   //                           than at the module. By default a function body is

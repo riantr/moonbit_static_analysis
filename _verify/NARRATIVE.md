@@ -5789,3 +5789,172 @@ self-test asserts on a MESSAGE and not only on an exit code.
 The README's gate count is no longer pinned in the README gate either: it is COMPUTED
 from the disk, so a gate added tomorrow fails the README check with the new number in
 the message instead of failing with a missing literal.
+
+## 0498: THE README, CHECKED SENTENCE BY SENTENCE, AND THE PROOF THAT WAS NOT RUNNING
+
+### THE ASK
+
+Check the README sentence by sentence. Not "run the link checker" -- **every claim**,
+re-derived from the current tree.
+
+Six of them were not true. One of the six was not a wording problem: it was a documented
+command that had been failing for two releases, because nothing ran it.
+
+### THE SIX, AND WHAT EACH ONE MEASURED
+
+| the README said | measured 2026-10-22 |
+|---|---|
+| the largest raw-finding file on `moonbitlang/core` is "a 402-finding test file that is 402 notices and zero defects" | `builtin/int64_test.mbt` at **1022** -- all notices, no defects. The second is `builtin/extends.mbt` at 394. The *shape* was right; the number was wrong. |
+| `moon check` has "a real parser and ~90 built-in warnings at 100% coverage" | the toolchain ships **no diagnostic catalogue**, so that number cannot be measured from here at all. Replaced by what can: `moon check --target all` on the same tree reports **one** error and 251 warnings of **two** kinds. |
+| the release gate runs this list of stages | the list was missing two that exist: **this README's own links/anchors/versions/counts**, and **the mutation-gate roster** with its self-test. |
+| every mutation gate "requires a named test to go red" | 426 live mutations; 389 expect a kill; **312** of them also NAME the test. The gate always requires *a* test to go red; it names one for 312 of the 389. |
+| pyroduct's self-audit prints this block | the same run also prints four **known-design** findings, omitted above without saying so. Now said. |
+| "**21/21 goals VALID** (unsat) ... each machine-checked with cvc5" | `moon prove src/core` **fails**. The measurement dates from 2026-10-03. See below. |
+
+Both READMEs carried all six, in their own language, and `EXTENSIONS.md` carried the
+"~90" one, and the root `main.mbt`'s usage comment carried a **stale `--mmd-auto` name
+format** (`<label>-<version>_<stamp>.mmd`) that the code does not produce -- the code
+builds `<package>_<version>_<moonbit>_<stamp>.mmd` through `scan_artifact_name`.
+
+### THE PROOF, WHICH WAS NOT A WORDING PROBLEM
+
+`moon prove src/core --why3-config .why3.conf` exits 1. Two INDEPENDENT breaks, and the
+dates are what make them legible:
+
+- **2026-10-09** -- two `#proof_pure` annotations were **false**: on `path_tail` and
+  `unqualified`, whose bodies build a `StringBuilder`, which the prover rejects with
+  error 4207. **One** false annotation stops the whole file from proving, so the package
+  produced no goals at all. Both arrived in the same commit, `fae13db`.
+- **2026-10-08** -- `src/core` grew `IfaceSymTab`, whose fields are `Map[String, Bool]`.
+  The toolchain's proof prelude has **no `Map` theory** -- MEASURED: the prelude defines
+  `t = int`, `bytes` and `readonlyarray 'a`, and `map` appears **zero** times in either
+  shipped prelude. So the generated Why3 file declares `map int bool` and neither
+  `moon prove` nor `why3` can load it. Supplying a prelude override through
+  `MOON_PROVE_PRELUDE_OVERRIDE` makes the codegen emit the type -- but it emits it
+  **after** the record that uses it, and why3 needs it before.
+
+The 19 lemmas never touch `IfaceSymTab`. It is the **PACKAGE** that is proved, and the
+package carries the type. `moon prove` is package-scoped: proving
+`src/core/core_proof.mbtp` or `src/core/core.mbt` generates the SAME package MLW.
+
+The first break is fixed: the two annotations are removed, and the six that remain are
+exactly the ones the skill file records -- `pos`, `span_at`, `zero_span`, `Lens::rank`,
+`Lens::lower`, `Family::severity`. The source now matches its own documentation.
+
+The second is **not** fixed, because its fix changes this package's public API
+(`@core.IfaceSymTab` is exported in `src/core/pkg.generated.mbti`). That is a
+version-line decision, not a patch, so it is **stated in the README** with the reason and
+the date, and it is left standing rather than papered over.
+
+### WHAT DID NOT NOTICE ANY OF IT
+
+**The release gate never ran `moon prove`.** A documented command that nothing runs is a
+comment, and this one had been failing for two releases while the README published a
+machine-checked proof result.
+
+`_verify/check_prove_contracts.ps1` now runs it inside the gate. It FAILS on the
+false-annotation class -- error 4207 -- which is checkable and can pass, and it REPORTS
+the `map` limitation without failing on it, because that one is not fixable here.
+
+It has been shown to go red: re-adding one false annotation produces **25** errors 4207
+and a failed gate, and the failure names the function.
+
+### THE VERSION IS NOW READ, NOT PINNED -- AND THE MATCHER HAD TO BE BUILT FROM THE PACKAGE'S OWN NAME
+
+`_verify/check_readme_links.ps1` required the READMEs to name `0.4.32` **literally**. A
+release then had to edit the GATE as well as the README -- and a missed edit either
+blocked the release for the wrong reason or let a README naming an old version through.
+The version now comes from `moon.mod`, the file the registry reads, and the failure
+message says which version the README should have named. The mutation-gate count was
+changed the same way in 0497, for the same reason.
+
+Reading the version out of `moon.mod` fixed the ROT. It did not fix the MATCHER, and the
+first release to use it found that out:
+
+    FAIL: README.md must name 0.4.33 and nothing older; also found: 0.4.32
+
+That `0.4.32` is the sentence `> (This note said **116 -> 2** until 0.4.32, ...)` -- a
+**true statement about a correction that happened in 0.4.32**, and true in every release
+after it. The RULE was right (a version the reader is told to install has to be current)
+and the MATCHER was wrong: it matched "anything version-shaped" rather than "a reference
+to THIS package".
+
+So the matcher is built from the package's own name:
+
+    moonbit_static_analysis@<v>       what the reader installs
+    moonbit_static_analysis_<v>_      what the reader receives
+
+A version number in PROSE is not a reference. A version number that FOLLOWS THE PACKAGE
+NAME is. `CHANGELOG.md` is deliberately excluded: every release section names its own
+version, and those are historical by construction.
+
+### AND THE CHECK WAS LOOKING AT TWO OF THE THREE DOCUMENTS THAT SHIP
+
+`SKILL.md` goes to the registry with the package (MEASURED: the published 0.4.32 tree
+carries it at the top level) and it tells the reader to run
+
+    moonx riantr/moonbit_static_analysis@0.4.32 riantr/moonbit_doubleML
+
+That line has been maintained per release -- 0.4.30, 0.4.31, 0.4.32 -- and the version
+gate looked only at the two READMEs. So a release could sync the READMEs, leave SKILL.md
+behind, and publish an install instruction for the previous version with a green gate.
+The gate now reads all three, and each document's install line is checked separately:
+the READMEs show `moon add`, SKILL.md shows `moonx`.
+
+Both new rules have been shown to go red:
+
+| the defect | what the gate said |
+|---|---|
+| `SKILL.md`'s install line set to `0.4.31` | `FAIL: SKILL.md tells the reader to install 0.4.31; the released version is 0.4.33.` |
+| `README.md`'s artifact name set to `0.4.31` | `FAIL: README.md must name 0.4.33 wherever it names THIS package; also found: 0.4.31` |
+
+and the historical `until 0.4.32` note stayed FOUND and tripped neither.
+
+### A WRITER THAT CORRUPTS A CHARACTER AND DOES NOT SAY SO
+
+The Chinese changelog entry came out of the edit with **two U+FFFD** where one character
+belonged, and nothing reported it. A replacement character is the one failure mode every
+tool in this repository silently passes through: `moon check` does not read markdown, the
+scanner does not read markdown, and the README gate only looks for whole phrases.
+
+So the scan for it is now explicit: every file this round touched is read as UTF-8 and
+searched for U+FFFD. All ten are clean, and the corrupted heading is repaired.
+
+### THE COUNTS, AFTER
+
+```
+    the largest raw-finding file in moonbitlang/core   builtin/int64_test.mbt, 1022
+    moon check --target all on the same tree            1 error, 251 warnings, 2 kinds
+    live mutations                                       426
+    ... of those, expecting a kill                       389
+    ... of those, naming the test that must go red       312
+    #proof_pure contracts in src/core                     6   (was 8; two were false)
+    ... of those, false                                  0
+    the self-scan                                        170 files, actionable 0
+    the corpus pins                                      7 of 7 MATCH
+    the per-function census                              TOTAL 58 MATCH
+    the census control                                  24 of 24
+    the release gate                                     96 stages, every one green
+```
+
+### THE RELEASE
+
+`moonbitlang/async@0.22.5` was re-checked against mooncakes.io before the gate: the
+registry's `latest_version` is `0.22.5`, which is what the module already pins, so there
+is nothing to upgrade. The gate was then run on the final tree, the version was bumped,
+and the READMEs and `SKILL.md` were synced.
+
+=> 判据: A DOCUMENTED COMMAND THAT NOTHING RUNS IS A COMMENT. The proof was published as
+21/21 machine-checked, and the command that produces it had been failing for two
+releases. The claim was not wrong when it was written; it stopped being true, and the
+only thing that would have noticed was something running it.
+
+=> 判据: A READER THAT CANNOT TELL A COMMENT FROM CODE WILL CONFIDENTLY REPORT ON CODE
+IT NEVER READ -- and a release document that says "21/21 goals VALID" is a CLAIM that
+somebody has to check, the same way a number in a comment has to be checked. Six of this
+README's sentences were not true, and five of them had been true when they were written.
+
+=> 判据: A GATE THAT FAILS ON A TRUE STATEMENT GETS DISABLED, AND A DISABLED GATE IS A
+COMMENT. "Every version in the README must be current" is right for the version a reader
+INSTALLS and wrong for the version a reader is TOLD ABOUT IN PROSE -- and the gate that
+could not tell the two apart was one release away from being switched off.

@@ -7,7 +7,8 @@
 #      resolves to a file that EXISTS. A link to a file the restructure moved is
 #      the classic way a README rots: the target moved and nobody noticed.
 #   2. Every `#anchor` in the "Contents" list resolves to a heading that exists.
-#   3. Every version reference in the READMEs names 0.4.32 and nothing older.
+#   3. Every version reference to THIS package, in every published document, names
+#      the released version -- and each document's install line names it too.
 #   4. The changelog still carries the in-place corrections -- the release that
 #      corrected a wrong claim must still carry it, in the file it moved to.
 #   5. The counts the README quotes are the ones the tools measured.
@@ -63,24 +64,111 @@ foreach ($f in @('README.md','README.zh.md')) {
 }
 
 Write-Output '=== 3. version references ==='
-foreach ($f in @('README.md','README.zh.md')) {
+# The version is READ FROM `moon.mod`, not pinned here. A literal version string in
+# this file would be another number that has to be kept right by hand, and the
+# version changes on every release -- so a release would have to edit the GATE as
+# well as the README, and a missed edit would either block the release for the
+# wrong reason or, worse, let a README naming an OLD version through.
+#
+# So the authority is `moon.mod`, the file the registry reads. The documents have to
+# name THAT version, and the failure message says which one, so a stale document
+# names the number it should have said.
+#
+# WHAT COUNTS AS A VERSION REFERENCE. A version number in PROSE is not a reference.
+# "until 0.4.32" is a true statement about a correction that happened in 0.4.32, and
+# it stays true in every release after it -- so a check that demands it change is
+# demanding a falsehood. A version number that FOLLOWS THIS PACKAGE'S NAME is a
+# reference to the thing a reader installs, or to the artifact a reader receives,
+# and THAT is the one that has to be current.
+#
+# So the matcher is built from the package's own name rather than from a pattern for
+# "anything version-shaped":
+#
+#     moonbit_static_analysis@<v>       what the reader installs
+#     moonbit_static_analysis_<v>_      what the reader receives
+#
+# The first version of this check said "every 0.4.x in the README must be the
+# current one", which is the same RULE with a coarser MATCHER. It passed at 0.4.32 --
+# the only other version in the file was that historical note -- and at 0.4.33 it
+# FAILED for exactly that note (MEASURED: "FAIL: README.md must name 0.4.33 and
+# nothing older; also found: 0.4.32"). A gate that fails on a true statement is a
+# gate that gets disabled, and a disabled gate is a comment.
+#
+# It also looked only at the two READMEs. SKILL.md ships to the registry too
+# (MEASURED: the published 0.4.32 tree carries it at the top level) and it tells the
+# reader to run `moonx riantr/moonbit_static_analysis@0.4.32` -- so a release that
+# synced the READMEs and left SKILL.md behind would publish an install instruction
+# for the previous version, and no check would have said so.
+#
+# CHANGELOG.md is deliberately NOT in the list below: every release section names
+# its OWN version, and those references are historical by construction.
+$moonMod = [System.IO.File]::ReadAllText((Join-Path $root 'moon.mod'), [System.Text.Encoding]::UTF8)
+$vm = [regex]::Match($moonMod, '(?m)^version\s*=\s*"([^"]+)"')
+if (-not $vm.Success) {
+  Write-Output '  FAIL: moon.mod does not declare a version, so there is nothing for the documents to match.'
+  $fail++
+  $thisVersion = ''
+} else {
+  $thisVersion = $vm.Groups[1].Value
+  Write-Output ('  moon.mod says: ' + $thisVersion)
+}
+
+# Every document the registry serves, and every version reference in each of them.
+$docs = @('README.md','README.zh.md','SKILL.md')
+$ownRef = 'moonbit_static_analysis[@_](\d+\.\d+\.\d+)'
+foreach ($f in $docs) {
   $p = Join-Path $root $f
-  $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
-  $vers = @{}
-  foreach ($m in [regex]::Matches($txt, '0\.4\.\d+')) {
-    $v = $m.Value
-    # A version that belongs to ANOTHER package is not this module's version:
-    # `moonbitlang/parser@0.4.3` and `moonbitlang/lexer@0.4.2` are external
-    # references in the References section, and flagging them would be noise.
-    $start = [Math]::Max(0, $m.Index - 40)
-    $ctx = $txt.Substring($start, $m.Index - $start)
-    if ($ctx -match '(parser|lexer)@$') { continue }
-    if (-not $vers.ContainsKey($v)) { $vers[$v] = 0 }
-    $vers[$v]++
+  if (-not (Test-Path -LiteralPath $p)) {
+    Write-Output ("  FAIL: " + $f + " is not in the tree, so nothing can check what it says.")
+    $fail++
+    continue
   }
-  foreach ($k in ($vers.Keys | Sort-Object)) { Write-Output ("  {0,-16} {1} x {2}" -f $f, $vers[$k], $k) }
-  $wrong = @($vers.Keys | Where-Object { $_ -ne '0.4.32' })
-  if ($wrong.Count -gt 0) { Write-Output ("    FAIL: this module's version must be 0.4.32; also found: " + ($wrong -join ', ')); $fail++ }
+  $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+  $seen = @{}
+  foreach ($m in [regex]::Matches($txt, $ownRef)) {
+    $v = $m.Groups[1].Value
+    if (-not $seen.ContainsKey($v)) { $seen[$v] = 0 }
+    $seen[$v]++
+  }
+  if ($seen.Count -eq 0) {
+    Write-Output ("    FAIL: " + $f + " names no version of this package at all -- a check that passes on nothing is not a check.")
+    $fail++
+    continue
+  }
+  foreach ($k in ($seen.Keys | Sort-Object)) { Write-Output ("  {0,-16} {1} x {2}" -f $f, $seen[$k], $k) }
+  $wrong = @($seen.Keys | Where-Object { $_ -ne $thisVersion })
+  if ($wrong.Count -gt 0) {
+    Write-Output ("    FAIL: " + $f + " must name " + $thisVersion + " wherever it names THIS package; also found: " + ($wrong -join ', '))
+    $fail++
+  }
+}
+
+# The form each document uses to tell the reader what to install. A document that
+# names the right version in the wrong place -- or that drops the line -- is not
+# telling the reader anything, and a version reference that is not IN the install
+# line does not tell the reader what to install. The READMEs show `moon add`;
+# SKILL.md shows `moonx`.
+$installForms = @(
+  @{ F = 'README.md';    R = 'moon add riantr/moonbit_static_analysis@(\d+\.\d+\.\d+)' }
+  @{ F = 'README.zh.md'; R = 'moon add riantr/moonbit_static_analysis@(\d+\.\d+\.\d+)' }
+  @{ F = 'SKILL.md';     R = 'moonx riantr/moonbit_static_analysis@(\d+\.\d+\.\d+)' }
+)
+foreach ($e in $installForms) {
+  $p = Join-Path $root $e.F
+  $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+  $im = [regex]::Match($txt, $e.R)
+  if (-not $im.Success) {
+    Write-Output ("    FAIL: " + $e.F + " has no install line of the form " + $e.R + " -- the reader is not told what to install.")
+    $fail++
+    continue
+  }
+  $v = $im.Groups[1].Value
+  if ($v -ne $thisVersion) {
+    Write-Output ("    FAIL: " + $e.F + " tells the reader to install " + $v + "; the released version is " + $thisVersion + ".")
+    $fail++
+  } else {
+    Write-Output ("  {0,-16} install line names {1}   OK" -f $e.F, $v)
+  }
 }
 
 Write-Output '=== 4. the in-place corrections survived the move ==='
@@ -123,7 +211,8 @@ $expect = @(
   @{ F = 'README.md';    S = '24 of 24'; N = 'positive control' }
   @{ F = 'README.md';    S = ($gateCount.ToString() + ' of them'); N = 'mutation gates' }
   @{ F = 'README.md';    S = ('**' + $gateCount + ' mutation gates**'); N = 'mutation gates (the second mention)' }
-  @{ F = 'README.md';    S = ('and all ' + $gateCount + ' are inside the'); N = 'every gate is in the release list' }
+  @{ F = 'README.md';    S = 'The roster is **checked, not asserted**'; N = 'the roster is checked, not asserted' }
+  @{ F = 'README.md';    S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named' }
   @{ F = 'README.zh.md'; S = '1163/1163'; N = 'wasm test count (zh)' }
   @{ F = 'README.zh.md'; S = '1083/1083'; N = 'js/wasm-gc test count (zh)' }
   @{ F = 'README.zh.md'; S = '解析 957 个'; N = 'core parsed (zh)' }
@@ -131,7 +220,8 @@ $expect = @(
   @{ F = 'README.zh.md'; S = '24 / 24'; N = 'positive control (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + '** 个'); N = 'mutation gates (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + ' 道变异门**'); N = 'mutation gates (zh, the second mention)' }
-  @{ F = 'README.zh.md'; S = ('而且 ' + $gateCount + ' 个全在'); N = 'every gate is in the release list (zh)' }
+  @{ F = 'README.zh.md'; S = '这份名册是**被检查的，不是被断言的**'; N = 'the roster is checked, not asserted (zh)' }
+  @{ F = 'README.zh.md'; S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named (zh)' }
 )
 foreach ($e in $expect) {
   $p = Join-Path $root $e.F

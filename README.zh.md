@@ -60,14 +60,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.32
+moon add riantr/moonbit_static_analysis@0.4.33
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.32",
+  "riantr/moonbit_static_analysis@0.4.33",
 }
 ```
 
@@ -161,7 +161,9 @@ pyroduct 的真实自审（`moon run cmd/main -- audit`）打印：
 ```
 
 「未预期发现 0 条」这一行是绊线：真实表上一旦出现新的结构/类型/行为发现，就会让
-pyroduct 的测试挂掉，强制一次复审。
+pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**每次都报**的四条**已知设计**
+发现（两个只出不进的状态）——上面把它们略去了，因为那是模型本身、不是缺陷，而且要紧的
+是最后那一行。
 
 > `moon run src/cli` 末尾打印的 `pyroduct-shaped sample machine` 是本模块自己的
 > **8 状态玩具**（`statecheck.pyroduct_flavored()`），不是 pyroduct 的真实表。它带的
@@ -208,9 +210,9 @@ pyroduct 的测试挂掉，强制一次复审。
 
 `per_file` 和 `max_files` 给绘图封顶，`0` 表示不封。**被封顶砍掉的部分会在图里写明**，
 写在头部和文件上的一条注里，所以被截断的图不会被读成干净的图。文件按 **actionable**
-条数降序排，而不是按原始发现数：在 `moonbitlang/core` 上，原始发现最多的文件是一个
-402 条发现的测试文件，而那 402 条全是 notice、零缺陷；按原始数排会把它放在一张「该把
-注意力放在哪」为职责的图的第一位。
+条数降序排，而不是按原始发现数：在 `moonbitlang/core` 上，原始发现最多的文件是
+`builtin/int64_test.mbt`，**1022** 条发现——全是 notice、零缺陷；按原始数排会把它放在一张
+「该把注意力放在哪」为职责的图的第一位。
 
 ### 出处 —— 产物的文件名
 
@@ -218,7 +220,7 @@ pyroduct 的测试挂掉，强制一次复审。
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.32_0.1.20260920_20261009T155222Z.mmd
+moonbit_static_analysis_0.4.33_0.1.20260920_20261009T155222Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
@@ -311,9 +313,9 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 
 ### 这个工具不跟谁竞争
 
-在 `.mbt` 上，本工具 **不与工具链的编译器竞争**：`moon check` 有真正的解析器和约 90 条内建
-告警，覆盖率恒为 100%。本工具的 `.mbt` 前端读的是一个 **子集**，在 `moonbitlang/core` 上
-它解析 **1029 个文件里的 957 个**（93.0%）；`.mbti` 和 `.mbt.md` 是 100%。
+在 `.mbt` 上，本工具 **不与工具链的编译器竞争**：`moon check` 有真正的解析器，读的是**整个**
+语言。在同一棵 `moonbitlang/core` 上它报**一条**错误和两种共 251 条告警；本工具的 `.mbt`
+前端读的是一个 **子集**，解析 **1029 个文件里的 957 个**（93.0%）；`.mbti` 和 `.mbt.md` 是 100%。
 
 本工具能做而编译器不能做的：编译器**根本不审**的那三种文件——`.mbti`、`.mbt.md`、
 `.mbtp`——以及跨包语义。
@@ -451,9 +453,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 ```
 
 `_verify/release.ps1` 依次跑：门禁自身的自测；`moon fmt --check`；`moon check --deny-warn`；
-三个测试 target；`moon build --target wasm`；语法探针自己的判定；自身源码自扫；已发布包
-自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**79** 个，
-而且 79 个全在 `release.ps1` 的门列表里，所以没有任何一个变异门被漏在发布路径之外。
+三个测试 target；`moon build --target wasm`；语法探针自己的判定；自身源码自扫；**这份
+README 自己的链接、锚点、版本与计数**；**变异门名册，以及一个证明它会变红的自测**；已发布包
+自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**79** 个。
+
+这份名册是**被检查的，不是被断言的**：一个在磁盘上存在、却不在名册里的变异门**永远不会跑**，
+而一个不会跑的变异门和一个跑绿了的变异门长得一模一样。`_verify/check_gate_roster.ps1`
+把两份名册**双向**比对；它的 `-SelfTest` 往 `_verify` 的**副本**里注入六种缺陷——名册没
+列的变异门、名册列了却不在磁盘上的变异门、脱离共享 harness 的变异门、被删掉的 harness
+保证、harness 里的 `--filter`、harness 头部过时的计数——并要求每一种都被抓到。**六种
+全部被抓到。**
 
 两个开关会改变它的行为：`-SkipMutations` 跑除变异门以外的一切；`-SelfTest` 拿一个失败
 的、一个抛异常的、一个通过的函数体去考验门禁自己的 stage 函数。**一道从没被证明会变红的
@@ -461,16 +470,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 
 ### 形式验证（`moon prove`）
 
-`src/core` 是一个纯内核（没有带 Array 的结构体、没有字符串），并带
-`"proof-enabled": true` 以启用 MoonBit 2026 的实验性形式验证；`src/core/core_proof.mbtp`
-是逻辑侧：谓词 + **19 条引理**。
+`src/core` 是证明对象：`src/core/moon.pkg` 里 `proof_enabled = true`，用来启用 MoonBit
+2026 的实验性形式验证；`src/core/core_proof.mbtp` 是逻辑侧——谓词 + **19 条引理**。
+这 19 条引理在 2026-10-03 实测为 **21/21 个目标 VALID**（unsat），每一个都用 cvc5
+机器验证过。
 
-```bash
-moon prove src/core --why3-config .why3.conf   # 产生 19 个 VC，交给 cvc5/alt-ergo
-```
-
-**21/21 个目标 VALID**（unsat）：19 条引理，加上 span_at/zero_span 的自动安全性 VC，
-每一个都用 cvc5 机器验证过。
+> **这条命令今天跑不绿，原因已量过。** `moon prove src/core --why3-config .why3.conf`
+> 报 `unbound type symbol 'map'`。`src/core` 在 2026-10-08 多了一个 `IfaceSymTab`——
+> 它的字段是 `Map[String, Bool]`——而工具链的证明前导库**没有 `Map` 理论**，于是生成
+> 的 Why3 文件里出现 `map int bool`，`moon prove` 和 `why3` 都加载不了它。19 条引理
+> 从来没碰过 `IfaceSymTab`：被证明的是**整个包**，而包里有这个类型。修法是把
+> `IfaceSymTab` 移出证明范围，而那会改本包的公开 API（`@core.IfaceSymTab` 是导出的），
+> 所以这是版本线上的决定，不是一个补丁的事。
+>
+> 还有两处 `#proof_pure` 标注是**假的**：`path_tail` 和 `unqualified` 的函数体会
+> 构造 `StringBuilder`，证明器不认（错误 4207）。一处假标注就让整个文件停止证明，
+> 而这两处都是 2026-10-09 加上的。它们已被移除，并且 `_verify/check_prove_contracts.ps1`
+> 现在会在发布门禁里拦住任何「证明器不认的 `#proof_pure` 函数体」。
 
 ## 发布历史
 
@@ -489,8 +505,9 @@ moon prove src/core --why3-config .why3.conf   # 产生 19 个 VC，交给 cvc5/
 
 4. 提一个 pull request。
 
-这道门禁不是装饰：它会跑 **79 道变异门**，每一道都改源码、要求一个具名测试变红，
-并证明恢复是逐字节一致的。
+这道门禁不是装饰：它会跑 **79 道变异门**，每一道都改源码、要求一个测试变红，
+并证明恢复是逐字节一致的。426 个存活变异里有 389 个预期被杀；其中 **312 个**还点名了
+必须变红的是哪个测试，所以门禁日志说的是**哪个**测试在守着这道防线，而不只是「有东西红了」。
 
 ## 许可证
 

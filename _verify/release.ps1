@@ -353,6 +353,38 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4d  the proof contracts in src/core must be HONEST -------------------------
+# `moon prove src/core` is a command the README documents, and it had been
+# failing since 2026-10-09 with two false `#proof_pure` annotations -- one of
+# them enough to stop the whole file from proving -- and nothing noticed,
+# because the release gate never ran it. This stage runs it and fails on the
+# false-annotation class (error 4207).
+#
+# It does NOT fail on the known `map` limitation: `src/core` carries
+# `IfaceSymTab`, whose fields are `Map[String, Bool]`, and the toolchain's proof
+# prelude has no `Map` theory, so the generated Why3 file will not load. That is
+# reported, not hidden -- see the script.
+if ($failed.Count -eq 0) {
+  $PC = Join-Path $root '_verify\check_prove_contracts.ps1'
+  if (-not (Test-Path $PC)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_prove_contracts.ps1'
+    $failed += 'prove-contracts'
+  } else {
+    Stage 'proof contracts: no false #proof_pure' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PC 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(4207|contracts:|PROVE CONTRACTS|KNOWN)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'prove-contracts' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
 $gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496')
 if ($SkipMutations) {

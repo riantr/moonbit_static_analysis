@@ -154,6 +154,154 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.33 — the README, checked sentence by sentence, and six claims that were wrong
+
+This release changes **no behaviour of the analyzer**. Its content is a correction:
+the README was read sentence by sentence against the current tree, and six of the things
+it said were not true.
+
+### The 402-finding file is 1022
+
+The mermaid section said the largest raw-finding file on `moonbitlang/core` is "a
+402-finding test file that is 402 notices and zero defects".
+
+MEASURED 2026-10-22, over the pinned corpus and the current wasm, in **both** views:
+the largest raw-finding file is `builtin/int64_test.mbt` at **1022** findings — every
+one of them a notice, and none of them a defect. The second is `builtin/extends.mbt`
+at 394. The *shape* of the sentence was right and the number was wrong.
+
+### "~90 built-in warnings" is a number nobody can measure
+
+The coverage section said `moon check` has "a real parser and ~90 built-in warnings at
+100% coverage". The toolchain ships no diagnostic catalogue, so the catalogue size
+cannot be measured from here at all, and the claim had been carried unchanged from the
+0.4.13-era notes in `LOOP.md`.
+
+It is replaced by what CAN be measured, on the same corpus and the same command:
+`moon check --target all` on `moonbitlang/core` reports **one** error and 251 warnings
+of **two** kinds. The point of the sentence is unchanged — the compiler reads the whole
+language, this tool reads a subset — and it now rests on a number that can be
+re-measured.
+
+### The release gate did more than the README said, and less
+
+Two ways, both corrected.
+
+The README listed what `_verify/release.ps1` runs, and the list was missing two stages
+that exist: **this README's own links, anchors, versions and counts**, and **the
+mutation-gate roster** with its self-test. The roster matters: it is a hand-kept list,
+and a gate that exists on disk but is missing from that list **never runs** — and a gate
+that does not run is indistinguishable from a gate that passes. The README's claim that
+"all 79 are inside the gate list" was true and hand-maintained; it is now **checked**,
+in both directions, with a self-test that injects six defects and requires each to be
+caught.
+
+And the Contributing section said every mutation gate "requires a named test to go red".
+MEASURED over the 426 live mutations: 389 expect a kill, and **312** of them also NAME
+the test that must go red. The gate requires a test to go red always; it names one for
+312 of the 389.
+
+### The formal verification was not running, and nobody was running it
+
+This is the one that is not about wording.
+
+`moon prove src/core --why3-config .why3.conf` **fails**. The README said "**21/21
+goals VALID** (unsat) ... each machine-checked with cvc5", and that measurement dates
+from 2026-10-03.
+
+TWO INDEPENDENT BREAKS, both dated:
+
+- **2026-10-09** — two `#proof_pure` annotations were false: on `path_tail` and
+  `unqualified`, whose bodies build a `StringBuilder`, which the prover rejects (error
+  4207). **One** false annotation stops the whole file from proving, so the package
+  produced no goals at all.
+- **2026-10-08** — `src/core` grew `IfaceSymTab`, whose fields are `Map[String, Bool]`.
+  The toolchain's proof prelude has **no `Map` theory**, so the generated Why3 file
+  declares `map int bool` and neither `moon prove` nor `why3` can load it. The 19
+  lemmas never touch `IfaceSymTab`; it is the **PACKAGE** that is proved, and the
+  package carries the type.
+
+The first break is fixed here: the two annotations are removed, and the six that remain
+are exactly the ones the skill records — `pos`, `span_at`, `zero_span`, `Lens::rank`,
+`Lens::lower`, `Family::severity`.
+
+The second is **not** fixed, because its fix changes this package's public API
+(`@core.IfaceSymTab` is exported), which is a version-line decision and not a patch.
+The README now says so, in place, with the reason and the date.
+
+What did NOT notice any of this: **the release gate never ran `moon prove`.** A
+documented command that nothing runs is a comment, and this one had been failing for
+two releases. `_verify/check_prove_contracts.ps1` now runs it in the gate and fails on
+the false-annotation class — the class that is fixable here — while reporting the
+`map` limitation rather than hiding it. It has been shown to go red: re-adding one
+false annotation produces 25 errors 4207 and a failed gate.
+
+### The README's version is now read, not pinned -- and the matcher had to be built from the package's own name
+
+`_verify/check_readme_links.ps1` used to require the READMEs to name `0.4.32`
+literally. A release then had to edit the GATE as well as the README, and a missed edit
+either blocked the release for the wrong reason or let a README naming an old version
+through. The version is now read from `moon.mod` — the file the registry reads — and the
+failure message says which version the README should have named. The same change was
+made earlier to the mutation-gate count, for the same reason.
+
+Reading the version out of `moon.mod` fixed the ROT; it did not fix the MATCHER, and the
+first release to use it found that out:
+
+    FAIL: README.md must name 0.4.33 and nothing older; also found: 0.4.32
+
+That `0.4.32` is the sentence `> (This note said **116 → 2** until 0.4.32, ...)` — a true
+statement about a correction that happened in 0.4.32, and true in every release after
+it. The RULE was right (a version the reader is told to install has to be current) and
+the MATCHER was wrong: it matched "anything version-shaped" rather than "a reference to
+THIS package". So the matcher is built from the package's own name now:
+
+    moonbit_static_analysis@<v>       what the reader installs
+    moonbit_static_analysis_<v>_      what the reader receives
+
+A version number in PROSE is not a reference. A version number that FOLLOWS THE PACKAGE
+NAME is. `CHANGELOG.md` is deliberately excluded: every release section names its own
+version, and those are historical by construction.
+
+### And the check was looking at two of the three documents that ship
+
+`SKILL.md` goes to the registry with the package (MEASURED: the published 0.4.32 tree
+carries it at the top level) and it tells the reader to run
+
+    moonx riantr/moonbit_static_analysis@0.4.32 riantr/moonbit_doubleML
+
+That line has been maintained per release — 0.4.30, 0.4.31, 0.4.32 — and the version gate
+looked only at the two READMEs. So a release could sync the READMEs, leave `SKILL.md`
+behind, and publish an install instruction for the previous version with a green gate.
+The gate now reads all three, and each document's install line is checked separately: the
+READMEs show `moon add`, `SKILL.md` shows `moonx`.
+
+Both new rules have been shown to go red:
+
+| the defect | what the gate said |
+|---|---|
+| `SKILL.md`'s install line set to `0.4.31` | `FAIL: SKILL.md tells the reader to install 0.4.31; the released version is 0.4.33.` |
+| `README.md`'s artifact name set to `0.4.31` | `FAIL: README.md must name 0.4.33 wherever it names THIS package; also found: 0.4.31` |
+
+and the historical `until 0.4.32` note stayed FOUND and tripped neither.
+
+### The counts, after
+
+```
+    the largest raw-finding file in moonbitlang/core   builtin/int64_test.mbt, 1022
+    moon check --target all on the same tree            1 error, 251 warnings, 2 kinds
+    live mutations                                       426
+    ... of those, expecting a kill                       389
+    ... of those, naming the test that must go red       312
+    #proof_pure contracts in src/core                     6
+    ... of those, false                                  0   (was 2)
+    the self-scan                                        170 files, actionable 0
+    the corpus pins                                      7 of 7 MATCH
+    the per-function census                              TOTAL 58 MATCH
+    the census control                                  24 of 24
+    the release gate                                     96 stages, every one green
+```
+
 ## 0.4.32 — the escape that was counting UTF-16 units, the lexical match, and the census that was measured over six corpora
 
 ### The character literal's escape: the whole grammar, and a CRASH under it
