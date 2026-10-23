@@ -757,7 +757,7 @@ async fn analyze(
           continue
         }
         reliable.push(rep)
-        if rep.family == @core.FParse {
+        if rep.is_notice() {
           notices += 1
         }
       }
@@ -790,9 +790,12 @@ async fn analyze(
       let total = r.reports.length()
       // The trusted region: everything before the first genuine read failure.
       //
-      // Inside it, `FParse` can only mean a deliberate exclusion -- a real
-      // failure on that line would itself have set first_error_line to it. So
-      // the defect/notice split needs no string matching here.
+      // A genuine read failure cannot survive this cut: a real failure on that
+      // line would itself have set first_error_line to it. So the notices
+      // counted below are counted by the SHARED predicate
+      // (`@report.is_notice`), not by a second opinion about the family --
+      // the renderer, this counter and the mermaid drawing must not be able to
+      // disagree about what a notice is.
       let cut = r.first_error_line
       let reliable : Array[@report.Report] = []
       let mut notices = 0
@@ -801,7 +804,7 @@ async fn analyze(
           continue
         }
         reliable.push(rep)
-        if rep.family == @core.FParse {
+        if rep.is_notice() {
           notices += 1
         }
       }

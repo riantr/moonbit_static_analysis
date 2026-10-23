@@ -160,12 +160,18 @@ fn pick_files(verdicts : Array[Verdict], max_files : Int32) -> Array[Int32] {
 
 ///|
 /// A notice is not a defect, and the drawing has to agree with the numbers it
-/// prints beside it. `Verdict.notices` is filled by counting exactly this
-/// family, and `actionable` is `findings.length() - notices`, so using any
+/// prints beside it. `Verdict.notices` is filled by counting exactly the
+/// notices, and `actionable` is `findings.length() - notices`, so using any
 /// other predicate here would let the diagram draw a defect as a notice (or
 /// the reverse) while the same node reported the opposite total.
+///
+/// The predicate is `@report.is_notice`, and this is a thin delegate rather
+/// than a second copy of the question. Before 0.4.34 it was
+/// `rep.family == @core.FParse` -- which is the same ANSWER on every corpus
+/// measured, and the same question asked in two places, one of which could
+/// have drifted without the other noticing.
 fn is_notice(rep : @report.Report) -> Bool {
-  rep.family == @core.FParse
+  rep.is_notice()
 }
 
 ///|

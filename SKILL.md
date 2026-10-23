@@ -92,6 +92,15 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 - `actionable` excludes `notices` (a declaration form not analysed is not a
   defect) — otherwise the self-scan once reported "92 problems" where the true
   count was zero.
+- **`notice:` is a label of its own.** A declared scope limit — "match expression
+  is outside the analyzed subset; it was read but not analysed" — is rendered
+  `notice:`, never `error:`: it is a statement about what THIS analyzer read, not
+  a defect in the code it read. `ParseError` carries both meanings — a scope
+  limit and a genuine defect such as an unterminated literal or a malformed
+  interface line — and one predicate (`Report::is_notice`) tells them apart for
+  the renderer, the `actionable` count, the mermaid drawing and the JSON bridge
+  alike, so the label and the number cannot disagree. A `notice:` line is
+  coverage information: there is nothing to fix in the code.
 - `actionable + notices + unreliable` = `total`, asserted in the line.
   `withheld` is reported alongside it but is a subset of `unreliable` (the
   post-boundary findings of partial files whose pre-boundary finding count

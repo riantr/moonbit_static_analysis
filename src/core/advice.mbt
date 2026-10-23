@@ -28,7 +28,7 @@ pub fn Family::advice(self : Family) -> Advice {
     FParse =>
       Advice::{
         why: "The frontend did not read a construct, or a file-kind frontend rejected a shape. On a .mbt this marks the FIRST genuine read failure in the file: every finding at or after that line is withheld, because it would be derived from an already-wrong tree. On .mbti / .mbt.md / .mbtp it is a frontend rule (malformed line, duplicate signature, unresolvable type reference) rather than a parse boundary.",
-        how: "Fix the FIRST parse error only — it is the boundary, and later ones are frequently its consequences. If the message is 'test declaration is outside the analyzed subset' or 'struct declaration is outside the analyzed subset', it is a declared scope limit of this analyzer, not a defect: there is nothing to fix. If it is 'unknown type ... in interface signature', the .mbti lens has no cross-file awareness and the type may well be declared in a sibling package; treat that finding as unverified rather than acting on it.",
+        how: "Fix the FIRST parse error only — it is the boundary, and later ones are frequently its consequences. If the message is 'test declaration is outside the analyzed subset' or 'struct declaration is outside the analyzed subset', it is a declared scope limit of this analyzer, not a defect: there is nothing to fix, and the finding is rendered 'notice:' rather than 'error:' for exactly that reason. If it is 'unknown type ... in interface signature', the .mbti lens has no cross-file awareness and the type may well be declared in a sibling package; treat that finding as unverified rather than acting on it.",
       }
     FUnusedLocal =>
       Advice::{

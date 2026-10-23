@@ -62,11 +62,11 @@ struct Request {
 
 ///|
 fn to_finding(rep : @report.Report) -> Finding {
-  let severity = match rep.family.severity() {
-    @core.Error => "error"
-    @core.Warning => "warning"
-    @core.Hint => "hint"
-  }
+  // The SAME label the text renderer uses. A JSON consumer that reads
+  // `severity: "error"` for a declared scope limit is being told the opposite
+  // of what the text report told the same reader, and a machine-readable
+  // channel that disagrees with the human one is the worse of the two.
+  let severity = rep.severity_label()
   let vst = rep.vst.map(frame => {
     func: frame.func,
     file: frame.file,

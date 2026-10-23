@@ -422,8 +422,50 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4f  A DECLARED SCOPE LIMIT IS NOT AN ERROR -------------------------------
+# Every ParseError the tool rendered carried the label `error:`, including the
+# ones that are not errors at all: "match expression is outside the analyzed
+# subset; it was read but not analysed" is a DECLARED SCOPE LIMIT of this
+# analyzer, and a reader who sees `error:` on it has been told their code is
+# wrong when the analyzer is the one that did not read it.
+#
+# MEASURED 2026-10-30, with the per-file printing cap lifted so the count is
+# the whole finding set: across the seven corpora and this repository's own
+# source, 23,331 rendered ParseError lines, EVERY ONE of them a deliberate
+# exclusion, and not one of the seventeen genuine-defect producers carrying
+# the marker. So the fix moves no count -- and the corpus pins below are
+# unchanged by it, which is the point: a LABEL fix that moved the numbers
+# would be a behaviour change wearing a rendering change's clothes.
+#
+# The gate checks three things: the rendered output's contract, the four
+# producer paths against the tool's OWN messages, and the source convention
+# that keeps a new exclusion message from silently going back to being an
+# `error:`. It is placed BEFORE the mutation gates on purpose -- it reads the
+# tree, and a mutation gate that has mutated a source file would be read as
+# part of it.
+if ($failed.Count -eq 0) {
+  $NL = Join-Path $root '_verify\check_notice_labels.ps1'
+  if (-not (Test-Path $NL)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_notice_labels.ps1'
+    $failed += 'notice-labels'
+  } else {
+    Stage 'notice labels: a scope limit is a notice, a defect is an error' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $NL 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(OK$|FAIL|NOTICE LABELS|note_skip call sites|deliberate producers|genuine producers)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'notice-labels' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')

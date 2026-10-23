@@ -6114,3 +6114,192 @@ all still ship -- and the gate that checks the package asserts each of them by n
 prelude has no `Map` theory. Moving the one `Map` out of `src/core` would have changed
 the signature of ten exported functions in six packages and left the actual defect
 exactly where it was.
+
+## 0500: THE LABEL SAID `error:` ON A CONSTRUCT THE ANALYZER DID NOT READ
+
+The question that started this increment was a line of output:
+
+```
+2:3 - error: match expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural]
+```
+
+**The user's code is fine.** The finding says the analyzer read a `match` and did not
+analyse it -- a declared scope limit, `src/core/advice.mbt` calls "a declared scope limit
+of this analyzer, not a defect: there is nothing to fix". The `error:` is the defect: a
+reader who sees it has been told their code is wrong when the analyzer is the one that did
+not read it.
+
+### FParse IS ONE FAMILY WITH TWO MEANINGS
+
+The label was wrong because the question was asked in the wrong place. `FParse` is one
+family, and two different producers make it:
+
+| producer | what it is |
+|---|---|
+| `Parser::note_skip` (15 call sites) | a deliberate exclusion -- a scope limit |
+| `moonfiles`' literate fence skip (1 site) | a deliberate exclusion -- a scope limit |
+| the lexer's malformed-literal reports (8 sites) | a genuine defect in the file |
+| `moonfiles`' malformed-interface reports (8 sites) | a genuine defect in the file |
+| the parser's `err()` (1 site) | a genuine read failure |
+
+Nineteen construction sites, two of them deliberate. The renderer asked "is this FParse?"
+and the counter asked the same question, and both got the same answer for both kinds.
+
+### MEASURED, NOT INFERRED
+
+Every claim above is a measurement, and the measurement was taken over the WHOLE finding
+set -- with `--findings-shown-per-file 1000000`, because the default cap of 40 per file
+prints the first forty and the SUMMARY counts all of them, and a classification measured
+over a truncated rendering is a classification of a SUBSET. That is the same mistake this
+increment is about.
+
+```
+    tree                rendered ParseError lines   scope limits   genuine defects
+    SELF                          1868                   1868              0
+    moui                          4225                   4225              0
+    moonbit_labeler                791                    791              0
+    moonbit_image                  218                    218              0
+    async                         1836                   1836              0
+    proton                        2131                   2131              0
+    proton_contract                 34                     34              0
+    moonbit_core                 10228                  10228              0
+                              ------                  ------          ------
+    total                       23331                  23331              0
+```
+
+**23,331 rendered ParseError lines, every one of them a deliberate exclusion, and not one
+of the seventeen genuine-defect producers carrying the marker.** In every corpus the
+rendered ParseError count EQUALS the SUMMARY's `notices` count exactly (1868 = 1868,
+4225 = 4225, 791 = 791, 218 = 218, 1836 = 1836, 2131 = 2131, 34 = 34, 10228 = 10228).
+
+=> 判据: A LABEL THAT IS WRONG ON EVERY LINE IT APPEARS ON IS NOT A LABEL, IT IS NOISE WITH A
+SEVERITY ATTACHED. The tool already had the word for this -- `notice` -- in its own counts,
+its mermaid legend and its skill file. The rendered line was the only place that did not use
+it.
+
+=> 判据: TWO PREDICATES THAT AGREE ON EVERY MEASURED CASE ARE STILL NOT THE SAME PREDICATE.
+"is this FParse?" and "is this a scope limit?" return the same answer on all eight trees
+above, so the fix moves NO COUNT -- and that is precisely why the measurement had to come
+first. A change that cannot be distinguished from no change by the numbers is only
+distinguishable by the RULE, and the rule was wrong.
+
+### THE FIX: ONE PREDICATE, ONE LABEL, AND NO NEW PUBLIC TYPE
+
+`src/report/report.mbt` gains two functions:
+
+- `Report::is_notice` -- the ONE definition of "this finding is a declared scope limit".
+- `Report::severity_label` -- the label, used by the text renderer AND the JSON bridge.
+
+Every consumer goes through them: `Report::render`, the SUMMARY's `notices` counter in
+`src/sa/main.mbt` (two sites), the mermaid drawing's `is_notice`, and `jsoncli`'s
+`to_finding`. The JSON bridge had its OWN copy of the severity mapping, which is how a
+machine-readable channel ends up disagreeing with the human one about the same finding.
+
+**`Severity` and `Family` are untouched, on purpose.** `Family::severity` is `#proof_pure`
+and `severity_taxonomy_holds` is one of the nineteen lemmas in `src/core/core_proof.mbtp`,
+with `type_error_family` enumerating `FParse => true`. A new `Family` variant would have
+changed the proof subject for a rendering change; a `Severity::Notice` would have done the
+same and worse. The proof says a ParseError is an ERROR-SEVERITY family, and that remains
+true: severity is not the question. "Is this actionable?" is the question, and that is
+`is_notice`.
+
+**A field on `Report` was considered and measured out.** MoonBit has no struct field
+defaults (`b : Bool = false` is a parse error, measured on the toolchain), so carrying the
+flag on the struct means editing all NINETEEN construction sites plus the merge, across
+nine packages -- and `Report` is `pub(all)`, so the shape would change in the published
+interface file. A message is not a worse carrier: the pipeline ALREADY distinguishes a
+skip from a read failure by exact message equality against the parser's own `skips` list
+(`src/pipeline/pipeline.mbt:141`), so the message is where this codebase already keeps
+the fact.
+
+### THE MARKER IS A CONVENTION, SO SOMETHING HOLDS IT IN PLACE
+
+The marker is the word `subset`: every deliberate exclusion says the construct is outside
+a SUBSET of what the analyzer reads ("outside the analyzed subset" in the program
+frontend, "outside the analyzer's MoonBit subset" in the literate one), and no
+genuine-defect message contains it.
+
+A convention nobody checks is a comment, so `_verify/check_notice_labels.ps1` is a new
+release stage and it checks three things:
+
+1. **The output contract.** On a real scan of this repository's own source, a message
+   carrying the marker is rendered `notice:`, and `notice:` is used for nothing else. A
+   count of zero fails the check.
+2. **The four producer paths**, each with its own fixture, asserted against the tool's OWN
+   messages rather than against literals written in the gate: the program frontend's
+   deliberate exclusion and the literate frontend's are `notice:`; the literate frontend's
+   malformed interface line is `error:`; the lexer's unterminated literal is never a
+   notice.
+3. **The source convention**, with the producers told apart BY MECHANISM and never by
+   their own text -- `note_skip` is the parser's only skip mechanism (it is the only
+   function that pushes to `skips`) and `subset_exclusion` is the literate frontend's
+   decision. The marker is never used to decide what a producer is, so the check is not
+   circular, and a new exclusion message that stops carrying the marker is CAUGHT rather
+   than excused.
+
+**Both halves have been shown to go red**, on a tree restored byte-exactly afterwards:
+
+- labelling a scope limit `error:` again -> "FAIL: 1878 scope limit(s) labelled something
+  other than notice:";
+- dropping the marker from ONE skip message -> "FAIL: a note_skip message does not carry
+  the marker".
+
+=> 判据: THE RUNTIME HALF AND THE SOURCE HALF CATCH DIFFERENT FAILURES, AND BOTH ARE NEEDED.
+Removing the marker from one message makes the rendered line CONSISTENT again -- it is
+still a ParseError, and the label it gets follows the marker -- so only the source
+convention catches it. A gate that checks the output alone would have called that tree
+clean.
+
+### THE COUNTS, AFTER
+
+```
+    the seven corpus pins                 unchanged, all seven MATCH
+    actionable on every corpus             unchanged (0 / 0 / 0 / 0 / 0 / 0 / 33)
+    the suite                             1094 js, 1174 wasm, 1094 wasm-gc   (+11)
+    numbered mutation gates                80   (79 before 0500)
+    live mutations                         430   (426 before 0500; 0500 adds 4)
+    ... of those, expecting a kill         393   (389 before 0500)
+    ... of those, naming the test          316   (312 before 0500)
+    0500's own gate                        4 mutations, 4 KILLED, every named test confirmed
+```
+
+The corpus pins did not move, and that is the point: a LABEL fix that moved the numbers
+would be a behaviour change wearing a rendering change's clothes. The eleven new tests are
+the ones that pin the rule.
+
+### THE INCREMENT THAT WAS DECIDED HERE, AND NOT DONE
+
+The `IfaceSymTab` question from 0499 is unaffected and still open: `moon prove src/core`
+cannot succeed while a `Map`-carrying public type is in the proof subject, the fix is a
+0.5.0 decision, and the README says so with the reason and the date.
+
+### THE README'S TEST COUNT IS NOW COMPUTED, NOT PINNED
+
+0500 moved the README's test count (1163 -> 1174 on wasm, 1083 -> 1094 on js and
+wasm-gc), and `_verify/check_readme_links.ps1` PINNED that count -- so the gate failed,
+and the fix was to edit the pin. That is the gate working, but it is the gate working in
+one direction only:
+
+- a PINNED literal catches the README moving without the pin moving;
+- it does NOT catch the SUITE moving without the README moving -- which is the direction
+  that matters, because an increment that adds tests and does not update the README
+  leaves a published number that is stale, and a pinned gate reads it as correct.
+
+So the count is COMPUTED now: the gate runs the suite for wasm, js and wasm-gc and
+checks the README against what the suite actually printed. It also asserts that js and
+wasm-gc AGREE with each other -- they do, and they do for a structural reason: `src/sa`
+needs the async runtime, so it is skipped on both, and its tests do not run there -- so
+the README's one number for the two is a claim that has something behind it.
+
+=> 判据: A PUBLISHED NUMBER THAT IS PINNED IN A GATE IS CHECKED IN THE WRONG DIRECTION. The
+gate's job is to catch the world moving without the document, and a pin can only catch the
+document moving without the gate. 0498 made the VERSION computed for exactly this reason;
+0500 makes the TEST COUNT computed for the same one, one increment later.
+
+### 0500's own lesson
+
+=> 判据: MEASURE THE THING THE LABEL IS ABOUT, NOT THE THING THE LABEL IS ATTACHED TO. The
+finding the user pasted was a scope limit, and the tool called it an error. Nothing about
+the parser, the lexer or the subset was wrong -- the QUESTION was. Asking "is this
+FParse?" where the question is "is this a scope limit?" is wrong on every line it appears
+on, and no count can show it: the two questions agree on all eight trees measured.

@@ -315,7 +315,8 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 - **Skipped declarations do not move that boundary.** "This `test` block is not analysed"
   leaves the code after it readable, so such a file is `FOUND`.
 - **`actionable` excludes notices.** A declaration form we chose not to analyse is not a
-  defect in your code.
+  defect in your code — and it does not pretend to be one: a scope limit is rendered
+  **`notice:`**, not `error:`.
 - Unparsed files are grouped **BY REASON** rather than listed one per line.
 - `actionable + notices + unreliable` = `total`, asserted in the line. `withheld` is
   reported alongside it but is a subset of `unreliable`, so it is intentionally not part of
@@ -351,7 +352,8 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 ### The constructs the frontend reads past
 
 Every declaration or expression form it reads past **without analysing** is reported as a
-notice, and the notice is a statement about the tool, not about your code. Measured on this
+notice, and the notice is a statement about the tool, not about your code — so it is
+rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
 project's own source (170 files):
 
 | notice | n | | notice | n |
@@ -367,6 +369,24 @@ Removing one of those rows needs an AST node for that form, which is why they ar
 and not notices to be reworded. The distinction that matters: an **expression-level**
 exclusion (379 of them) sits inside a function body and can switch that body's audit off;
 a **declaration-level** exclusion (1315) sits outside every function extent and cannot.
+
+### `ParseError`: one family, two meanings
+
+`ParseError` is not one thing. It covers a **declared scope limit** — the analyzer read a
+construct and did not analyse it — and a **genuine defect** in the file: an unterminated
+string literal, a malformed interface line, a duplicate signature. The two arrive from
+different producers and are told apart by one predicate, `Report::is_notice`, which every
+consumer of the finding goes through:
+
+| what it is | rendered | counted as |
+|---|---|---|
+| a declared scope limit | `notice:` | a notice — excluded from `actionable` |
+| a genuine defect in the file | `error:` | actionable |
+
+Measured across the seven pinned corpora and this repository's own source, with the
+per-file printing cap lifted so the count is the whole finding set: **23,331** rendered
+`ParseError` lines, every one of them a scope limit. That is why the fix moves no number —
+the two predicates agree numerically on today's corpora — and why only one of them is right.
 
 ### The two blind spots in `UndefinedName`
 
@@ -470,7 +490,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1163/1163 on wasm; 1083/1083 on js and wasm-gc
+moon test --deny-warn                # 1174/1174 on wasm; 1094/1094 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -498,9 +518,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 probe's own verdicts; the own-source self-scan; **this README's own links, anchors,
 versions and counts**; **the mutation-gate roster and a self-test that shows it can go
 red**; **what the registry will actually receive, and a check that the junk stays out of
-it**; the published-package self-scan's own self-test; the corpus comparison against the
+it**; **the notice labels, and a check that a scope limit is not an error**; the
+published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
-gate** — 79 of them.
+gate** — 80 of them.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
@@ -515,11 +536,22 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 79 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 80 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
 takes the narrative out of it and the gate fails.
+
+**A notice is not an error, and the label says so.** A declared scope limit — "match
+expression is outside the analyzed subset; it was read but not analysed" — is rendered
+**`notice:`**, never `error:`: it is a statement about what the analyzer read, not a defect
+in the code it read. `FParse` is one family with two meanings, and the two are told apart by
+one predicate, `Report::is_notice`, which the renderer, the SUMMARY's `actionable` count,
+the mermaid drawing and the JSON bridge all go through — so the label and the number cannot
+disagree. `_verify/check_notice_labels.ps1` checks the rendered output, exercises all four
+producer paths against the tool's own messages, and holds the marker convention in place in
+the source. **Both of its halves have been shown to go red**: labelling a scope limit
+`error:` again fails it, and dropping the marker from one skip message fails it too.
 
 Two switches change what it does: `-SkipMutations` runs everything except the mutation
 gates, and `-SelfTest` exercises the harness's own stage function against a failing body, a
@@ -569,9 +601,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **79 mutation gates**, each of which mutates
-the source, requires a test to go red, and proves the restore byte-identically. 389 of the
-426 live mutations expect a kill; **312 of them also name the test that must go red**, so
+The gate is not optional decoration: it runs **80 mutation gates**, each of which mutates
+the source, requires a test to go red, and proves the restore byte-identically. 393 of the
+430 live mutations expect a kill; **316 of them also name the test that must go red**, so
 the gate log says *which* test was the guard and not merely that something was.
 
 ## License

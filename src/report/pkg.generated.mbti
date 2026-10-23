@@ -18,7 +18,9 @@ pub(all) struct Report {
   span : @core.Span
   vst : Array[@core.Frame]
 }
+pub fn Report::is_notice(Self) -> Bool
 pub fn Report::render(Self) -> String
+pub fn Report::severity_label(Self) -> String
 
 // Type aliases
 

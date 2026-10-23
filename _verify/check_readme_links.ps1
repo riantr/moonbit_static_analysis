@@ -13,6 +13,7 @@
 #      corrected a wrong claim must still carry it, in the file it moved to.
 #   5. The counts the README quotes are the ones the tools measured.
 $root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $fail = 0
 
 Write-Output '=== 1. relative links resolve ==='
@@ -202,9 +203,63 @@ Write-Output '=== 5. the counts the README quotes ==='
 # the release path.
 $gateCount = @(Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'mutate_0*.ps1' -File).Count
 Write-Output ('  (the roster has ' + $gateCount + ' numbered gates on disk)')
+
+# The TEST COUNT is COMPUTED too, and it used to be PINNED -- which is the wrong
+# way round. A pinned literal catches the README moving without this file
+# moving; it does NOT catch the SUITE moving without the README moving, which is
+# the direction that matters: an increment that adds tests and does not update
+# the README leaves a published number that is stale, and a pinned gate reads it
+# as correct. (0500 added eleven tests and moved the number from 1163 to 1174,
+# which is how this was found: the pinned literal and the edited README
+# disagreed, and the gate said so -- but only because the edit and the pin were
+# changed together.)
+#
+# So the suite is run here and the README is checked against what it actually
+# produced. The two targets are not the same number and the difference is
+# STRUCTURAL: `src/sa` needs the async runtime, so it is skipped on js and on
+# wasm-gc, and its tests do not run there. js and wasm-gc are therefore expected
+# to AGREE with each other, and that is asserted rather than assumed.
+function Get-TestCount {
+  param([string]$Target)
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $o = & $moon -C $root test --target $Target --deny-warn 2>&1 | Out-String
+  $ErrorActionPreference = $prev
+  $m = [regex]::Match($o, 'Total tests:\s*(\d+),\s*passed:\s*(\d+),\s*failed:\s*(\d+)')
+  if (-not $m.Success) { return $null }
+  return [pscustomobject]@{
+    Total = [int]$m.Groups[1].Value
+    Passed = [int]$m.Groups[2].Value
+    Failed = [int]$m.Groups[3].Value
+  }
+}
+$wasmT = Get-TestCount 'wasm'
+$jsT = Get-TestCount 'js'
+$gcT = Get-TestCount 'wasm-gc'
+if ($null -eq $wasmT -or $null -eq $jsT -or $null -eq $gcT) {
+  Write-Output '  FAIL: the suite did not run, so the README''s test count cannot be checked.'
+  $fail++
+  $wasmT = @{ Passed = 0; Total = 1 }
+  $jsT = @{ Passed = 0; Total = 1 }
+  $gcT = @{ Passed = 0; Total = 1 }
+} else {
+  Write-Output ('  (the suite says: wasm ' + $wasmT.Passed + '/' + $wasmT.Total +
+                ', js ' + $jsT.Passed + '/' + $jsT.Total +
+                ', wasm-gc ' + $gcT.Passed + '/' + $gcT.Total + ')')
+  if ($jsT.Total -ne $gcT.Total) {
+    Write-Output ('  FAIL: js ran ' + $jsT.Total + ' tests and wasm-gc ran ' + $gcT.Total +
+                  '. The README quotes ONE number for both, so they have to agree.')
+    $fail++
+  }
+  if ($wasmT.Failed -ne 0 -or $jsT.Failed -ne 0 -or $gcT.Failed -ne 0) {
+    Write-Output '  FAIL: the suite is red, so a "n/n" claim in the README cannot be true.'
+    $fail++
+  }
+}
+$wasmStr = ($wasmT.Passed.ToString() + '/' + $wasmT.Total.ToString())
+$jsStr = ($jsT.Passed.ToString() + '/' + $jsT.Total.ToString())
 $expect = @(
-  @{ F = 'README.md';    S = '1163/1163'; N = 'wasm test count' }
-  @{ F = 'README.md';    S = '1083/1083'; N = 'js/wasm-gc test count' }
+  @{ F = 'README.md';    S = $wasmStr; N = 'wasm test count' }
+  @{ F = 'README.md';    S = $jsStr; N = 'js/wasm-gc test count' }
   @{ F = 'README.md';    S = '957 parsed'; N = 'core parsed' }
   @{ F = 'README.md';    S = '33 actionable'; N = 'core module actionable' }
   @{ F = 'README.md';    S = '**58** `actionable`'; N = 'per-function census total' }
@@ -213,8 +268,8 @@ $expect = @(
   @{ F = 'README.md';    S = ('**' + $gateCount + ' mutation gates**'); N = 'mutation gates (the second mention)' }
   @{ F = 'README.md';    S = 'The roster is **checked, not asserted**'; N = 'the roster is checked, not asserted' }
   @{ F = 'README.md';    S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named' }
-  @{ F = 'README.zh.md'; S = '1163/1163'; N = 'wasm test count (zh)' }
-  @{ F = 'README.zh.md'; S = '1083/1083'; N = 'js/wasm-gc test count (zh)' }
+  @{ F = 'README.zh.md'; S = $wasmStr; N = 'wasm test count (zh)' }
+  @{ F = 'README.zh.md'; S = $jsStr; N = 'js/wasm-gc test count (zh)' }
   @{ F = 'README.zh.md'; S = '解析 957 个'; N = 'core parsed (zh)' }
   @{ F = 'README.zh.md'; S = '**58** 条'; N = 'per-function census total (zh)' }
   @{ F = 'README.zh.md'; S = '24 / 24'; N = 'positive control (zh)' }
