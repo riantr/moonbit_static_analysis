@@ -162,8 +162,9 @@ priv struct Walker {
   file : String
   /// Lines the frontend deliberately did NOT analyse, taken from the skip
   /// markers the parser emitted. A frame containing one of these has a hole
-  /// in it, so `audit_frame`'s whole-function conclusions cannot be drawn
-  /// from it — see `audit_suppressed`.
+  /// in it, so the conclusions `audit_frame` draws are limited to the
+  /// bindings such a hole cannot reach — see `Walker::holes_in` and
+  /// `hole_can_reach`.
   unread : Array[@core.Span]
 }
 
@@ -415,39 +416,69 @@ fn Walker::assign_to(self : Walker, name : String) -> Unit {
 }
 
 ///|
-/// Does a function whose extent is `sp` contain a region the frontend chose
-/// not to analyse?
+/// The regions the frontend chose NOT to analyse that fall inside one
+/// function's extent `sp`.
 ///
 /// This is the second half of `truncated_fn`'s argument, and it exists because
 /// a skip is not a read failure. A parse failure moves `first_error_line` and
 /// names the one function it could have cut; a `match`, a `try`, or a fn
 /// literal is a DECLARED scope limit — it moves no boundary, it leaves the
 /// rest of the file readable, and it cost the file nothing on the coverage
-/// counter. But it still leaves a hole inside whatever function encloses it,
-/// and the three families `audit_frame` decides are conclusions about a whole
-/// function:
-///
-///    fn binop(op : Op) -> Int {
-///      let neg = -1
-///      match op { Add => 1 _ => neg }   <- arms never read
-///      neg
-///    }
-///
-/// The `match` arms are where a `let` binding of theirs would live. A binding
-/// only ever assigned inside them looks dead, and the analyzer says so — the
-/// classic finding the frame audit exists to make, drawn from a frame with a
-/// hole in it.
+/// counter. But it still leaves a hole inside whatever function encloses it.
 ///
 /// Overlap is by LINE range against the function's full extent, which is why
 /// the 5th field of `SFunc` / `SLocalFunc` is the closing brace and not the
 /// header. A skip on a line outside every function (a top-level `test` block,
-/// a struct declaration) suppresses nothing here, and a `partial` walk is
+/// a struct declaration) is in no function's list, and a `partial` walk is
 /// unaffected — the two are independent guards on independent facts.
-
-///|
-fn Walker::audit_suppressed(self : Walker, sp : @core.Span) -> Bool {
+///
+/// 0501. This used to be a Bool named `audit_suppressed`, and the BOOL is what
+/// made the suppression a blanket: one region anywhere in the function
+/// switched off EVERY conclusion the frame could support, so a function with a
+/// `match` at its end lost the unused-local verdict on a binding declared at
+/// its top. The LIST is what lets the decision be made per binding — see
+/// `hole_can_reach`.
+///
+fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {
+  let out : Array[@core.Span] = []
   for t in self.unread {
     if t.start.line >= sp.start.line && t.start.line <= sp.end.line {
+      out.push(t)
+    }
+  }
+  out
+}
+
+///|
+/// Could one of these regions have READ this binding?
+///
+/// A region can only read a binding that was already in scope when the region
+/// began. The region's own EXTENT is the threshold, and the END of it is the
+/// side that matters, because a region's span can cover code that WAS read:
+/// the `if` CONDITION and the `match` SUBJECT are parsed, and only the
+/// branches and the arms are not. A binding declared inside that read part is
+/// in scope for the unread part, so the threshold cannot be the region's
+/// START.
+///
+/// The rule is therefore: a binding declared after a region's extent ENDS was
+/// not in scope when the region was skipped, so nothing inside it could have
+/// referred to that binding, and the binding is safe to judge.
+///
+/// The LAMBDA is the case that makes the end line the only sound choice. Its
+/// region's span is the head token, one line, while its body runs on to later
+/// lines — but a binding declared inside that body was never walked, because
+/// the body was never read, so a binding the walker DID walk is either before
+/// the head or after the body. Either way it is outside the region's reach.
+///
+/// => 判据: A NARROWING IS ONLY SOUND IF IT CANNOT JUDGE A BINDING THAT AN
+/// UNREAD REGION MIGHT HAVE READ. The question "could this region have read
+/// this binding" is answered by the region's GEOMETRY — where it ended — and
+/// not by a guess about what it contains, because what it contains is exactly
+/// what nobody read.
+///
+fn hole_can_reach(e : Entry, holes : Array[@core.Span]) -> Bool {
+  for h in holes {
+    if e.decl_span.start.line <= h.end.line {
       return true
     }
   }
@@ -519,8 +550,29 @@ fn Walker::bind_pattern(self : Walker, name : String, sp : @core.Span) -> Unit {
 /// Every finding here is function-scoped, so the caller skips this entirely
 /// for the one function a read failure could have truncated — see
 /// `truncated_fn` for why a positional boundary filter cannot do it.
-fn Walker::audit_frame(self : Walker) -> Unit {
+///
+/// 0501. The frame audit is no longer skipped WHOLE when the function contains
+/// an unread region. It used to be: `audit_suppressed` was a single Bool over
+/// the function's extent, so one `match` anywhere switched off every
+/// conclusion the frame could support.
+///
+/// The three findings do not depend on the unread region equally:
+///
+///   FParamChanged  an OBSERVED assignment. A region that was not read cannot
+///                  un-observe it, so this conclusion does not depend on the
+///                  region at all. It is left exactly as it was anyway: the
+///                  corpora produce none, and a change that cannot be
+///                  measured is a change that cannot be shown.
+///   FUnusedParam   a parameter is in scope for the WHOLE body, so any region
+///                  in this function can read it. Unchanged: suppressed while
+///                  a region exists.
+///   FUnusedLocal   a local is in scope only from its own declaration
+///                  onwards, so only a region that ENDS while the local is
+///                  already dead can hide a read of it. This is the one the
+///                  narrowing reaches, and `hole_can_reach` is all of it.
+fn Walker::audit_frame(self : Walker, sp : @core.Span) -> Unit {
   let fi = self.frames.length() - 1
+  let holes = self.holes_in(sp)
   for n in self.orders[fi] {
     match self.frames[fi].get(n) {
       Some(e) =>
@@ -530,32 +582,36 @@ fn Walker::audit_frame(self : Walker) -> Unit {
         // analyzer contradicting the compiler. See `is_discard_name` for the
         // probe that settled the prefix question.
         if e.param {
-          if e.assigns > 0 {
-            self.findings.push(@report.Report::{
-              family: @core.FParamChanged,
-              lenses: [@core.LStructural],
-              message: "parameter '\{n}' changed by assignment",
-              span: e.decl_span,
-              vst: @core.snapshot_vst(self.vst),
-            })
-          }
-          if e.varuses == 0 && !is_discard_name(n) {
-            self.findings.push(@report.Report::{
-              family: @core.FUnusedParam,
-              lenses: [@core.LStructural],
-              message: "parameter '\{n}' may not be used",
-              span: e.decl_span,
-              vst: @core.snapshot_vst(self.vst),
-            })
+          if holes.length() == 0 {
+            if e.assigns > 0 {
+              self.findings.push(@report.Report::{
+                family: @core.FParamChanged,
+                lenses: [@core.LStructural],
+                message: "parameter '\{n}' changed by assignment",
+                span: e.decl_span,
+                vst: @core.snapshot_vst(self.vst),
+              })
+            }
+            if e.varuses == 0 && !is_discard_name(n) {
+              self.findings.push(@report.Report::{
+                family: @core.FUnusedParam,
+                lenses: [@core.LStructural],
+                message: "parameter '\{n}' may not be used",
+                span: e.decl_span,
+                vst: @core.snapshot_vst(self.vst),
+              })
+            }
           }
         } else if e.varuses == 0 && !is_discard_name(n) {
-          self.findings.push(@report.Report::{
-            family: @core.FUnusedLocal,
-            lenses: [@core.LStructural],
-            message: "local variable '\{n}' assigned but may not be used",
-            span: e.decl_span,
-            vst: @core.snapshot_vst(self.vst),
-          })
+          if !hole_can_reach(e, holes) {
+            self.findings.push(@report.Report::{
+              family: @core.FUnusedLocal,
+              lenses: [@core.LStructural],
+              message: "local variable '\{n}' assigned but may not be used",
+              span: e.decl_span,
+              vst: @core.snapshot_vst(self.vst),
+            })
+          }
         }
       None => ()
     }
@@ -978,12 +1034,13 @@ fn Walker::walk_stmt(self : Walker, s : @ast.Stmt) -> Unit {
         self.walk_stmt(st)
       }
       // Same guard as pass 3, and for the same reason: `sp` here is the local
-      // function's whole extent, so a `match` inside ITS body suppresses its
-      // frame audit the same way. A local function is not reachable through
+      // function's whole extent, so a `match` inside ITS body puts a hole in
+      // ITS frame the same way. A local function is not reachable through
       // `fns` and so was never covered by `truncated_fn` either.
-      if !self.audit_suppressed(sp) {
-        self.audit_frame()
-      }
+      //
+      // 0501. The audit is no longer skipped when the frame has a hole: it
+      // decides each binding against the holes that can reach it.
+      self.audit_frame(sp)
       let _ = self.vst.pop()
       self.pop_frame()
     }
@@ -1390,7 +1447,8 @@ fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit 
 /// unmodelled declaration. They are a SECOND trust boundary, independent of
 /// `trusted_line`: a skip costs no coverage and moves no error line, but it
 /// still leaves a hole in whichever function encloses it, so the frame audit
-/// is skipped for that function. See `Walker::audit_suppressed`.
+/// can only judge the bindings that hole cannot reach. See
+/// `Walker::holes_in` and `hole_can_reach`.
 pub fn walk_module(
   m : @ast.Module,
   file : String,
@@ -1552,10 +1610,12 @@ pub fn walk_module(
     for st in f.body {
       w.walk_stmt(st)
     }
-    if i != suspect &&
-      !w.audit_suppressed(f.span) &&
-      !extern_fns.contains(f.name) {
-      w.audit_frame()
+    // 0501. `audit_suppressed` used to be the second guard here, and it was a
+    // BLANKET: one unread region anywhere in the function switched off every
+    // conclusion the frame could support. The audit now runs and decides each
+    // binding against the holes that can reach it.
+    if i != suspect && !extern_fns.contains(f.name) {
+      w.audit_frame(f.span)
     }
     let _ = w.vst.pop()
     w.pop_frame()

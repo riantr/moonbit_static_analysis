@@ -388,6 +388,35 @@ per-file printing cap lifted so the count is the whole finding set: **23,331** r
 `ParseError` lines, every one of them a scope limit. That is why the fix moves no number —
 the two predicates agree numerically on today's corpora — and why only one of them is right.
 
+### A region silences the bindings it could have read, and no others
+
+When the frontend deliberately does not analyse a construct — a `match`, an `if` in
+expression position, a lambda — it leaves a **region** in the file. The region was never
+read, so it might contain a read of anything in scope around it. The analyzer used to
+treat that as one verdict for the whole function: a single region anywhere switched off
+**every** conclusion the function's frame could support, so a `match` at the end of a
+function took the unused-local verdict away from a binding declared at the top of it.
+
+The verdict is now per **binding**. A region can only reach a binding that was already in
+scope when the region began, so a binding declared *after* the region's extent ends is
+judged, and one declared before it is not. A binding read **only** inside the region is
+still not reported: the region might have read it, and claiming otherwise would be a
+false positive on correct code.
+
+Measured, and the number is the reason this is worth reading. With the whole-function
+suppression switched off, the tool produces **836** `UnusedLocal` and **1,906**
+`UnusedParam` findings across the seven pinned corpora and this repository's own source
+that it does not produce with it on. The narrowing recovers **none** of them on today's
+corpora — every one of those bindings is declared *before* its region, and the region
+could still have read it. What it buys is that regions are judged one binding at a time,
+so that **reading** a region (which is what analysing `match` means) restores the
+verdicts for the bindings the *other* regions cannot reach, instead of restoring nothing.
+
+There is no compiler to check this against: MoonBit's `moon check` has no unused-local
+warning (the `0079` this repository's own `moon.mod` disables is *unused derive*), and
+every pinned corpus sets `warn_list: ""`. The rule is held in place by
+`_verify/check_frame_audit.ps1` and `_verify/mutate_0501.ps1`.
+
 ### The two blind spots in `UndefinedName`
 
 Both are known and both say so in the finding's own note:
@@ -490,7 +519,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1174/1174 on wasm; 1094/1094 on js and wasm-gc
+moon test --deny-warn                # 1184/1184 on wasm; 1104/1104 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -518,10 +547,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 probe's own verdicts; the own-source self-scan; **this README's own links, anchors,
 versions and counts**; **the mutation-gate roster and a self-test that shows it can go
 red**; **what the registry will actually receive, and a check that the junk stays out of
-it**; **the notice labels, and a check that a scope limit is not an error**; the
+it**; **the notice labels, and a check that a scope limit is not an error**; **the frame
+audit, and a check that a region silences only the bindings it could have read**; the
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
-gate** — 80 of them.
+gate** — 81 of them.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
@@ -536,7 +566,7 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 80 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 81 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -601,10 +631,13 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **80 mutation gates**, each of which mutates
-the source, requires a test to go red, and proves the restore byte-identically. 393 of the
-430 live mutations expect a kill; **316 of them also name the test that must go red**, so
-the gate log says *which* test was the guard and not merely that something was.
+The gate is not optional decoration: it runs **81 mutation gates**, each of which mutates
+the source, requires a test to go red, and proves the restore byte-identically.
+Of the **434** live mutations, **397** expect a kill; **320** of them also name the test
+that must go red, so the gate log says *which* test was the guard and not merely that
+something was. All three numbers are **computed** by the README gate from the gate
+sources themselves — a published count that no gate checks is a count that goes missing
+quietly.
 
 ## License
 

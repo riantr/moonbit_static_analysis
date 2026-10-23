@@ -6303,3 +6303,190 @@ finding the user pasted was a scope limit, and the tool called it an error. Noth
 the parser, the lexer or the subset was wrong -- the QUESTION was. Asking "is this
 FParse?" where the question is "is this a scope limit?" is wrong on every line it appears
 on, and no count can show it: the two questions agree on all eight trees measured.
+
+
+## 0501: THE SUPPRESSION WAS PER FUNCTION, AND IT SHOULD HAVE BEEN PER BINDING
+
+The `match` finding the user pasted in 0499/0500 was a LABEL problem, and 0500 fixed the
+label. Underneath it there was a second problem, and it was not a label: when the
+frontend deliberately does not analyse a construct, the analyzer switched off the
+unused-local and unused-parameter checks for the WHOLE function that contained it.
+
+    fn binop(op : Op) -> Int {
+      let neg = -1
+      match op { Add => 1 _ => neg }   <- the arms were never read
+      neg
+    }
+
+One `match`, anywhere in the function, and the function's frame audit did not run at
+all. That is the right call if the unread region could have read anything in the
+function -- and it can, for `if` and `match` and `try` -- but it is ALSO right for a
+binding that the region could not possibly have reached, and that is the part that was
+wrong.
+
+### WHAT IT COST, MEASURED
+
+With the suppression switched OFF -- one line in `audit_suppressed`, and the diff
+against the baseline capture -- the tool produces findings it does not produce with it
+on:
+
+| tree | UnusedLocal | UnusedParam |
+|---|---:|---:|
+| moui | 166 | 768 |
+| moonbit_labeler | 112 | 53 |
+| moonbit_image | 48 | 19 |
+| async | 56 | 219 |
+| proton | 54 | 267 |
+| proton_contract | 0 | 0 |
+| moonbit_core | 309 | 524 |
+| self | 91 | 56 |
+| **total** | **836** | **1,906** |
+
+2,742 findings that the whole-function suppression was hiding.
+
+### THE RULE, AND WHY IT IS SOUND
+
+A region can only read a binding that was already in scope when the region began. The
+region's own EXTENT is the threshold, and the END of it is the side that matters: a
+region's span can cover code that WAS read -- the `if` CONDITION and the `match`
+SUBJECT are parsed, and only the branches and the arms are not -- so a binding declared
+inside that read part is in scope for the unread part, and the threshold cannot be the
+region's START.
+
+=> 判据: A NARROWING IS ONLY SOUND IF IT CANNOT JUDGE A BINDING THAT AN UNREAD REGION
+MIGHT HAVE READ. The question "could this region have read this binding" is answered by
+the region's GEOMETRY -- where it ended -- and not by a guess about what it contains,
+because what it contains is exactly what nobody read.
+
+The LAMBDA is the case that makes the end line the only sound choice. Its region's span
+is the head TOKEN, one line, while its body runs on to later lines -- but a binding
+declared inside that body was never walked, because the body was never read, so a
+binding the walker DID walk is either before the head or after the body. Either way it
+is outside the region's reach.
+
+### AND IT RECOVERS NOTHING ON TODAY'S CORPORA. HERE IS THE NUMBER.
+
+Every one of those 2,742 bindings is declared BEFORE its region, so the region could
+still have read it, and the narrowing correctly stays silent. The rendered output is
+byte-identical on all seven corpora. The only number that moves is `moonbit_core`'s
+`unreliable`, 2432 -> 2448, and the reason is structural rather than accidental:
+`unreliable` counts findings at or after a file's first READ FAILURE, and the frame
+audit now runs for the 72 partial files, so it produces post-boundary findings that are
+counted and not shown.
+
+That is the honest result, and it is the result that redirects the work: **the
+suppression is not where the findings are.** The findings are in the regions. Reading a
+region is what recovers them, and the narrowing is what makes reading one pay off per
+binding instead of per function.
+
+### TWO TOOLCHAIN FACTS, MEASURED, THAT CLOSE TWO DOORS
+
+**THERE IS NO COMPILER ORACLE FOR THIS FAMILY.** MoonBit's `moon check` has no
+unused-local warning: the repository's own source has 91 `UnusedLocal` and 56
+`UnusedParam` findings by the analyzer's measure and the compiler reports NONE of
+them. The `0079` this repository's own `moon.mod` disables is *unused derive* --
+measured by removing the line and reading the 28 diagnostics that came back, every one
+of them on a `} derive(Eq)` line. And every pinned corpus sets `warn_list: ""`, so
+there is no corpus to compare against either. The verdicts are the analyzer's own and
+the rule has to be held by the rule's own gates.
+
+**A MOONBIT LAMBDA CAPTURES THE ENCLOSING LOCALS.** Measured against the toolchain,
+with a deliberate type error as the canary in the same file: `let f = fn() { x }`,
+where `x` is a local of the enclosing function, produces NO diagnostic, while the
+canary's `let bad : Int = "not an int"` comes back as `Error: [4014]`. So a skipped
+lambda body CAN hide a read of the enclosing frame's bindings, and a lambda region
+must keep silencing them. That closed the one lever that looked like it would recover
+the most: "a lambda is a separate scope, so its region cannot read the enclosing
+locals" is FALSE in MoonBit, and acting on it would have produced a false positive on
+correct code.
+
+### A MEASUREMENT THAT MEASURED NOTHING, AND HOW IT LOOKED LIKE A GREAT RESULT
+
+The first attempt at proving that the 2,742 hidden findings are TRUE was a name
+occurrence test: a local whose name occurs exactly once in its file cannot have been
+read anywhere, so its finding is true whatever the holes are. It reported **836 of 836
+and 1,906 of 1,906 -- one hundred per cent.**
+
+It was wrong, and it was wrong in the most flattering way possible. The script took
+the file path from the scanner's `FOUND` header by matching the rest of the line, so
+the path it used was `defects=20<TAB>notices=66<TAB>C:\...` -- not a path at all. Every
+file read FAILED, every occurrence count came out ZERO, and "occurs at most once"
+scored zero as "provable". A measurement that could not read its subject reported a
+perfect score.
+
+The hand-check that caught it was one file and four names: `presentation.mbt` in moui
+reports the parameters `native_accepted`, `anchor`, `base` and `viewport` as unused, and
+`native_accepted` is READ at line 102 (`PreferNative | NativeRequired =>
+!native_accepted`). The corrected measurement -- with the path taken as the LAST
+tab-separated field, and a count of files that could not be read printed so a zero
+cannot hide -- says: **0 of 836** `UnusedLocal` and **5 of 1,906** `UnusedParam` are
+provable that way, because the other 758 mention their name elsewhere in the file.
+
+=> 判据: A MEASUREMENT MUST ASSERT WHICH SUBJECT IT MEASURED, AND A MEASUREMENT THAT
+CANNOT READ ITS SUBJECT MUST SAY SO OUT LOUD. `pins.ps1` has said this since 0480 and
+the sentence cost me an increment's worth of confidence to learn twice: a script that
+reads zero files and reports "occurs at most once" is not a weak measurement, it is
+an inverted one. The fix is not a better test but a FAILING LOUDLY one -- and the
+subject check is one line: count the headers whose path could not be read, and print
+it.
+
+### THE TWO NEGATIVE CONTROLS
+
+A gate that has never been shown to go red is a comment, so both instruments were
+shown to go red by putting the OLD rule back:
+
+- `_verify/check_frame_audit.ps1` under the old whole-function skip: **2 of its checks
+  fail**, on exactly the two fixtures the narrowing makes judgeable
+  (`after_region.mbt` and `after_region_if.mbt`), and the other five stay green -- so
+  the control is TARGETED, not a blanket breakage.
+- the suite under the old rule: **3 of 1,184 tests go red**, the two "declared after a
+  region" tests and the combined one, and the other six stay green.
+
+Both trees were restored byte-identically (SHA256 checked).
+
+### AND MY OWN FIXTURE WAS VACUOUS FOR A WHILE
+
+The first version of the `if` fixture put the `if` in STATEMENT position. A
+statement-position `if` is parsed into the tree and its branches are ANALYSED, so it
+creates NO region at all -- the test was asserting the verdict, and the verdict was the
+same with and without the narrowing. The gate caught it, because the fixture also
+asserts the notice count and there was no notice to count. There is now a fixture and a
+test for exactly that fact, so the `if` case cannot go back to being vacuous.
+
+=> 判据: A FIXTURE THAT ASSERTS A VERDICT MUST ALSO ASSERT THE FACT THAT MAKES THE
+VERDICT INTERESTING. "A local declared after an `if` is reported" is true of a
+statement-position `if` where there is no region and no narrowing involved. The
+assertion that means something is the one about what the region IS.
+
+### THE COUNTS
+
+    the corpus pins                 moui / labeler / image / async / proton / contract: UNMOVED
+                                    moonbit_core: unreliable 2432 -> 2448, total 12693 -> 12709
+    the rendered output             byte-identical on all seven corpora
+    the suite                       1184/1184 wasm, 1104/1104 js, 1104/1104 wasm-gc
+    the mutation gates              81 on disk, 434 live mutations, 397 expect a kill,
+                                    320 name the test; 4/4 KILLED, every named test
+                                    confirmed, every restore byte-identical
+    the frame-audit gate            8 fixtures, all green; 2 checks red under the old rule
+
+### THE README'S MUTATION COUNTS ARE NOW COMPUTED TOO
+
+The README published "393 of the 430 live mutations expect a kill; 316 of them also
+name the test" and NOTHING checked those numbers -- the same defect 0500 fixed for the
+test count, one level down, still open. They are computed now, from the gate sources:
+the number of `Name = 'M...'` declarations is the live count, the ones whose `Expect`
+is not `KILLED` are counted apart, and the ones carrying a `MustRed` are the ones that
+name their test. 434 / 397 / 320.
+
+### WHAT IS NEXT, AND WHY IT IS 0502
+
+The measurement points at one thing: **read the regions.** `match` is the biggest
+expression-level region in every corpus except `moonbit_image` (moui 869, proton 364,
+core 571, async 199, labeler 106, image 37, self 369), and `match` arms are ordinary
+code that the analyzer reads past. Analysing them removes the region, and with 0501's
+per-binding verdict in place, removing a region restores the verdicts for the bindings
+the OTHER regions cannot reach.
+
+That is the next increment, and it is a different kind of work: a pattern reader, the
+bindings the arms introduce, and the arms' own bodies walked. The value of 0501 is that
+it makes that work pay off per binding.

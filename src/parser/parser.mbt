@@ -2563,7 +2563,7 @@ fn Parser::parse_extern_fn(self : Parser, sp : @core.Span) -> @ast.Stmt {
 /// downstream — and a body the reader did not analyse (a `match`, a `try`, a
 /// fn literal; see `Parser::note_skip`) could sit anywhere inside it without
 /// the walk being able to tell "this frame was fully read" from "this frame
-/// has a hole in it". `audit_suppressed` needs that extent.
+/// has a hole in it". `Walker::holes_in` needs that extent.
 ///
 /// The EOF path yields the EOF span: an unterminated block was not closed, and
 /// claiming a span it does not have would invent coverage.

@@ -204,6 +204,35 @@ Write-Output '=== 5. the counts the README quotes ==='
 $gateCount = @(Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'mutate_0*.ps1' -File).Count
 Write-Output ('  (the roster has ' + $gateCount + ' numbered gates on disk)')
 
+# The MUTATION COUNTS are COMPUTED too, and they used to be PINNED LITERALS in
+# the README with nothing checking them at all. That is the same defect the
+# test count had, one level down: "393 of the 430 live mutations expect a
+# kill; 316 of them also name the test" was a published number that a gate
+# adding a mutation could move without any gate noticing.
+#
+# Three numbers, three different meanings, and they are counted from the gate
+# sources rather than asserted:
+#
+#   live mutations      every `Name = 'M...'` declaration
+#   expect a kill       the ones whose `Expect` is the default 'KILLED'; the
+#                       others declare themselves 'SURVIVED' or 'COMPILE-ERR'
+#                       and are counted apart
+#   name the test       the ones that carry a `MustRed`, which is the harness's
+#                       way of saying WHICH test must go red
+$mutTotal = 0
+$mutMustRed = 0
+$mutDeclared = 0
+foreach ($f in (Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'mutate_0*.ps1' -File)) {
+  $src = [System.IO.File]::ReadAllText($f.FullName)
+  $mutTotal += [regex]::Matches($src, "(?m)^\s*Name = 'M\d").Count
+  $mutMustRed += [regex]::Matches($src, '(?m)^\s*MustRed = ').Count
+  foreach ($m in [regex]::Matches($src, "(?m)^\s*Expect = '([^']*)'")) {
+    if ($m.Groups[1].Value -ne 'KILLED') { $mutDeclared++ }
+  }
+}
+$mutExpectKill = $mutTotal - $mutDeclared
+Write-Output ('  (the roster has ' + $mutTotal + ' live mutations: ' + $mutExpectKill + ' expect a kill, ' + $mutMustRed + ' name the test)')
+
 # The TEST COUNT is COMPUTED too, and it used to be PINNED -- which is the wrong
 # way round. A pinned literal catches the README moving without this file
 # moving; it does NOT catch the SUITE moving without the README moving, which is
@@ -266,6 +295,9 @@ $expect = @(
   @{ F = 'README.md';    S = '24 of 24'; N = 'positive control' }
   @{ F = 'README.md';    S = ($gateCount.ToString() + ' of them'); N = 'mutation gates' }
   @{ F = 'README.md';    S = ('**' + $gateCount + ' mutation gates**'); N = 'mutation gates (the second mention)' }
+  @{ F = 'README.md';    S = ('**' + $mutTotal + '** live mutations'); N = 'live mutations' }
+  @{ F = 'README.md';    S = ('**' + $mutExpectKill + '** expect a kill'); N = 'mutations that expect a kill' }
+  @{ F = 'README.md';    S = ('**' + $mutMustRed + '** of them also name the test'); N = 'mutations that name the test' }
   @{ F = 'README.md';    S = 'The roster is **checked, not asserted**'; N = 'the roster is checked, not asserted' }
   @{ F = 'README.md';    S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named' }
   @{ F = 'README.zh.md'; S = $wasmStr; N = 'wasm test count (zh)' }
@@ -275,6 +307,9 @@ $expect = @(
   @{ F = 'README.zh.md'; S = '24 / 24'; N = 'positive control (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + '** 个'); N = 'mutation gates (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + ' 道变异门**'); N = 'mutation gates (zh, the second mention)' }
+  @{ F = 'README.zh.md'; S = ('**' + $mutTotal + '** 个存活变异里'); N = 'live mutations (zh)' }
+  @{ F = 'README.zh.md'; S = ('**' + $mutExpectKill + '** 个预期被杀'); N = 'mutations that expect a kill (zh)' }
+  @{ F = 'README.zh.md'; S = ('**' + $mutMustRed + ' 个**还点名了'); N = 'mutations that name the test (zh)' }
   @{ F = 'README.zh.md'; S = '这份名册是**被检查的，不是被断言的**'; N = 'the roster is checked, not asserted (zh)' }
   @{ F = 'README.zh.md'; S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named (zh)' }
 )

@@ -464,8 +464,36 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4g  the frame audit, per binding -----------------------------------------
+# The gate checks that the frame audit judges each BINDING against the regions
+# that can reach it: a binding declared after a region is judged, a binding
+# declared before one is not, and a binding read ONLY inside a region is not
+# judged at all. It is placed here, before the mutation gates, for the same
+# reason as the notice-labels stage: it reads the tree, and a mutation gate
+# that has mutated a source file would be read as part of it.
+if ($failed.Count -eq 0) {
+  $FA = Join-Path $root '_verify\check_frame_audit.ps1'
+  if (-not (Test-Path $FA)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_frame_audit.ps1'
+    $failed += 'frame-audit'
+  } else {
+    Stage 'frame audit: a region silences the bindings it could have read, and no others' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $FA 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(ok |FAIL|GATE OK|GATE FAILED)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'frame-audit' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1131,7 +1159,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1836 unreliable=0 withheld=0 total=1836'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=2131 unreliable=0 withheld=0 total=2131'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
-  'moonbit_core'    = 'files=1029 parsed=957 actionable=33 notices=10228 unreliable=2432 withheld=464 total=12693'
+  'moonbit_core'    = 'files=1029 parsed=957 actionable=33 notices=10228 unreliable=2448 withheld=464 total=12709'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
