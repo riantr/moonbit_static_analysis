@@ -19,9 +19,10 @@
 | 六个语料当前各自的 SUMMARY | `_verify/release.ps1` 的 pinned 基线（带 `--extern-iface-dir`，**不带的那套数字不是基线**） |
 | 自检的覆盖面 / 通知构成 | `_verify/backlog.ps1` |
 
-自检的 headline 现在是 **`actionable = 0`**，`notices = 823`。但这个 0 **必须连着覆盖面读**，
-而且是**两条**路：823 条通知里 429 条是 test 声明体从未被遍历；另外未分析区域会让
-unused 检查失效——**0501 之前是整个函数失效，现在只影响那块区域够得着的绑定**。
+自检的 headline 现在是 **`actionable = 0`**，`notices = 1584`。但这个 0 **必须连着覆盖面读**，
+而且是**两条**路：1584 条通知里 1233 条是 test 声明体从未被遍历；另外未分析区域会让
+unused 检查失效——**0501 之前是整个函数失效，现在只影响那块区域够得着的绑定；0502 把
+`match` 从区域里拿掉了**，backlog 里已经没有 `match expression` 这一行。
 两条都在 `README.md` 的「覆盖面」一节里，数字由 `backlog.ps1` 复现。
 
 ## 为什么有顺序

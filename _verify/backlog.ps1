@@ -43,10 +43,16 @@ $t = [System.IO.File]::ReadAllText($out)
 $sum = ([regex]::Match($t, '(?m)^SUMMARY.*$').Value) -replace "`t", ' '
 $notices = [int]([regex]::Match($sum, 'notices=(\d+)').Groups[1].Value)
 
-$lines = @($t -split "`r?`n" | Where-Object { $_ -match '^\d+:\d+ - (error|warning|hint): ' })
+# 0500 CHANGED THE LABEL and this script did not follow: a deliberate exclusion
+# is rendered `notice:` now, not `error:`, so the two patterns below matched
+# NOTHING and the breakdown printed "expression-level 0, declaration-level 0,
+# printed 0 of 1584 notices" -- a breakdown that reads like a measurement and is
+# the absence of one. The notice is in the pattern now, and the label is
+# spelled out in full so the next label change cannot silently empty it again.
+$lines = @($t -split "`r?`n" | Where-Object { $_ -match '^\d+:\d+ - (error|warning|hint|notice): ' })
 $groups = @{}
 foreach ($l in $lines) {
-  $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint): (.*) \([A-Za-z]+\) \[')
+  $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \([A-Za-z]+\) \[')
   if (-not $m.Success) { continue }
   $msg = $m.Groups[2].Value
   if ($groups.ContainsKey($msg)) { $groups[$msg]++ } else { $groups[$msg] = 1 }

@@ -37,6 +37,13 @@
 # condition, which was UNOBSERVABLE while the arm was dead and is observable
 # now.
 #
+# 0502 CHANGED ONE OF THE FOUR. M1 is now a declared SURVIVOR, and the reason
+# is measured rather than argued: 0502's fifth fix -- an assignment MUTATES a
+# binding and does not CREATE one -- removed the re-binding that was the only
+# shape putting a name in the table TWICE, and with it the only shape that
+# made the ORDER observable. The row, the A/B and the replacement pinning are
+# in the row itself.
+#
 # => 判据: A PARAMETER'S ANNOTATION IS A FACT ABOUT THE VARIABLE. A RE-BINDING OF
 # THAT VARIABLE IS NOT A NEW DECLARATION, AND IT MUST NOT ERASE THE FACT.
 $ErrorActionPreference = 'Stop'
@@ -47,6 +54,29 @@ $TYPES = 'src\types\infer.mbt'
 $mutations = @(
   # M1 -- THE ORDER. The pre-fix shape: the parameters first, the body bindings
   # after, so the re-binding overwrites the annotation and the defect returns.
+  #
+  # 0502 MADE THIS UNOBSERVABLE, and the A/B says why. The row applied, the
+  # whole suite ran, and EVERY test stayed green -- so the order of the two
+  # loops no longer decides anything.
+  #
+  # IT IS NOT THAT THE RULE STOPPED MATTERING. It is that the SHAPE that made
+  # it observable is GONE. The shape was a RE-BINDING: the collector recorded
+  # `xs["k"] = "v"` as a SECOND binding of `xs`, so the table held the name
+  # twice and the order decided which one won. 0502's fifth fix -- an
+  # assignment MUTATES a binding and does not CREATE one -- removed the second
+  # binding, so the table holds `xs` once and the order has nothing to decide.
+  #
+  # THE A/B, WHICH IS THE EVIDENCE AND NOT A STORY: putting the assignment's
+  # re-binding back makes the suite RED on UNMUTATED code -- 0502's own
+  # `a local read inside a nested local fn is not a dead local` and its canary,
+  # plus the structural row -- and the harness ABORTS on a red baseline
+  # (rule 1). So the re-binding is not merely unobserved: it is PINNED, by
+  # gate 0502's M11 and by two rows of `pipeline_0502b_test.mbt`.
+  #
+  # THE ORDER IS STILL IN THE CODE and still correct, and nothing measures it
+  # now. That is said here rather than left to be discovered: a row that used
+  # to be a kill and is now a survivor is a CHANGE IN THE EVIDENCE, and the
+  # change has a reason a reader can check.
   @{
     Name = 'M1 the parameters are declared before the body bindings again'
     File = $TYPES
@@ -76,7 +106,31 @@ $mutations = @(
     }
   }
 '@
-    MustRed = 'an indexed write through a PARAMETER reports the index type'
+    Expect = 'SURVIVED'
+    Prove = @'
+MEASURED on 2026-10-30, by A/B and not by argument.
+
+The mutation reverts the ORDER of the two loops and the WHOLE SUITE STAYS
+GREEN -- 1135/1135, on the same tree every other row in this gate is measured
+on.
+
+WHY, and it is not that the rule stopped mattering: it is that the shape that
+made it observable is gone. The order decided which of TWO bindings of the
+same name won, and the second binding came from the collector recording an
+assignment as a re-binding. 0502's fifth fix -- an assignment MUTATES a
+binding and does not CREATE one -- removed it.
+
+THE A/B: putting the assignment's re-binding back makes the suite RED on
+UNMUTATED code -- three rows -- and the harness aborts on a red baseline
+(rule 1), so the re-binding cannot be observed alongside this mutation at all.
+What that DOES establish is the thing that matters: the re-binding is pinned,
+by gate 0502's M11 and by two rows of `pipeline_0502b_test.mbt`.
+
+THE ORDER IS STILL IN THE CODE and still correct, and nothing measures it now.
+This row is declared SURVIVED rather than quietly dropped, because a row that
+used to be a kill and is now a survivor is a change in the evidence, and the
+change has a reason a reader can check.
+'@
   }
 
   # M2 -- THE PARAMETER'S TYPE. The order is right and the annotation is

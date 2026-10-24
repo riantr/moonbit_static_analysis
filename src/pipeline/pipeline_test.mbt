@@ -131,22 +131,43 @@ test "pruning appears twice: structural fold and lattice ABool" {
 ///|
 test "structural-only: unused param/local/changed param invisible to others" {
   let r = @pipeline.run(SAMPLE_STRUCTURE, "s.mbt", empty_iface())
-  assert_eq(r.reports.length(), 2)
+  // 0502. THREE, not two, and the third one is the finding this increment
+  // produced: `z = x * 2` in SAMPLE_STRUCTURE assigns a name that is declared
+  // NOWHERE, and the collector used to take the assignment target for a
+  // binding of the scope that assigned it.
+  //
+  // That was a no-op wherever the name was already declared -- `bind` skips a
+  // name the frame already holds -- so it only ever did something in the one
+  // case where it was wrong, and the case it was wrong in was a nested local
+  // `fn` assigning an ENCLOSING local: the nested scope collected its own
+  // shadow of the name, every read crossed into that shadow, and the
+  // enclosing binding kept zero reads. Measured on moonbitlang/async 0.22.4
+  // `src/process/windows.mbt:105-116`, where `segment_start` is read at 109
+  // and 110 and assigned at 115.
+  //
+  // An assignment MUTATES a binding; it does not create one. With that, `z`
+  // is what it always was -- an undeclared name, and `moon check` rejects this
+  // sample for exactly that reason (`z = x * 2` with no `let z`). The
+  // analyzer now says so too.
+  assert_eq(r.reports.length(), 3)
   for rep in r.reports {
     assert_eq(rep.lenses.length(), 1)
     assert_eq(rep.lenses[0].name(), "structural")
   }
   let mut seen_changed = false
   let mut seen_unused = false
+  let mut seen_undefined = false
   for rep in r.reports {
     match rep.family {
       @core.FParamChanged => seen_changed = true
       @core.FUnusedParam => seen_unused = true
+      @core.FUndefinedName => seen_undefined = true
       _ => ()
     }
   }
   assert_true(seen_changed)
   assert_true(seen_unused)
+  assert_true(seen_undefined)
   assert_eq(r.sigs[0], "f(int, int) -> int")
 }
 
@@ -1002,32 +1023,46 @@ test "an untruncated file still reports its unused local" {
 // the other shape of the same problem — the file is perfectly readable, the
 // coverage counter is untouched, and no error line moved, but the region
 // itself was never analysed and could be holding a binding's only write.
-//
-// The four tests below are needed. The first three are the guard, the last is
-// what stops it from becoming "suppress the family in every file that happens
-// to contain a `match`", which would also make all three pass.
+///
+/// The four tests below are needed. The first three are the guard, the last is
+/// what stops it from becoming "suppress the family in every file that happens
+/// to contain a `match`", which would also make all three pass.
+///
+/// 0502. THE `match` IS NO LONGER THE REGION. Its arms are parsed and walked, so
+/// a `match` no longer puts a hole in a frame, and the whole group below was
+/// rewritten around what that means. The FIRST THREE NOW ASSERT THE FINDING --
+/// the pin has been lifted, so the findings come back -- and the `n_subset`
+/// assertion is what keeps them non-vacuous in BOTH directions: a build where
+/// the `match` silently stopped being a skip would have `n_subset == 0` and the
+/// findings, and a build where the arms are still skipped would have
+/// `n_subset == 1` and no findings. Only the build that reads the arms has
+/// `n_subset == 0` AND the findings.
+///
+/// The over-suppression control now uses an `if` EXPRESSION, which is still a
+/// region, because a `match` no longer is.
 
 ///|
-/// The pin. A `match` inside a function means that function's frame has a hole
-/// in it, so "this parameter was never read" is not something the reader is in
-/// a position to conclude.
+/// 0502. A `match`'s arms are READ, so the function's frame has no hole in it,
+/// and "this parameter was never read" is something the reader IS in a position
+/// to conclude. Before this increment the answer was silence, and the silence
+/// was the defect: the corpora measured ZERO actionable findings across six of
+/// seven pinned trees because of it.
 ///
 /// The `n_subset` assertion is what makes this test non-vacuous: it proves the
-/// skip was really recorded and really reached the walk. Without it, a guard
-/// that suppressed EVERY function's audit would pass this test, and so would
-/// a build where the `match` silently stopped being a skip at all.
+/// skip was NOT recorded, and so that the finding above came from the arms being
+/// read rather than from the guard having been removed.
 
 ///|
-test "a function containing an unanalysed match yields no function-scoped finding" {
+test "a function containing a match yields the function-scoped finding" {
   let r = @pipeline.run(
     "fn f(unused : Int) -> Int {\n  match 1 {\n    _ => 0\n  }\n}\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )
-  // The file parsed, and the skip is the declared kind — not a read failure.
+  // The file parsed, and NO skip was recorded -- the arms were read.
   assert_eq(r.first_error_line, 0)
-  assert_eq(r.n_subset, 1)
-  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(r.n_subset, 0)
+  assert_eq(count_family(r, "UnusedParam"), 1)
   assert_eq(count_family(r, "UnusedLocal"), 0)
 }
 
@@ -1036,41 +1071,54 @@ test "a function containing an unanalysed match yields no function-scoped findin
 /// could have been its only reader. This is the form measured on this
 /// analyzer's own `interp/binop` — `self`, `op` and `sp` reported as unused
 /// because the arms that use them were never read.
-test "a dead local is not reported when a match could have read it" {
+///
+/// 0502. The arms ARE read now, so a binding the arms do not use IS dead, and
+/// it is reported. The `n` in the match SUBJECT is still a read -- the subject
+/// was always read -- so it is not reported, and the two assertions together say
+/// which half of the match is read.
+test "a dead local is reported when the match's arms are read" {
   let r = @pipeline.run(
     "fn g(n : Int) -> Int {\n  let dead = 1\n  match n {\n    _ => 0\n  }\n}\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )
   assert_eq(r.first_error_line, 0)
-  assert_eq(r.n_subset, 1)
-  assert_eq(count_family(r, "UnusedLocal"), 0)
+  assert_eq(r.n_subset, 0)
+  assert_eq(count_family(r, "UnusedLocal"), 1)
+  assert_eq(count_family(r, "UnusedParam"), 0)
 }
 
 ///|
 /// A local function owns its own frame and is walked from inside the enclosing
 /// walk, so it never passes through pass 3 — it needs the guard in its own
 /// right, or a `match` inside a local function is still a hole nobody notices.
-test "a local function containing a match also yields no finding" {
+///
+/// 0502. And it needs the opposite guard now: the local function's own frame is
+/// judged, so its dead parameter is reported.
+test "a local function containing a match also yields the finding" {
   let r = @pipeline.run(
     "fn outer() -> Int {\n  fn inner(dead : Int) -> Int {\n    match 1 {\n      _ => 0\n    }\n  }\n  inner(1)\n}\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )
   assert_eq(r.first_error_line, 0)
-  assert_eq(r.n_subset, 1)
-  assert_eq(count_family(r, "UnusedParam"), 0)
+  assert_eq(r.n_subset, 0)
+  assert_eq(count_family(r, "UnusedParam"), 1)
 }
 
 ///|
 /// The over-suppression control, and the one that keeps the guard honest. The
 /// skip here is on line 6, AFTER every function closed, so no function's
 /// extent contains it: the overlap test must not fire, and the frame audit
-/// must run as before. A suppression keyed on "this FILE has a match" would
+/// must run as before. A suppression keyed on "this FILE has a region" would
 /// make all three tests above pass and this one fail.
-test "a match outside every function still leaves the families working" {
+///
+/// 0502. THE REGION IS AN `if` EXPRESSION NOW, because a `match` no longer is
+/// one. It is still outside every function, so the control still says what it
+/// said.
+test "a region outside every function still leaves the families working" {
   let r = @pipeline.run(
-    "fn f(dead : Int) -> Int {\n  let u = 1\n  2\n}\nmatch 1 {\n  _ => 0\n}\n",
+    "fn f(dead : Int) -> Int {\n  let u = 1\n  2\n}\nlet _ = if 1 {\n  2\n} else {\n  3\n}\n",
     "x.mbt",
     @core.IfaceSymTab::empty(),
   )

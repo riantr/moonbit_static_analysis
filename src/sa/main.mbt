@@ -1236,5 +1236,72 @@ async fn collect_private_symtabs(
       None => out.set(d, sub)
     }
   }
+  // 0502. A TYPE'S METHOD MAY BE CALLED UNQUALIFIED, inside the package that
+  // declares the type -- so the METHOD SEGMENT of every `Type::method` this
+  // package declares is recorded as a value of this package's table.
+  //
+  // IT IS PACKAGE-LOCAL ON PURPOSE. This table is filed by DIRECTORY and
+  // unioned only into the files of that same directory (see the note above
+  // `collect_private_symtabs`), so a method of a type in package A cannot
+  // silence a name in package B. Doing it in the SHARED cross-file table
+  // would let every method name in the world resolve everywhere, which is not
+  // the language's rule and would trade six false positives for an unknown
+  // number of false negatives.
+  //
+  // => 判据: the rule the toolchain applies is "a method of a type you can
+  // see", and the table this writes into is exactly the set of names one
+  // package can see.
+  for _, t in out {
+    add_method_segments(t)
+  }
   out
+}
+
+///|
+/// The METHOD SEGMENTS of a symbol table's qualified names: `Vector::makei`
+/// contributes `makei`.
+///
+/// 0502. A TYPE'S METHOD MAY BE CALLED UNQUALIFIED, inside the package that
+/// declares the type -- so the METHOD SEGMENT of every `Type::method` a
+/// package declares is recorded as a value of that package's table.
+///
+/// MEASURED: moonbitlang/core `immut/vector/vector.mbt:68` declares
+/// `pub fn[A] Vector::makei(..)` and `immut/vector/invariants_wbtest.mbt`
+/// calls `makei(..)` at lines 227, 229, 230, 354, 363 and 366. The toolchain
+/// accepts every one of them -- the whole `moonbitlang/core` package checks
+/// with ONE error and it is not this name -- and the analyzer reported all
+/// six as `no visible binding for 'makei'`.
+///
+/// ONLY THE SEGMENT AFTER THE LAST `::`, and only for a name that actually
+/// carries one: a table holds `Type::method` for a method and `name` for
+/// anything else, and `path_tail` of a name with no `::` is the empty string.
+///
+/// THE DUPLICATES ARE DROPPED, because the table is a set of names and two
+/// types may declare a method of the same name.
+pub fn method_segments(tab : @core.IfaceSymTab) -> Array[String] {
+  let segs : Array[String] = []
+  for k, _ in tab.all_values() {
+    if k.contains("::") {
+      let seg = @core.path_tail(k)
+      if seg != "" && seg != k && !segs.contains(seg) {
+        segs.push(seg)
+      }
+    }
+  }
+  segs
+}
+
+///|
+/// Record every method segment of this table as a VALUE of this table.
+///
+/// THE SEGMENTS ARE COLLECTED FIRST: adding to the table while iterating it
+/// would be iterating a map that the loop is changing.
+///
+/// A method is a FUNCTION, so the value is recorded with `is_const` false --
+/// `src/types/infer.mbt` types a const as `TUnknown` and a function as
+/// `TUnknownFn`, and a method is callable.
+pub fn add_method_segments(tab : @core.IfaceSymTab) -> Unit {
+  for seg in method_segments(tab) {
+    tab.add_value(seg)
+  }
 }

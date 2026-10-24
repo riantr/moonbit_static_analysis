@@ -100,6 +100,8 @@ $evidence = @(
   @{ N = 'the prove-contracts gate';     Want = 1;                R = '^_verify\\check_prove_contracts\.ps1$' }
   @{ N = 'the notice-labels gate';       Want = 1;                R = '^_verify\\check_notice_labels\.ps1$' }
   @{ N = 'the frame-audit gate';        Want = 1;                R = '^_verify\\check_frame_audit\.ps1$' }
+  @{ N = 'the match-arms gate';          Want = 1;                R = '^_verify\\check_match_arms\.ps1$' }
+    @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
   @{ N = 'the README';                   Want = 1;                R = '^README\.md$' }
   @{ N = 'the Chinese README';           Want = 1;                R = '^README\.zh\.md$' }
   @{ N = 'the skill file';               Want = 1;                R = '^SKILL\.md$' }

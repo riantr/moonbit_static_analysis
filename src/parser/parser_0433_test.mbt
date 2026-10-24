@@ -10,7 +10,7 @@
 ///
 /// wzzc-dev/moui 0.1.12 writes the next-line form throughout --
 /// `views/form/form_field.mbt:42`, `runtime/scroll_to_key.mbt:30`,
-/// `runtime/runtime_events.mbt:358` -- and it was the largest single blocker
+/// `runtime/runtime_events.mbt:29` -- and it was the largest single blocker
 /// left at 0.4.30: 13 files, `unexpected token `>``, the arrow of the first
 /// arm.
 ///
@@ -19,20 +19,20 @@
 /// where the walker can answer it; `pipeline` imports `parser`, so a parser
 /// test cannot reach the walker at all.
 ///
-/// Note what is NOT asserted here: `reports.length() == 0`. The arms are
-/// outside the subset, so the standard notice is present, and a zero-report
+/// 0502. THE REPORT COUNT IS NO LONGER THE EVIDENCE. The row used to assert
+/// `reports.length() == 1` and name the notice, and it said why: a zero-report
 /// assertion would be asserting a silent swallow -- it would pass on a parser
-/// that consumed the whole match and said nothing.
-test "0433: a match subject on the next line parses and still says so" {
+/// that consumed the whole match and said nothing. That is still true, and it
+/// is now the BINDING constraint: the arms are the evidence. A parser that
+/// swallowed the match would leave an EMPTY arm list, and this row says so.
+test "0433: a match subject on the next line parses and its arms are read" {
   let r = @parser.parse(
     "fn sub(x : Int) -> Int { x }\nfn caller(c : Int) -> Int {\n  match\n    sub(c) {\n    1 => 2\n    _ => 3\n  }\n}\n",
   )
   assert_eq(r.first_error, 0)
-  assert_eq(r.reports.length(), 1)
-  assert_eq(
-    r.reports[0].message,
-    "match expression is outside the analyzed subset; it was read but not analysed",
-  )
+  // NO NOTICE: the match is read, so there is nothing to announce.
+  assert_eq(r.reports.length(), 0)
+  assert_eq(first_match_arms(r.tree).length(), 2)
 }
 
 ///|
@@ -43,11 +43,8 @@ test "0433 control: a match subject on the same line is still read" {
     "fn sub(x : Int) -> Int { x }\nfn caller(c : Int) -> Int {\n  match sub(c) {\n    1 => 2\n    _ => 3\n  }\n}\n",
   )
   assert_eq(r.first_error, 0)
-  assert_eq(r.reports.length(), 1)
-  assert_eq(
-    r.reports[0].message,
-    "match expression is outside the analyzed subset; it was read but not analysed",
-  )
+  assert_eq(r.reports.length(), 0)
+  assert_eq(first_match_arms(r.tree).length(), 2)
 }
 
 ///|
@@ -59,7 +56,8 @@ test "0433: a match subject on the next line parses in let position too" {
     "fn sub(x : Int) -> Int { x }\nfn caller(c : Int) -> Int {\n  let v = match\n    sub(c) {\n    1 => 2\n    _ => 3\n  }\n  v\n}\n",
   )
   assert_eq(r.first_error, 0)
-  assert_eq(r.reports.length(), 1)
+  assert_eq(r.reports.length(), 0)
+  assert_eq(first_match_arms(r.tree).length(), 2)
 }
 
 ///|

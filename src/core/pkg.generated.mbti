@@ -55,6 +55,7 @@ pub struct IfaceSymTab {
   values : Map[String, Bool]
   aliases : Map[String, String]
 }
+pub fn IfaceSymTab::add_value(Self, String) -> Unit
 pub fn IfaceSymTab::all_values(Self) -> Map[String, Bool]
 pub fn IfaceSymTab::empty() -> Self
 pub fn IfaceSymTab::has_type(Self, String) -> Bool

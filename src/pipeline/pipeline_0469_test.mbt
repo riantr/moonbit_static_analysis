@@ -26,13 +26,24 @@
 //! run. Every row here exists because the cheap version passed the corpus and failed two
 //! unit tests.
 //!
-//! EVERY ROW BELOW ASSERTS `ParseError == 1`, and that is not sloppiness -- it is the skip
-//! notice `match expression is outside the analyzed subset`, which the family counter
-//! files under `ParseError`. The first version of this file asserted zero and six rows
-//! went red on it. Asserting one is STRONGER than omitting the assertion: it pins that the
-//! match is still deliberately skipped rather than silently analysed as though it were
-//! read. The one row with no `match` in its fixture asserts zero, and the contrast is the
-//! point.
+//! EVERY ROW BELOW ASSERTS `ParseError == 0`, and that is not sloppiness -- it is the
+//! ABSENCE of the skip notice `match expression is outside the analyzed subset`, which the
+//! family counter files under `ParseError`. The first version of this file asserted one and
+//! six rows went red on it.
+//!
+//! 0502. THE DIRECTION FLIPPED, and the flip IS the point. Before this increment every row
+//! asserted `ParseError == 1`: the match was a SKIP, and the assertion pinned that it was
+//! still deliberately skipped rather than silently analysed as though it were read. Now the
+//! match's arms ARE read, so the notice is gone, and every row asserts ZERO -- which pins
+//! the opposite, that the match is NOT skipped.
+//!
+//! A zero is not a weaker claim than a one was: it is falsifiable in the same way. A build
+//! in which the arms were skipped again would carry the notice, and every row here would go
+//! red. What changed is WHICH defect each row would be reporting.
+//!
+//! => 判据: a row that asserts a count is a claim about the count. When the mechanism
+//! changes, the claim changes with it -- and the row is rewritten to assert the opposite,
+//! not edited until it passes.
 
 ///|
 /// THE DEFECT, AS IT WAS. `!vok` where `vok` is bound to a `match` is NOT an operator
@@ -45,7 +56,7 @@ test "0469: `!` on a match-bound value is not an operator mismatch" {
     "matchnot.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 1)
+  assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "OperatorMismatch"), 0)
 }
 
@@ -59,11 +70,11 @@ test "0469: `!` on a plain Int is still an operator mismatch" {
     "matchcanary.mbt",
     @core.IfaceSymTab::empty(),
   )
-  // ZERO here, and the contrast with every other row in this file is the point: there is
-  // no `match` in this fixture, so there is no skip notice. `ParseError == 1` everywhere
-  // else in this file is that notice and nothing else -- `match expression is outside the
-  // analyzed subset; it was read but not analysed` -- which is a DESIGNED limitation
-  // counted under this family, exactly as the anonymous-`fn` notice is.
+  // ZERO here, and so is the count in every other row of this file -- which is
+  // 0502's change and not a weakening. There is no `match` in this fixture, so
+  // there was never a skip notice; the other rows HAD one and now do not,
+  // because their matches are read rather than skipped. The contrast this row
+  // still carries is the one that matters: the operator lens found the Int.
   assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "OperatorMismatch"), 1)
 }
@@ -82,7 +93,7 @@ test "0469: an undefined name in a match subject is still reported" {
     "matchsubj.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 1)
+  assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "UndefinedName"), 1)
 }
 
@@ -95,7 +106,7 @@ test "0469: a defined name in a match subject is not reported" {
     "matchsubjok.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 1)
+  assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "UndefinedName"), 0)
 }
 
@@ -109,6 +120,12 @@ test "0469: a defined name in a match subject is not reported" {
 /// could not fail, and a row that cannot fail is not a guard -- it is a comment with an
 /// `assert_eq` in it. M2 of `mutate_0469.ps1` measured this: deleting `walk_expr`'s
 /// `EMatch` arm reddened three rows and not this one.
+///
+/// 0502. THAT REASON IS GONE -- a `match` no longer silences `UnusedParam` for its
+/// enclosing function -- and the row is STILL vacuous, for a different reason: the
+/// fixture has no `match` in it at all. It is kept because the rule it records is
+/// still the rule, and a row deleted silently is how a coverage hole becomes
+/// permanent.
 ///
 /// => 判据: before keeping a negative row, ask whether ANY mutation can turn it red. If the
 /// mechanism that makes it pass is the same one that suppresses the finding regardless of
@@ -137,7 +154,7 @@ test "0469: a match in statement position is still read and reported no error" {
     "matchstmt.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 1)
+  assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "UndefinedName"), 0)
 }
 
@@ -158,7 +175,7 @@ test "0469: a binding made inside a match subject is visible to the subject" {
     "matchbind.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 1)
+  assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "UndefinedName"), 0)
 }
 
@@ -171,6 +188,6 @@ test "0469: a name nothing binds inside a match subject is still reported" {
     "matchbindcanary.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "ParseError"), 1)
+  assert_eq(count_family(r, "ParseError"), 0)
   assert_eq(count_family(r, "UndefinedName"), 1)
 }

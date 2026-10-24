@@ -54,11 +54,16 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
       if self.at(TDot) {
         continue
       }
-      self.p = save
-    }
-    break
 '@.Replace("`r`n", "`n")
-    Repl = '    break'
+    Repl = @'
+    if self.at(TNewline) {
+      let save = self.p
+      self.skip_seps()
+      if self.at(TDot) {
+        self.p = save
+        break
+      }
+'@.Replace("`r`n", "`n")
     MustRed = 'keeps the REAL receiver'
   },
 
@@ -66,13 +71,13 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     Name = 'M2 the speculative separators are not rewound, fusing the next statement'
     File = $PARSER
     Find = @'
-      if self.at(TDot) {
+      if self.at_name("as") {
         continue
       }
       self.p = save
 '@.Replace("`r`n", "`n")
     Repl = @'
-      if self.at(TDot) {
+      if self.at_name("as") {
         continue
       }
       ignore(save)
@@ -80,6 +85,13 @@ Invoke-MutationGate -Name 'M1..M4' -Target 'js' -Mutations @(
     Expect = 'SURVIVED'
     Prove = @'
 MEASURED, not assumed: this mutation survived 462/462 green.
+
+RE-ANCHORED 0502. The rewind this row removes used to sit directly under the
+chain's own `continue`, and 0502 put the `as` continuation between them -- `as`
+may start a new line, so the cast continuation is now the second thing the
+newline block can continue on. The old anchor stopped matching and the gate
+ABORTED rather than pretending. The row now points at the same REWIND, in the
+place it now lives; what it removes has not changed.
 
 The rewind looks load-bearing and is not, for the same reason 0418's M11 does
 not die: the enclosing statement loop calls `skip_seps` again anyway, so the

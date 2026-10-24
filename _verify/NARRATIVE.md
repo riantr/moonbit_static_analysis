@@ -6478,6 +6478,197 @@ the number of `Name = 'M...'` declarations is the live count, the ones whose `Ex
 is not `KILLED` are counted apart, and the ones carrying a `MustRed` are the ones that
 name their test. 434 / 397 / 320.
 
+### THE FOUR NUMBERS THE README PUBLISHED, RE-MEASURED, AND NOW PINNED
+
+The README carried four numbers that this increment had invalidated, and **not one of them
+was gated**, so nothing said so. They are now MEASURED by the release gate, PINNED in one
+place, and the README gate DERIVES its expectations from that place.
+
+    the rendered ParseError lines      23,331  ->  19,215
+    the own-source notice table        1,499 printed of 1,584  ->  the whole set
+    the expression-level exclusions    379  ->  123
+    the declaration-level exclusions   1,315  ->  1,461
+    the suppression-off pair           836 / 1,906  ->  537 / 1,094
+
+**THE NOTICE TABLE WAS COUNTED WITH THE PRINTING CAP AT 40**, so it counted 1,499 of the
+1,584 notices -- 85 of them sat behind the per-file cap and the table simply did not have
+them. With the cap lifted the table sums to the SUMMARY's own `notices`, and that is the
+number worth publishing: a breakdown that does not add up to the total is a breakdown of a
+printing cap.
+
+**THE SUPPRESSION-OFF PAIR WAS MEASURED AGAINST THE OLD MECHANISM.** 836 and 1,906 were
+measured when the suppression was PER FUNCTION. It is per binding now, and a `match` is not a
+region at all, so the number describes a mechanism that no longer exists. Re-measured, with
+the suppression switched OFF at its single point of control (`Walker::holes_in` -- the
+unused-parameter check is gated on `holes.length() == 0` and the unused-local check on
+`hole_can_reach(e, holes)`, so emptying that one array switches the whole thing off):
+
+    moui                 83 / 353
+    moonbit_labeler      93 /  23
+    moonbit_image        39 /  11
+    async                43 / 157
+    proton               53 / 199
+    proton_contract       0 /   0
+    moonbit_core        186 / 341
+    self                 40 /  10
+    total               537 / 1,094
+
+and the shipped build produces **one** of them: the `d_off` finding. So the suppression is
+hiding 536 locals and 1,094 parameters.
+
+=> 判据: A NUMBER THAT DESCRIBES A MECHANISM MUST BE RE-MEASURED WHEN THE MECHANISM
+CHANGES, AND THE CHEAPEST WAY TO KNOW IS TO MEASURE IT IN THE SAME GATE THAT MEASURES
+EVERYTHING ELSE. 0502 wrote that lesson down about the corpus numbers and then published
+four more numbers that were not measured at all -- so the lesson is not a sentence, it is a
+STAGE.
+
+### THE THREE NEW GATES, AND WHAT EACH ONE IS FOR
+
+`_verify/check_match_arms.ps1` is a new release stage: 17 fixtures plus a package directory
+on the real scanner. Shown to go red twice, by injecting a defect into the analyzer's own
+source, rebuilding, and running it.
+
+`_verify/mutate_0502.ps1` is a new numbered gate: 12 mutations, 12/12 KILLED, every named
+test confirmed, every restore byte-identical, every anchor unique.
+
+`_verify/measure_suppression_off.ps1` is a new stage, and it is the one that makes the number
+above a FACT rather than a recollection: it patches the analyzer's own source, rebuilds,
+scans the eight trees, and puts the source back -- with the restore proven by SHA256, and
+with the stage REFUSING TO START if it finds the source already patched. That refusal is the
+part worth keeping: a stage that cannot tell "patched by me" from "patched by a run that was
+killed" is how a tree ends up analysing with no suppression at all and nobody notices.
+
+And two EXISTING stages grew a measurement, because the measurement was already being made
+and only the COMPARISON was missing: the self-scan stage now counts its own notices by kind
+and compares them with the pin, and the corpus stage now counts the rendered `ParseError`
+lines of every tree, cross-checks each against that tree's SUMMARY, and sums the eight into
+the number the README publishes.
+
+### A PIN THAT IS DEFINED BELOW ITS READER IS NOT A PIN
+
+The first release-gate run of this release FAILED, and it failed on the stage 0502 had just
+added — the self-scan stage, comparing the own-source notice table with the pin:
+
+```
+FAIL: the own-source notice table drifted from the pin.
+    pinned :
+    actual : =0
+FAIL: notice kinds that the pin does not name: anonymous function literal, const declaration,
+    derive declaration, enum declaration, if expression, short lambda, struct declaration,
+    test declaration, try expression
+FAIL: expression-level 123 / declaration-level 1461, pinned  / .
+```
+
+The blank after `pinned :` is the whole diagnosis. The four pins had been written at the BOTTOM
+of `release.ps1`, next to the other pin tables (`$PINNED`, `$PERFN`, `$CONTROL_N`), and the
+stages that read them run EARLIER in the file. PowerShell runs a script top to bottom, so every
+one of them was read as the EMPTY STRING.
+
+Note what the measured values were: **expression-level 123, declaration-level 1461** — both
+exactly the pins. The measurement was right and the gate was still red, because it was
+comparing against nothing. The corpus stage carried the same defect and never ran at all:
+`$PARSERR_TOTAL` was empty too, and the failure guard had already stopped the run before it
+was reached. Two of the six pins were therefore never read in the whole run.
+
+Two things turned a blank into a diagnosis in ONE reading of the log: the stage prints the
+pinned value NEXT TO the measured one, and it prints the measured value even after the
+comparison has already failed. A stage that had compared silently would have gone on to the
+next stage, and the pin would have been found, if at all, by a reader.
+
+The fix is a MOVE, not a second copy: the block went to the top of the file, above the first
+stage that reads it, and the file now carries a guard that refuses to run at all if any of the
+six pins is empty. The file also gained a UTF-8 BOM, because it holds non-ASCII and this
+repository's convention is that a `.ps1` with non-ASCII needs one — without it PowerShell
+reads the file in the ANSI code page and the `判据` lines come out as mojibake.
+
+=> 判据: A PIN MUST BE DEFINED BEFORE THE STAGE THAT READS IT, AND A GATE THAT COMPARES
+AGAINST A MISSING PIN MUST SAY SO OUT LOUD. "The number drifted" and "the pin was never read"
+are the same red light, and what separates them is one blank line in the output. A pin that is
+defined below its reader is not a pin; it is a comparison against nothing, and a comparison
+against nothing cannot tell a wrong measurement from a right one.
+
+=> 判据: THE FIX IS A MOVE, NOT A SECOND COPY. The tempting repair when a pin reads empty is to
+put the value back where it was, or to write it down a second time somewhere it is definitely
+in scope. Both make the number stop agreeing with itself. Moving the block keeps ONE place,
+and the guard makes the failure impossible to misread a second time.
+
+
+### THE FULL GATE ABORTED AT THE POST-PUBLISH STAGE, AGAIN, AND THE ORDER IS PART OF THE GATE
+
+The full run of the release gate for 0.4.34 came back with exactly ONE stage red:
+
+```
+published package self-scan                                              False       7
+    === published package self-scan ===
+    ABORT: the scan produced no output. That is not a clean scan.
+      stderr: Error: Prebuilt wasm asset does not exist
+```
+
+That stage asks the registry for `riantr/moonbit_static_analysis@0.4.34` — the version in
+`moon.mod` — and there is no 0.4.34 on mooncakes.io yet, because the tag has not been pushed.
+`moonx` has nothing to serve, so the scan printed nothing.
+
+`release.ps1` says, in a comment that predates this increment:
+
+> THIS STAGE IS A POST-PUBLISH CHECK, and the ORDER of the release is what makes that true.
+> `selfscan_published.ps1` asks the registry for the version in `moon.mod` and asserts the tree
+> it read IS that version — because a scan of a DIFFERENT package would still be able to print
+> `actionable=0`. So once `moon.mod` names a version that has not been published yet, this stage
+> CANNOT pass: the registry has nothing to serve, `moonx` prints nothing, and the stage aborts.
+
+0.4.32 hit this exact wall and recorded it, in the section above. Nothing about it is new. What
+IS new is that this time the abort was READ as what it was — an ordering fact — rather than as
+a regression, and the stage was NOT weakened, re-anchored or skipped to make the gate green.
+
+THE DIAGNOSIS IS ONE COMMAND, and the script names it. A registry that serves nothing and a
+broken scan print the same line, so the only thing that tells them apart is a scan of a
+version that IS published:
+
+```
+    package : riantr/moonbit_static_analysis@0.4.33
+    moon.mod: 0.4.34
+      scanned 152 files under .repos/riantr/moonbit_static_analysis/0.4.33
+    FAIL: asked for 0.4.34, but the scan read version '0.4.33'.
+      ok  parsed 152/152 files
+      SUMMARY  files=152 parsed=152 actionable=0 notices=1528 ...
+      ok  actionable = 0
+```
+
+The registry SERVES it: 152 files, 152/152 parsed, **actionable=0** under the 0.4.34 analyzer.
+The delivery path — mooncakes compiling the artifact server-side and `moonx` running THAT — is
+working, and the published tree is clean under the analyzer that is about to replace it. The
+ONLY failing check is the version assertion, which is the stage doing precisely its job: it
+refuses to call a scan of a different package a proof about this one.
+
+THE TWO RUNS, AND WHAT EACH ONE MEASURES. The failure guard (`if ($failed.Count -eq 0)`) is
+what makes the abort cost more than one stage: the corpus comparison, the per-function census
+and the census control sit BEHIND the aborting stage, so they were skipped and never ran in
+that pass. The evidence for this release is therefore TWO runs of the same gate on the same
+tree, which is what 0.4.32 did:
+
+    the full run            82 mutation gates, and every stage before the post-publish one   True
+    the -SkipMutations run   the corpus pins, the census, the control, the suppression-off
+                             measurement, the README gate, and every other stage             True
+
+and the stage that is RED in the first run is the one that is required to be red before the
+publish and green after it. The third run is the post-publish check itself, against 0.4.34,
+once CI has published it.
+
+=> 判据: A GATE THAT CANNOT PASS YET IS NOT A RED GATE, AND THE ORDER IS PART OF THE GATE.
+What this release adds to that is the second half: a stage that aborts for an ordering reason
+must be ABLE TO ABORT, and the run that aborts must still be a run whose other stages carry
+their evidence. The fix is not to make the aborting stage pass; the fix is to know which run
+measures what, to say so, and to run the diagnosis that separates "the registry has nothing"
+from "the scan is broken".
+
+
+### THIS RELEASE
+
+0.4.34. The version was bumped only after the local gate was green, and the README was
+updated before the tag, so the registry never saw a README that described a different tree
+than the one it was serving. `moonbitlang/async@0.22.5` was checked against mooncakes.io
+first and is already the latest, so the gate ran on the current dependency set.
+
 ### WHAT IS NEXT, AND WHY IT IS 0502
 
 The measurement points at one thing: **read the regions.** `match` is the biggest
@@ -6490,3 +6681,313 @@ the OTHER regions cannot reach.
 That is the next increment, and it is a different kind of work: a pattern reader, the
 bindings the arms introduce, and the arms' own bodies walked. The value of 0501 is that
 it makes that work pay off per binding.
+
+
+## 0502: A MATCH'S ARMS ARE ORDINARY CODE, AND READING THEM FOUND THIRTEEN FALSE POSITIVES
+
+0501 narrowed the suppression from a whole function to the bindings a region could
+actually have read, and it ended by pointing at the next step: **read the
+regions.** `match` is the biggest expression-level region in every corpus except
+`moonbit_image` (moui 869, proton 364, core 571, async 199, labeler 106, image 37,
+self 369), and a `match`'s arms are ordinary code the analyzer reads past.
+
+So 0502 reads them. The arms are parsed, the pattern's names are bound, the guard
+is walked, the `with` constraint is read, and the body is walked.
+
+### THE MEASUREMENT, AND IT IS NOT THE NUMBER THE HEADLINE SUGGESTS
+
+A naive probe -- with the suppression switched off and nothing else changed --
+produced **1,098 findings** (801 `UnusedLocal`, 297 `UnusedParam`). That is the
+number the region was hiding, and it is real.
+
+But the number that matters is the one that SURVIVES the arms being read for
+real. Reading the arms for real is not a one-line change: an arm introduces
+pattern bindings, so reading the body without introducing them manufactures
+`no visible binding for 'x'` on correct code. The probe that survives that is a
+**second** probe, and it says:
+
+    14 candidate findings across the seven corpora
+    13 of them FALSE POSITIVES, from 6 distinct mechanisms
+     1 of them TRUE
+
+=> 判据: THE NUMBER A FIX MAKES APPEAR IS NOT THE NUMBER THE FIX IS WORTH. 1,098
+was the cost of the hole; 14 is what came back when the hole was filled
+properly. Reporting the first without the second would have claimed 1,098
+findings and delivered one.
+
+### THE SIX MECHANISMS, AND WHERE EACH WAS MEASURED
+
+Each of the thirteen false positives came from a different place, and every one
+of them is a false positive **on code `moon check` accepts**.
+
+| # | mechanism | corpus site |
+|---|---|---|
+| 1 | `as` may start a NEW LINE -- the postfix loop broke at the newline, so the `as` was read as a name | moonbitlang/async 0.22.4 `src/fs/watch.mbt:216,222,233` |
+| 2 | a destructuring `let`'s INITIALISER was discarded by the collector | moonbitlang/core `internal/regex_engine/shared_types/rechar_set/rechar_set.mbt:202,214` |
+| 3 | a same-package type's METHOD called unqualified (`Vector::makei`) | moonbitlang/core `immut/vector/invariants_wbtest.mbt:354,363,366` (and 227,229,230 before) |
+| 4 | a struct-literal's FIELD VALUES were not collected | wzzc-dev/moui 0.1.12 `views/text/text_input_apply.mbt:166` |
+| 5 | an ASSIGNMENT created a shadowing binding in a nested local `fn` | moonbitlang/async 0.22.4 `src/process/windows.mbt:105` |
+| 6 | a `with` CONSTRAINT's right-hand side was read as a pattern binding | moonbitlang/core `builtin/option.mbt:50`, `builtin/result.mbt:92`, `builtin/arrayview.mbt:282,329`, `builtin/help_render.mbt:320` |
+
+**NOT ONE OF THEM IS A 0502 DEFECT.** All six are older holes that reading the
+arms EXPOSED: two of them (`as` at a newline, the destructuring initialiser) are
+reachable from ordinary code with no `match` anywhere, and the other four are
+defects in the collector and the reader that a `match` merely gave a way to
+reach.
+
+=> 判据: A FIX THAT MAKES A FINDING APPEAR MUST BE CHECKED AGAINST THE FINDING IT
+MAKES APPEAR. Six mechanisms produced six false positives, and each one is now
+pinned by a row that says the finding must NOT come back.
+
+### THE ONE TRUE FINDING
+
+    moonbit_labeler 0.2.13   app_moui/rasterizer.mbt:489
+      local variable 'd_off' assigned but may not be used
+
+`d_off` is computed at 489 and never read -- the code uses
+`blend_pixel(buf, dst_x, dst_y, ..)` instead. It is the first `actionable`
+finding this tool has published on `moonbit_labeler`, and it is on the right
+side of the ledger: it was invisible while the `match` hole stood.
+
+### WHAT IT BOUGHT
+
+**1,832 match notices gone** across the seven PINNED corpora. That is the
+CONTROLLED measurement, and it is the one the number belongs to: those seven
+trees did not change between the two scans -- only the ANALYZER did.
+
+    moui              4225 -> 3457    (-768)
+    moonbit_labeler    791 ->  698    ( -93)
+    moonbit_image      218 ->  186    ( -32)
+    async             1836 -> 1654    (-182)
+    proton            2131 -> 1799    (-332)
+    proton_contract     34 ->   29    (  -5)
+    moonbit_core     10228 -> 9808    (-420)
+                                   ------
+                                    1832
+
+And this repository's OWN source, which is NOT a controlled measurement and is
+NOT counted in that 1,832:
+
+    self (own source) 1888 -> 1584    (-304)
+
+The self row is quoted the way the release gate measures it -- each COMMITTED
+tree scanned by its own analyzer -- and it is a WEAKER number than the seven
+above, for two reasons worth stating rather than hiding. 0502 added four test
+files to this repository, and they carry 37 notices of their own (7 + 12 + 12 +
+6); on the 174 file paths the two trees SHARE, the count is 1888 -> 1547, a
+drop of 341. And this repository's tree carries scratch copies of its own
+sources under `_verify/_work_*.mbt`, whose CONTENTS changed along with the
+sources they copy, so part of that 341 is the files changing rather than the
+analyzer changing. 1888 -> 1584 is the only self number that is not an
+interpretation.
+
+The notices that remain are the ones that are still TRUE: a `lexmatch`'s arms,
+an `if` expression, a lambda body, and a `match` whose arms hold MoonBit this
+frontend cannot model.
+
+**13 `moonbit_core` files went FOUND -> CLEAN**, because a match notice was all
+they had:
+
+    decode_js.mbt                    strconv_string_view.mbt    assert.mbt
+    bitstring.mbt                    tree_utils.mbt             trig_double_sincos_non_native_or_js.mbt
+    parser_globals_merge.mbt         runtime_exit.mbt           tree_slice.mbt
+    decode_nonjs.mbt                 arg_action.mbt             symbolize.mbt
+    tree_pop.mbt
+
+**5 pre-existing false positives are gone**, on code that was already wrong
+before 0502 read anything: three `makei` calls in
+`moonbit_core/immut/vector/invariants_wbtest.mbt` (3 -> 0) and two `i1`/`i2`
+in `moonbit_core/diff/diff.mbt` (2 -> 0). The `i1`/`i2` case is the same
+mechanism as the `windows.mbt` one and the second independent instance of it:
+`diff.mbt:494` is a nested local `fn` that reads AND assigns `i1`/`i2`, which
+are declared at 489/490.
+
+### THE COMPILER IS THE ORACLE, AND IT SETTLED ONE QUESTION
+
+`as` MAY start a new line. Measured in `_verify/settle_0502_as.ps1`, 6/6: the
+canary (a name bound nowhere) is REJECTED, and so is a cast to a trait the type
+does not implement -- so the cast really is type-checked, and an ACCEPT is a
+fact about the grammar rather than about a parser that stopped complaining.
+
+A local `fn` **captures** the enclosing scope: `moon check` accepts
+`fn f() -> Int { let mut x = 0  fn g() -> Unit { x = x + 1 }  g()  x }` with
+zero errors. So `x` inside `g` IS the enclosing `x`, and a read there is a read
+of the enclosing binding -- which is what makes mechanism 5 a defect in the
+COLLECTOR and not in the walk.
+
+### TWO GATES HAD TO BE RE-BASED, AND THAT IS WORTH RECORDING
+
+0502 removed a construct the analyzer used to exclude, and two gates were built
+on that construct:
+
+- `_verify/check_frame_audit.ps1` used a `match` as its REGION. A `match` is no
+  longer a region, so its five fixtures measured nothing. The region is now an
+  **anonymous function literal** -- whose body the frontend reads but does not
+  analyse -- and the `if` EXPRESSION fixture is unchanged. The lambda is not an
+  arbitrary substitute: 0501's own narrative settled that a MoonBit lambda
+  CAPTURES the enclosing locals, so a skipped lambda body CAN hide a read of
+  them, and a lambda region must keep silencing the bindings it could have
+  read.
+- `_verify/check_notice_labels.ps1` used a plain `match` as the program
+  frontend's DELIBERATE EXCLUSION. A plain `match` is no longer an exclusion,
+  so the fixture measured a construct the tool no longer excludes. The fixture
+  is now the FALLBACK -- a match whose arms hold an array spread -- which is
+  the exclusion that is left, and the one 0502's own gate pins as "the fallback
+  is EXACT".
+
+=> 判据: A GATE BUILT ON A CONSTRUCT THE TOOL HAS SINCE STOPPED EXCLUDING IS A
+GATE MEASURING NOTHING, and it fails LOUDLY, which is the good case. The bad
+case is the gate that still passes because the construct it used happens to
+produce the same numbers for a different reason.
+
+### THE NEW GATES, AND HOW THEY WERE SHOWN TO GO RED
+
+`_verify/check_match_arms.ps1` -- 17 fixtures on the real scanner: the output
+contract, the NEGATIVE direction (a binding read only inside an arm body is
+not dead), the fallback being exact, the six mechanisms, the same-package method
+in its own package directory, and that every fixture was read at all.
+
+`_verify/mutate_0502.ps1` -- 12 mutations, each naming the test that must go
+red, each anchored uniquely against the post-`moon fmt` source. **12 of 12
+KILLED, every named test confirmed, every restore byte-identical.**
+
+And the stage gate was shown to go red twice, by injecting a defect into the
+analyzer's own source, rebuilding, and running it:
+
+- the arm body is not walked -> **12 checks fail**, the negative direction
+  included (`live_local`, `live_param`);
+- the `with` constraint is not recognised -> **2 checks fail**, naming
+  `m6_with_constraint`.
+
+Both trees were restored byte-identically (SHA256 checked), and the gate was
+GREEN again after each restore.
+
+### THREE GATES THAT 0502 BROKE, AND WHAT WAS DONE ABOUT EACH
+
+The full release gate is the only thing that finds these, because a gate whose
+anchor no longer matches ABORTS rather than passes -- and an aborting gate in
+the middle of a 33-minute run is a loud, cheap failure.
+
+**`mutate_0432` -- two patterns absent.** 0432 anchors on the newline-handling
+block in `parse_postfix_from`, and 0502 put the `as` continuation INSIDE it --
+`as` may start a new line, so the cast continuation is now the second thing
+that block can continue on. The chain's `continue` and the block's `self.p =
+save` are no longer adjacent, and both anchors stopped matching. The row now
+points at the same BEHAVIOUR in the place it now lives, and M1 was made
+TARGETED rather than wholesale: it makes the chain's own continuation not fire
+instead of deleting the whole block, so the `as` continuation -- which gate
+0502 pins separately -- is not collaterally removed.
+
+**`mutate_0469` -- four patterns absent.** 0469 pins the `match` node, and 0502
+gave the node its arms: `EMatch(subject)` is `EMatch(subject, arms)` now, in
+the parser, in the walk, in the collector and in the type lens. All four rows
+were re-anchored onto the current text and each still kills the test it names.
+
+**`mutate_0492` -- M1 SURVIVED.** This is the one that is not a re-anchor, and
+it is the most interesting thing 0502 did to the rest of the repository.
+
+0492's M1 reverts the ORDER of two loops in `Infer::run_fn`: the parameters
+first, the body bindings after, so a body binding of the same name overwrites
+the parameter's annotation. It was a KILL. After 0502 it SURVIVED -- the
+mutation applied and the whole suite stayed green.
+
+The obvious reading is "0502 broke the rule". The A/B says otherwise. Putting
+the assignment's RE-BINDING back -- the shape 0492 measured, `xs["k"] = "v"`
+recorded as a second binding of `xs` -- makes the suite RED on UNMUTATED code,
+on three rows, and the harness ABORTS on a red baseline (rule 1). So:
+
+- the RE-BINDING was the only shape that put a name in the binding table
+  TWICE, and 0502's fifth fix -- an assignment MUTATES a binding and does not
+  CREATE one -- removed it;
+- with it gone, the ORDER has nothing to decide, and M1 is unobservable;
+- and the re-binding is PINNED, by gate 0502's M11 and by two rows of
+  `pipeline_0502b_test.mbt`.
+
+So the order is still in the code and still correct, and nothing measures it
+now. The row is declared SURVIVED with that argument rather than quietly
+dropped, because a row that used to be a kill and is now a survivor is a
+CHANGE IN THE EVIDENCE, and the change deserves a reason a reader can check.
+
+=> 判据: A MUTATION THAT USED TO BE KILLED AND IS NOT ANY MORE IS NOT A GATE
+THAT BROKE. It is a change in the CODE, and the question is WHICH change. The
+A/B -- put the old shape back, and see what goes red -- is what tells the two
+apart, and it is cheap: one mutation, one suite run.
+
+### THE COUNTS
+
+    the corpus pins                 moui / image / async / proton / contract: notices down
+                                    labeler: actionable 0 -> 1 (the TRUE finding)
+                                    core: actionable 33 -> 28, notices 10228 -> 9808
+    the per-function census         core 56 -> 47, labeler 0 -> 1, total 58 -> 50
+    this repository's own source    files 174 -> 178, notices 1888 -> 1584, actionable 0
+                                    (the four new test files carry 37 of the 1584)
+    the suite                       1221/1221 wasm, 1135/1135 js, 1135/1135 wasm-gc
+    the mutation gates              82 on disk, 446 live mutations, 408 expect a kill,
+                                    331 name the test; 12/12 KILLED
+    the match-arms gate             17 fixtures + a package directory, all green;
+                                    12 checks red under the arm-body defect
+    the three gates 0502 broke      0432 and 0469 re-anchored, 0492's M1 declared
+                                    a survivor -- all three GREEN again
+
+
+### TWO LESSONS, BOTH PAID FOR DURING THIS INCREMENT
+
+**A MUTATION GATE KILLED MID-RUN LEAVES THE MUTATION APPLIED.** The harness proves
+every restore byte-for-byte by SHA256 -- and that proof is defeated by killing
+the process between the write and the restore. It happened here: the full
+release gate was stopped during gate 0418, whose M11 replaces
+
+    if !self.at(TDot) { self.p = save; break }
+
+with `if false { break }`, and the file was left mutated. The evidence was
+`moon check --deny-warn` reporting `Unused variable 'save'` at
+`src/parser/parser.mbt:3026` -- a warning the mutation creates, pointing at
+the exact line the mutation touched.
+
+=> 判据: A GATE THAT IS KILLED HAS NOT RESTORED ANYTHING. The restore is the
+last step of the mutation, not a property of the mutation, so an interrupted
+gate leaves the tree dirty. LET IT FINISH. And when a gate is stopped anyway,
+the check that finds the damage is `moon check`, not `git status` -- the mutated
+file is a MODIFIED file, not a new one, and `git status` says nothing about it.
+
+**A NUMBER WRITTEN DOWN TWICE WILL DISAGREE WITH ITSELF.** 0502 moved four
+corpus numbers at once -- the core module's `actionable` (33 -> 28), the
+per-function census total (58 -> 50), the positive control's file count (24 ->
+20), and the core module's parsed count -- and `_verify/check_readme_links.ps1`
+PASSED with every one of them stale in the README.
+
+The reason is structural: the gate asked "does the README contain the string
+I wrote down", and the strings it had written down were a SECOND COPY of
+facts that also lived in `release.ps1`'s pin table. The pin table was
+re-pinned from the measurement; the gate's literals were not; and the README
+kept publishing numbers that had been true for a release and a half.
+
+The corpus numbers now live in ONE place. `release.ps1` pins the corpus
+SUMMARYs, the census total and the control's file count; the README gate
+DERIVES its expectations from that table and FAILS LOUDLY if the pins are
+gone rather than quietly checking against a default.
+
+=> 判据: A PIN CHECKS THE WRONG DIRECTION WHEN THE FACT IS WRITTEN DOWN TWICE.
+0500 made the test count and the mutation counts COMPUTED for exactly this
+reason; 0502 found the same defect one level down, in the corpus numbers, and
+fixed it the same way.
+
+### WHAT IS NEXT
+
+The `match` is no longer a region, and with it go 1,832 notices across the seven
+pinned corpora -- so the next region to read is whatever is left. The backlog
+says what that is, and it is now measured rather than remembered:
+
+    expression-level (can suppress a frame audit) : 123
+      if expression                                  103
+      anonymous function literal                     17
+      short lambda                                    2
+      try expression                                  1
+    declaration-level (cannot)                     1376
+
+An `if` expression is the biggest of them by an order of magnitude, and it is
+the same shape a `match` was: a construct the frontend reads but does not
+analyse. Reading one is a bigger job than reading a `match`'s arms was -- the
+branches are statements, not patterns, so there are no bindings to introduce
+and the hard part is the `else` -- and the compiler is the oracle for whether
+an `if` in expression position may hold a `let`, exactly as it was for `as`.

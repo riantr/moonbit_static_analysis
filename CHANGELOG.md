@@ -154,6 +154,106 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.34 — a `match`'s arms are ordinary code, and reading them found thirteen false positives
+
+Until this release a `match`'s arms were consumed whole by `skip_braces` — a region the
+frontend deliberately did not analyse — and that region put a HOLE in the frame of the
+enclosing function. 0.4.31 had already established that a hole silenced the unused-local
+and unused-parameter checks for that WHOLE function, which is why six of the seven pinned
+corpora measured ZERO actionable findings.
+
+0.4.34 reads the arms: the pattern's names are parsed and bound, the guard is walked, the
+`with` constraint is read, and the body is walked.
+
+**The measurement, and it is not the number the headline suggests.** A naive probe with the
+suppression switched off produces 1,098 findings — the cost of the hole. The number that
+survives the arms being read FOR REAL is 14, and reading the arms for real is not a one-line
+change: an arm introduces pattern bindings, so reading the body without introducing them
+manufactures `no visible binding for 'x'` on correct code. Of those 14, THIRTEEN were false
+positives from six distinct mechanisms, and exactly ONE was true.
+
+**The six mechanisms**, each measured against a corpus site, each on code `moon check`
+accepts:
+
+1. `as` may start a NEW LINE — the postfix loop broke at the newline, so the `as` was read as
+   a name. async `src/fs/watch.mbt:216,222,233`
+2. a destructuring `let`'s INITIALISER was discarded by the collector. core
+   `rechar_set.mbt:202,214`
+3. a same-package type's METHOD called unqualified (`Vector::makei`). core
+   `immut/vector/invariants_wbtest.mbt:354,363,366`
+4. a struct-literal's FIELD VALUES were not collected. moui
+   `views/text/text_input_apply.mbt:166`
+5. an ASSIGNMENT created a shadowing binding in a nested local `fn`. async
+   `src/process/windows.mbt:105`
+6. a `with` CONSTRAINT's right-hand side was read as a pattern binding. core
+   `builtin/option.mbt:50`, `builtin/result.mbt:92`, `builtin/arrayview.mbt:282,329`,
+   `builtin/help_render.mbt:320`
+
+Not one of them is a 0.4.34 defect: all six are older holes that reading the arms EXPOSED, and
+two of them — the `as` at a newline and the destructuring initialiser — are reachable from
+ordinary code with no `match` in sight.
+
+**The one true finding.** moonbit_labeler 0.2.13 `app_moui/rasterizer.mbt:489`,
+`local variable 'd_off' assigned but may not be used` — computed at 489 and never read. It is
+the first actionable finding this tool has published on `moonbit_labeler`, and it was invisible
+while the `match` hole stood.
+
+**What it bought.** 1,832 match notices gone across the seven pinned corpora (moui -768,
+labeler -93, image -32, async -182, proton -332, contract -5, core -420); 13 `moonbit_core`
+files FOUND -> CLEAN; and 5 pre-existing false positives removed — three `makei` calls in
+`invariants_wbtest.mbt` and the `i1`/`i2` shadow in `diff.mbt`, the second independent
+instance of mechanism 5.
+
+**Four numbers the README published were stale, and are now measured and pinned.** The
+rendered `ParseError` count was 23,331 and is now **19,215**. The own-source notice table was
+counted with the per-file printing cap at 40, so it counted 1,499 of the 1,584 notices, and it
+is now the whole set: 1,318 `test` declarations, 103 `if` expressions, 60 `struct`
+declarations, 53 `derive` declarations, 24 `enum` declarations, 17 anonymous function
+literals, 6 `const` declarations, 2 short lambdas and 1 `try` expression — 123 expression-level
+and 1,461 declaration-level. And the "what the suppression hides" pair was measured before the
+suppression was narrowed per binding: with the region suppression switched OFF the tool now
+produces **537** `UnusedLocal` and **1,094** `UnusedParam` findings across the seven pinned
+corpora and this repository's own source, against the **one** the shipped build produces.
+
+All four are now MEASURED by the release gate and PINNED in one place, and the README gate
+DERIVES its expectations from that table — the same discipline 0.4.33 brought to the corpus
+numbers, applied to the numbers that describe the analyzer's own conservatism.
+
+**The gates.** `_verify/check_match_arms.ps1` is a new release stage: 17 fixtures plus a
+package directory on the real scanner — the output contract, the NEGATIVE direction, the
+fallback being exact, the six mechanisms, the same-package method, and that every fixture was
+read at all. It was shown to go red TWICE, by injecting a defect into the analyzer's own
+source, rebuilding, and running it: the arm body is not walked -> 12 checks fail, the negative
+direction included; the `with` constraint is not recognised -> 2 checks fail, naming
+`m6_with_constraint`. Both trees were restored byte-identically (SHA256 checked) and the gate
+was green again after each restore.
+
+`_verify/mutate_0502.ps1` is a new numbered gate: 12 mutations, 12/12 KILLED, every named test
+confirmed, every restore byte-identical, every anchor unique.
+
+`_verify/measure_suppression_off.ps1` is a new stage that measures what the region suppression
+hides by switching it OFF — one line in `Walker::holes_in` — rebuilding the analyzer,
+scanning the eight trees, and restoring the source, proven by SHA256. It REFUSES TO START if
+it finds the source already patched, so an interrupted run cannot be mistaken for a clean
+tree.
+
+**Three gates this release broke, and what was done about each.** mutate_0432 and mutate_0469
+were re-anchored onto the current text and still kill the tests they name. mutate_0492's M1
+now SURVIVES, and that one is not a re-anchor: an A/B — put the old shape back and see what
+goes red — shows the shape it pinned was the only one that put a name in the binding table
+twice, and this release removed it. The re-binding is pinned by gate 0502's M11 and by two
+`pipeline_0502b_test.mbt` rows, and M1 is declared a survivor with that argument rather than
+quietly dropped.
+
+**And the release gate caught its own new stage reading an empty pin.** The four pins above
+were written at the bottom of `release.ps1`, next to the other pin tables, while the stages
+that read them run earlier in the file — PowerShell runs a script top to bottom, so every one
+of them was read as the empty string. The first run of the gate failed on exactly that, and
+the failure named the cause: `pinned :` with nothing after it, sitting next to a measured
+`expression-level 123 / declaration-level 1461` that was exactly right. The pins were MOVED
+above their readers rather than copied, and the file now refuses to run at all if any of the
+six pins is empty.
+
 ## 0.4.33 — the README, checked sentence by sentence, and six claims that were wrong
 
 This release changes **no behaviour of the analyzer**. Its content is a correction:

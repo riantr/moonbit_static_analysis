@@ -17,11 +17,18 @@ fn fparse_reports(reports : Array[@report.Report]) -> Array[@report.Report] {
 }
 
 ///|
-/// A `match` is read but not analysed. That is a declared scope limit, so it
-/// is a notice -- and it is rendered `notice:`, not `error:`.
-test "the match exclusion the parser really emits is a notice" {
+/// A deliberate exclusion is read but not analysed. That is a declared scope
+/// limit, so it is a notice -- and it is rendered `notice:`, not `error:`.
+///
+/// 0502. THE EXAMPLE IS AN `if` EXPRESSION NOW, and it used to be a `match`. A
+/// `match`'s arms are parsed and walked, so a `match` is no longer a deliberate
+/// exclusion at all -- and a row that asserts "the match exclusion is a notice"
+/// would have been asserting a message the parser does not emit. The mechanism
+/// under test is unchanged: it is the parser's `note_skip` that produces these
+/// reports, and the `if` expression is still one.
+test "the exclusion the parser really emits is a notice" {
   let r = @parser.parse(
-    "fn f(x : Int) -> Int {\n  match x {\n    0 => 1\n    _ => 2\n  }\n}\n",
+    "fn f(x : Int) -> Int {\n  let _ = if x > 0 {\n    1\n  } else {\n    2\n  }\n  0\n}\n",
   )
   let fps = fparse_reports(r.reports)
   assert_true(fps.length() > 0)
@@ -40,7 +47,7 @@ test "the match exclusion the parser really emits is a notice" {
 /// it does not is not.
 test "the parser's own skip list and the notice predicate agree" {
   let r = @parser.parse(
-    "fn f(x : Int) -> Int {\n  match x {\n    0 => 1\n    _ => 2\n  }\n}\n",
+    "fn f(x : Int) -> Int {\n  let _ = if x > 0 {\n    1\n  } else {\n    2\n  }\n  0\n}\n",
   )
   assert_true(r.skips.length() > 0)
   for rep in fparse_reports(r.reports) {

@@ -738,12 +738,60 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       for st in body {
         self.walk_stmt(st)
       }
-    // 0469. A `match` whose arms were skipped. Only the SUBJECT is carried, and the
-    // subject is real analysed code: `match compute(x) { .. }` still counts `compute`
-    // and `x` as reads. Without this arm the walk would lose them and an undefined
-    // name used only as a match subject would stop being reported -- a true positive
-    // traded for the absence of a false one.
-    EMatch(subject) => self.walk_expr(subject)
+    // 0469. A `match`. The SUBJECT is real analysed code: `match compute(x) { .. }`
+    // still counts `compute` and `x` as reads. Without this arm the walk would lose
+    // them and an undefined name used only as a match subject would stop being
+    // reported -- a true positive traded for the absence of a false one.
+    //
+    // 0502. THE ARMS ARE WALKED, and they are walked in the SAME frame as the
+    // enclosing function, for the same reason `ECatch` walks its arms there: the
+    // frame is flat and not flow-scoped, so the flat frame can only ever make a
+    // name visible EARLIER than it should be. A match arm's pattern names are
+    // used only inside that arm's own body, so the direction of the error is
+    // fixed -- it is silence where a false finding would be.
+    //
+    // THE BINDINGS ARE BOUND BEFORE THEY WALK, and through `bind_pattern` rather
+    // than `bind`: a pattern's names are not auditable, and a constructor head
+    // (`Some(x)`) is not a variable at all. See `Walker::bind_pattern`.
+    //
+    // AN EMPTY ARM LIST IS A `lexmatch`, whose arms were not read. The subject is
+    // walked and nothing else, exactly as before.
+    EMatch(subject, arms) => {
+      self.walk_expr(subject)
+      for arm in arms {
+        for b in arm.bindings {
+          if b != "" {
+            self.bind_pattern(b, arm.span)
+          }
+        }
+        // A `with` CONSTRAINT READS the names of its right-hand side. Measured on
+        // moonbitlang/core `builtin/option.mbt:50` --
+        //
+        //     Some(t) | (None with t = default) => t
+        //
+        // `default` is the parameter of `unwrap_or` and the only mention of it
+        // in the function. A reader that swept the constraint up as pattern
+        // bindings would leave it with no read and report
+        // `parameter 'default' may not be used`.
+        //
+        // The constraint's LEFT-HAND side is a pattern binding and rides in
+        // `arm.bindings`, so it is bound above and is not auditable.
+        for r in arm.reads {
+          self.resolve(r, arm.span)
+        }
+        // THE GUARD IS WALKED BEFORE THE BODY, because it comes first in the
+        // source and because it READS the arm's own bindings: `Some(v) if v > 0
+        // => v` reads `v` twice. An arm whose guard was not walked would report
+        // a live binding as dead.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
+        }
+        for st in arm.body {
+          self.walk_stmt(st)
+        }
+      }
+    }
     ETuple(elems) =>
       for x in elems {
         self.walk_expr(x)
@@ -1196,9 +1244,71 @@ fn collect_expr_bindings(bs : Array[Binding], e : @ast.Expr) -> Unit {
     // the whole reason the node exists rather than collapsing to its tail at
     // parse time.
     EBlock(body) => collect_stmt_bindings(bs, body)
+    // 0502. A STRUCT LITERAL's FIELD VALUES, for the same reason `walk_expr`
+    // walks them: a field value is an expression, and an expression can carry
+    // a binding inside it.
+    //
+    // The gap was invisible until 0502 read match arms, because a match
+    // nested inside a struct-literal field is the shape that puts a binding
+    // under a collector that never descends. MEASURED: wzzc-dev/moui 0.1.12
+    // `views/text/text_input_apply.mbt:166` --
+    //
+    //     let next_control = {
+    //       composition_cursor: match update.cursor() {
+    //         Some(cursor) => {
+    //           let start = clamp_int(normalized.start, 0, length)
+    //           Some(@core.TextRange::new(start~))
+    //         }
+    //         None => None
+    //       },
+    //     }
+    //
+    // reported `no visible binding for 'start'`. The walk READS the field
+    // values, so `start` was read; the COLLECTOR never descended, so the `let
+    // start` that binds it never reached the frame. The two halves had
+    // drifted apart, and only one of them was wrong.
+    //
+    // ONLY THE VALUES. The PATH is a type name and is not a binding -- the
+    // same rule `walk_expr` applies at its own `EStruct` arm, and the reason
+    // `Infer::{ .. }` does not report the analyzer's own type as undefined.
+    //
+    // => 判据: the collector must reach everything the walker reaches. A
+    // construct the walker descends into and the collector does not is a hole
+    // whose shape is the construct, and it shows up as a false positive.
+    EStruct(_, fields) =>
+      for f in fields {
+        let (_, v) = f
+        collect_expr_bindings(bs, v)
+      }
     // 0469. The match SUBJECT, for the same reason `walk_expr` walks it: it is an
     // expression and it can carry a binding inside a `catch` or a block.
-    EMatch(subject) => collect_expr_bindings(bs, subject)
+    //
+    // 0502. And the match ARMS' BODIES, for the reason `ECatch` collects its arms'
+    // bodies: a `let` inside an arm body is a real binding, and the pre-pass is
+    // what fills the frame (`walk_stmt`'s `SLet` arm never binds anything -- it
+    // walks the initialiser).
+    //
+    // `arm.bindings` is deliberately NOT added here, for the reason `ECatch`'s are
+    // not: the walk binds those through `bind_pattern` at the `EMatch` arm of
+    // `walk_expr`, and adding them to the pre-pass as well would put them into the
+    // frame BEFORE that call, where `bind` is a no-op because it is guarded on
+    // `frame.contains` -- which would silently move a pattern name off the binding
+    // path `unshadow_param` accounts for.
+    EMatch(subject, arms) => {
+      collect_expr_bindings(bs, subject)
+      for arm in arms {
+        // The GUARD's bindings are collected for the same reason the body's are:
+        // a `let` inside a guard is a real binding, and the pre-pass is what
+        // fills the frame.
+        match arm.cond {
+          Some(g) => collect_expr_bindings(bs, g)
+          None => ()
+        }
+        // A `with` CONSTRAINT READS names; it does not bind any, so the
+        // collector has nothing to do for it.
+        collect_stmt_bindings(bs, arm.body)
+      }
+    }
     // 0468. ARGUMENTS ARE EXPRESSIONS, so a block -- or a `catch`, or anything
     // else that binds -- can sit in one. `Bytes::from_array({ let copy = ..;
     // copy })` in `gif.mbt` is the measured case.
@@ -1373,19 +1483,46 @@ fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit 
         bind_add(bs, { name: n, tyann: ann, param: false, decl_span: s.span, })
         collect_expr_bindings(bs, init)
       }
-      SAssign(target, rhs) => {
-        match target.assigned_base() {
-          Some(b) =>
-            bind_add(bs, {
-              name: b,
-              tyann: "",
-              param: false,
-              decl_span: target.span,
-            })
-          None => ()
-        }
-        collect_expr_bindings(bs, rhs)
-      }
+      // 0502. AN ASSIGNMENT INTRODUCES NO BINDING, and it used to introduce one.
+      //
+      // The arm this replaces added the assigned name to the scope's bindings.
+      // In the scope that DECLARED the name that is a no-op -- `bind` skips a
+      // name the frame already holds -- so the arm only ever did something in
+      // the one case where it was wrong: an assignment to a name bound in an
+      // ENCLOSING scope.
+      //
+      // MEASURED, and the mechanism is exact. moonbitlang/async 0.22.4
+      // `src/process/windows.mbt:105-116`:
+      //
+      //     let mut segment_start = 0
+      //     fn flush(skip : Int) {
+      //       if index > segment_start { .. }        // a READ
+      //       segment_start = index + skip          // an ASSIGNMENT
+      //     }
+      //
+      // The collector gave `flush` its OWN binding for `segment_start`, so the
+      // read inside `flush` counted against that shadowing copy and the
+      // enclosing binding kept zero reads. The finding was
+      // `local variable 'segment_start' assigned but may not be used` -- on
+      // code `moon check` accepts, and on a name that IS read.
+      //
+      // It reported the finding TWICE, once for each frame that held a copy of
+      // the name, and that second copy is the tell: a shadow that the
+      // language does not have.
+      //
+      // THE TOOLCHAIN SETTLED THE LANGUAGE, not the analyzer: a local `fn` CAPTURES
+      // the enclosing scope. `moon check` accepts
+      //
+      //     fn f() -> Int { let mut x = 0  fn g() -> Unit { x = x + 1 }  g()  x }
+      //
+      // with zero errors, so `x` in `g` IS the enclosing `x` and reading it is
+      // a read of the enclosing binding.
+      //
+      // => 判据: an assignment MUTATES a binding; it does not create one. A
+      // scope that collects an assignment target as a binding of its own
+      // invents a shadow the language does not have, and every read that
+      // crosses the boundary is then counted against the shadow.
+      SAssign(_, rhs) => collect_expr_bindings(bs, rhs)
       // `loop nobreak { .. }` -- BOTH halves are descended into, and the loop
       // half is the one that matters here: its `for` BINDER is collected by the
       // `SFor` arm above, so wrapping the loop without descending would drop
@@ -1401,10 +1538,32 @@ fn collect_stmt_bindings(bs : Array[Binding], stmts : Array[@ast.Stmt]) -> Unit 
         collect_stmt_bindings(bs, [loop_stmt])
         collect_stmt_bindings(bs, block)
       }
-      SLetDestruct(names, _) =>
+      // 0502. THE INITIALISER IS COLLECTED, and it was NOT: `SLetDestruct(names, _)`
+      // threw the initialiser away, so a `let (a, b) = { let p = ..; p }` never
+      // learned `p`, and the tail of that block reported
+      // `no visible binding for 'p'` -- on code `moon check` compiles.
+      //
+      // `walk_stmt` WALKS the initialiser, so the names inside it are read,
+      // and `walk_stmt` binds nothing: the PRE-PASS is what fills the frame,
+      // and `SLet` right above has always collected its own initialiser. The
+      // two halves had drifted apart, which is the 0467b defect arriving from
+      // a new direction -- the same shape as the `SNoBreak` arm above.
+      //
+      // MEASURED: moonbitlang/core
+      // `internal/regex_engine/shared_types/rechar_set/rechar_set.mbt:202,214`
+      // -- `let (lo, l) = { let p = lo - 1; if p >= lo { .. } else { .. } }` --
+      // two false positives, both inside a match arm body, which 0502 is the
+      // first release to read.
+      //
+      // => 判据: the collector and the walker must agree about what a
+      // statement's initialiser binds. One of them reading it and the other
+      // dropping it is not a modelling choice; it is a hole with a name.
+      SLetDestruct(names, init) => {
         for n in names {
           bind_add(bs, { name: n, tyann: "", param: false, decl_span: s.span, })
         }
+        collect_expr_bindings(bs, init)
+      }
       // A local function's OWN name is a binding of the ENCLOSING scope —
       // its calls there must resolve, and a self-call resolves through it
       // too (the inner frame deliberately does not hold the name). Its

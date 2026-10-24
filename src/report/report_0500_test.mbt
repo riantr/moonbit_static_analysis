@@ -48,6 +48,17 @@ fn mk(family : @core.Family, message : String) -> @report.Report {
 /// literate frontend's fence skip. It is spelled out rather than derived,
 /// because a list that is derived from the code under test proves only that
 /// the code agrees with itself.
+///
+/// 0502. THE `match` MESSAGE IS STILL IN THE LIST, and it is worth saying why
+/// it did not leave: 0502 reads a `match`'s arms, so most of the time there is
+/// no notice -- but the arms are read in a TRANSACTION, and when the subset
+/// cannot read them the parser is put back and the OLD behaviour is restored
+/// exactly, notice and all. So the message is still produced, and a `match`
+/// whose arms are unread still carries it.
+///
+/// The list is an INVENTORY and not the predicate: `is_notice` asks whether the
+/// message carries the marker, and it does not consult this list. So a message
+/// that left the list is not relabelled -- it simply is not produced.
 fn deliberate_messages() -> Array[String] {
   [
     "short lambda is outside the analyzed subset; it was read but not analysed",
@@ -142,9 +153,13 @@ test "the marker alone does not make a notice" {
 /// labels are different strings, so a reader -- or a grep -- can tell them
 /// apart without knowing the tool's internals.
 test "the rendered label is notice for a notice and error for a defect" {
+  // 0502. THE EXAMPLE IS A `lexmatch` MESSAGE NOW, and it used to be the `match`
+  // one. A `match` is read, so the parser does not emit that message any more --
+  // and a row that asserted "the match message renders as a notice" would be
+  // asserting a thing about a message that is not produced.
   let n = mk(
     @core.FParse,
-    "match expression is outside the analyzed subset; it was read but not analysed",
+    "lexmatch expression is outside the analyzed subset; it was read but not analysed",
   )
   assert_eq(n.severity_label(), "notice")
   assert_true(n.render().contains(" - notice: "))

@@ -33,11 +33,18 @@ $INFER = 'src\types\infer.mbt'
 Invoke-MutationGate -Name '0469' -Target 'wasm' -Mutations @(
 
   # M1 THE ORIGINAL DEFECT, RESTORED. The subject is the match's value again.
+  #
+  # RE-ANCHORED 0502. The node this row removed was `EMatch(subject)`, and 0502
+  # gave the node its ARMS -- it is `EMatch(subject, arms)` now, and there are
+  # two of them (the arms-read branch and the fallback branch). The old anchor
+  # stopped matching and the gate ABORTED rather than pretending. The row now
+  # points at the branch where the arms WERE read, and it does the same thing:
+  # the match yields its subject again.
   @{
     Name = 'M1 the match yields its subject again'
     File = $PARSER
-    Find = '      { span: sp, kind: @ast.EMatch(subject), }'
-    Repl = '      subject'
+    Find = '        { span: sp, kind: @ast.EMatch(subject, arms), }'
+    Repl = '        subject'
     MustRed = '0469: `!` on a match-bound value is not an operator mismatch'
   }
 
@@ -60,8 +67,14 @@ Invoke-MutationGate -Name '0469' -Target 'wasm' -Mutations @(
   @{
     Name = 'M2 the match subject is carried but never walked'
     File = $WALK
-    Find = '    EMatch(subject) => self.walk_expr(subject)'
-    Repl = '    EMatch(_) => ()'
+    Find = @'
+    EMatch(subject, arms) => {
+      self.walk_expr(subject)
+'@.Replace("`r`n", "`n")
+    Repl = @'
+    EMatch(subject, arms) => {
+      let _ = subject
+'@.Replace("`r`n", "`n")
     MustRed = '0469: an undefined name in a match subject is still reported'
   }
 
@@ -74,8 +87,14 @@ Invoke-MutationGate -Name '0469' -Target 'wasm' -Mutations @(
   @{
     Name = 'M3 a match subject is never scanned for bindings'
     File = $WALK
-    Find = '    EMatch(subject) => collect_expr_bindings(bs, subject)'
-    Repl = '    EMatch(_) => ()'
+    Find = @'
+    EMatch(subject, arms) => {
+      collect_expr_bindings(bs, subject)
+'@.Replace("`r`n", "`n")
+    Repl = @'
+    EMatch(subject, arms) => {
+      let _ = subject
+'@.Replace("`r`n", "`n")
     MustRed = '0469: a binding made inside a match subject is visible to the subject'
   }
 
@@ -85,8 +104,8 @@ Invoke-MutationGate -Name '0469' -Target 'wasm' -Mutations @(
   @{
     Name = 'M4 the type lens answers Unknown with the subject''s type'
     File = $INFER
-    Find = '    EMatch(_) => TUnknown'
-    Repl = '    EMatch(subject) => self.ty_of(subject, hint)'
+    Find = '    EMatch(_, _) => TUnknown'
+    Repl = '    EMatch(subject, _) => self.ty_of(subject, hint)'
     MustRed = '0469: `!` on a match-bound value is not an operator mismatch'
   }
 )

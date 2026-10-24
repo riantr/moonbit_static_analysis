@@ -1167,13 +1167,25 @@ test "an optional type annotation folds into the annotation string" {
 /// ALSO wrong: it fixed the type and LOST THE SUBJECT'S READS, turning two true positives
 /// in `pipeline_0433_test.mbt` into false negatives. The node now carries the subject and
 /// says nothing about the value -- see `@ast.EMatch`.
-test "a match expression is skipped whole and yields EMatch, not the subject" {
+///
+/// 0502. AND IT IS NO LONGER "SKIPPED WHOLE". The arms are parsed, the node carries them,
+/// and there is NO NOTICE: a `note_skip` here put a hole in the frame of the enclosing
+/// function, and a hole silenced `UnusedParam` and `UnusedLocal` for that WHOLE function.
+/// Measured: with the match hole removed and nothing else changed, 1098 findings appear
+/// across the seven pinned corpora and this repository's own source.
+///
+/// The first three assertions below are the ones that CHANGED, and they changed because
+/// the claim they made became false. A row that asserts a skip exists is a row that
+/// cannot fail once the skip is gone -- so it is not edited to pass, it is edited to
+/// assert the opposite, which is a row that CAN fail.
+test "a match expression yields EMatch with its subject and its arms, and is not a skip" {
   let r = @parser.parse(
     "fn f(e) -> Int {\n  let v = match e { Some(x) => x, None => 0 }\n  v\n}\n",
   )
-  assert_eq(r.reports.length(), 1)
-  assert_true(r.reports[0].message.contains("match expression"))
-  assert_eq(r.skips.length(), 1)
+  // NO NOTICE AND NO SKIP. The arms are read, so the frame has no hole -- and
+  // the notice's claim ("read but not analysed") would be FALSE.
+  assert_eq(r.reports.length(), 0)
+  assert_eq(r.skips.length(), 0)
   assert_eq(r.first_error, 0)
   match r.tree.body[0].kind {
     @ast.SFunc(_, _, _, body, _) => {
@@ -1183,7 +1195,8 @@ test "a match expression is skipped whole and yields EMatch, not the subject" {
           match init.kind {
             // 0469. `EMatch`, carrying the subject. NOT `@ast.EName("e")`, which is
             // what this arm used to build and what made `!v` an integer.
-            @ast.EMatch(inner) =>
+            // 0502. And carrying the ARMS, which are parsed and walked.
+            @ast.EMatch(inner, arms) => {
               // The subject is CARRIED, not discarded. This is the half that keeps
               // undefined names in a match subject reported, and it is the reason a bare
               // opaque node was not the fix: the first version of this increment
@@ -1192,6 +1205,15 @@ test "a match expression is skipped whole and yields EMatch, not the subject" {
                 @ast.EName(x) => assert_eq(x, "e")
                 _ => assert_true(false)
               }
+              // TWO ARMS, and the first one's pattern names are carried. `Some(x)`
+              // yields a SUPERSET -- `Some` is a constructor, not a variable -- so
+              // the assertion is that `x` is AMONG them, not that it is the only
+              // one.
+              assert_eq(arms.length(), 2)
+              assert_true(arms[0].bindings.contains("x"))
+              assert_eq(arms[0].body.length(), 1)
+              assert_eq(arms[1].body.length(), 1)
+            }
             _ => assert_true(false)
           }
         _ => assert_true(false)

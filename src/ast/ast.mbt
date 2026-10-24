@@ -376,30 +376,39 @@ pub(all) enum EKind {
   /// BASE's type for the same reason `ECatch` does -- the arms are alternative
   /// control paths, not extra operands.
   ENoRaise(Expr, Array[CatchArm])
-  /// A `match` whose ARMS were skipped: `match subject { pattern => value, .. }`.
+  /// A `match` expression: the SUBJECT and the ARMS.
   ///
-  /// ONLY THE SUBJECT IS CARRIED, and carrying it is the whole point. Until 0469 the
-  /// parser yielded the subject as the match's own VALUE, which was wrong twice over:
+  /// 0502. Before this increment the node carried the subject alone, and the arms
+  /// were consumed whole by `skip_braces` -- a region the frontend deliberately did
+  /// not analyse, which put a HOLE in the frame of the enclosing function. That
+  /// hole is what made the unused-local and unused-parameter families
+  /// unobservable in every function that contained a `match`: one region anywhere
+  /// took every conclusion the frame could support, and the corpora measured
+  /// ZERO actionable findings across six of seven pinned trees because of it.
   ///
-  ///   - the VALUE is the join of the arms, not the subject, so
-  ///     `let vok = match bd { .. }` typed `vok` as the subject's type. Measured on
-  ///     moonbit_image 0.3.7 `png.mbt:980`: `operand of '!' must be bool, got 'int'`
-  ///     on code `moon check` compiles.
-  ///   - dropping the subject instead fixes that but LOSES ITS READS, so an undefined
-  ///     name used only as a match subject stops being reported -- a true positive
-  ///     traded for the absence of a false one, which is not a trade worth making.
+  /// THE ARMS ARE PARSED NOW, and the reason is the one `ECatch` already
+  /// records: an arm body introduces pattern bindings, so reading the body
+  /// without introducing them manufactures `no visible binding for 'x'` on
+  /// correct code. Each arm carries `bindings` and a real statement list, and the
+  /// walker binds before it walks.
   ///
-  /// So this variant carries the subject and says nothing about the value. `walk_expr`
-  /// descends into it (the subject is real, analysed code), `ty_of` answers `Unknown`
-  /// (the arms' join is not available and guessing it is the bug this node exists to
-  /// end), and `eval` evaluates the subject for its effects.
+  /// WHAT THE NODE STILL DOES NOT SAY: the match's VALUE. That value is the join
+  /// of the arms' values, and this analyzer does not compute a join over a set of
+  /// arms -- so `ty_of` answers `Unknown` and `eval` evaluates the subject for
+  /// its effects and answers `ABottom`. Carrying the arms does not change that:
+  /// the arms are READ, not JOINED.
   ///
-  /// THE PRECEDENT IS `ECatch`, and the two differ in exactly the place that matters:
-  /// `ECatch` TYPES as its base because `expr catch { .. }` really does produce the
-  /// base's value when no arm matches. A `match` does NOT -- its value comes from the
-  /// arms, which are the part this analyzer does not model. Same shape, opposite answer,
-  /// and the reason they cannot share one variant.
-  EMatch(Expr)
+  /// THE PRECEDENT IS `ECatch`, and the two differ in exactly the place that
+  /// matters. `ECatch` TYPES as its base because `expr catch { .. }` really does
+  /// produce the base's value when no arm matches. A `match` does NOT -- its value
+  /// comes from the arms, which are the part this analyzer does not model. Same
+  /// shape, opposite answer, and the reason they cannot share one variant.
+  ///
+  /// AN EMPTY ARM LIST MEANS THE ARMS WERE NOT READ, and the one construct that
+  /// does that is a `lexmatch` -- whose arm bodies use `next`, which this
+  /// frontend's statement grammar does not have. A `match` with no arms is not
+  /// MoonBit, so the two readings cannot be confused.
+  EMatch(Expr, Array[MatchArm])
 } derive(Eq)
 
 ///|
@@ -470,6 +479,67 @@ pub(all) struct ElseIf {
 pub(all) struct CatchArm {
   span : @core.Span
   bindings : Array[String]
+  body : Array[Stmt]
+} derive(Eq)
+
+///|
+/// A `match` arm: `pattern => body`.
+///
+/// It is NOT `CatchArm`, and the difference is in the READER rather than in the
+/// shape. A catch arm's pattern is read by `Parser::parse_catch_pattern`, which
+/// stops at a `{` that opens at depth zero; a match arm's pattern is read by
+/// `Parser::parse_match_pattern`, which tracks braces as well, because a match
+/// arm's pattern can be a STRUCT pattern -- `Point { x, y }` -- and the catch
+/// reader stops at that `{` and loses every name after it. Two arms with the
+/// same shape and different patterns behind them get two names, so that a reader
+/// of either one knows which rule produced its `bindings`.
+///
+/// `bindings` are the names the PATTERN introduces, and they are a SUPERSET on
+/// purpose, for the reason `CatchArm`'s are: a constructor head (`Some(x)`), a
+/// tuple pattern (`(a, b)`), a struct pattern (`Point { x, y }`) and an alternate
+/// (`A | B`) all yield more names than they bind, and the extra ones cannot
+/// produce a finding -- `Walker::bind_pattern` puts them in the frame WITHOUT
+/// putting them in the audit list. The direction that matters is which way the
+/// error goes: a name that should have bound and did not yields a false `no
+/// visible binding`, and a name that bound and should not have yields silence.
+/// Only one of those is a defect the user can hit.
+///
+/// `body` is a statement list, because the arm body may be a block (`=> { .. }`)
+/// or a single statement (`=> return ""`, `=> 0`).
+///
+/// `cond` is the arm's CONDITION -- `pattern if cond => body` -- and it is
+/// None for an arm without one. It is carried because the guard is real code
+/// whose reads are real: `Some(v) if v >= 32 => v` reads `v`, and an arm whose
+/// guard was not read would report a live binding as dead.
+///
+/// THE FIELD IS NOT CALLED `guard`, and that is not a style choice: `guard` is
+/// a RESERVED WORD in MoonBit, and the compiler rejects it as a field name
+/// (`Parse error, unexpected token 'guard', you may expect id`).
+///
+/// The guard is separate from the body and not a statement because it is not
+/// one: it is an EXPRESSION whose value decides whether the arm matches, and
+/// it runs before the body. Keeping it in the body would have made it a
+/// statement of the enclosing function.
+pub(all) struct MatchArm {
+  span : @core.Span
+  bindings : Array[String]
+  cond : Expr?
+  ///
+  /// The names a `with` CONSTRAINT READS: `pattern with x = EXPR` reads the
+  /// names of `EXPR`.
+  ///
+  /// THE LEFT-HAND SIDE IS A PATTERN BINDING and rides in `bindings` beside
+  /// the rest of the pattern's names, because that is what it is: `with t =
+  /// default` binds `t` to the matched value and CONSTRAINS it to equal
+  /// `default`. The right-hand side READS, and a reader that treated it as a
+  /// pattern binding would leave the name it reads -- a parameter, usually --
+  /// with no read at all.
+  ///
+  /// Measured: moonbitlang/core `builtin/option.mbt:50`
+  /// (`Some(t) | (None with t = default) => t`), `builtin/result.mbt:92`,
+  /// `builtin/arrayview.mbt:282,329` and `builtin/help_render.mbt:320`
+  /// (which carries TWO constraints in one `with`).
+  reads : Array[String]
   body : Array[Stmt]
 } derive(Eq)
 

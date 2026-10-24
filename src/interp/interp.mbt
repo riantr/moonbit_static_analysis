@@ -1706,12 +1706,18 @@ fn Interp::eval(
       }
       out
     }
-    // 0469. A `match` whose arms were skipped. The subject is evaluated for its
-    // EFFECTS -- it is real code that runs -- and its value is discarded, because the
-    // match's value comes from the arms and the arms are not modelled. `ABottom` rather
-    // than `AAny`: `AAny` is absorbed by every operator arm (interp.mbt:1076, :1094),
-    // which would make this indistinguishable from evaluating the subject.
-    EMatch(subject) => {
+    // 0469. A `match`. The subject is evaluated for its EFFECTS -- it is real code
+    // that runs -- and its value is discarded, because the match's value comes from
+    // the arms and the arms are not modelled. `ABottom` rather than `AAny`: `AAny` is
+    // absorbed by every operator arm (interp.mbt:1076, :1094), which would make this
+    // indistinguishable from evaluating the subject.
+    //
+    // 0502. THE ARMS ARE CARRIED NOW, and they are still NOT EVALUATED, for the
+    // reason `ECatch` does not evaluate its arms: the interpreter has no notion of
+    // which arm a subject selects, so evaluating one of them would be evaluating a
+    // path that may not happen. The arms' READS are counted by the structural walk,
+    // which is where an unused binding is decided -- not here.
+    EMatch(subject, _) => {
       let _ = self.eval(subject, env)
       ABottom
     }

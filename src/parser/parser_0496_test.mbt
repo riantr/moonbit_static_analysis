@@ -72,11 +72,19 @@ test "0496: a lexmatch is a match whose subject is carried" {
       match body[0].kind {
         @ast.STail(e) =>
           match e.kind {
-            @ast.EMatch(subject) =>
+            @ast.EMatch(subject, arms) => {
               match subject.kind {
                 @ast.EName(n) => assert_eq(n, "s")
                 _ => assert_true(false)
               }
+              // 0502. THE ARM LIST IS EMPTY, and that is the contract: an empty list
+              // means the arms were NOT read, and a `match` with no arms is not
+              // MoonBit, so the two readings cannot be confused. A `lexmatch`'s
+              // arms end in `next`, which this frontend's statement grammar does
+              // not have, so they stay unread -- and the notice above is still
+              // true for them.
+              assert_eq(arms.length(), 0)
+            }
             _ => assert_true(false)
           }
         _ => assert_true(false)
@@ -124,16 +132,17 @@ test "0496: the arms of a lexmatch are skipped whole" {
 /// `match` is still a `match` and still says so. A reader that had folded the
 /// two together would make this row report the lexmatch message, and the
 /// notice would be about a construct the file does not contain.
+///
+/// 0502. AND NOW AN ORDINARY `match` SAYS NOTHING AT ALL, because its arms are
+/// read. So the control's job is the same and its evidence is different: there
+/// must be NO notice here, and in particular not the `lexmatch` one.
 test "0496: an ordinary match is still a match (control)" {
   let r = @parser.parse(
     "fn f(s : String) -> String {\n  match s {\n    \"a\" => s\n    _ => s\n  }\n}\n",
   )
   assert_eq(r.first_error, 0)
-  assert_true(
-    r.reports[0].message.contains(
-      "match expression is outside the analyzed subset",
-    ),
-  )
+  // NO NOTICE: the arms are read, so there is nothing to announce.
+  assert_eq(r.reports.length(), 0)
   assert_true(!has_lexmatch_notice(r))
 }
 
@@ -153,7 +162,7 @@ test "0496: a lexmatch leaves no name in the tree" {
       match body[0].kind {
         @ast.STail(e) =>
           match e.kind {
-            @ast.EMatch(_) => ()
+            @ast.EMatch(_, _) => ()
             @ast.EName(n) => assert_true(n != "lexmatch")
             _ => assert_true(false)
           }

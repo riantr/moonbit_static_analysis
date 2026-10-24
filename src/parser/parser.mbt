@@ -58,6 +58,18 @@ priv struct Parser {
   /// Earliest line at which the source genuinely failed to read; 0 if it read
   /// all of it. Deliberate exclusions do not move it.
   mut first_error : Int32
+  /// How many times `err` has been called.
+  ///
+  /// THIS IS NOT `first_error`, and the difference is the whole point of it.
+  /// `first_error` is the EARLIEST failing line, so it only moves when the
+  /// failure is EARLIER than the last one -- and a second failure later in the
+  /// file leaves it where it was. A reader that asked "did this parse fail?"
+  /// by looking at `first_error` would be told "no" about a read that failed.
+  ///
+  /// The transaction in `Parser::parse_match_arms` needs to know exactly that,
+  /// because a nested exclusion -- a `note_skip` -- is NOT a failure and must
+  /// not roll the transaction back. So the count is kept separately.
+  mut error_count : Int32
   /// Constructor names seen while skipping an `enum` body. See the field of
   /// the same name on `ParseResult`.
   enum_ctors : Array[String]
@@ -101,6 +113,7 @@ pub fn parse(src : String) -> ParseResult {
     reports,
     skips: [],
     first_error,
+    error_count: 0,
     enum_ctors: [],
     extern_fns: [],
   }
@@ -346,6 +359,11 @@ fn Parser::err(self : Parser, msg : String, sp : @core.Span) -> Unit {
   if self.first_error == 0 || l < self.first_error {
     self.first_error = l
   }
+  // And it moves the COUNT, which is the signal the transaction uses. The
+  // boundary cannot be that signal: it only moves when the failure is EARLIER
+  // than the last one, so a second failure later in the file leaves it where
+  // it was.
+  self.error_count += 1
   self.reports.push(@report.Report::{
     family: @core.FParse,
     lenses: [@core.LStructural],
@@ -353,6 +371,59 @@ fn Parser::err(self : Parser, msg : String, sp : @core.Span) -> Unit {
     span: sp,
     vst: [],
   })
+}
+
+///|
+/// A SNAPSHOT of the parser's position, so a read that turns out not to be
+/// possible can be undone.
+///
+/// THE FIVE THINGS THAT MOVE are the cursor, the report list, the skip list,
+/// the error count and the TRUSTED-REGION BOUNDARY. The two name lists
+/// (`enum_ctors`, `extern_fns`) only ever grow, and a name harvested from a
+/// body that is then rolled back is a name the file really declares -- so they
+/// are left alone.
+///
+/// THE BOUNDARY IS THE ONE THAT IS EASY TO FORGET, and forgetting it is
+/// SILENT: the rolled-back read left `first_error` at the line it failed on,
+/// so the file was marked as unreadable from there -- which cost the whole
+/// file its coverage, with no error anywhere to explain it. The first version
+/// of this snapshot had four fields and this was the fifth.
+priv struct ParseSnapshot {
+  p : Int32
+  reports : Int32
+  skips : Int32
+  errors : Int32
+  first_error : Int32
+}
+
+///|
+fn Parser::snapshot(self : Parser) -> ParseSnapshot {
+  ParseSnapshot::{
+    p: self.p,
+    reports: self.reports.length(),
+    skips: self.skips.length(),
+    errors: self.error_count,
+    first_error: self.first_error,
+  }
+}
+
+///|
+/// Undo everything the parser did since `s`.
+///
+/// THE REPORT LIST IS TRUNCATED rather than emptied, because a report the
+/// parser had already made BEFORE the snapshot is still true -- and the skip
+/// list with it, because a nested exclusion recorded before the snapshot is
+/// also still true. Only what came after is taken back.
+fn Parser::restore(self : Parser, s : ParseSnapshot) -> Unit {
+  self.p = s.p
+  self.error_count = s.errors
+  self.first_error = s.first_error
+  while self.reports.length() > s.reports {
+    let _ = self.reports.pop()
+  }
+  while self.skips.length() > s.skips {
+    let _ = self.skips.pop()
+  }
 }
 
 ///|
@@ -659,6 +730,208 @@ fn Parser::parse_catch_arms(self : Parser) -> Array[@ast.CatchArm] {
       [st]
     }
     arms.push({ span: asp, bindings, body, })
+    self.skip_seps()
+  }
+  self.expect(TRBrace, "'}'")
+  arms
+}
+
+///|
+/// The names a `match` arm's PATTERN introduces, consumed up to (not past) the `=>`.
+///
+/// THIS IS A SUPERSET, for the reason `Parser::parse_catch_pattern` is one, and
+/// the asymmetry of the two errors is what fixes the direction: a name that
+/// SHOULD have bound and did not is reported as `no visible binding for 'x'` --
+/// a false positive on correct code -- while a name that bound and should not
+/// have produces silence, which is not a defect anyone can file.
+///
+/// IT IS NOT THE CATCH READER, and the difference is one bracket. The catch
+/// reader stops at a `{` that opens at depth zero, because a catch arm's pattern
+/// has no braces in it. A match arm's pattern CAN: `Point { x, y }` is a struct
+/// pattern, and the catch reader would stop at that `{` and lose `x` and `y` --
+/// which the arm body then reads as names that were never bound, on code `moon
+/// check` accepts. So this reader tracks `{` and `}` as well as `(` and `[`, and
+/// the pattern it reads is the WHOLE pattern.
+///
+/// The wildcard `_` is not a `TName`, so it never reaches the list -- which is
+/// correct, because `_` binds nothing and an empty list already says so.
+///
+/// IT ALSO STOPS AT A GUARD, and that is the other thing a `match` arm can
+/// have: `pattern if cond => body`. The `if` is at pattern depth zero, and the
+/// guard is an EXPRESSION -- so the arm's `=>` is not the first `=>` in the
+/// arm: `Some(id) if nodes.any(node => node.id == id) => Some(id)` carries a
+/// LAMBDA's arrow inside the guard, and a reader that stopped at the first
+/// arrow would have taken the lambda's body for the arm's body.
+///
+/// The guard's own names are NOT collected here, and that is deliberate: the
+/// guard is parsed as an expression by the caller, and the names it READS are
+/// resolved by the walk, not bound by the pattern.
+fn Parser::parse_match_pattern(self : Parser) -> (Array[String], Array[String]) {
+  let names : Array[String] = []
+  let reads : Array[String] = []
+  let mut depth = 0
+  while !self.at(TEOF) {
+    if self.at_fat_arrow() {
+      break
+    }
+    // A GUARD. `if` is a keyword and no pattern contains one, so at depth zero
+    // it can only be the guard's keyword.
+    if depth == 0 && self.at_name("if") {
+      break
+    }
+    // A `with` CONSTRAINT, read HERE rather than by the caller.
+    //
+    // IT HAS TO BE HERE, and that is the whole reason this reader changed
+    // shape. The constraint lives INSIDE the pattern's own brackets --
+    // moonbitlang/core `builtin/option.mbt:50` reads
+    //
+    //     Some(t) | (None with t = default) => t
+    //
+    // -- so a reader that stopped at the `with` and handed the rest back to
+    // the caller would leave the pattern's parentheses unclosed. The reader
+    // owns the brackets; the constraint is inside them.
+    //
+    // THE LEFT-HAND SIDE BINDS and the RIGHT-HAND SIDE READS, and the two are
+    // different things: `with t = default` binds `t` to the matched value and
+    // constrains it to equal `default`, and `default` is a READ of the
+    // enclosing scope. A reader that swept the whole constraint up as pattern
+    // bindings would leave the parameter with no read at all -- which is
+    // exactly `parameter 'default' may not be used` on code `moon check`
+    // compiles.
+    //
+    // The right-hand side is read as NAMES rather than as an expression,
+    // because the reader is a token scanner and the analyzer's question about
+    // it is only "which names does it read". The names are RESOLVED by the
+    // walk, not bound by the pattern.
+    if self.at_name("with") {
+      let _ = self.bump()
+      self.skip_seps()
+      let mut more = true
+      while more {
+        more = false
+        let (cn, _) = self.expect_name("constraint name")
+        names.push(cn)
+        self.expect(TAssign, "'='")
+        while !self.at(TEOF) &&
+              !self.at(TComma) &&
+              !self.at(TRParen) &&
+              !self.at(TRBracket) &&
+              !self.at(TRBrace) &&
+              !self.at_fat_arrow() {
+          match self.peek() {
+            TName(n) => reads.push(n)
+            _ => ()
+          }
+          let _ = self.bump()
+        }
+        // A `,` FOLLOWED BY `NAME =` is ANOTHER CONSTRAINT. A `,` followed by
+        // anything else ends the pattern: it separates ARMS. The corpus
+        // carries both -- moonbitlang/core `builtin/help_render.mbt:320`
+        // reads `(PositionalInfo(_) with short = None, long = None)`.
+        if self.at(TComma) &&
+          self.name_at(self.p + 1) != "" &&
+          self.p + 2 < self.toks.length() &&
+          self.toks[self.p + 2] == TAssign {
+          let _ = self.bump()
+          self.skip_seps()
+          more = true
+        }
+      }
+      continue
+    }
+    match self.peek() {
+      TName(n) => names.push(n)
+      TLParen | TLBracket | TLBrace => depth += 1
+      TRParen | TRBracket | TRBrace =>
+        if depth == 0 {
+          break
+        } else {
+          depth -= 1
+        }
+      _ => ()
+    }
+    let _ = self.bump()
+  }
+  (names, reads)
+}
+
+///|
+/// `match { pattern => body, ... }` -- the arm list, as statements.
+///
+/// The `=>` is READ IF IT IS THERE and not insisted upon, exactly as
+/// `Parser::parse_catch_arms` does: MoonBit accepts `catch { e => 0 }`, and a
+/// handler that was differently spelled must not become a parse error that the
+/// old `skip_braces` could not produce.
+///
+/// NO SKIP NOTICE IS EMITTED, and that is the whole point of the change. A
+/// `note_skip` here would put a hole in the frame and silence `UnusedParam` for
+/// the entire enclosing function -- the treatment `pipeline_0469` already records
+/// as making the family unobservable. The arms are read, so the frame has no
+/// hole, and the family becomes observable again.
+fn Parser::parse_match_arms(self : Parser) -> Array[@ast.MatchArm] {
+  let arms : Array[@ast.MatchArm] = []
+  self.expect(TLBrace, "'{'")
+  while !self.at(TRBrace) && !self.at(TEOF) {
+    self.skip_seps()
+    // THE COMMA SEPARATES THE ARMS, and it is consumed HERE rather than by the
+    // pattern reader, so that the arm's SPAN starts at the arm's pattern. The
+    // catch reader lets the pattern reader swallow it -- the comma is not a name,
+    // so it contributes nothing to `bindings` -- and the catch arm's span then
+    // starts at the comma, one line early. That is harmless for a catch arm and
+    // it is not harmless here: the arm's span is the DECLARATION SPAN of the
+    // names its pattern binds, and `hole_can_reach` reads that span's line to
+    // decide whether a region could have read them.
+    if self.at(TComma) {
+      let _ = self.bump()
+      self.skip_seps()
+    }
+    if self.at(TRBrace) || self.at(TEOF) {
+      break
+    }
+    let asp = self.span()
+    let (bindings, reads) = self.parse_match_pattern()
+    // THE GUARD, if the arm has one: `pattern if cond => body`. The condition is
+    // an EXPRESSION, and it is parsed as one -- which is what finds the arm's own
+    // `=>` when the guard carries a lambda of its own.
+    let cond = if self.at_name("if") {
+      let _ = self.bump()
+      self.skip_seps()
+      Some(self.parse_expr())
+    } else {
+      None
+    }
+    if self.at_fat_arrow() {
+      self.eat_fat_arrow()
+    }
+    self.skip_seps()
+    let body = if self.at(TLBrace) {
+      if self.at_struct_literal() {
+        // A STRUCT LITERAL, and it has to go through the EXPRESSION path. The
+        // brace is ambiguous in MoonBit -- a block and a literal look the same
+        // until the first field -- and `at_struct_literal` is what settles it by
+        // content. Reading it as a block instead would have made `{ leading: 0.0,
+        // gap: base_gap }` a block whose first statement is `leading: 0.0`, which
+        // is not a statement at all: 17 files in wzzc-dev/moui 0.1.12 died on it.
+        let e = self.parse_expr()
+        let st : @ast.Stmt = { span: e.span, kind: @ast.SExpr(e), }
+        [st]
+      } else {
+        // A block body is its own statement list. `value_block` is FALSE: the
+        // arm's trailing expression IS the match's value, but this node's type
+        // is Unknown, so no lens joins the arm's value into anything.
+        let (b, _) = self.parse_block(false)
+        b
+      }
+    } else if self.at(TEOF) || self.at(TRBrace) {
+      // `pattern =>` with no body at all. The grammar rejects it; refusing to
+      // guess here keeps a malformed arm from consuming the next arm's pattern
+      // as a body.
+      break
+    } else {
+      let st = self.parse_stmt()
+      [st]
+    }
+    arms.push({ span: asp, bindings, cond, reads, body, })
     self.skip_seps()
   }
   self.expect(TRBrace, "'}'")
@@ -5492,6 +5765,34 @@ fn Parser::parse_postfix_from(self : Parser, start : @ast.Expr) -> @ast.Expr {
       if self.at(TDot) {
         continue
       }
+      // 0502. `as` MAY ALSO START A NEW LINE, and the cast arm above cannot
+      // see it: the loop breaks at the newline before that arm is ever
+      // reached, so the `as` was left in the token stream and the statement
+      // reader took it as the start of the next expression --
+      // `no visible binding for 'as'`, on code `moon check` accepts with zero
+      // errors.
+      //
+      // MEASURED, with the compiler as the oracle
+      // (`_verify/settle_0502_as.ps1`, 6/6). `e` NEWLINE `as &Backend` is
+      // ACCEPTED, and so is the same cast after a CALL and inside a match arm
+      // body. The probe can SEE a failure: the canary (a name bound nowhere)
+      // is REJECTED, and so is a cast to a trait the type does not implement
+      // -- so the cast really is type-checked and an ACCEPT is a fact about
+      // the grammar.
+      //
+      // THE SAME SHAPE AS THE `.` CONTINUATION ABOVE, and for the same reason:
+      // the separators are consumed SPECULATIVELY and rewound when the
+      // continuation does not follow, so swallowing them unconditionally would
+      // fuse the next real statement into this one. `as` is a KEYWORD, so a
+      // statement can never begin with one -- the ambiguity the `.`
+      // continuation has to guard against does not exist here.
+      //
+      // => 判据: a cast is a POSTFIX operator, and the toolchain reads it
+      // across a line break. The parser may not be stricter than the
+      // compiler about where an operator may sit.
+      if self.at_name("as") {
+        continue
+      }
       self.p = save
     }
     break
@@ -6561,8 +6862,27 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       // 0469. The subject is PARSED so the cursor lands after it -- that is what keeps
       // the token stream in step, so what FOLLOWS the match is analysed -- and it is
       // CARRIED rather than discarded, because it is real code whose reads are real.
-      // What is NOT carried is the match's value: that comes from the arms, and the arms
-      // are skipped. `EMatch(subject)` says exactly that much and nothing more.
+      // What is NOT carried is the match's value: that comes from the arms.
+      //
+      // 0502. THE ARMS ARE PARSED NOW, and this is the line that changed. The arms
+      // were consumed whole by `skip_braces`, which left a HOLE in the frame of the
+      // enclosing function -- and a hole silenced `UnusedLocal` and `UnusedParam` for
+      // that WHOLE function, which is why six of the seven pinned corpora measured
+      // ZERO actionable findings. The probe that measured it is in NARRATIVE.md: with
+      // the match hole removed and nothing else changed, 1098 findings appear.
+      //
+      // THE ARMS ARE NOT CARRIED AS A VALUE, and reading them does not change that:
+      // the match's value is the JOIN of the arms' values, and this analyzer does not
+      // compute a join over a set of arms. `EMatch` still types as `Unknown` and
+      // still evaluates to `ABottom`. What changed is that the arms' READS are real
+      // now -- a binding read only inside an arm body is read, and one read nowhere
+      // is reported.
+      //
+      // THE NOTICE IS GONE, and that is not a loss of information but its removal:
+      // "match expression is outside the analyzed subset; it was read but not
+      // analysed" was TRUE when the arms were skipped and is FALSE now. A `catch`,
+      // whose arms have been parsed since 0439, emits no such notice at all -- see
+      // `Parser::parse_catch_arms` -- and a match is now in the same position.
       //
       // THE COMMENT SITS ABOVE BOTH LINES ON PURPOSE. `skip_seps` immediately before
       // `parse_expr` is what lets the subject start on the next line, and M1 of
@@ -6570,12 +6890,39 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       // between them breaks the adjacency without changing a single behaviour.
       self.skip_seps()
       let subject = self.parse_expr()
-      self.skip_braces()
-      self.note_skip(
-        "match expression is outside the analyzed subset; it was read but not analysed",
-        sp,
-      )
-      { span: sp, kind: @ast.EMatch(subject), }
+      // THE ARMS ARE READ IN A TRANSACTION.
+      //
+      // A `match` arm's body can hold MoonBit that this frontend's subset does
+      // not model -- a struct literal, an array spread, a `$|` interpolation, a
+      // `continue` with values. Reading the arms exposes those gaps, and a gap
+      // that became a parse error would have cost the WHOLE FILE: the first
+      // attempt lost 12 files across the pinned corpora, every one of them a
+      // file `moon check` accepts.
+      //
+      // So the arms are read, and if the read FAILED the parser is put back
+      // exactly where it was and the OLD behaviour is restored: the braces are
+      // skipped, the arms are not read, and the notice comes back. A match's
+      // arms are read or they are not; a half-read arm list is the arrangement
+      // that produced the false positive this whole change is about.
+      //
+      // THE SIGNAL IS THE ERROR COUNT and not `first_error`, for two reasons.
+      // The boundary only moves when the failure is EARLIER than the last one,
+      // so a second failure later in the file leaves it where it was; and a
+      // nested exclusion -- a `note_skip` -- is not a failure at all, and
+      // rolling back for one would throw away an arm list that WAS read.
+      let snap = self.snapshot()
+      let arms = self.parse_match_arms()
+      if self.error_count != snap.errors {
+        self.restore(snap)
+        self.skip_braces()
+        self.note_skip(
+          "match expression is outside the analyzed subset; it was read but not analysed",
+          sp,
+        )
+        { span: sp, kind: @ast.EMatch(subject, []), }
+      } else {
+        { span: sp, kind: @ast.EMatch(subject, arms), }
+      }
     }
     // 0496 -- `lexmatch`, THE LEXICAL MATCH. `lexmatch <subject> [with longest] { arms }`
     // is MoonBit's regex-lexer form of a match: the arms are patterns whose first
@@ -6621,6 +6968,19 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
     // are, so binding them would change no finding and cost a pattern reader the
     // subset does not otherwise have. A binding nobody can observe is a claim, not
     // a feature.
+    //
+    // 0502. THE ARMS ARE STILL SKIPPED HERE, and the reason is the arm BODY rather
+    // than the pattern. A `lexmatch` arm body ends in `next` -- the loop
+    // continuation -- and `next` is not in this frontend's statement grammar:
+    // `parse_stmt` has arms for `break` and `continue` and none for `next`. So
+    // reading these arms is not "one more pattern reader", it is a statement the
+    // subset cannot represent. A `match` has no such body, which is why 0502 can
+    // read a match's arms and leaves a `lexmatch`'s alone.
+    //
+    // The consequence is an EMPTY ARM LIST, which `@ast.EMatch` documents: an empty
+    // list means the arms were NOT read, and a `match` with no arms is not
+    // MoonBit, so the two readings cannot be confused. The notice stays, because
+    // for a `lexmatch` it is still TRUE.
     TName("lexmatch") => {
       self.skip_seps()
       let subject = self.parse_expr()
@@ -6640,7 +7000,7 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
         "lexmatch expression is outside the analyzed subset; it was read but not analysed",
         sp,
       )
-      { span: sp, kind: @ast.EMatch(subject), }
+      { span: sp, kind: @ast.EMatch(subject, []), }
     }
     TName("fn") =>
       // An anonymous function literal in expression position:

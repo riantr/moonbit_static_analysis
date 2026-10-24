@@ -2,10 +2,13 @@
 package "riantr/moonbit_static_analysis/src/sa"
 
 import {
+  "riantr/moonbit_static_analysis/src/core",
   "riantr/moonbit_static_analysis/src/report",
 }
 
 // Values
+pub fn add_method_segments(@core.IfaceSymTab) -> Unit
+
 pub fn aggregate(Array[Verdict]) -> Summary
 
 pub let default_findings_shown_per_file : Int32
@@ -17,6 +20,8 @@ pub fn is_coordinate(String) -> Bool
 pub fn is_module_coord(String) -> Bool
 
 pub fn mermaid_states(Array[Verdict], Summary, ScanProvenance, Int32, Int32) -> String
+
+pub fn method_segments(@core.IfaceSymTab) -> Array[String]
 
 pub fn moon_mod_version(String) -> String
 

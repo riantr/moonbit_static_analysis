@@ -1,4 +1,4 @@
-# ONE local release entry point.
+﻿# ONE local release entry point.
 #
 # WHY THIS FILE EXISTS. `.github/workflows/gate.yml` runs four commands -- fmt,
 # check, one test target, one build. That is the floor CI enforces, and it is not
@@ -159,10 +159,29 @@ function Scan-Tree {
   $dir = Join-Path $env:TEMP ('rel_' + [guid]::NewGuid().ToString('N').Substring(0,8))
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $out = Join-Path $dir 'o.txt'; $err = Join-Path $dir 'o.err'
+  # THE PER-FILE PRINTING CAP IS LIFTED HERE, and it is lifted HERE rather than
+  # in each caller because the cap is a property of the PRINTED output and not
+  # of the measurement: the SUMMARY line is the same either way (MEASURED: the
+  # seven corpus SUMMARYs and the self-scan SUMMARY are byte-identical with the
+  # cap at 40 and at 1,000,000), while a count of RENDERED lines is only a fact
+  # about the corpus if the cap is out of the way.
+  #
+  # `--no-auto-fetch-deps` is added for the same reason the measurement scripts
+  # pass it: a release gate that can reach the network is a release gate whose
+  # result depends on the network.
   Start-Process -FilePath $moonrun `
-    -ArgumentList @($Wasm, $Path, '--extern-iface-dir', $repos) `
+    -ArgumentList @($Wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000') `
     -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait | Out-Null
   return Read-TextWhenFree -Path $out
+}
+
+# The number of RENDERED `ParseError` lines in a scan's output. It is counted
+# from the text, not from the SUMMARY, because the SUMMARY's `notices` is the
+# same number and the two are cross-checks of each other: if they ever
+# disagree, one of them is wrong and the gate says so.
+function Get-ParseErrorCount {
+  param([string]$Text)
+  return @([regex]::Matches($Text, '\(ParseError\)')).Count
 }
 
 function Get-Summary {
@@ -177,6 +196,90 @@ Write-Output 'release gate'
 Write-Output ('  repo    : ' + $root)
 Write-Output ('  commit  : ' + (git rev-parse --short HEAD).Trim())
 Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod') -Pattern '^version').Line) -replace '.*=\s*"|"'))
+
+# --- the pins the early stages read --------------------------------------------
+#
+# WHY THIS BLOCK SITS HERE, ABOVE EVERY STAGE, AND NOT AT THE BOTTOM OF THIS
+# FILE BESIDE $PINNED AND $PERFN. Because these four pins are read by stages
+# that run EARLY, and PowerShell runs a script top to bottom.
+#
+# 0.4.34 shipped them at the bottom, next to the other pin tables, and the
+# self-scan stage read every one of them as the EMPTY STRING: the own-source
+# notice table was compared against "" and the corpus stage would have compared
+# the ParseError total against "". The stage reported
+#
+#     FAIL: the own-source notice table drifted from the pin.
+#         pinned :
+#         actual : =0
+#
+# and the blank after "pinned :" is the whole diagnosis. The MEASURED values
+# were right -- expression-level 123, declaration-level 1461, both exactly the
+# pins -- and the gate was still red, because it was comparing against
+# nothing. A gate that prints the pinned value NEXT TO the measured one turns
+# "the number is wrong" into "the number was never read".
+#
+# => 判据: A PIN MUST BE DEFINED BEFORE THE STAGE THAT READS IT, AND A GATE
+# THAT COMPARES AGAINST A MISSING PIN MUST SAY SO OUT LOUD. Two things made
+# this findable in one reading of the log: the stage printed the pin beside
+# the measurement, and the empty-pin guard below refuses to run at all.
+#
+# The corpus pins further down ($PINNED, $PERFN, $CONTROL_N) are read by LATER
+# stages and are pinned at the point of use. These four are read by earlier
+# ones, so they are pinned here.
+#
+
+# THE README'S OTHER PUBLISHED NUMBERS, pinned here for the same reason the
+# corpus numbers are: they are MEASURED on every release gate, and the README
+# gate DERIVES its expectations from this table.
+#
+# 0502 found the cost of not doing this. The README published a rendered
+# `ParseError` count and a "what the suppression hides" pair, and BOTH were
+# quoted from an OLDER mechanism: the first was measured before the `match`
+# arms were read, the second before the suppression was narrowed per binding.
+# Nothing noticed, because nothing re-measured them -- a published number that
+# is not re-measured is a number that is wrong, and it is wrong silently.
+#
+#   $PARSERR_TOTAL   the rendered `ParseError` lines over the seven pinned
+#                    corpora AND this repository's own source, with the
+#                    per-file printing cap lifted. Without the cap lifted this
+#                    number is a property of the CAP and not of the corpus.
+#   $SELF_NOTICES    the own-source notices by kind, the same cap-lifted
+#                    measurement. The README's table IS this string, and the
+#                    order is the order the README prints.
+#   $SELF_EXPR       the expression-level notices -- the ones that can switch a
+#   $SELF_DECL       frame audit off -- and the declaration-level ones, which
+#                    cannot. A kind whose name ends in " declaration" is
+#                    declaration-level; every other kind is expression-level.
+#   $SUPPOFF_LOCAL   what the region suppression hides, measured by
+#   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
+#                    suppression switched OFF.
+$PARSERR_TOTAL = '19215'
+$SELF_NOTICES = 'test declaration=1318|if expression=103|struct declaration=60|derive declaration=53|enum declaration=24|anonymous function literal=17|const declaration=6|short lambda=2|try expression=1'
+$SELF_EXPR = '123'
+$SELF_DECL = '1461'
+$SUPPOFF_LOCAL = '537'
+$SUPPOFF_PARAM = '1094'
+
+# THE EMPTY-PIN GUARD. A pin that is empty is not a pin -- it is a comparison
+# against nothing, and it fails in the most confusing way there is: the pinned
+# value printed next to the measured one comes out BLANK, and a reader has to
+# notice the blank before they can believe the number. The self-scan stage
+# printed "pinned : " with nothing after it, and that blank is the only reason
+# the bug was one reading away from being "the measurement drifted". A stage
+# that had compared silently would have passed.
+$emptyPins = @()
+if ([string]::IsNullOrWhiteSpace($PARSERR_TOTAL)) { $emptyPins += 'PARSERR_TOTAL' }
+if ([string]::IsNullOrWhiteSpace($SELF_NOTICES))  { $emptyPins += 'SELF_NOTICES' }
+if ([string]::IsNullOrWhiteSpace($SELF_EXPR))     { $emptyPins += 'SELF_EXPR' }
+if ([string]::IsNullOrWhiteSpace($SELF_DECL))     { $emptyPins += 'SELF_DECL' }
+if ([string]::IsNullOrWhiteSpace($SUPPOFF_LOCAL)) { $emptyPins += 'SUPPOFF_LOCAL' }
+if ([string]::IsNullOrWhiteSpace($SUPPOFF_PARAM)) { $emptyPins += 'SUPPOFF_PARAM' }
+if ($emptyPins.Count -gt 0) {
+  Write-Output ('FATAL: the pins ' + ($emptyPins -join ', ') + ' are empty.')
+  Write-Output '  A gate that compares against an empty pin compares against nothing.'
+  Write-Output '  A pin must be DEFINED ABOVE the stage that reads it.'
+  if (-not $SelfTest) { exit 1 }
+}
 
 # --- the self-test ------------------------------------------------------------
 # Shown to go red, because this gate's whole job is to go red. Three assertions,
@@ -265,7 +368,8 @@ if (-not (Test-Path $GP)) {
 # --- 4  self-scan ------------------------------------------------------------
 if ($failed.Count -eq 0) {
   Stage 'self-scan (own source)' {
-    $sum = Get-Summary (Scan-Tree $wasm $root)
+    $text = Scan-Tree $wasm $root
+    $sum = Get-Summary $text
     Write-Output ('  ' + $sum)
     $files  = [int]([regex]::Match($sum, 'files=(\d+)').Groups[1].Value)
     $parsed = [int]([regex]::Match($sum, 'parsed=(\d+)').Groups[1].Value)
@@ -275,6 +379,50 @@ if ($failed.Count -eq 0) {
     if ($act -ne 0) { Write-Output '  FAIL: actionable is not 0.'; $script:stageOk = $false }
     elseif ($files -ne $parsed) { Write-Output ("  FAIL: parsed {0} of {1} files." -f $parsed, $files); $script:stageOk = $false }
     else { Write-Output ('  ' + $files + '/' + $files + ' parsed, actionable 0') }
+
+    # THE OWN-SOURCE NOTICES BY KIND. The README publishes this table, so the
+    # table is measured here and PINNED -- and the count of rendered
+    # `ParseError` lines is kept for the corpus stage, which sums the eight
+    # trees into the number the README publishes.
+    $script:selfParseErr = Get-ParseErrorCount $text
+    $byKind = @{}
+    foreach ($m in [regex]::Matches($text, '(?m)^\d+:\d+ - notice: (.+?) is outside the analyzed subset')) {
+      $k = $m.Groups[1].Value
+      if ($byKind.ContainsKey($k)) { $byKind[$k] = $byKind[$k] + 1 } else { $byKind[$k] = 1 }
+    }
+    $order = @($SELF_NOTICES -split '\|' | ForEach-Object { ($_ -split '=')[0] })
+    $got = (($order | ForEach-Object { $_ + '=' + [int]$byKind[$_] }) -join '|')
+    if ($got -ne $SELF_NOTICES) {
+      Write-Output '  FAIL: the own-source notice table drifted from the pin.'
+      Write-Output ('      pinned : ' + $SELF_NOTICES)
+      Write-Output ('      actual : ' + $got)
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  the notice table matches the pin (' + $order.Count + ' kinds)')
+    }
+    # A KIND THAT IS NOT IN THE PIN is a new scope limit, and the README's
+    # table would be missing a row. A pin that only compares the kinds it
+    # knows cannot see that, so the set is compared as well as the counts.
+    $extra = @($byKind.Keys | Where-Object { $order -notcontains $_ } | Sort-Object)
+    if ($extra.Count -gt 0) {
+      Write-Output ('  FAIL: notice kinds that the pin does not name: ' + ($extra -join ', '))
+      $script:stageOk = $false
+    }
+    # THE EXPRESSION-LEVEL / DECLARATION-LEVEL SPLIT. A kind whose name ends in
+    # " declaration" is declaration-level -- it sits outside every function
+    # extent and cannot switch a frame audit off. Every other kind is
+    # expression-level.
+    $expr = 0; $decl = 0
+    foreach ($k in $byKind.Keys) {
+      if ($k.EndsWith(' declaration')) { $decl += $byKind[$k] } else { $expr += $byKind[$k] }
+    }
+    if ("$expr" -ne $SELF_EXPR -or "$decl" -ne $SELF_DECL) {
+      Write-Output ('  FAIL: expression-level ' + $expr + ' / declaration-level ' + $decl +
+                    ', pinned ' + $SELF_EXPR + ' / ' + $SELF_DECL + '.')
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  expression-level ' + $expr + ', declaration-level ' + $decl)
+    }
   }
   if (-not $script:lastOk) { $failed += 'self-scan' }
 }
@@ -492,8 +640,54 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4h  the match's ARMS, read end to end ------------------------------------
+# 0502. A `match`'s arms used to be consumed whole by `skip_braces` -- a region
+# the frontend deliberately did not analyse -- and a region put a HOLE in the
+# frame of the enclosing function, which silenced the unused-local and
+# unused-parameter checks for that WHOLE function.
+#
+# The gate checks that the arms ARE read, that the findings which come back are
+# TRUE ones (a binding read only inside an arm body is not dead, and a `with`
+# constraint READS its right-hand side), and that a match whose arms the subset
+# cannot read falls back to the OLD behaviour EXACTLY -- the notice comes back
+# and the frame is NOT judged, rather than half-read.
+#
+# It is placed here, before the mutation gates, for the same reason as the
+# frame-audit stage above: it READS THE TREE, and a mutation gate that has
+# mutated a source file would be read as part of it.
+#
+# IT IS NOT VACUOUS. The gate was shown to go red twice by injecting a defect
+# into the analyzer's own source, rebuilding, and running it:
+#
+#   - the arm body is not walked        -> 12 checks fail, the negative
+#     direction included (`live_local`, `live_param`);
+#   - the `with` constraint is not recognised -> 2 checks fail, naming
+#     `m6_with_constraint`.
+#
+# Both trees were restored byte-identically (SHA256 checked).
+if ($failed.Count -eq 0) {
+  $MA = Join-Path $root '_verify\check_match_arms.ps1'
+  if (-not (Test-Path $MA)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_match_arms.ps1'
+    $failed += 'match-arms'
+  } else {
+    Stage 'match arms: the arms are read, the findings are true ones, and the fallback is exact' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MA 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(ok |FAIL|GATE OK|GATE FAILED)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'match-arms' }
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1140,12 +1334,29 @@ if ($SkipMutations) {
 # removed it. Pinning `actionable=1` for `no visible binding for 'sb'` would
 # have frozen a defect into the pin and called it a corpus fact.
 #
-# `notices=10228` is dominated by the `.mbt.md` literate files: a `test` block
+# `notices=9808` is dominated by the `.mbt.md` literate files: a `test` block
 # inside a Markdown file is "outside the analyzer's MoonBit subset", which is a
-# notice, not a defect. `unreliable=2432` is the post-boundary tail of the 72
+# notice, not a defect. `unreliable=2240` is the post-boundary tail of the 72
 # partial files -- 94 at 0495, 72 now, because twenty-two of them are whole.
 #
-# And the SEVEN corpus pins now carry BEHAVIOUR-LENS signal, which the six did
+# 0502 MOVED EVERY ONE OF THESE NUMBERS, and the reason is that a `match`'s
+# ARMS ARE NOW READ. A `match` used to be a REGION -- a part of the file the
+# frontend read but did not analyse -- and every match in the corpora put a
+# notice on the count. Reading the arms removed 2,146 of those notices across
+# the eight trees, and the notices that remain are the ones that are still
+# true: a `lexmatch`'s arms, an `if` expression, a lambda body, and a `match`
+# whose arms hold MoonBit this frontend cannot model.
+#
+# `actionable` MOVED DOWN ON CORE, from 33 to 28, and that is the point of the
+# increment: reading the arms brought back findings, and 9 of the ones it
+# brought back on `moonbit_core` were FALSE POSITIVES on code `moon check`
+# accepts -- three `makei` calls in `immut/vector/invariants_wbtest.mbt` and
+# the `i1`/`i2` shadow in `diff/diff.mbt`, plus five `with`-constraint
+# parameters. `moonbit_labeler` went UP, from 0 to 1, and that one is TRUE:
+# `app_moui/rasterizer.mbt:489`, `local variable 'd_off' assigned but may not
+# be used`, computed at 489 and never read.
+#
+# And the SEVEN corpus pins carry BEHAVIOUR-LENS signal, which the six did
 # not: core contributes 5 findings tagged `behavior`, and all five are
 # consequences of the reader gaps listed above (`undefined variable 'N'` three
 # times, `undefined variable 'declare'`, and `F6A8885A308CA8A54`). Five
@@ -1153,13 +1364,13 @@ if ($SkipMutations) {
 # NARRATIVE.md for why the behaviour lens needs `--per-function` to be reached
 # at all.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=608 actionable=0 notices=4225 unreliable=0 withheld=0 total=4225'
-  'moonbit_labeler' = 'files=37 parsed=37 actionable=0 notices=791 unreliable=0 withheld=0 total=791'
-  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=218 unreliable=0 withheld=0 total=218'
-  'async'           = 'files=419 parsed=419 actionable=0 notices=1836 unreliable=0 withheld=0 total=1836'
-  'proton'          = 'files=137 parsed=137 actionable=0 notices=2131 unreliable=0 withheld=0 total=2131'
-  'proton_contract' = 'files=4 parsed=4 actionable=0 notices=34 unreliable=0 withheld=0 total=34'
-  'moonbit_core'    = 'files=1029 parsed=957 actionable=33 notices=10228 unreliable=2448 withheld=464 total=12709'
+  'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 total=3457'
+  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 total=699'
+  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 total=186'
+  'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 total=1654'
+  'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 total=1799'
+  'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 total=29'
+  'moonbit_core'    = 'files=1029 parsed=957 actionable=28 notices=9808 unreliable=2240 withheld=483 total=12076'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -1174,10 +1385,23 @@ $TARGETS = [ordered]@{
 if ($failed.Count -eq 0) {
   Stage 'corpus SUMMARY vs pinned baseline' {
     $drift = 0
+    $parseErr = $script:selfParseErr
     foreach ($k in $TARGETS.Keys) {
       $p = Join-Path $repos $TARGETS[$k]
       if (-not (Test-Path $p)) { Write-Output ("  [ABSENT] {0,-16}" -f $k); $drift++; continue }
-      $sum = Get-Summary (Scan-Tree $wasm $p)
+      $text = Scan-Tree $wasm $p
+      $sum = Get-Summary $text
+      # THE RENDERED `ParseError` LINES, counted from the scan's own output and
+      # cross-checked against the SUMMARY's `notices` -- two numbers that must
+      # agree, because every notice is a scope limit and a scope limit is
+      # rendered as a `ParseError`.
+      $pe = Get-ParseErrorCount $text
+      $nt = [int]([regex]::Match($sum, 'notices=(\d+)').Groups[1].Value)
+      if ($pe -ne $nt) {
+        Write-Output ("  [DRIFT ] {0,-16} rendered {1} ParseError lines, the SUMMARY says {2}" -f $k, $pe, $nt)
+        $drift++
+      }
+      $parseErr += $pe
       $want = $PINNED[$k]
       if ($sum -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $k, $sum) }
       else {
@@ -1186,6 +1410,16 @@ if ($failed.Count -eq 0) {
         Write-Output ('      pinned : ' + $want)
         Write-Output ('      actual : ' + $sum)
       }
+    }
+    # THE TOTAL over the seven corpora AND this repository's own source. This
+    # is the number the README publishes, and it is CHECKED here because a
+    # number that is only written down cannot be wrong loudly -- it can only
+    # be wrong quietly.
+    if ("$parseErr" -ne $PARSERR_TOTAL) {
+      Write-Output ('  [DRIFT ] the eight trees render ' + $parseErr + ' ParseError lines, pinned ' + $PARSERR_TOTAL + '.')
+      $drift++
+    } else {
+      Write-Output ('  [MATCH ] the eight trees render ' + $parseErr + ' ParseError lines')
     }
     if ($drift -eq 0) { return }
     if ($AllowCorpusDrift) { Write-Output '  (-AllowCorpusDrift: drift reported, not failed)'; return }
@@ -1204,14 +1438,22 @@ if ($failed.Count -eq 0) {
 # published number that is not gated is a number that can go missing silently.
 $PERFN = [ordered]@{
   'moui'            = '0'
-  'moonbit_labeler' = '0'
+  'moonbit_labeler' = '1'
   'moonbit_image'   = '0'
   'async'           = '0'
   'proton'          = '2'
   'proton_contract' = '0'
-  'moonbit_core'    = '56'
+  'moonbit_core'    = '47'
 }
-$PERFN_TOTAL = '58'
+$PERFN_TOTAL = '50'
+# THE POSITIVE CONTROL'S FILE COUNT, pinned here for the same reason the census
+# total is: it is a corpus number, and the corpus numbers live in ONE place.
+# `_verify/check_readme_links.ps1` DERIVES the README's expectation from this
+# table rather than writing the number down a second time -- 0502 moved four
+# corpus numbers at once and the README kept publishing the old ones, because
+# the gate's literals were a second copy of the fact and nothing compared the
+# two copies.
+$CONTROL_N = '20'
 
 if ($failed.Count -eq 0) {
   $CS = Join-Path $root '_verify\census_perfunction.ps1'
@@ -1261,11 +1503,53 @@ if ($failed.Count -eq 0) {
       $ErrorActionPreference = $prev
       foreach ($ln in ($o -split "`r?`n")) {
         if ($ln -match '^(GATE OK|GATE FAILED|read by moon check|BASELINE FAILED|RESTORE FAILED|  NOT READ)') { Write-Output ('  ' + $ln.Trim()) }
+        if ($ln -match '^read by moon check: (\d+) of (\d+)') {
+          # THE PINNED FILE COUNT. The control proves that every file carrying a
+          # finding is READ by `moon check`; the COUNT of those files is a
+          # corpus number like any other, so it is pinned here and the README
+          # gate derives its expectation from this table.
+          if ([int]$Matches[1] -ne [int]$Matches[2]) {
+            Write-Output ('  FAIL: the control read ' + $Matches[1] + ' of ' + $Matches[2] + ' files.')
+            $script:stageOk = $false
+          }
+          if ([int]$Matches[1] -ne [int]$CONTROL_N) {
+            Write-Output ('  [DRIFT ] the control read ' + $Matches[1] + ' files, pinned ' + $CONTROL_N + '.')
+            $script:stageOk = $false
+          } else {
+            Write-Output ('  [MATCH ] the control read ' + $CONTROL_N + ' files, all of them.')
+          }
+        }
       }
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'perfunction-control' }
   }
+}
+
+# --- 8  what the region suppression hides -------------------------------------
+# The README publishes this number, and the number describes a MECHANISM rather
+# than a corpus -- so the stage that measures it is a stage that switches the
+# mechanism off, rebuilds the analyzer, scans the eight trees, and puts the
+# source back. The restore is proven by SHA256 inside the script, and the
+# script REFUSES TO START if it finds the source already patched, so an
+# interrupted run cannot be mistaken for a clean tree.
+$MSO = Join-Path $root '_verify\measure_suppression_off.ps1'
+if (-not (Test-Path $MSO)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\measure_suppression_off.ps1'
+  $failed += 'suppression-off'
+} else {
+  Stage 'the region suppression: what it hides, measured and pinned' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MSO 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|restored|matches the pin|pinned:|UnusedLocal=|TOTAL)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'suppression-off' }
 }
 
 # --- verdict -----------------------------------------------------------------

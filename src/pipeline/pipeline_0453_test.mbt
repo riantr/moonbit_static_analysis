@@ -86,22 +86,29 @@ test "0453: an async fn literal is read as a named argument's value" {
 /// IT IS ASSERTED BY MESSAGE, not by count, and the count was tried first. Every
 /// function literal already emits one ParseError of its own ("anonymous function
 /// literal is outside the analyzed subset"), so the clean fixture sits at 1 and
-/// the `match` one at 2 -- a difference of 1 carried by an absolute number that
+/// the excluded one at 2 -- a difference of 1 carried by an absolute number that
 /// means nothing on its own. A count also cannot tell the literal's own notice from
 /// the body's, which is the thing being measured.
+///
+/// 0502. THE EXCLUDED CONSTRUCT IS AN `if` EXPRESSION NOW, and it used to be a
+/// `match`. A `match`'s arms are read, so a `match` inside the body is no longer
+/// anything to announce -- and a row that asserted "the match is announced" would
+/// have been asserting a message the parser does not emit. The mechanism under
+/// test is unchanged: a body that was READ announces what it read and declined,
+/// and a body that was SKIPPED does not.
 test "0453: a construct inside an async literal's body is still announced" {
   let r = @pipeline.run(
-    "///|\nfn probe() -> Unit {\n  let f = Some(async fn(a) {\n    match a {\n      1 => 2\n      _ => 3\n    }\n  })\n  ignore(f)\n}\n",
+    "///|\nfn probe() -> Unit {\n  let f = Some(async fn(a) {\n    let _ = if a > 0 {\n      1\n    } else {\n      2\n    }\n  })\n  ignore(f)\n}\n",
     "body.mbt",
     @core.IfaceSymTab::empty(),
   )
   assert_eq(parse_failures(r), 0)
-  assert_eq(reports_containing(r, "match expression"), true)
+  assert_eq(reports_containing(r, "if expression"), true)
 }
 
 ///|
 /// AND THE CONTROL, or the test above would pass a parser that announced one
-/// `match` no matter what the body held. The same literal with an ordinary
+/// `if` no matter what the body held. The same literal with an ordinary
 /// expression body announces nothing.
 test "0453: a clean async literal body announces nothing" {
   let r = @pipeline.run(
@@ -110,7 +117,7 @@ test "0453: a clean async literal body announces nothing" {
     @core.IfaceSymTab::empty(),
   )
   assert_eq(parse_failures(r), 0)
-  assert_eq(reports_containing(r, "match expression"), false)
+  assert_eq(reports_containing(r, "if expression"), false)
 }
 
 ///|

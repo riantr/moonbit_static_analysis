@@ -142,12 +142,27 @@ $fx = Join-Path $env:TEMP ('notice_fx_' + [guid]::NewGuid().ToString('N').Substr
 New-Item -ItemType Directory -Force -Path $fx | Out-Null
 $enc = New-Object System.Text.UTF8Encoding($false)
 
-# (a) the PROGRAM frontend's deliberate exclusion: a `match` in a .mbt file.
+# (a) the PROGRAM frontend's deliberate exclusion: a `match` whose ARMS THIS
+# FRONTEND CANNOT READ, in a .mbt file.
+#
+# THE SHAPE CHANGED IN 0502, and the reason is the point of 0502. Before it,
+# a plain `match` was the program's deliberate exclusion: the arms were
+# consumed whole by `skip_braces`, the construct was outside the analyzed
+# subset, and the notice said so. 0502 READS the arms, so a plain `match` is
+# no longer an exclusion at all -- and a fixture built on one measures a
+# construct the tool no longer excludes.
+#
+# The exclusion that is LEFT is the FALLBACK: a match whose arms hold MoonBit
+# this frontend does not model -- an array spread -- cannot be read, and the
+# parser puts itself back and restores the OLD behaviour exactly, notice and
+# all. That is the shape here, and it is the shape
+# `_verify/check_match_arms.ps1` pins as "the fallback is EXACT".
 [System.IO.File]::WriteAllText((Join-Path $fx 'a_match.mbt'), @'
 fn classify(x : Int) -> Int {
+  let arr = [1, 2]
   match x {
-    0 => 1
-    _ => 2
+    0 => [1, ..arr]
+    _ => [2]
   }
 }
 '@, $enc)

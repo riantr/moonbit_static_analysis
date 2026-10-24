@@ -11,6 +11,20 @@ $ErrorActionPreference = 'Continue'
 # 0501 replaced the Bool with the LIST of regions, and the frame audit now
 # judges each binding against the regions that can reach it.
 #
+# THE FIXTURES' REGION CHANGED IN 0502, and the reason is the point of 0502.
+# 0502 READ a `match`'s arms, so a `match` is no longer a region at all -- and
+# a fixture built on one measures a construct the tool no longer excludes.
+# The region these fixtures use now is an ANONYMOUS FUNCTION LITERAL, whose
+# body the frontend reads but does not analyse; the `if` EXPRESSION fixture
+# is unchanged and covers the second kind of region.
+#
+# THE LAMBDA IS NOT AN ARBITRARY SUBSTITUTE. It is the region 0501's own
+# narrative settled: a MoonBit lambda CAPTURES the enclosing locals, so a
+# skipped lambda body CAN hide a read of them, and a lambda region must keep
+# silencing the bindings it could have read. `read_inside_region.mbt` is the
+# fixture that says so, and it is the assertion that would hurt if it were
+# wrong.
+#
 # WHAT IT CHECKS, and each item is a thing that can be WRONG:
 #
 #   1. THE OUTPUT CONTRACT, on the real scanner and not on the library. Six
@@ -49,12 +63,15 @@ if (-not (Test-Path -LiteralPath $wasm)) {
 # Each is a whole file, so the counts are per file and cannot be confused with
 # one another. `after_region` is the shape 0501 makes judgeable; `before_region`
 # and `read_inside_region` are the shapes it must leave alone.
+#
+# THE REGION IS AN ANONYMOUS FUNCTION LITERAL, whose body the frontend reads
+# but does not analyse. A `match` was the region here until 0502 read the
+# match's arms, and a `match` is no longer a region -- see the header.
 $FIXTURES = [ordered]@{
   'after_region.mbt' = @(
     'fn f(z : Int) {'
-    '  match z {'
-    '    0 => 1'
-    '    _ => 0'
+    '  let g = fn() {'
+    '    1'
     '  }'
     '  let never_read = 1'
     '}'
@@ -72,26 +89,23 @@ $FIXTURES = [ordered]@{
   'before_region.mbt' = @(
     'fn f(z : Int) {'
     '  let maybe_used = 1'
-    '  match z {'
-    '    0 => 1'
-    '    _ => 0'
+    '  let g = fn() {'
+    '    1'
     '  }'
     '}'
   )
   'read_inside_region.mbt' = @(
     'fn f(z : Int) {'
     '  let maybe_used = 1'
-    '  match z {'
-    '    0 => maybe_used'
-    '    _ => 0'
+    '  let g = fn() {'
+    '    maybe_used'
     '  }'
     '}'
   )
   'param_in_region.mbt' = @(
     'fn f(unused_param : Int, z : Int) {'
-    '  match z {'
-    '    0 => 1'
-    '    _ => 0'
+    '  let g = fn() {'
+    '    1'
     '  }'
     '}'
   )
@@ -121,9 +135,8 @@ $FIXTURES = [ordered]@{
     '  let never_read = 1'
     '}'
     'fn second(z : Int) {'
-    '  match z {'
-    '    0 => 1'
-    '    _ => 0'
+    '  let g = fn() {'
+    '    1'
     '  }'
     '}'
   )

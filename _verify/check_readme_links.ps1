@@ -286,13 +286,53 @@ if ($null -eq $wasmT -or $null -eq $jsT -or $null -eq $gcT) {
 }
 $wasmStr = ($wasmT.Passed.ToString() + '/' + $wasmT.Total.ToString())
 $jsStr = ($jsT.Passed.ToString() + '/' + $jsT.Total.ToString())
+# THE CORPUS NUMBERS ARE DERIVED FROM release.ps1's PIN TABLE, not written here
+# as literals.
+#
+# WHY, and it is not tidiness. 0502 moved four of these numbers at once -- the
+# core module's `actionable`, the per-function census total, the positive
+# control's file count -- and the README gate PASSED with every one of them
+# stale, because the gate only asked "does the README contain the string I
+# wrote down". The literals were a SECOND PLACE the same fact was written,
+# and the two places drifted apart: release.ps1's pin was re-pinned from the
+# measurement, the gate's literals were not, and the README kept publishing
+# numbers that had been true for a release and a half.
+#
+# => 判据: A NUMBER WRITTEN DOWN TWICE IS A NUMBER THAT WILL DISAGREE WITH
+# ITSELF. The corpus numbers now live in ONE place -- release.ps1's pin table,
+# which the corpus stage checks against a live scan -- and the README gate
+# DERIVES its expectations from that table. So the gate asks "does the README
+# say what the pin says", which is the question it can actually answer.
+#
+# AND THE GATE FAILS LOUDLY if the pins are gone, rather than quietly
+# checking against a default.
+$relTxt = [System.IO.File]::ReadAllText((Join-Path $root '_verify\release.ps1'), [System.Text.Encoding]::UTF8)
+$coreM = [regex]::Match($relTxt, "'moonbit_core'\s*=\s*'files=(\d+)\s+parsed=(\d+)\s+actionable=(\d+)")
+$censusM = [regex]::Match($relTxt, '\$PERFN_TOTAL\s*=\s*''(\d+)''')
+$ctrlM = [regex]::Match($relTxt, '\$CONTROL_N\s*=\s*''(\d+)''')
+if (-not $coreM.Success -or -not $censusM.Success -or -not $ctrlM.Success) {
+  Write-Output '  FAIL: release.ps1 no longer carries the corpus pins this gate derives from.'
+  Write-Output '        Restore them, or this gate has nothing to check the README against.'
+  $fail++
+  $coreParsed = '?'
+  $coreActionable = '?'
+  $censusTotal = '?'
+  $controlN = '?'
+} else {
+  $coreParsed = $coreM.Groups[2].Value
+  $coreActionable = $coreM.Groups[3].Value
+  $censusTotal = $censusM.Groups[1].Value
+  $controlN = $ctrlM.Groups[1].Value
+  Write-Output ('  (release.ps1 pins: core parsed ' + $coreParsed + ', core actionable ' +
+                $coreActionable + ', census total ' + $censusTotal + ', control ' + $controlN + ' of ' + $controlN + ')')
+}
 $expect = @(
   @{ F = 'README.md';    S = $wasmStr; N = 'wasm test count' }
   @{ F = 'README.md';    S = $jsStr; N = 'js/wasm-gc test count' }
-  @{ F = 'README.md';    S = '957 parsed'; N = 'core parsed' }
-  @{ F = 'README.md';    S = '33 actionable'; N = 'core module actionable' }
-  @{ F = 'README.md';    S = '**58** `actionable`'; N = 'per-function census total' }
-  @{ F = 'README.md';    S = '24 of 24'; N = 'positive control' }
+  @{ F = 'README.md';    S = ($coreParsed + ' parsed'); N = 'core parsed' }
+  @{ F = 'README.md';    S = ($coreActionable + ' actionable'); N = 'core module actionable' }
+  @{ F = 'README.md';    S = ('**' + $censusTotal + '** `actionable`'); N = 'per-function census total' }
+  @{ F = 'README.md';    S = ($controlN + ' of ' + $controlN); N = 'positive control' }
   @{ F = 'README.md';    S = ($gateCount.ToString() + ' of them'); N = 'mutation gates' }
   @{ F = 'README.md';    S = ('**' + $gateCount + ' mutation gates**'); N = 'mutation gates (the second mention)' }
   @{ F = 'README.md';    S = ('**' + $mutTotal + '** live mutations'); N = 'live mutations' }
@@ -302,9 +342,9 @@ $expect = @(
   @{ F = 'README.md';    S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named' }
   @{ F = 'README.zh.md'; S = $wasmStr; N = 'wasm test count (zh)' }
   @{ F = 'README.zh.md'; S = $jsStr; N = 'js/wasm-gc test count (zh)' }
-  @{ F = 'README.zh.md'; S = '解析 957 个'; N = 'core parsed (zh)' }
-  @{ F = 'README.zh.md'; S = '**58** 条'; N = 'per-function census total (zh)' }
-  @{ F = 'README.zh.md'; S = '24 / 24'; N = 'positive control (zh)' }
+  @{ F = 'README.zh.md'; S = ('解析 ' + $coreParsed + ' 个'); N = 'core parsed (zh)' }
+  @{ F = 'README.zh.md'; S = ('**' + $censusTotal + '** 条'); N = 'per-function census total (zh)' }
+  @{ F = 'README.zh.md'; S = ($controlN + ' / ' + $controlN); N = 'positive control (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + '** 个'); N = 'mutation gates (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + ' 道变异门**'); N = 'mutation gates (zh, the second mention)' }
   @{ F = 'README.zh.md'; S = ('**' + $mutTotal + '** 个存活变异里'); N = 'live mutations (zh)' }
@@ -320,6 +360,92 @@ foreach ($e in $expect) {
   Write-Output ("  {0,-14} {1,-34} {2}" -f $e.F, $e.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $e.S }))
   if (-not $ok) { $fail++ }
 }
+# --- the README's own-source notice TABLE, and the numbers 0502 re-measured ----
+#
+# These four numbers were all published by the README and all of them were
+# quoted from an OLDER state of the analyzer: the `ParseError` count was
+# measured before the `match` arms were read, the notice table was measured
+# with the per-file printing cap at 40 (so it counted 1,499 of the 1,584
+# notices), and the "what the suppression hides" pair was measured before the
+# suppression was narrowed per binding.
+#
+# They are DERIVED here from release.ps1's pin table, the same way the corpus
+# numbers are: the release gate MEASURES them on every run and compares them
+# with the pin, and this gate asks only "does the README say what the pin
+# says". That is the question a gate can actually answer, and it is the
+# question that keeps a README from publishing a number nobody re-measured.
+$relTxt2 = [System.IO.File]::ReadAllText((Join-Path $root '_verify\release.ps1'), [System.Text.Encoding]::UTF8)
+$peM  = [regex]::Match($relTxt2, "\`$PARSERR_TOTAL\s*=\s*'(\d+)'")
+$snM  = [regex]::Match($relTxt2, "\`$SELF_NOTICES\s*=\s*'([^']*)'")
+$sxM  = [regex]::Match($relTxt2, "\`$SELF_EXPR\s*=\s*'(\d+)'")
+$sdM  = [regex]::Match($relTxt2, "\`$SELF_DECL\s*=\s*'(\d+)'")
+$loM  = [regex]::Match($relTxt2, "\`$SUPPOFF_LOCAL\s*=\s*'(\d+)'")
+$paM  = [regex]::Match($relTxt2, "\`$SUPPOFF_PARAM\s*=\s*'(\d+)'")
+if (-not ($peM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
+  Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives from.'
+  Write-Output '        Restore them, or this gate has nothing to check the README against.'
+  $fail++
+  $peTotal = '?'; $sn = ''; $sx = '?'; $sd = '?'; $lo = '?'; $pa = '?'
+} else {
+  $peTotal = ([int]$peM.Groups[1].Value).ToString('N0')
+  $sn = $snM.Groups[1].Value
+  $sx = $sxM.Groups[1].Value
+  $sd = $sdM.Groups[1].Value
+  $lo = $loM.Groups[1].Value
+  $pa = $paM.Groups[1].Value
+  Write-Output ('  (release.ps1 pins: ParseError ' + $peTotal + ', notice table ' + (@($sn -split '\|').Count) +
+                ' kinds, expression-level ' + $sx + ', declaration-level ' + $sd +
+                ', suppression off ' + $lo + ' / ' + $pa + ')')
+}
+
+# The kind -> the label each README prints it under. The labels are PRESENTATION
+# and the numbers are the MEASUREMENT, so the map lives here and the numbers
+# come from the pin.
+$noticeLabel = [ordered]@{
+  'test declaration'          = @{ en = '`test` declaration';          zh = '`test` 声明' }
+  'if expression'              = @{ en = '`if` expression';              zh = '`if` 表达式' }
+  'struct declaration'         = @{ en = '`struct` declaration';         zh = '`struct` 声明' }
+  'derive declaration'         = @{ en = '`derive` declaration';         zh = '`derive` 声明' }
+  'enum declaration'           = @{ en = '`enum` declaration';           zh = '`enum` 声明' }
+  'anonymous function literal' = @{ en = '`anonymous function literal`'; zh = '匿名函数字面量' }
+  'const declaration'          = @{ en = '`const` declaration';          zh = '`const` 声明' }
+  'short lambda'               = @{ en = '`short lambda`';               zh = '短 lambda' }
+  'try expression'             = @{ en = '`try` expression';             zh = '`try` 表达式' }
+}
+$more = New-Object System.Collections.Generic.List[object]
+if ($sn -ne '') {
+  foreach ($part in ($sn -split '\|')) {
+    $kv = $part -split '='
+    $kind = $kv[0]
+    if (-not $noticeLabel.Contains($kind)) {
+      Write-Output ('  FAIL: the pinned notice kind "' + $kind + '" has no label in this gate.')
+      $fail++
+      continue
+    }
+    $more.Add(@{ F = 'README.md';    S = ($noticeLabel[$kind].en + ' | ' + $kv[1]); N = ('notice table: ' + $kind) })
+    $more.Add(@{ F = 'README.zh.md'; S = ($noticeLabel[$kind].zh + ' | ' + $kv[1]); N = ('notice table (zh): ' + $kind) })
+  }
+}
+$more.Add(@{ F = 'README.md';    S = ('**' + $peTotal + '**'); N = 'the rendered ParseError count' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + $peTotal + '**'); N = 'the rendered ParseError count (zh)' })
+$more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
+$more.Add(@{ F = 'README.md';    S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count (zh)' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count (zh)' })
+$more.Add(@{ F = 'README.md';    S = ('exclusion (' + $sx + ' of them)'); N = 'the expression-level exclusions' })
+$more.Add(@{ F = 'README.md';    S = ('exclusion (' + $sd + ')'); N = 'the declaration-level exclusions' })
+$more.Add(@{ F = 'README.zh.md'; S = ($LP + $sx + ' 条' + $RP); N = 'the expression-level exclusions (zh)' })
+$more.Add(@{ F = 'README.zh.md'; S = ($LP + $sd + ' 条' + $RP); N = 'the declaration-level exclusions (zh)' })
+$more.Add(@{ F = 'README.md';    S = '(178 files)'; N = 'the own-source file count' })
+$more.Add(@{ F = 'README.zh.md'; S = '178 个文件'; N = 'the own-source file count (zh)' })
+foreach ($e in $more) {
+  $p = Join-Path $root $e.F
+  $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+  $ok = $txt.Contains($e.S)
+  Write-Output ("  {0,-14} {1,-34} {2}" -f $e.F, $e.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $e.S }))
+  if (-not $ok) { $fail++ }
+}
+
 
 Write-Output ''
 if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections and counts all check out.'; exit 0 }

@@ -170,6 +170,43 @@ pub fn IfaceSymTab::all_values(self : IfaceSymTab) -> Map[String, Bool] {
 }
 
 ///|
+/// Record a VALUE name this table has not seen yet, as a function rather than
+/// a constant.
+///
+/// 0502. A TYPE'S METHOD MAY BE CALLED UNQUALIFIED, inside the package that
+/// declares the type: `moonbitlang/core` `immut/vector/vector.mbt:68`
+/// declares `pub fn[A] Vector::makei(..)`, and
+/// `immut/vector/invariants_wbtest.mbt:354` calls it as `makei(..)` — the
+/// same package, the same directory, the type in scope. The toolchain accepts
+/// it (core's own `moon.mod` turns the `unqualified_local_using` warning ON,
+/// which is a warning about the SPELLING, not a refusal).
+///
+/// The harvest keeps the QUALIFIED name (`Vector::makei`, because
+/// `declared_name_at` follows the `::`), so the bare `makei` was in no table
+/// and the call was reported `no visible binding for 'makei'` — a false
+/// positive on code `moon check` compiles. Six of them: three in
+/// `invariants_wbtest.mbt` at lines 227, 229, 230 before 0502 read the match
+/// arms, and three more at 354, 363, 366 after it did.
+///
+/// IT IS THE CALLER'S JOB TO KEEP THIS PACKAGE-LOCAL. The table this writes
+/// into is the one `collect_private_symtabs` builds PER PACKAGE DIRECTORY, and
+/// it is unioned only into the files of that same directory — so a method of
+/// a type in package A cannot silence a name in package B. Adding the method
+/// segment to the SHARED cross-file table instead would let any method name in
+/// the world resolve anywhere, which is a different rule from the language's.
+///
+/// => 判据: a name the toolchain resolves is not a finding. The question is
+/// never "is the name in the table" but "does the toolchain accept it", and
+/// the answer here was measured with the compiler as the oracle.
+pub fn IfaceSymTab::add_value(self : IfaceSymTab, name : String) -> Unit {
+  if !self.values.contains(name) {
+    // FALSE is "not a const": the bool in `values` is `is_const`, and a method
+    // is a function.
+    self.values.set(name, false)
+  }
+}
+
+///|
 /// Merge another table into this one. A name present on both sides of
 /// the merge ends up in BOTH sets — the analyzer's lookup prefers
 /// `values` over `types` when a name is in both, so the call shape wins

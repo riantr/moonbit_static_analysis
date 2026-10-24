@@ -2033,10 +2033,12 @@ fn Lexer::lex_op(self : Lexer) -> Tok {
     ':' => TColon
     '.' => TDot
     ';' => TSemi
-    // A lone `|` — the or-pattern separator of match arms. The parser never
-    // sees one (match bodies are skipped whole), so the token only has to
-    // EXIST; what matters is that the character stops reporting
-    // "unexpected character" and marking the file partial.
+    // A lone `|` — the or-pattern separator of match arms. The parser used to
+    // never see one (match bodies were skipped whole), so the token only had to
+    // EXIST; what matters is that the character stops reporting "unexpected
+    // character" and marking the file partial. 0502 reads the match arms, so the
+    // parser DOES see this one now -- in an or-pattern -- and the token is load
+    // bearing rather than a placeholder.
     '|' => TBar
     // A lone `?` (optional-type suffix, option parameter). Where it is legal
     // the parser consumes it; where it is not, the parser reports it honestly.

@@ -67,7 +67,7 @@ pub(all) enum EKind {
   ECast(Expr)
   ECatch(Expr, Array[CatchArm])
   ENoRaise(Expr, Array[CatchArm])
-  EMatch(Expr)
+  EMatch(Expr, Array[MatchArm])
 } derive(Eq)
 
 pub(all) struct ElseIf {
@@ -93,6 +93,14 @@ pub fn ImportSpec::alias_name(Self) -> String
 pub fn ImportSpec::is_star(Self) -> Bool
 pub fn ImportSpec::path(Self) -> String
 pub fn ImportSpec::render(Self) -> String
+
+pub(all) struct MatchArm {
+  span : @core.Span
+  bindings : Array[String]
+  cond : Expr?
+  reads : Array[String]
+  body : Array[Stmt]
+} derive(Eq)
 
 pub(all) struct Module {
   body : Array[Stmt]

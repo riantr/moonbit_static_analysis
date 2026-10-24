@@ -471,7 +471,12 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // subject is still TYPED by the lenses that descend into it -- `walk_expr` does,
     // so an undefined name in it is still reported -- which is why this arm returns
     // Unknown WITHOUT typing the subject as a whole.
-    EMatch(_) => TUnknown
+    //
+    // 0502. THE ARMS ARE CARRIED NOW, and this answer does not change. The match's
+    // value is the JOIN of the arms' values, and this analyzer does not compute a
+    // join over a set of arms -- so the arms are READ, not JOINED. Reading them
+    // says which names they use; it does not say what the match produces.
+    EMatch(_, _) => TUnknown
     // A tuple literal; `(e)` grouping is folded away at parse time, so every
     // ETuple is a real tuple. Elements are typed; there is no tuple Ty to
     // name, so the result is unknown.
