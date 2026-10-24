@@ -6662,6 +6662,57 @@ measures what, to say so, and to run the diagnosis that separates "the registry 
 from "the scan is broken".
 
 
+### AND THE THIRD RUN, AGAINST THE VERSION THAT WAS ACTUALLY PUBLISHED
+
+The last of the three runs of the documented order, and the only one that can happen after the
+publish:
+
+```
+package : riantr/moonbit_static_analysis@0.4.34
+moon.mod: 0.4.34
+
+  scanned 160 files under .repos/riantr/moonbit_static_analysis/0.4.34
+  ok  the tree scanned is 0.4.34
+  ok  parsed 160/160 files
+  SUMMARY  files=160 parsed=160 actionable=0 notices=1397 ...
+  ok  actionable = 0
+
+GATE OK: the published 0.4.34 scans its own shipped source clean.
+```
+
+The tree it read IS 0.4.34 — the stage refuses to call a scan of a different package a proof
+about this one, and that refusal is the check that made the pre-publish abort DIAGNOSTICABLE
+instead of merely red. 160 files, 160/160 parsed, **actionable=0**. The registry served the
+package mooncakes compiled server-side and `moonx` ran THAT, so the delivery path is exercised
+end to end, which no local run can do.
+
+THE TWO PUBLISHED TREES, READ BY THE SAME ANALYZER. The published 0.4.33 tree read 152 files
+and 1,528 notices under this analyzer; the published 0.4.34 tree reads 160 files and 1,397
+notices. The tree GREW by eight files and the notices FELL by 131 — which is 0502 reading the
+arms of the analyzer's own source, the same mechanism that removed 1,832 notices across the
+seven pinned corpora.
+
+THE CI RUNS, all green, and the one that matters is the third:
+
+```
+gate    | push | completed | success | master
+gate    | push | completed | success | v0.4.34
+publish | push | completed | success | v0.4.34
+```
+
+The publish job's steps include `moon.mod must agree with the tag`, `Gate`, `Publish to
+Mooncakes` and `Create GitHub Release` — all success. The release is
+<https://github.com/riantr/moonbit_static_analysis/releases/tag/v0.4.34>.
+
+=> 判据: THE THREE RUNS OF A RELEASE ARE ONE RELEASE. The mutation gates and the corpus
+comparison cannot be in the same pass — the failure guard stops the run at the first red
+stage, and the post-publish stage is red BY DESIGN until the package exists. Reading that as
+"the gate is broken" is wrong; reading it as "the gate passed" is worse. What makes a release
+checkable is that each run says WHICH stage it carries, that the stage that cannot pass yet
+is named as such, and that the post-publish stage closes the loop against the version the
+registry actually served.
+
+
 ### THIS RELEASE
 
 0.4.34. The version was bumped only after the local gate was green, and the README was
