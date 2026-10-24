@@ -261,6 +261,15 @@ $SELF_DECL = '1502'
 $SUPPOFF_LOCAL = '597'
 $SUPPOFF_PARAM = '1137'
 
+#   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
+#                   `_verify/measure_0503_reach.ps1`: the return-position sites
+#                   and the files carrying them, in the pinned core corpus.
+#   $RAISEQ_OTHERS  the same measurement over the other six corpora and this
+#                   analyzer's own source. It is ZERO, and it is pinned because
+#                   "the reach is confined to core" is a claim, not a remark.
+$RAISEQ_REACH = '188|33'
+$RAISEQ_OTHERS = '0'
+
 # THE EMPTY-PIN GUARD. A pin that is empty is not a pin -- it is a comparison
 # against nothing, and it fails in the most confusing way there is: the pinned
 # value printed next to the measured one comes out BLANK, and a reader has to
@@ -1574,6 +1583,36 @@ if (-not (Test-Path $MSO)) {
   if (-not $script:lastOk) { $failed += 'suppression-off' }
 }
 
+# --- 9  the reach of the `raise?` construct ------------------------------------
+# 0.4.35 published "162 return-position sites in 31 files", and that number was
+# measured by an ad-hoc grep whose RULE WAS NOT RECORDED, so it could not be
+# reproduced: re-measured with a recorded rule it is 188 sites in 33 files, and
+# with a type pattern that admits no comma in a generic it is 173 in 31. The
+# FILE count matched and the SITE count did not, which is the worst shape a
+# published figure can have -- a reader cannot tell which rule produced it.
+#
+# So the rule now lives in a file, the figure is pinned, and the pin is checked
+# on every release gate. The stage also measures the OTHER SIX CORPORA and this
+# analyzer's own source, because "the reach is confined to core" is a claim
+# too, and a claim that is never measured is a claim that is never checked.
+$MRQ = Join-Path $root '_verify\measure_0503_reach.ps1'
+if (-not (Test-Path $MRQ)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\measure_0503_reach.ps1'
+  $failed += 'raiseq-reach'
+} else {
+  Stage 'the reach of the `raise?` construct, measured and pinned' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MRQ 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|control ok|core:|the other six|matches the pin)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'raiseq-reach' }
+}
 # --- verdict -----------------------------------------------------------------
 Write-Output ''
 Write-Output '=== stage summary ==='

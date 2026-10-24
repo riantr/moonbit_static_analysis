@@ -7207,3 +7207,139 @@ README gate DERIVES its string from that pin instead of carrying its own.
 
 => 判据: A PUBLISHED NUMBER THAT IS NOT GATED CAN GO MISSING SILENTLY. This one
 had a gate -- it just checked itself.
+
+
+### AND THE THIRD RUN, AGAINST THE VERSION THAT WAS ACTUALLY PUBLISHED
+
+0.4.35 is out. master and the tag v0.4.35 are on gitee and on github at `f14a6cc`, the
+CI runs are green -- `gate` on master, `gate` on v0.4.35 and `publish` on v0.4.35 -- and
+the publish job's steps include `moon.mod must agree with the tag`, `Gate`, `Publish to
+Mooncakes` and `Create GitHub Release`.
+
+The last of the three runs of the documented order, and the only one that can happen
+after the publish:
+
+```
+package : riantr/moonbit_static_analysis@0.4.35
+moon.mod: 0.4.35
+
+  scanned 163 files under .repos/riantr/moonbit_static_analysis/0.4.35
+  ok  the tree scanned is 0.4.35
+  ok  parsed 163/163 files
+  SUMMARY  files=163 parsed=163 actionable=0 notices=1438 ...
+  ok  actionable = 0
+
+GATE OK: the published 0.4.35 scans its own shipped source clean.
+```
+
+The tree it read IS 0.4.35 -- the stage refuses to call a scan of a different package a
+proof about this one, and that refusal is the check that made the pre-publish abort
+DIAGNOSTICABLE instead of merely red. 163 files, 163/163 parsed, **actionable=0**. The
+registry served the package mooncakes compiled server-side and `moonx` ran THAT, so the
+delivery path is exercised end to end, which no local run can do.
+
+THE TWO PUBLISHED TREES, READ BY THE SAME ANALYZER. The published 0.4.34 tree reads 160
+files and 1,397 notices under this analyzer; the published 0.4.35 tree reads 163 files
+and 1,438 notices. The tree GREW by three files and the notices ROSE by 41 -- and the 41
+are exactly the 41 new test declarations this increment added (24 + 8 + 9), one notice
+each. The file delta is those three files and nothing else.
+
+### NEITHER INCREMENT IS EXERCISED BY THE ANALYZER'S OWN SHIPPED SOURCE
+
+This is the measurement that was nearly not made, and it is the one that says what the
+two increments are actually WORTH. The published 0.4.34 tree contains **zero**
+return-position `raise?` in code and **zero** comprehension guards with an `is` binding.
+The published 0.4.35 tree contains 15 `is`-guard occurrences -- 4 in a doc comment and 11
+in a string literal -- and not one of them is analysed code. The same is true of the
+`raise?` sites: with the rule stated in `_verify/measure_0503_reach.ps1`, both published
+trees carry **0** of them in code.
+
+=> The two increments changed NOTHING about how the analyzer reads its own source, which
+is exactly why the two published trees read the same notices per file. Their value is
+proven where the constructs actually live: the CORPUS. moonbitlang/core carries the
+return-position `raise?` in 33 files, and the comprehension guard with an `is` binding is
+at `hashset/hashset.mbt:382`.
+
+AND THE FALSE POSITIVE IS GONE, DIRECTLY. The core corpus, scanned with this analyzer:
+
+```
+core/hashset/hashset.mbt     FOUND   defects=0   notices=27
+"undefined variable 'key'"    0 occurrences in the whole core report
+hashset.mbt:382               0 occurrences in the whole core report
+```
+
+The file that carried the false positive is now read to its end with no defect, and the
+finding is not moved -- it is ABSENT. The core summary is unchanged at `actionable=28`
+and the per-function census is unchanged at 47, which is the point of the second
+increment: the false positive that 0503's extra readability exposed WAS the 48th core
+finding, and removing it puts the number back where 0.4.34 had it.
+
+### THE SAME TREE, READ BY THE OLD ANALYZER AND THE NEW ONE
+
+The published 0.4.34 package IS the old parser, and it can be run against any tree. So
+the corpus was scanned twice, by the two PUBLISHED analyzers, over the same 1029 files:
+
+```
+0.4.34    PARSED 957/1029 files understood (93.0%);  72 more read only up to their
+           first parse error
+0.4.35    PARSED 984/1029 files understood (95.6%);  45 more read only up to their
+           first parse error
+```
+
+And the 27 files that moved, named:
+
+```
+array/array.mbt                            builtin/array.mbt
+builtin/arrayview.mbt                      builtin/bytes.mbt
+builtin/linked_hash_map.mbt                builtin/option.mbt
+builtin/readonlyarray.mbt                  builtin/result.mbt
+builtin/string.mbt                         builtin/stringview.mbt
+hashmap/utils.mbt                          hashset/hashset.mbt
+immut/hashmap/HAMT.mbt                     immut/hashset/HAMT.mbt
+immut/internal/sparse_array/sparse_array.mbt
+immut/sorted_map/map.mbt                   immut/sorted_set/immutable_set.mbt
+immut/vector/tree.mbt                      immut/vector/vector.mbt
+immut/vector_map/iter.mbt                  immut/vector_map/vector_map.mbt
+lazy_list/lazy_list.mbt                    list/list.mbt
+prelude/prelude.mbt                        queue/queue.mbt
+ref/ref.mbt                                set/linked_hash_set.mbt
+```
+
+=> 判据: +27 PARSED IS NOT A NUMBER, IT IS A LIST. "957 -> 984" could have been
+twenty-seven files that STOPPED being read, and the summary line cannot tell the two
+apart. The list is above, and the list is what says the increment worked on the code it
+was supposed to work on.
+
+AND SIX MORE FILES READ STRICTLY FURTHER WITHOUT BECOMING WHOLE. Thirty-three core
+files carry a return-position `raise?`. Twenty-seven became whole. The other six --
+`builtin/fixedarray.mbt`, `builtin/iterator.mbt`, `builtin/string_methods.mbt`,
+`deque/deque.mbt`, `sorted_map/map.mbt`, `sorted_set/set.mbt` -- are still PARTIAL, but
+for an UNRELATED reason: `builtin/fixedarray.mbt` is cut at line 778 by a descending
+range (`self.length()>..0`), and its two `raise?` sites are at lines 776 and 777, both
+of which are now read. The file count moved by 27 and the reach is 33, and the two
+numbers differ because "the file is whole" and "the file is read past the thing this
+increment fixed" are DIFFERENT CLAIMS.
+
+### AND A PUBLISHED NUMBER THAT COULD NOT BE RE-DERIVED
+
+The 0.4.35 release published "162 return-position sites in 31 files". The figure was
+measured by an ad-hoc grep whose RULE WAS NOT RECORDED, and it could not be reproduced:
+re-measured on 2026-10-25 with a recorded rule it is **188 sites in 33 files**, and with
+a type pattern that admits no comma inside a generic it is 173 in 31. The FILE count
+matched and the SITE count did not, which is the worst shape a published figure can have
+-- a reader cannot tell which rule produced it, and the number is close enough to look
+right.
+
+=> 判据: A NUMBER WITHOUT A RULE IS NOT A NUMBER, IT IS A REMARK. The rule now lives
+in `_verify/measure_0503_reach.ps1` -- the corpus, the `.mbt` scope, the paren-depth
+definition of the RETURN position, the code-only requirement, the type pattern -- and the
+figure is PINNED in `release.ps1` and checked on every release gate, with a control
+fixture whose answer is known by construction. The published reach is **188 sites in 33
+files**, and **0** in the other six corpora and **0** in this analyzer's own source.
+
+### THIS RELEASE
+
+0.4.35. The version was bumped only after the local gate was green, and the README was
+updated before the tag, so the registry never saw a README that described a different
+tree than the one it was serving. The mutation gates are 84 now: 464 live mutations, 425
+expecting a kill, and 348 naming the test that must go red.
