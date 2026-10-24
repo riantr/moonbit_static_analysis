@@ -7042,3 +7042,168 @@ analyse. Reading one is a bigger job than reading a `match`'s arms was -- the
 branches are statements, not patterns, so there are no bindings to introduce
 and the hard part is the `else` -- and the compiler is the oracle for whether
 an `if` in expression position may hold a `let`, exactly as it was for `as`.
+## 0503: A RETURN ANNOTATION MAY SAY `raise?` -- AND 0504: A COMPREHENSION'S CONDITION WAS BEING THROWN AWAY
+
+Two increments, and the second one exists because the first one made more code readable.
+
+### 0503: THE `?` MARKER, AND WHICH `?` IS LEGAL
+
+The parser read the `?` marker of a raise clause in the FUNCTION-TYPE position
+and not in the RETURN position. The parser's own comment above the first site
+names this failure mode in the other direction: *"Reading the clause in one
+position but not the other leaves a program that parses as `fn f() -> Int raise`
+and then dies on the very next function that takes a callback."* It was fixed on
+one side only.
+
+MEASURED, on the pinned corpus, 2026-10-24:
+
+- `-> T raise?` in a RETURN position: **162 sites in 31 files**, ALL of them in
+  moonbitlang/core 0.1.20260920+7d59c7ec9. Zero in the other six corpora and
+  zero in this analyzer's own source, so fixing it moves ONE corpus row and
+  nothing else.
+- three real core files carrying it -- `array.mbt`, `option.mbt`, `result.mbt`
+  -- scanned ALONE: `PARSED 0/3 files understood (0.0%)`, with the error
+  `unexpected token `?``. The analyzer stops at the `?`.
+- the COMPILER ACCEPTS `fn f() -> Int raise? { 1 }` (moon check, 0.10.17).
+
+### THE SETTLE CORRECTED ITS OWN PREMISE, AND THE CORRECTION IS THE RULE
+
+The question is not "does the analyzer read `?`" but "**WHICH** `?` is legal",
+and the first draft of the settle assumed "after any raise clause" would do.
+The compiler says otherwise:
+
+    -> Int raise?              ACCEPTED   the bare raise, marked optional
+    -> Int raise MyErr?        REJECTED   4032 + 3002 -- a typed raise has
+                                            no optional form
+    -> Int raise + nocancel?   REJECTED   3002 "unexpected token `?`"
+    -> Int noraise?            REJECTED   an optional marker on "does not
+                                            raise" is meaningless
+    -> Int nocancel?           REJECTED
+    -> Int! ?                  REJECTED   the short form has no optional form
+
+=> 判据: THE `?` BELONGS TO A BARE `raise` AND TO NOTHING ELSE. A reader that
+accepted it after ANY clause would read programs the toolchain refuses.
+
+**AND THE FUNCTION-TYPE POSITION DOES TWO JOBS**, which is why the first draft
+of the increment narrowed the function-type `?` to "a bare raise only" and
+**fourteen existing tests went red**:
+
+    (Int) -> Int raise?      the OPTIONAL-RAISE marker
+    ((Int) -> Int)?          the NULLABLE marker on a parenthesised group
+
+The second one has **no clause in front of it at all**, so the rule has to be
+asked about the CLAUSE and not about the `?`.
+
+### 0504: THE FALSE POSITIVE THAT 0503's READABILITY EXPOSED
+
+With 27 more core files readable, `hashset/hashset.mbt:382` reported
+`undefined variable 'key'`:
+
+    [ for entry in self.entries if entry is Some({ key, .. }) => key ]
+
+The COMPILER ACCEPTS that line -- core is a published package that compiles --
+so the finding is a FALSE POSITIVE. And the cause was not in a lens. It was in
+the PARSER:
+
+    if self.at_name("if") {
+      let _ = self.bump()
+      ignore(self.parse_or())          <-- the condition never reaches the AST
+    }
+
+`parse_is_pattern` was never the problem -- it does reduce `Some({ key, .. })`
+to the binding `key`. The `is` node that carries that binding was built, and
+then thrown away with the condition.
+
+### THE CONDITION IS REAL CODE, AND THE COMPILER SAYS SO
+
+`_verify/settle_0504_comp_guard.ps1`, 18 rows -- 16 with `moon check` and 2 with
+`moon test`, because `moon check` cannot answer whether a condition is
+*evaluated*:
+
+- the condition is COMPILED -- an undefined name inside it is an error;
+- the condition FILTERS -- it is evaluated once per element (the runtime rows);
+- the `is` binding it introduces is in scope for the BODY, and for nothing else;
+- the condition may read the loop variable.
+
+**AND TWO OF THE SETTLE'S OWN ROWS WERE WRONG ON THE FIRST RUN**, and the
+corrections are worth more than the rows:
+
+1. the NO-BINDING CONTROL was written with a STRUCT head, `is Pos(_)`, and came
+   out REJECTED with error 4199. The rejection had nothing to do with the
+   condition: `is` matches CONSTRUCTORS, and a struct TYPE is not one. Probed:
+   `is Pos(_)`, `is Pos({ name, .. })` and `is Pos({ name })` are ALL rejected
+   with 4199, while `is Some(_)` is accepted. The control now uses `Some(_)`,
+   and the measured fact is kept as its own row.
+2. `{ key }` is not a BLOCK -- it is a one-field STRUCT LITERAL, the same
+   distinction 0468 settled. The row now uses a block with a statement in it.
+
+=> 判据: A SETTLE ROW IS NOT JUST A VERDICT; IT IS A CLAIM ABOUT WHY. The first
+row was measuring the type lens and was read as measuring the grammar, and the
+parser would have been narrowed to refuse a shape the language HAS.
+
+### THE CONDITION IS CARRIED, AND THE ORDER IS THE SCOPE
+
+`EComp` is now `EComp(vars, sources, cond, body)`. The condition sits between
+the iterable and the body because that is where it sits in the source, and
+because that order IS the scope: the condition READS the loop variables, and
+its own `is` binding must be LIVE when the body is read. Every lens walks the
+sources, then the condition, then the body.
+
+**AND THE HALF THAT WAS STILL LATENT WAS FIXED TOO.** The condition's reads
+were lost along with it, so a name read ONLY inside a condition would have been
+reported as never used. That is the `ECast`/`EComp` lesson in its third form:
+**the half that is not walked is the half that vanishes.**
+
+### THE GATE FOUND TWO OF ITS OWN HOLES
+
+`mutate_0504.ps1` has 8 mutations and all 8 are killed -- but two had to be
+REWRITTEN after the first run said something the comment did not.
+
+1. "the condition is not parsed at all" came out **COMPILE-ERR** rather than
+   killed: with the assignment gone, `cond` is never mutated and MoonBit
+   rejects the unnecessary `mut` outright. The compiler catches that regression
+   on its own, which is worth knowing, but it made the mutation pin NOTHING
+   about the analyzer -- a slot that measures the compiler instead of the rule
+   is a slot spent for nothing. The slot now holds a rule the compiler cannot
+   catch.
+2. "the condition is evaluated in the outer environment" killed a test one step
+   removed from its own name. Two undefined names on ONE line are merged into a
+   single finding, so the condition's own `nosuchfn` stopped being the message
+   that survived the merge -- and what the mutation really broke first is the
+   LOOP VARIABLE, which only ever lived in the comprehension's environment. The
+   test that pins the MECHANISM was written after that.
+
+=> 判据: A KILL THAT LANDS ON A DIFFERENT TEST IS A QUESTION, NOT A RESULT. The
+harness names the test that went red, and reading THAT name is how the scope
+turned out to be the loop variable's.
+
+### THE NUMBERS
+
+`moonbitlang/core`, 1029 files, same machine:
+
+| | files | parsed | actionable | per-function census |
+|---|---|---|---|---|
+| 0.4.34 | 1029 | 957 | 28 | 47 |
+| 0.4.35 | 1029 | **984** | **28** | **47** |
+
+Actionable is unchanged at 28, and the census is unchanged at 47 -- and that is
+the point of the second increment. The false positive that 0503's extra
+readability exposed WAS the 48th core finding; removing it puts the number
+back where 0.4.34 had it. The 27 files that became readable contribute notices,
+not findings.
+
+### AND ONE PUBLISHED NUMBER THAT NOTHING WAS CHECKING
+
+The README publishes the own-source file count -- "Measured on this project's
+own source (178 files)" -- and the release gate MEASURED it and compared it
+with nothing, while the README gate compared the README against a literal
+`178` written into the gate itself. A literal inside the gate that checks the
+README is a number that can only ever agree with itself, and the count moved
+twice -- 178 to 179 with 0503's test file, and 179 to 181 with 0504's two --
+without anything objecting.
+
+It is a PIN in `release.ps1` now, the release gate compares against it, and the
+README gate DERIVES its string from that pin instead of carrying its own.
+
+=> 判据: A PUBLISHED NUMBER THAT IS NOT GATED CAN GO MISSING SILENTLY. This one
+had a gate -- it just checked itself.

@@ -201,24 +201,32 @@ fn div_type(l : AbsVal, r : AbsVal) -> String {
   # So the dead arm was DELETED rather than kept, and this slot is the one
   # that fires: the right-hand side of an assignment is evaluated by
   # `self.eval(rhs, env)`, and the `EComp` arm of `eval` binds the names.
+  #
+  # RE-ANCHORED, 0504. The anchor used to run from `let cenv = copy_env(env)`
+  # to the `AAny` at the end of the arm. 0504 put the comprehension's
+  # CONDITION between the binding and the body -- the condition is evaluated
+  # in the comprehension's own environment, so its `is` binding is live for
+  # the body -- and the old anchor no longer matched. A gate whose anchor does
+  # not match is a gate that measures nothing, and the pre-flight would have
+  # aborted on it.
+  #
+  # The anchor is now the BINDING BLOCK alone, which is exactly what the
+  # mutation changes: `cenv.set(v, AAny)` becomes `let _ = v`, so the names
+  # the comprehension binds are never put in the environment the body is
+  # evaluated in. The meaning is unchanged -- the same rule, the same
+  # `MustRed` test, the same kill -- and the block is unique in the file.
   @{
     Name = 'M8 a comprehension in an expression binds no names'
     File = $INTERP
     Find = @'
-      let cenv = copy_env(env)
       for v in vars {
         cenv.set(v, AAny)
       }
-      let _ = self.eval(body, cenv)
-      AAny
 '@.Replace("`r`n", "`n")
     Repl = @'
-      let cenv = copy_env(env)
       for v in vars {
         let _ = v
       }
-      let _ = self.eval(body, cenv)
-      AAny
 '@.Replace("`r`n", "`n")
     MustRed = '0495 H: a comprehension binds its pattern'
   }

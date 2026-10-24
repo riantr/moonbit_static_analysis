@@ -631,9 +631,17 @@ fn find_method_calls(m : @ast.Module) -> Array[(String, String)] {
         ex(b)
         ex(i)
       }
-      @ast.EComp(_, sources, body) => {
+      @ast.EComp(_, sources, cond, body) => {
         for s in sources {
           ex(s)
+        }
+        // 0504 -- THE GUARD IS PART OF THE TREE. A method call inside a
+        // comprehension's condition is a method call like any other, and an
+        // instrument that stopped before it would report the tree as smaller
+        // than it is.
+        match cond {
+          Some(g) => ex(g)
+          None => ()
         }
         ex(body)
       }

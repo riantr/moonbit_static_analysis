@@ -58,8 +58,8 @@ Invoke-MutationGate -Name '0471' -Target 'wasm' -Mutations @(
   @{
     Name = 'M2 the raise/noraise clause is not read'
     File = $PARSER
-    Find = "  self.parse_raise_effect()`n  let (_, _) = self.parse_block(false)"
-    Repl = "  let _ = 0`n  let (_, _) = self.parse_block(false)"
+    Find = "  let bare_raise = self.at_bare_raise()`n  self.parse_raise_effect()`n  if bare_raise && self.at(TQuestion) {`n    let _ = self.bump()`n  }`n  let (_, _) = self.parse_block(false)"
+    Repl = "  let bare_raise = self.at_bare_raise()`n  let _ = 0`n  if bare_raise && self.at(TQuestion) {`n    let _ = self.bump()`n  }`n  let (_, _) = self.parse_block(false)"
     MustRed = '0471: a literal with `raise E` parses'
   }
 
@@ -68,7 +68,7 @@ Invoke-MutationGate -Name '0471' -Target 'wasm' -Mutations @(
   @{
     Name = 'M3 neither tail is read -- the original defect'
     File = $PARSER
-    Find = "  if self.at(TArrow) {`n    let _ = self.bump()`n    let _ = self.return_annotation()`n  }`n  self.parse_raise_effect()"
+    Find = "  if self.at(TArrow) {`n    let _ = self.bump()`n    let _ = self.return_annotation()`n  }`n  let bare_raise = self.at_bare_raise()`n  self.parse_raise_effect()`n  if bare_raise && self.at(TQuestion) {`n    let _ = self.bump()`n  }"
     Repl = '  let _ = 0'
     MustRed = '0471: a literal with `-> T raise E` parses'
   }

@@ -1671,13 +1671,26 @@ fn Interp::eval(
     //
     // The binding is in a COPY of the environment, because the comprehension's
     // parameter is scoped to the body and does not outlive it.
-    EComp(vars, sources, body) => {
+    EComp(vars, sources, cond, body) => {
       for s in sources {
         let _ = self.eval(s, env)
       }
       let cenv = copy_env(env)
       for v in vars {
         cenv.set(v, AAny)
+      }
+      // 0504 -- THE GUARD IS EVALUATED, in the comprehension's own environment
+      // and BEFORE the body. The `is` binding it introduces must be live when
+      // the body is read, and the `EIs` arm above sets it on the environment it
+      // is handed -- which is this `cenv`, the same one the body reads.
+      //
+      // The guard's own reads are evaluated too, so an undefined name inside it
+      // is still found by this lens.
+      match cond {
+        Some(g) => {
+          let _ = self.eval(g, cenv)
+        }
+        None => ()
       }
       let _ = self.eval(body, cenv)
       AAny

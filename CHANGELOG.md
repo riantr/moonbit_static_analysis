@@ -154,6 +154,109 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.35 — a return annotation may say `raise?`, and a comprehension's condition was being thrown away
+
+Two increments, and the second one exists because the first one made more code readable.
+
+**0503 — `-> Int raise?` is legal MoonBit, and the parser refused it.** The parser read the
+`?` marker of a raise clause in the FUNCTION-TYPE position and not in the RETURN position, so
+`fn f() -> Int raise? { 1 }` — a program the toolchain accepts — died at the `?`. The reach
+was 162 return-position sites in 31 files, ALL of them in `moonbitlang/core`
+0.1.20260920+7d59c7ec9, and zero in the other six corpora and zero in this analyzer's own
+source. Three real core files — `array.mbt`, `option.mbt`, `result.mbt` — scanned ALONE came
+back `PARSED 0/3 files understood (0.0%)`.
+
+**The rule is the compiler's, and the first settle had it wrong.** The question is not "does
+the analyzer read `?`" but "WHICH `?` is legal", and the answer is narrower than "after any
+raise clause":
+
+| | |
+|---|---|
+| `-> Int raise?` | ACCEPTED — the bare raise, marked optional |
+| `-> Int raise MyErr?` | REJECTED 4032 + 3002 — a typed raise has no optional form |
+| `-> Int noraise?` | REJECTED — an optional marker on "does not raise" is meaningless |
+| `-> Int nocancel?` | REJECTED |
+| `-> Int! ?` | REJECTED — the short form has no optional form |
+
+**=> The `?` belongs to a BARE `raise` and to nothing else.** A reader that accepted it after
+ANY clause would read programs the toolchain refuses.
+
+**AND THE FUNCTION-TYPE `?` DOES TWO JOBS**, which is why the first draft of the fix broke
+fourteen existing tests: `(Int) -> Int raise?` is the optional-raise marker, and
+`((Int) -> Int)?` is the NULLABLE marker on a parenthesised group — and the second has no
+clause in front of it at all. The rule is therefore asked about the CLAUSE and not about the
+`?`.
+
+**0504 — and the extra readability exposed a false positive.** With 27 more core files
+readable, `hashset/hashset.mbt:382` reported `undefined variable 'key'`:
+
+```
+[ for entry in self.entries if entry is Some({ key, .. }) => key ]
+```
+
+The compiler accepts that line — core is a published package that compiles — so the finding
+was a FALSE POSITIVE, and the cause was in the PARSER: `parse_comprehension` read the
+comprehension's `if` condition and **threw it away** (`ignore(self.parse_or())`), so the `is`
+binding the condition introduces never reached the AST, and the body's read of it had nothing
+to resolve against.
+
+**The condition is real code, and the compiler says so.** Settled with the toolchain as the
+oracle in `_verify/settle_0504_comp_guard.ps1`, 18 rows — 16 with `moon check` and 2 with
+`moon test`, because `moon check` cannot say whether a condition is *evaluated*:
+
+- the condition is COMPILED — an undefined name inside it is an error;
+- the condition FILTERS — it is evaluated once per element (the two runtime rows);
+- the `is` binding it introduces is in scope for the BODY, and for nothing else;
+- the condition may read the loop variable.
+
+**=> THE CONDITION IS CARRIED, AND THE ORDER IS THE SCOPE.** `EComp` is now
+`EComp(vars, sources, cond, body)` — the condition sits between the iterable and the body
+because that is where it sits in the source, and because it reads the loop variables while its
+own binding must be live when the body is read. Every lens walks the sources, then the
+condition, then the body.
+
+**AND THE HALF THAT WAS STILL LATENT WAS FIXED TOO.** The condition's reads were lost with
+it, so a name read ONLY inside a condition would have been reported as never used. That is
+the `ECast`/`EComp` lesson in its third form: **the half that is not walked is the half that
+vanishes.**
+
+**The gate found two of its own holes.** `mutate_0504.ps1` has 8 mutations and all 8 are
+killed, but two of them had to be REWRITTEN after the first run said something the comment
+did not:
+
+1. the mutation "the condition is not parsed at all" came out **COMPILE-ERR** rather than
+   killed — with the assignment gone, `cond` is never mutated and MoonBit rejects the
+   unnecessary `mut` outright. The compiler catches that regression on its own, which is
+   worth knowing, but it made the mutation pin NOTHING about the analyzer, so the slot was
+   given a rule the compiler cannot catch;
+2. the mutation "the condition is evaluated in the outer environment" killed a test one step
+   removed from its own name, because two undefined names on one line are merged into a
+   single finding and the condition's own `nosuchfn` stopped being the message that survived
+   the merge. The test that pins the MECHANISM was written after that, and it pins the loop
+   variable's scope instead of the symptom.
+
+Measured on `moonbitlang/core` (1029 files, same machine):
+
+| | files | parsed | actionable |
+|---|---|---|---|
+| 0.4.34 | 1029 | 957 | 28 |
+| 0.4.35 | 1029 | **984** | **28** |
+
+Actionable is unchanged at 28, and that is the point of the second increment: the false
+positive that 0503's extra readability exposed is gone, and nothing else moved. The 27 files
+that became readable contribute notices, not findings.
+
+Self-scan 181/181, actionable=0. Tests 1176 js / 1262 wasm / 1176 wasm-gc. The mutation
+gates are 84 now: 464 live mutations, 425 of them expecting a kill, and 348 naming the test
+that must go red.
+
+**One published number that nothing was checking is now pinned.** The README publishes the
+own-source file count — "Measured on this project's own source (178 files)" — and the release
+gate measured it and compared it with nothing, while the README gate compared the README
+against a literal `178` written into the gate itself. A literal inside the gate that checks
+the README is a number that can only ever agree with itself, and the count moved twice —
+178 → 179 with 0503's test file, and 179 → 181 with 0504's two — without anything objecting.
+It is a pin in `release.ps1` now, and the README gate derives its string from that pin.
 ## 0.4.34 — a `match`'s arms are ordinary code, and reading them found thirteen false positives
 
 Until this release a `match`'s arms were consumed whole by `skip_braces` — a region the

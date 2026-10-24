@@ -66,14 +66,36 @@ $PARSER = 'src\parser\parser.mbt'
 $mutations = @(
   # M1 -- the whole pre-0.4.23 behaviour for signatures. `moonbit_image bmp.mbt:26`
   # and all 149 of moui's files return to reporting `expected '{'`.
+  #
+  # RE-ANCHORED 0503. The `?` marker put a `let bare_raise = ...` line and an `if`
+  # block between the return annotation and the raise call, so the old three-line
+  # anchor -- which spanned `retann = ...` straight to `parse_raise_effect()` --
+  # stopped matching. Inserting lines between two pinned-adjacent lines is what
+  # makes an anchor vanish; this is the FOURTH time (0467, 0487 on 0466, 0484 on
+  # 0418, and now this).
+  #
+  # THE MUTATION IS UNCHANGED IN MEANING: the raise clause is still not read in the
+  # return position, so `raise` stays at the cursor and the body dies at
+  # "expected '{'". The anchor moved onto the block that still brackets the call,
+  # and it is UNIQUE -- `retann = self.return_annotation()` is the declared-fn
+  # spelling (the fn-literal path writes `let _ = ...`), and `(full, params,
+  # retann)` names the return path's own result.
   @{
-    Name = 'M1 signature call site removed'
+    Name = 'M1 signature call site removed (0503 re-anchor)'
     File = $PARSER
     Find = '    retann = self.return_annotation()
   }
+  let bare_raise = self.at_bare_raise()
   self.parse_raise_effect()
+  if bare_raise && self.at(TQuestion) {
+    let _ = self.bump()
+  }
   (full, params, retann)'
     Repl = '    retann = self.return_annotation()
+  }
+  let bare_raise = self.at_bare_raise()
+  if bare_raise && self.at(TQuestion) {
+    let _ = self.bump()
   }
   (full, params, retann)'
   }
@@ -82,21 +104,64 @@ $mutations = @(
   # clause in signature position only means `fn f(g : () -> Int raise)` dies at
   # `expected ')'` while `fn f() -> Int raise` is fine -- which is exactly the shape
   # 29 files of moui and 33 of moonbit-community use.
+  #
+  # RE-ANCHORED 0503, for the same reason as M1 -- and this one NEEDED THE
+  # `out = out + "?"` LINE TO STAY UNIQUE, because the `bare_raise` block is now
+  # written at three call sites (the function-type path, the return path and the
+  # fn-literal path) and an anchor that matched all three would be ambiguous. The
+  # harness removes the FIRST match, so an ambiguous anchor mutates the WRONG site
+  # and reports a clean kill for it -- the one failure mode a pre-flight cannot
+  # catch, because it warns and continues.
+  #
+  # THE MUTATION IS UNCHANGED IN MEANING: the raise clause is still not read in the
+  # type position, so `raise` is left where the `)` is expected and the function
+  # TYPE dies at "expected ')'".
   @{
     Name = 'M2 type-position call site removed'
     File = $PARSER
-    Find = '  self.parse_raise_effect()
-  if self.at(TQuestion) {'
-    Repl = '  if self.at(TQuestion) {'
+    Find = '  let bare_raise = self.at_bare_raise()
+  let clause_start = self.p
+  self.parse_raise_effect()
+  let no_clause = self.p == clause_start
+  if (bare_raise || no_clause) && self.at(TQuestion) {
+    let _ = self.bump()
+    out = out + "?"
+  }'
+    Repl = '  let bare_raise = self.at_bare_raise()
+  let clause_start = self.p
+  let no_clause = self.p == clause_start
+  if (bare_raise || no_clause) && self.at(TQuestion) {
+    let _ = self.bump()
+    out = out + "?"
+  }'
   }
 
   # M3 -- `raise` is not in the lexer's keyword table, so it arrives as a TName.
   # Matching it by anything other than its exact text stops the long form being read.
+  #
+  # RE-ANCHORED 0503, and this one is the AMBIGUOUS kind. The `?` marker needed a
+  # helper that asks whether the clause at the cursor is a bare `raise`, and that
+  # helper opens with the same `if !self.at_name("raise") {` this mutation used to
+  # anchor on. The harness removes the FIRST match and only WARNS on an ambiguous
+  # anchor, so the mutation would have landed on the HELPER -- a different
+  # function, in a different file position -- and the gate would have reported a
+  # clean kill for a change nobody made. That is the one failure mode a pre-flight
+  # cannot catch, and it is the reason an anchor has to be UNIQUE and not merely
+  # present.
+  #
+  # THE MUTATION IS UNCHANGED IN MEANING: `raise` is still matched by its exact
+  # name, and `parse_raise_effect` still stops reading the long form without it.
+  # The anchor now carries the `return` that follows, which is what tells the two
+  # sites apart -- the helper returns `false`, this one returns nothing.
   @{
     Name = 'M3 raise never matched by name'
     File = $PARSER
-    Find = 'if !self.at_name("raise") {'
-    Repl = 'if !self.at_name("zzz_never_a_keyword") {'
+    Find = 'if !self.at_name("raise") {
+    return
+  }'
+    Repl = 'if !self.at_name("zzz_never_a_keyword") {
+    return
+  }'
   }
 
   # M4 -- `!` must be told apart from the boolean NOT operator BY POSITION. This is

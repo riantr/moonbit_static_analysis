@@ -696,7 +696,7 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       self.walk_expr(base)
       self.walk_expr(idx)
     }
-    EComp(vars, sources, body) => {
+    EComp(vars, sources, cond, body) => {
       // The loop variables are bound for the whole comprehension, including
       // its own iterables: a later generator's iterable may read an earlier
       // one (`[ for x in a, y in pairs_of(x) => ... ]`). The over-approximation
@@ -709,6 +709,24 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
       }
       for s in sources {
         self.walk_expr(s)
+      }
+      // 0504 -- THE GUARD IS WALKED, BETWEEN THE SOURCES AND THE BODY, and it
+      // is walked in the comprehension's OWN frame. Two reasons, and both are
+      // the scope:
+      //
+      //   * it READS the loop variables, so it must come after they are bound;
+      //   * its `is` binding must be LIVE when the body is read. The `EIs` arm
+      //     below does `walk_expr(base)` and then `bind_pattern(b, ..)`, and
+      //     `bind_pattern` binds into the CURRENT frame -- which is this one.
+      //
+      // A guard that was not walked would lose the binding AND the reads: the
+      // body's `key` would have no binding to resolve, and a name read ONLY
+      // inside a guard would read as never used. That second half is the
+      // `ECast`/`EComp` lesson in its third form -- the half that is not
+      // walked is the half that vanishes.
+      match cond {
+        Some(g) => self.walk_expr(g)
+        None => ()
       }
       self.walk_expr(body)
       self.pop_frame()

@@ -206,7 +206,28 @@ pub(all) enum EKind {
   /// `sources` are kept separate from `body` for the same reason: a
   /// comprehension is not a two-element list, and folding it into one would
   /// hand the type lens and the interpreter a list that never existed.
-  EComp(Array[String], Array[Expr], Expr)
+  ///
+  /// 0504 -- THE GUARD IS CARRIED, AND IT IS THE THIRD FIELD. A comprehension
+  /// may FILTER:
+  ///
+  ///     [ for entry in self.entries if entry is Some({ key, .. }) => key ]
+  ///
+  /// and the `if` is an EXPRESSION: the toolchain resolves it, evaluates it
+  /// once per element, and the `is` binding it introduces is in scope for the
+  /// body -- and for nothing else. Settled with the toolchain as the oracle in
+  /// `_verify/settle_0504_comp_guard.ps1`, 18 rows.
+  ///
+  /// The parser used to read the guard and THROW IT AWAY, so the binding it
+  /// introduced never reached this AST and the body's read of it was reported
+  /// as an undefined variable -- on `moonbitlang/core`
+  /// `hashset/hashset.mbt:382`, a file the toolchain compiles. The guard is
+  /// therefore carried, between the iterable and the body, and it is OPTIONAL
+  /// because most comprehensions have none.
+  ///
+  /// THE ORDER IS THE SCOPE. The guard reads the loop variables, and its own
+  /// `is` binding must be live when the body is read -- so every lens walks
+  /// the sources, then the guard, then the body.
+  EComp(Array[String], Array[Expr], Expr?, Expr)
   /// A struct literal: `path { field: value, shorthand, }` where `path` is
   /// either empty (a plain literal) or a type name accumulated from the `::`
   /// fold — `Infer::{ ... }`, `Lexer::{ ... }`, `@report.Report::{ ... }`.

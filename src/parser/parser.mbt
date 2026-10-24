@@ -1951,8 +1951,42 @@ fn Parser::fn_type_body(self : Parser, prefix : String) -> String {
   // other leaves a program that parses as `fn f() -> Int raise` and then dies
   // on the very next function that takes a callback: 29 files of
   // wzzc-dev/moui 0.1.12 and 33 of moonbit-community are exactly that shape.
+  // 0503 -- THE OPTIONAL-RAISE MARKER, and it belongs to a BARE `raise` and to
+  // nothing else. Settled in `_verify/settle_0503_raise_q.ps1`.
+  //
+  // BUT THE `?` IN THIS POSITION DOES TWO JOBS, and they are not the same job:
+  //
+  //   * the OPTIONAL-RAISE MARKER on a bare raise -- `(Int) -> Int raise?`
+  //   * the NULLABLE MARKER on a parenthesised group -- `((Int) -> Int)?`
+  //
+  // The first has a clause in front of it; the second has NONE. So the question is
+  // asked about the CLAUSE and not about the `?`:
+  //
+  //   a bare raise      -> the `?` is legal
+  //   no clause at all  -> the `?` is the nullable marker, and legal
+  //   any other clause  -> the `?` is ILLEGAL, and the toolchain rejects every
+  //                        one of them (settle rows b_ft_noraise_q,
+  //                        c_ft_nocancel_q, d_ft_bang_q, e_ft_joined_q -- 3002)
+  //
+  // THE FIRST DRAFT OF THIS INCREMENT READ THE `?` AFTER ANY CLAUSE, and that is
+  // what the code did before 0503 -- which is why 14 existing tests went red when
+  // the rule was narrowed. The narrow rule is right and the old one was too wide;
+  // what the old one ALSO carried was the nullable group, and narrowing the
+  // `?` without separating the two jobs took that away with it.
+  //
+  // "NO CLAUSE" IS MEASURED, NOT GUESSED: the cursor does not move when there is
+  // no clause to read. A second copy of the clause list -- `!`, `noraise`,
+  // `nocancel`, `raise` -- would have been a second thing to keep in step with
+  // `parse_raise_effect`, and this repository has been bitten by exactly that
+  // twice.
+  //
+  // The question is asked BEFORE the clause is consumed, because after that the
+  // cursor is past it and the question cannot be asked any more.
+  let bare_raise = self.at_bare_raise()
+  let clause_start = self.p
   self.parse_raise_effect()
-  if self.at(TQuestion) {
+  let no_clause = self.p == clause_start
+  if (bare_raise || no_clause) && self.at(TQuestion) {
     let _ = self.bump()
     out = out + "?"
   }
@@ -2445,7 +2479,11 @@ fn Parser::parse_fn_signature(
     let _ = self.bump()
     retann = self.return_annotation()
   }
+  let bare_raise = self.at_bare_raise()
   self.parse_raise_effect()
+  if bare_raise && self.at(TQuestion) {
+    let _ = self.bump()
+  }
   (full, params, retann)
 }
 
@@ -2521,6 +2559,56 @@ fn Parser::eat_joined_effect(self : Parser, left_was_nocancel : Bool) -> Unit {
     if type_head {
       let _ = self.type_annotation()
     }
+  }
+}
+
+///|
+/// Is the effect clause at the CURSOR a BARE `raise` -- one with no error type
+/// and no joined effect?
+///
+/// 0503. The `?` marker makes a raise OPTIONAL, and it is legal ONLY on a bare
+/// `raise`. Settled against the compiler in `_verify/settle_0503_raise_q.ps1`,
+/// 24 rows with four guards:
+///
+///     -> Int raise?              ACCEPTED   the bare raise, marked optional
+///     -> Int raise MyErr?        REJECTED   a typed raise has no optional form
+///     -> Int raise + nocancel?   REJECTED   a joined clause has no optional form
+///     -> Int noraise?            REJECTED   an optional marker on "does not
+///                                            raise" is meaningless
+///     -> Int nocancel?           REJECTED
+///     -> Int! ?                  REJECTED   the short form has no optional form
+///     (Int) -> Int raise?        ACCEPTED   the same rule, in the TYPE position
+///     (Int) -> Int noraise?      REJECTED   ... and so on, for all four
+///
+/// => A reader that accepted the `?` after ANY clause would read programs the
+/// toolchain refuses. The reader is liberal about MANY things, but not about
+/// this one: the `?` is the only marker that says a raise is optional, and
+/// `noraise?` says the opposite of what it looks like.
+///
+/// THE CURSOR MUST BE ON THE `raise` when this is called, and it must be called
+/// BEFORE `parse_raise_effect` consumes the clause -- after that the cursor is
+/// past it and the question cannot be asked any more.
+///
+/// THE `TName | TLParen | TAmp` ARM IS STRUCTURAL, and it is worth being exact
+/// about what it does, because the honest answer is "less than it looks". The `?`
+/// after a TYPED raise is taken by `type_annotation` -- as the nullable marker
+/// on the error type -- before this question is ever asked, so the arm is NOT
+/// what keeps `-> Int raise MyErr?` out. The toolchain rejects that shape and
+/// this analyzer ACCEPTS it: a measured divergence, recorded in the NARRATIVE,
+/// and not something this arm can fix. What the arm does is keep the ANSWER
+/// honest -- `raise E` names an error type, so it is not a bare raise -- so that
+/// a reader that treated it as bare could not hand the `?` to the
+/// optional-raise rule the moment the type reader stopped taking it.
+fn Parser::at_bare_raise(self : Parser) -> Bool {
+  if !self.at_name("raise") {
+    return false
+  }
+  // The token AFTER the `raise`. `raise E` carries a type, and `raise + nocancel`
+  // is a joined clause; neither is bare.
+  match self.peek2() {
+    TName(_) | TLParen | TAmp => false
+    TPlus => false
+    _ => true
   }
 }
 
@@ -6419,6 +6507,10 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
   let sources : Array[@ast.Expr] = []
   let vars : Array[String] = []
   let mut body : @ast.Expr = { span: sp, kind: @ast.EInt(0), }
+  // 0504 -- THE COMPREHENSION'S CONDITION. It is `None` for the ordinary
+  // comprehension and `Some(..)` for the filtering one. The name is `cond`
+  // and not `guard` because `guard` is a MoonBit KEYWORD.
+  let mut cond : @ast.Expr? = None
   let mut seen = false
   // The grammar is
   //   'for' pat 'in' src (',' pat 'in' src)* ( '=>' body | '{' body } )
@@ -6474,7 +6566,21 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
   if self.at_name("if") {
     let _ = self.bump()
     // `parse_or` again: the guard is also followed by the comprehension's `=>`.
-    ignore(self.parse_or())
+    //
+    // 0504 -- THE GUARD IS CARRIED, NOT DISCARDED. It used to be `ignore(...)`d
+    // right here, and that is exactly where the FALSE POSITIVE came from: the
+    // `is` binding the guard introduces (`entry is Some({ key, .. })` binds
+    // `key`) never reached the AST, so the body's read of `key` had no binding
+    // to resolve and was reported as an undefined variable -- on
+    // `moonbitlang/core` `hashset/hashset.mbt:382`, a file the toolchain
+    // compiles.
+    //
+    // The guard is real code, and the toolchain says so: an undefined name
+    // inside it is an error, it is evaluated once per element, and the `is`
+    // binding it introduces is in scope for the BODY and for nothing else.
+    // Settled with the compiler as the oracle in
+    // `_verify/settle_0504_comp_guard.ps1`, 18 rows.
+    cond = Some(self.parse_or())
   }
   // NO comma continuation: a comprehension has exactly ONE generator.
   // Both candidate spellings are rejected by the toolchain —
@@ -6533,7 +6639,7 @@ fn Parser::parse_comprehension(self : Parser, sp : @core.Span) -> @ast.Expr {
     self.err("comprehension has no body", sp)
   }
   self.expect(TRBracket, "']'")
-  { span: sp, kind: @ast.EComp(vars, sources, body), }
+  { span: sp, kind: @ast.EComp(vars, sources, cond, body), }
 }
 
 ///|
@@ -6646,7 +6752,11 @@ fn Parser::parse_fn_literal(self : Parser, sp : @core.Span) -> @ast.Expr {
     let _ = self.bump()
     let _ = self.return_annotation()
   }
+  let bare_raise = self.at_bare_raise()
   self.parse_raise_effect()
+  if bare_raise && self.at(TQuestion) {
+    let _ = self.bump()
+  }
   let (_, _) = self.parse_block(false)
   self.note_skip(
     "anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed",

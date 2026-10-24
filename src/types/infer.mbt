@@ -413,7 +413,7 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // under an iterable we may not model, so `TUnknown` is the honest answer.
     // The sources and the body are still TYPED, so the argument-type and
     // index checks inside them still run.
-    EComp(vars, sources, body) => {
+    EComp(vars, sources, cond, body) => {
       self.frames.push(Map([]))
       self.annos.push(Map([]))
       let fi = self.frames.length() - 1
@@ -423,6 +423,17 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       }
       for s in sources {
         let _ = self.ty_of(s, TUnknown)
+      }
+      // 0504 -- THE GUARD IS TYPED, in the comprehension's own frame and
+      // BEFORE the body. Two reasons: a wrong name or a wrong argument type
+      // inside the guard is a real defect and must still be found, and the
+      // guard's `is` binding must be live for the body -- the `EIs` arm binds
+      // into the CURRENT frame, which is this one.
+      match cond {
+        Some(g) => {
+          let _ = self.ty_of(g, TUnknown)
+        }
+        None => ()
       }
       let _ = self.ty_of(body, TUnknown)
       let _ = self.frames.pop()

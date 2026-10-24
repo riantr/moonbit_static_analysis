@@ -147,12 +147,29 @@ alone would have called it killed.
     # anchor is now `parse_raise_effect()` / `parse_block(false)` -- a pair that is UNIQUE in
     # this file, where the bare `let (_, _) = self.parse_block(false)` is not (parse_c_for and
     # parse_if have it too, and anchoring on it alone would mutate one of those instead).
+    #
+    # RE-ANCHORED AGAIN BY 0503, and the pair stopped being adjacent for the same
+    # reason it stopped being adjacent the first time. The `?` marker put a
+    # `let bare_raise = ...` line and an `if` block between the raise call and the
+    # body parse, so the anchor is now the WHOLE `bare_raise` block plus the body
+    # parse. It is still UNIQUE -- the function-type path writes `out = out + "?"`
+    # inside its `if`, and the return path is followed by `(full, params, retann)`
+    # -- and the MUTATION is unchanged in meaning: the body is still skipped rather
+    # than read.
     Find = @'
+  let bare_raise = self.at_bare_raise()
   self.parse_raise_effect()
+  if bare_raise && self.at(TQuestion) {
+    let _ = self.bump()
+  }
   let (_, _) = self.parse_block(false)
 '@.Replace("`r`n", "`n")
     Repl = @'
+  let bare_raise = self.at_bare_raise()
   self.parse_raise_effect()
+  if bare_raise && self.at(TQuestion) {
+    let _ = self.bump()
+  }
   if self.at(TLBrace) { let _ = self.skip_braces() }
 '@.Replace("`r`n", "`n")
     MustRed = '0453: a construct inside an async literal''s body is still announced'

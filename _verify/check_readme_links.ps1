@@ -376,24 +376,26 @@ foreach ($e in $expect) {
 # question that keeps a README from publishing a number nobody re-measured.
 $relTxt2 = [System.IO.File]::ReadAllText((Join-Path $root '_verify\release.ps1'), [System.Text.Encoding]::UTF8)
 $peM  = [regex]::Match($relTxt2, "\`$PARSERR_TOTAL\s*=\s*'(\d+)'")
+$sfM  = [regex]::Match($relTxt2, "\`$SELF_FILES\s*=\s*'(\d+)'")
 $snM  = [regex]::Match($relTxt2, "\`$SELF_NOTICES\s*=\s*'([^']*)'")
 $sxM  = [regex]::Match($relTxt2, "\`$SELF_EXPR\s*=\s*'(\d+)'")
 $sdM  = [regex]::Match($relTxt2, "\`$SELF_DECL\s*=\s*'(\d+)'")
 $loM  = [regex]::Match($relTxt2, "\`$SUPPOFF_LOCAL\s*=\s*'(\d+)'")
 $paM  = [regex]::Match($relTxt2, "\`$SUPPOFF_PARAM\s*=\s*'(\d+)'")
-if (-not ($peM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
+if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
   Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives from.'
   Write-Output '        Restore them, or this gate has nothing to check the README against.'
   $fail++
   $peTotal = '?'; $sn = ''; $sx = '?'; $sd = '?'; $lo = '?'; $pa = '?'
 } else {
   $peTotal = ([int]$peM.Groups[1].Value).ToString('N0')
+  $sf = $sfM.Groups[1].Value
   $sn = $snM.Groups[1].Value
   $sx = $sxM.Groups[1].Value
   $sd = $sdM.Groups[1].Value
   $lo = $loM.Groups[1].Value
   $pa = $paM.Groups[1].Value
-  Write-Output ('  (release.ps1 pins: ParseError ' + $peTotal + ', notice table ' + (@($sn -split '\|').Count) +
+  Write-Output ('  (release.ps1 pins: ParseError ' + $peTotal + ', own-source files ' + $sf + ', notice table ' + (@($sn -split '\|').Count) +
                 ' kinds, expression-level ' + $sx + ', declaration-level ' + $sd +
                 ', suppression off ' + $lo + ' / ' + $pa + ')')
 }
@@ -436,8 +438,14 @@ $more.Add(@{ F = 'README.md';    S = ('exclusion (' + $sx + ' of them)'); N = 't
 $more.Add(@{ F = 'README.md';    S = ('exclusion (' + $sd + ')'); N = 'the declaration-level exclusions' })
 $more.Add(@{ F = 'README.zh.md'; S = ($LP + $sx + ' 条' + $RP); N = 'the expression-level exclusions (zh)' })
 $more.Add(@{ F = 'README.zh.md'; S = ($LP + $sd + ' 条' + $RP); N = 'the declaration-level exclusions (zh)' })
-$more.Add(@{ F = 'README.md';    S = '(178 files)'; N = 'the own-source file count' })
-$more.Add(@{ F = 'README.zh.md'; S = '178 个文件'; N = 'the own-source file count (zh)' })
+# THE OWN-SOURCE FILE COUNT, DERIVED FROM THE PIN. It used to be the literal
+# `178` written into THIS gate, which is a number that can only ever agree with
+# itself -- the release gate measured the count and never compared it with
+# anything, so the count moved twice (178 -> 179 -> 181) with nothing
+# objecting. It is a pin in release.ps1 now, and this gate asks only what the
+# pin says.
+$more.Add(@{ F = 'README.md';    S = ('(' + $sf + ' files)'); N = 'the own-source file count' })
+$more.Add(@{ F = 'README.zh.md'; S = ($sf + ' 个文件'); N = 'the own-source file count (zh)' })
 foreach ($e in $more) {
   $p = Join-Path $root $e.F
   $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)

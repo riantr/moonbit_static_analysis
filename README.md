@@ -15,7 +15,7 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1029 files): **957 parsed, 28 actionable** — and every one
+Measured on `moonbitlang/core` (1029 files): **984 parsed, 28 actionable** — and every one
 of the 28 is a construct this frontend does not read or an operator it does not model, not
 a defect in the analysed code. On that same tree `moon check --target all` reports exactly
 **one** error, in a `.mbt.md` doc file.
@@ -64,14 +64,14 @@ a defect in the analysed code. On that same tree `moon check --target all` repor
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.34
+moon add riantr/moonbit_static_analysis@0.4.35
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.34",
+  "riantr/moonbit_static_analysis@0.4.35",
 }
 ```
 
@@ -236,7 +236,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.34_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.35_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -344,7 +344,7 @@ way of naming another package never hit.
 On `.mbt`, this tool does **not** compete with the toolchain's compiler: `moon check` has a
 real parser and reads the **whole** language. On the same `moonbitlang/core` it reports
 **one** error and 251 warnings of two kinds; this tool's `.mbt` frontend reads a **subset**
-and parses **957 of 1029** files (93.0%); `.mbti` and `.mbt.md` are 100%.
+and parses **984 of 1029** files (95.6%); `.mbti` and `.mbt.md` are 100%.
 
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
@@ -354,12 +354,12 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (178 files), with the per-file printing cap lifted so the count is the
+project's own source (181 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1318 | | `anonymous function literal` | 17 |
+| `test` declaration | 1359 | | `anonymous function literal` | 17 |
 | `if` expression | 103 | | `const` declaration | 6 |
 | `struct` declaration | 60 | | `short lambda` | 2 |
 | `derive` declaration | 53 | | `try` expression | 1 |
@@ -368,7 +368,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters: an **expression-level**
 exclusion (123 of them) sits inside a function body and can switch that body's audit off;
-a **declaration-level** exclusion (1461) sits outside every function extent and cannot.
+a **declaration-level** exclusion (1502) sits outside every function extent and cannot.
 
 **The `match` expression row is gone**: since 0.4.34 the arms of a `match` are read, and
 arms are ordinary code, so a `match` is no longer a region that was "read past but not
@@ -388,7 +388,7 @@ consumer of the finding goes through:
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,215** rendered
+per-file printing cap lifted so the count is the whole finding set: **19,544** rendered
 `ParseError` lines, every one of them a scope limit. That is why the fix moves no number —
 the two predicates agree numerically on today's corpora — and why only one of them is right.
 
@@ -409,10 +409,10 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **537** `UnusedLocal` and **1,094** `UnusedParam` findings across the
+the tool produces **597** `UnusedLocal` and **1,137** `UnusedParam` findings across the
 seven pinned corpora and this repository's own source. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **536** locals and **1,094** parameters, and the per-binding
+suppression is hiding **596** locals and **1,137** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -528,7 +528,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1221/1221 on wasm; 1135/1135 on js and wasm-gc
+moon test --deny-warn                # 1262/1262 on wasm; 1176/1176 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -560,7 +560,7 @@ it**; **the notice labels, and a check that a scope limit is not an error**; **t
 audit, and a check that a region silences only the bindings it could have read**; the
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
-gate** — 82 of them.
+gate** — 84 of them.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
@@ -575,7 +575,7 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 82 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 84 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -640,9 +640,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **82 mutation gates**, each of which mutates
+The gate is not optional decoration: it runs **84 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **446** live mutations, **408** expect a kill; **331** of them also name the test
+Of the **464** live mutations, **425** expect a kill; **348** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing

@@ -253,12 +253,13 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
-$PARSERR_TOTAL = '19215'
-$SELF_NOTICES = 'test declaration=1318|if expression=103|struct declaration=60|derive declaration=53|enum declaration=24|anonymous function literal=17|const declaration=6|short lambda=2|try expression=1'
+$PARSERR_TOTAL = '19544'
+$SELF_FILES = '181'
+$SELF_NOTICES = 'test declaration=1359|if expression=103|struct declaration=60|derive declaration=53|enum declaration=24|anonymous function literal=17|const declaration=6|short lambda=2|try expression=1'
 $SELF_EXPR = '123'
-$SELF_DECL = '1461'
-$SUPPOFF_LOCAL = '537'
-$SUPPOFF_PARAM = '1094'
+$SELF_DECL = '1502'
+$SUPPOFF_LOCAL = '597'
+$SUPPOFF_PARAM = '1137'
 
 # THE EMPTY-PIN GUARD. A pin that is empty is not a pin -- it is a comparison
 # against nothing, and it fails in the most confusing way there is: the pinned
@@ -269,6 +270,7 @@ $SUPPOFF_PARAM = '1094'
 # that had compared silently would have passed.
 $emptyPins = @()
 if ([string]::IsNullOrWhiteSpace($PARSERR_TOTAL)) { $emptyPins += 'PARSERR_TOTAL' }
+if ([string]::IsNullOrWhiteSpace($SELF_FILES))    { $emptyPins += 'SELF_FILES' }
 if ([string]::IsNullOrWhiteSpace($SELF_NOTICES))  { $emptyPins += 'SELF_NOTICES' }
 if ([string]::IsNullOrWhiteSpace($SELF_EXPR))     { $emptyPins += 'SELF_EXPR' }
 if ([string]::IsNullOrWhiteSpace($SELF_DECL))     { $emptyPins += 'SELF_DECL' }
@@ -379,6 +381,26 @@ if ($failed.Count -eq 0) {
     if ($act -ne 0) { Write-Output '  FAIL: actionable is not 0.'; $script:stageOk = $false }
     elseif ($files -ne $parsed) { Write-Output ("  FAIL: parsed {0} of {1} files." -f $parsed, $files); $script:stageOk = $false }
     else { Write-Output ('  ' + $files + '/' + $files + ' parsed, actionable 0') }
+
+    # THE OWN-SOURCE FILE COUNT IS PINNED, and it was NOT until 0504.
+    #
+    # The README publishes it -- "Measured on this project's own source (178
+    # files)" -- and NOTHING checked it: the release gate measured `$files` and
+    # used it only to compare against `$parsed`, and `check_readme_links.ps1`
+    # compared the README against a LITERAL 178 written into the gate itself.
+    # A literal inside the gate that checks the README is a number that can
+    # only ever agree with itself, and the file count moved twice -- 178 to 179
+    # with 0503's test file, and 179 to 181 with 0504's two -- without
+    # anything objecting.
+    #
+    # So the count is a PIN now, it is measured here, and the README gate
+    # DERIVES its string from this pin instead of carrying its own.
+    if ("$files" -ne $SELF_FILES) {
+      Write-Output ('  FAIL: the own-source file count is ' + $files + ', pinned ' + $SELF_FILES + '.')
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  the own-source file count matches the pin (' + $files + ')')
+    }
 
     # THE OWN-SOURCE NOTICES BY KIND. The README publishes this table, so the
     # table is measured here and PINNED -- and the count of rendered
@@ -687,7 +709,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1370,7 +1392,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 total=1654'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 total=29'
-  'moonbit_core'    = 'files=1029 parsed=957 actionable=28 notices=9808 unreliable=2240 withheld=483 total=12076'
+  'moonbit_core'    = 'files=1029 parsed=984 actionable=28 notices=10096 unreliable=646 withheld=65 total=10770'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
