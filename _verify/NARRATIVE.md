@@ -7343,3 +7343,42 @@ files**, and **0** in the other six corpora and **0** in this analyzer's own sou
 updated before the tag, so the registry never saw a README that described a different
 tree than the one it was serving. The mutation gates are 84 now: 464 live mutations, 425
 expecting a kill, and 348 naming the test that must go red.
+
+
+### WHAT IS NEXT
+
+The backlog, measured rather than remembered, on this project's own source (181 files,
+1,625 notices, 0 actionable):
+
+```
+expression-level (can suppress a frame audit) : 123
+  if expression                                  103
+  anonymous function literal                     17
+  short lambda                                    2
+  try expression                                  1
+declaration-level (cannot)                     1502
+```
+
+The EXPRESSION-LEVEL half is UNCHANGED by 0503 and 0504 -- 123 before, 123 now, with `if`
+still 103 of them -- so the next region to read is still the `if` expression, and the
+increment that removes an expression-level exclusion is still the same one. The
+DECLARATION-LEVEL half went 1,376 -> 1,502, and that is not a regression: 0503 and 0504
+made 27 more core files readable, and a file that becomes readable contributes the
+declarations the analyzer now SEES and declines to analyse. A blind spot that is
+REPORTED costs less than a blind spot that is invisible, and that is the direction the
+number moved.
+
+AND ONE GAP WAS MEASURED, AND ITS REACH IS ZERO. The parser rejects a tuple pattern in a
+`for` header: `for (k, child) in m` is read as `expected loop variable` and the file is
+not parsed at all. The UNPARENTHESISED form the corpus actually uses -- `for key, _ in
+obj` -- is read fine: 296 code sites across the seven pinned corpora (core 174, moui 65,
+async 32, proton 23, labeler 2) and 50 in this analyzer's own source, and a fixture of it
+scans CLEAN at 1/1 parsed. The parenthesised form has ONE occurrence in the seven pinned
+corpora and it is inside a COMMENT (`json_traverse_test.mbt:36`), and none in code.
+
+=> 判据: A GAP IS NOT AN INCREMENT UNTIL IT IS MEASURED. The parser gap is real, the
+reach is zero, and a reach of zero is what a "next increment" looks like when it is
+chosen by taste instead of by measurement. 0503 is the other half of the same rule: a
+gap with no reach in the OTHER SIX corpora was still worth doing, because the reach was
+measured on the corpus that HAS the construct -- 188 sites in 33 files -- and not on the
+six that do not.
