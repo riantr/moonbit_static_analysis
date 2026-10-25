@@ -1613,6 +1613,63 @@ if (-not (Test-Path $MRQ)) {
   }
   if (-not $script:lastOk) { $failed += 'raiseq-reach' }
 }
+# --- the 0505 stage -------------------------------------------------------------
+# 0505 is a PLAN, and a plan whose premises are written down from memory is a plan
+# that will be built on a premise that stopped being true while nobody was looking.
+# This stage runs the settle that MEASURES every premise: the cross-file call that
+# is silently unchecked, the family roster, the CLI surface, and the numbers the
+# 0505 section of the narrative quotes.
+#
+# It is here for the same reason the reach measurement is here: the 0505 section
+# ships in the narrative, the narrative ships in the package, and a published number
+# that nothing checks can go missing silently. The settle's row D1 reads those
+# numbers back out of the narrative and fails if any of them disagrees with the
+# measurement, so the narrative and the measurement cannot drift apart.
+#
+# AND THIS BLOCK IS HERE BECAUSE THE FIRST VERSION OF IT WAS SILENTLY SKIPPED, which
+# is worth recording rather than quietly fixing. The block that wrote this file
+# expanded the shell variable that names the settle script, so the path was never
+# assigned; `Test-Path $MSQ` was then called with a NULL path, and PowerShell treats
+# that as a PARAMETER-BINDING error inside the `if` CONDITION. A failed condition
+# skips the WHOLE `if` -- neither the branch nor the else -- the script carries on,
+# and the gate printed RELEASE GATE PASSED with this stage MISSING from the summary.
+#
+# That is the worst shape a gate failure can take: not a red stage, but an ABSENT
+# one, under a verdict that says everything is fine. So the fix is the one this
+# repository already uses everywhere else -- the precondition is checked, the stage
+# is NAMED, and the summary is checked for the stage by name. A stage that does not
+# appear in the summary IS a failure, and the check below says so.
+$MSQ = Join-Path $root '_verify\settle_0505_finding_quality.ps1'
+if (-not (Test-Path -LiteralPath $MSQ -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\settle_0505_finding_quality.ps1'
+  $failed += 'finding-quality'
+} else {
+  Stage 'the premises of the 0505 porting plan, measured' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MSQ 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(MISMATCH|MISSING|GATE OK|ABORT)' -or $ln -match '^\s+(A6|A6b|A6ctl|B1|B2|B4|C1|C3)\s') {
+        Write-Output ('  ' + $ln.Trim())
+      }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'finding-quality' }
+  # THE STAGE MUST APPEAR IN THE SUMMARY. This is the check that would have caught
+  # the version above, and it is here because "the gate passed" and "the gate ran
+  # what it says it ran" are different claims and only the second one is worth
+  # anything.
+  $stageName = 'the premises of the 0505 porting plan, measured'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'finding-quality'
+  }
+}
 # --- verdict -----------------------------------------------------------------
 Write-Output ''
 Write-Output '=== stage summary ==='

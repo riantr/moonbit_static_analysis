@@ -7382,3 +7382,305 @@ chosen by taste instead of by measurement. 0503 is the other half of the same ru
 gap with no reach in the OTHER SIX corpora was still worth doing, because the reach was
 measured on the corpus that HAS the construct -- 188 sites in 33 files -- and not on the
 six that do not.
+
+## 0505: A PORTING PLAN -- THREE THINGS FROM `bandit`, IN AN ORDER, AND EVERY PREMISE MEASURED FIRST
+
+### WHAT THIS IS, AND WHAT IT IS NOT
+
+A PLAN. It changes no source file, no published number, and no behaviour. The tree the
+registry is serving for 0.4.35 is untouched by this section, and this section does not
+pretend to change it. What it does is decide what gets built next on the FINDING-QUALITY
+track, in what order, and against what evidence -- and it puts that decision behind a gate
+that re-measures every premise, so the decision cannot quietly become wrong.
+
+The source of the three things is PyCQA's `bandit`, read at commit `c4bfccf`
+(`setup.cfg` says `author = PyCQA`). `bandit` is a SECURITY linter for PYTHON. This
+analyzer is a CORRECTNESS analyzer for MOONBIT. So the question is never "what can we
+copy" -- it is "which of bandit's ARCHITECTURE answers a problem this analyzer actually
+has, MEASURED, and which of its answers are about Python or about security and are
+therefore not ours to take". The second half of that answer is longer than the first.
+
+### THE THREE TRANSFERS, AND WHY THE ORDER IS FORCED
+
+1. **A PER-FINDING CONFIDENCE AXIS.** `bandit` carries `severity` AND `confidence` on
+   every issue (`bandit/core/issue.py:79-106`), and `Issue.filter` needs BOTH to clear
+   their thresholds (`issue.py:147-167`); the axes are genuinely independent, and an
+   uncertain finding is reported at LOW confidence rather than dropped.
+2. **STABLE FAMILY IDS, AND A PROFILE THAT IS CHECKED.** `bandit` keys its plugins by
+   `_test_id`, and a plugin with no id is SKIPPED WITH A WARNING
+   (`bandit/core/extension_loader.py:44-57`); `validate_profile` warns on an unknown id
+   and RAISES on a non-exclusive include/exclude intersection
+   (`extension_loader.py:86-100`).
+3. **`nosec`.** `bandit` suppresses per line and per test id (`# nosec B101`) or blanket,
+   and WARNS WHEN A `nosec` MATCHED NOTHING (`bandit/core/tester.py:105-118`).
+
+The order is not a preference, and it is not "confidence first because it sounds
+important":
+
+* **3 depends on 2.** A `nosec` comment has to NAME what it suppresses. If it named a
+  family by its current NAME, then transfer 2 -- whose entire point is that the name is
+  not stable -- would break every suppression written the day before. The stable id is
+  what a suppression must quote, so the id has to exist first.
+* **2 depends on 1** in the sense that a profile is a statement about which findings a
+  user trusts, and "trusts" is a confidence question before it is a membership question.
+* **1 comes first** because it is the one that makes the other two ADDRESSABLE, and
+  because it answers a defect this analyzer has TODAY -- one that the other two cannot
+  reach at all while it is unfixed.
+
+### FIRST: THE CONFIDENCE AXIS -- AND THE FALSE NEGATIVE THAT MOTIVATES IT
+
+`bandit`'s confidence axis exists because a security tool has to be able to say "I think
+this is a problem, but I am not certain". This analyzer has `Family::severity()`
+(`src/core/core.mbt:524-530`) and no second axis at all: the machine-readable finding
+record (`src/jsoncli/main.mbt:12-20`) is `line, col, severity, message, family, lenses,
+vst` -- a `severity` field and NO `confidence` field. Row B4 of the settle pins that.
+
+The reason a second axis is not a nicety here is a defect the analyzer has today, and
+the defect is not a false alarm. It is a SILENCE.
+
+#### THE MEASUREMENT
+
+One defect -- a call with the wrong number of arguments -- under six conditions. All six
+are rows of `_verify/settle_0505_finding_quality.ps1`, and every one of them is
+re-measured on every run:
+
+| row | the callee is declared | the call | what the analyzer says |
+|-----|----------------------|----------|--------------------------|
+| A0 | nowhere, no interface dir | 2 arguments | `no visible binding for 'Command'` (UndefinedName) |
+| A1 | a `.mbti`, right arity | 1 argument | nothing, file printed CLEAN |
+| A2 | a `.mbti`, WRONG arity | 2 arguments | **nothing, file printed CLEAN** |
+| A3 | the SAME FILE | 2 arguments | `too many arguments to 'Command': expected 1, got 2` (ArgTypeMismatch) |
+| A4 | nowhere at all | 1 argument | `no visible binding for 'nosuchfn'` (UndefinedName) |
+| A5 | a SIBLING `.mbt` file | 2 arguments | **nothing, file printed CLEAN** |
+
+Read A3 against A2: the SAME defect, in the SAME file, in the same scan, is reported in
+one row and swallowed in the other. The only difference is whether the parameter list was
+in the file the analyzer was reading. And read A5 against A2: the boundary is not the
+package and not the interface file -- it is THE FILE. A callee declared one file over, in
+a real `.mbt` with a real parameter list, is known by NAME only, and the arity check is
+skipped for it exactly as it is for an interface declaration.
+
+The mechanism is documented in the analyzer's own source: a `.mbti` gives the name and
+never the parameter list, so the name is typed `TUnknownFn`
+(`src/types/types.mbt:31-37`), and the arity and argument checks are deliberately not
+run on it (`src/types/infer.mbt:83-113,300-312`). That is SOUND -- the analyzer invents
+nothing -- and it is exactly the problem: it is sound, and it is SILENT, and "I could
+not check this" and "there is no problem here" are the same output. A file whose only
+defect is a wrong-arity call is printed `CLEAN`.
+
+#### THE REACH
+
+The measured reach, under a rule that is written down in the settle and defended by a
+control fixture whose answer is known by construction:
+
+```
+    0505 the corpus reach, package-level calls   : 19843
+    0505 the corpus reach, unchecked calls        : 16250
+    0505 the corpus reach, files carrying them    : 657
+    0505 the corpus reach, unchecked share        : 81.9
+    0505 the interface population, files          : 159
+    0505 the interface population, `pub fn`       : 2116
+```
+
+That is the pinned `moonbitlang/core 0.1.20260920+7d59c7ec9`, and the rule is: a
+package-level call is a call to a name declared by a top-level `fn` in some `.mbt` file
+of the corpus or by a `pub fn` in some `.mbti` of it; it is CHECKED when the calling
+file itself declares that name, and UNCHECKED otherwise; declarations are not calls, and
+comments and string and character literals are not code. **81.9% of the package-level
+calls in the pinned corpus have their arity and argument types unchecked**, across 657
+files. The 159 `.mbti` files carry 2,116 `pub fn` declarations, and every one of them
+reaches the analyzer as a name and nothing else.
+
+A number written down here is a number the settle re-derives, and a number the settle
+re-derives is a number the narrative has to agree with: row D1 of the settle reads these
+eight lines back out of THIS FILE and fails the gate if any of them disagrees with what
+was just measured.
+
+#### WHAT THE TRANSFER IS
+
+Not "add a second severity". The axis this analyzer needs is a statement about how much
+was actually CHECKED, and it has to be able to say it about a finding that is NOT there:
+
+* every finding carries a confidence beside its severity -- `high` when the lens had the
+  signature in front of it, `low` when the lens was reasoning from a name alone, and a
+  third value for "this lens could not decide at all";
+* and the silence stops being silent: the analyzer says how much of the tree it could
+  check, per finding, instead of rounding "I did not check" down to "nothing to report".
+
+`bandit` has the second half too, in a different shape: its `unreliable`/`withheld`
+counts are FILE-granular -- everything from the first read failure on
+(`src/sa/main.mbt:98-104`) -- and a finding inside that region is counted, never shown.
+That is the right idea and the wrong granularity: a per-finding confidence makes the
+region unnecessary for the cases it is aimed at.
+
+=> 判据: A SOUND CHECK THAT IS SILENT IS A FALSE NEGATIVE WITH A GOOD MANNER. The
+analyzer declined to check the arity of a call it could not see the signature of, and
+the decline cost nothing in correctness and everything in truthfulness: the file was
+printed CLEAN. The house rule that a false positive is FIXED, not catalogued, has a
+mirror here, and the mirror is this -- a false NEGATIVE is not catalogued either, it is
+given a confidence and reported.
+
+### SECOND: STABLE FAMILY IDS, AND A PROFILE THAT IS CHECKED
+
+The public vocabulary of a finding is its family, and the family is spelled with a NAME.
+`Family` is a closed eleven-member enum (`src/core/core.mbt:491-503`) and its public
+spelling is a hand-written `match` (`core.mbt:506-521`). The names and the enum tags are
+not the same thing:
+
+```
+    0505 the family roster, families              : 11
+    0505 the family roster, names that differ     : 5
+
+AND WHEN THE ROSTER MOVES, THESE TWO NUMBERS MOVE WITH IT, and the fix is to RE-READ
+this section, not to loosen the pin. A taxonomy that grew is a premise that has to be
+re-examined, and the settle is what makes that happen at a RELEASE rather than at a
+reading. The four corpus numbers move only when the corpus pin moves, which is the same
+coupling the 0503 reach figure has always had.
+```
+
+Five of the eleven public names are not the tag with its `F` removed: `FParse` ->
+`ParseError`, `FAssignType` -> `AssignTypeMismatch`, `FArgType` -> `ArgTypeMismatch`,
+`FOpMismatch` -> `OperatorMismatch`, `FCondBool` -> `NonBooleanCond`. So the name is a
+second, hand-maintained vocabulary that has to be kept in step with the first, and
+nothing enforces that. Renaming a family changes the JSON output silently, and a
+consumer that pins `"family": "ArgTypeMismatch"` in a suppression or a CI filter gets no
+warning at all -- the analyzer does not know that anyone ever depended on the spelling.
+
+The transfer, in bandit's shape and in this project's own discipline:
+
+* every family gets a STABLE ID -- allocated, never renumbered, and quoted by anything
+  that needs to refer to a family across versions;
+* a PROFILE selects families by ID, and the profile is VALIDATED the way bandit
+  validates its own (`extension_loader.py:86-100`): an unknown ID is a WARNING, and an
+  include/exclude intersection is an ERROR, not a silent precedence rule;
+* and the roster discipline this project already has for its gates is reused for its
+  families -- `_verify/check_gate_roster.ps1` already refuses a gate that is not on the
+  roster, and the family roster refuses a family with no ID.
+
+The house precedent for "a thing that is written down must be checked" is already in
+this repository, in two places: the gate roster, and `src/report/report.mbt:69-71`, where
+`is_notice` is decided by the MESSAGE TEXT rather than by the family -- a predicate that
+is right today and that says nothing about which family produced the text.
+
+### THIRD: `nosec` -- AND THE PHILOSOPHY DECISION THAT GATES IT
+
+`bandit`'s `nosec` is a comment on the line: `# nosec B101` suppresses one test id on
+that line, a bare `# nosec` suppresses everything there
+(`bandit/core/tester.py:56-58,79-94`), and -- the part that is worth taking -- a `nosec`
+that MATCHED NOTHING is a WARNING (`tester.py:105-118`). A suppression that has gone
+stale is itself a finding, because the code it used to silence has changed.
+
+This analyzer has no user-facing suppression at all. What it has is the analyzer's own
+region suppression, per binding since 0501 (`src/walk/walk.mbt:286-288`), and the
+`extern_iface` name suppression -- both properties of the analyzer, not choices a user
+makes. Row C3 of the settle pins the state: a defect on a line carrying `// nosec` is
+still reported. Row C1 pins the other half: the scanner takes no config file and no
+family selection, and an unknown flag is REFUSED (`ERROR unexpected extra argument`)
+rather than ignored.
+
+**AND THIS TRANSFER IS GATED ON A PHILOSOPHY DECISION THAT IS NOT MEASURED, AND THAT IS
+WHY IT IS THIRD.** This project's standing rule is that a false positive is FIXED, not
+catalogued -- 0504 is the precedent: the `undefined variable 'key'` on a comprehension
+guard was a defect in the PARSER, and it was fixed, not suppressed. `nosec` assumes the
+opposite: that the analyzer may be wrong, and that the user is entitled to say so. Both
+positions are defensible; they cannot both be the policy. The decision is not made in
+this section, and the part of the transfer that is NOT a philosophy question -- the
+STALE-SUPPRESSION WARNING, which is the same discipline as the gate roster, applied to a
+comment -- is available independently of it.
+
+### WHAT NOT TO TAKE FROM `bandit`
+
+The longer half of the answer, and the half that saves the work:
+
+* **bandit's CHECKS.** `assert_used`, `hardcoded_password_string`, `shell_injection` are
+  security checks for a security tool. Eight of this analyzer's eleven families are
+  CORRECTNESS findings, and a correctness analyzer with a CWE column would be a costume.
+  Only `src/statecheck` has an honest use for a standard vocabulary, and it has its own.
+* **Python's `ast`.** Not portable, and not needed: this analyzer has a MoonBit
+  frontend and a real AST (`src/ast/ast.mbt`).
+* **bandit's HAND-WRITTEN BLACKLIST** (`bandit/blacklists/calls.py`, 30 KB;
+  `imports.py`, 17.7 KB). This analyzer has the same need and the opposite solution: the
+  ambient table is GENERATED from the toolchain's own `pkg.generated.mbti`
+  (`src/core/builtins.mbt:18-29,49-58`), and because it is generated it can only ever
+  cost a missed report, never invent a false alarm. A hand-written list would be 30 KB
+  of things somebody has to remember to update.
+* **bandit's GOLDEN COUNTS OF ITS OWN SCANNER** (`tests/functional/test_functional.py:19-24`).
+  This project uses the COMPILER as the oracle -- `moon check` accepts or rejects -- and
+  a count of its own scanner's output is a pin on the analyser, not on the language.
+* **bandit's BLACKLIST-AS-DATA PATTERN** (`bandit/core/blacklisting.py`) is the one
+  structural idea worth stealing, and it is stolen in transfer 2 as the family roster,
+  where the "data" is the ID table rather than a list of qualnames.
+
+### AND THE TRACK THIS IS NOT
+
+The repo's own next increment is still the `if` EXPRESSION: 103 of the 123
+expression-level exclusions (`_verify/backlog.ps1`), unchanged by 0503 and 0504. That is
+a COVERAGE track -- read more of the language. This is a FINDING-QUALITY track -- say
+more about what was found. They are not alternatives and neither replaces the other, and
+the rule for how they meet is:
+
+* reading an `if` expression ADDS findings, because more code becomes analysed, so
+  transfer 1 gets MORE valuable as the coverage track succeeds, not less;
+* the family IDs are ALLOCATED, NEVER RENUMBERED, so a family added by the `if` increment
+  takes the next free number and every existing ID keeps meaning what it meant;
+* and transfer 1 is measured on the corpus, so a coverage increment that makes more files
+  readable MOVES the reach numbers in this section -- which is exactly what the settle's
+  pins and row D1 are for.
+
+### THE SETTLE
+
+`_verify/settle_0505_finding_quality.ps1`, sixteen rows, no compiler oracle needed
+because nothing here is a question about the LANGUAGE -- every row is a question about
+what the analyzer DOES, and the answer is read back from the analyzer itself:
+
+* A0..A5 -- the six conditions of the false negative, each with a control;
+* A6 -- the corpus reach, with a control fixture whose answer is known by construction
+  and a counter that has to agree with it before any real number is reported;
+* B1, B2 -- the family roster: one distinct name per family, and the number of names
+  that are not the tag with its `F` removed;
+* B3, B4 -- the output surface: the rendered finding carries the NAME and no id and no
+  confidence token, and the JSON `Finding` record has `severity` and no `confidence`;
+* C1, C2, C3 -- no config file, no family selection, no user-facing suppression, and
+  an unknown flag refused rather than ignored;
+* D1 -- this section's eight numbers, read back out of THIS FILE and checked against
+  the measurement.
+
+AND THERE IS NO MUTATION GATE FOR THIS INCREMENT, and that is a fact about WHAT THIS
+INCREMENT IS rather than an omission. A mutation gate mutates SOURCE and proves that a
+test goes red; this increment changes no source, so there is nothing to mutate and a
+gate would be a ceremony. What stands in its place is the settle's own CONTROLS: A0, A1,
+A3, A4, A5 and A6ctl are all cases where the settle FAILS if the analyzer's behaviour
+changes, or if the counter's rule stops counting what it claims to count. And they have
+already shown themselves -- A6ctl caught the counter counting a DECLARATION as a call,
+and the corpus numbers moved because of it.
+
+The control for A6 earned its place immediately: the first version of the counter
+counted a FUNCTION DECLARATION as a call, because `fn same_file(` ends in an opening
+parenthesis exactly as a call does. The control fixture caught it, the corpus numbers
+moved from 21,541/16,409 to 19,843/16,250, and the pins were corrected in the same
+commit. A counter that has never been shown to disagree is a counter that cannot say
+anything.
+
+=> 判据: A PLAN IS AN INCREMENT ONLY IF ITS PREMISES ARE MEASURED. 0503 shipped a
+parser fix and 0504 shipped another, and both had a reach measured before they were
+built. This one ships no code at all, and it is held to the same standard: the false
+negative is reproduced under six conditions, the reach is measured under a recorded rule
+with a control, and the numbers this section quotes are the numbers the settle
+re-derives.
+
+### WHAT IS NEXT
+
+Not the next increment -- the next increment is still the `if` expression, and it is
+measured rather than remembered. This section fixes the ORDER of the finding-quality
+work and nothing else, and the order is: the confidence axis, then the family ids and
+the profile, then `nosec` -- and the third one waits on a decision about policy that has
+not been made.
+
+And the first thing transfer 1 has to settle, before it settles anything else, is a
+question this section has NOT answered: **what does the analyzer do about a call it
+cannot check?** Silence, a low-confidence finding, or a separate "unchecked" count are
+three different products, with three different costs, and they disagree about what a
+`CLEAN` file means. The measurement says the problem is large -- 81.9% of the
+package-level calls in the pinned corpus. It does not say which of the three answers to
+build, and writing that down here would be exactly the kind of number-without-a-rule
+this project keeps correcting.

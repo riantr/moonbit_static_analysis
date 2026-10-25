@@ -103,6 +103,7 @@ $evidence = @(
   @{ N = 'the match-arms gate';          Want = 1;                R = '^_verify\\check_match_arms\.ps1$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
+    @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }
   @{ N = 'the README';                   Want = 1;                R = '^README\.md$' }
   @{ N = 'the Chinese README';           Want = 1;                R = '^README\.zh\.md$' }
   @{ N = 'the skill file';               Want = 1;                R = '^SKILL\.md$' }
