@@ -32,6 +32,7 @@ pub(all) struct PipelineResult {
   parse_reason : String
   n_subset : Int32
   first_error_line : Int32
+  hiding : Array[@core.Span]
 }
 
 // Type aliases

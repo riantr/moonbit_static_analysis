@@ -175,13 +175,69 @@ function Scan-Tree {
   return Read-TextWhenFree -Path $out
 }
 
-# The number of RENDERED `ParseError` lines in a scan's output. It is counted
-# from the text, not from the SUMMARY, because the SUMMARY's `notices` is the
-# same number and the two are cross-checks of each other: if they ever
-# disagree, one of them is wrong and the gate says so.
+# THE ANALYZER'S NOTICE TABLE, and the numbers in it.
+#
+# 0506 changed the SHAPE of a scan's output. A notice is printed one per line
+# only when it can HIDE a finding -- when its region lies inside some
+# function's extent -- and every other notice is counted by shape in one
+# `NOTICES` table at the end of the scan. So the RENDERED `ParseError` lines
+# are no longer the notice count: they are the printed half of it, and a gate
+# that kept counting them as the whole would come to disagree with the
+# SUMMARY and blame the corpus.
+#
+# The TOTAL line carries the tree's whole notice count, and it is what the
+# gate reads. Three numbers, from three different computations, and they must
+# reconcile:
+#
+#     notices == printed + aggregated == the SUMMARY's `notices`
+#     the rendered `ParseError` lines == printed
+#
+# THE LAST ONE IS THE PROOF THAT NO ParseError-FAMILY DEFECT EXISTS. A defect
+# of that family renders `error:` and is matched by the `(ParseError)` matcher
+# too, so "the rendered ParseError lines are exactly the printed notices" says
+# that every ParseError in the tree is a scope limit -- which is the claim
+# 0500 made about a rendering that no longer exists.
+function Get-NoticeTable {
+  param([string]$Text)
+  $rows = @()
+  foreach ($x in [regex]::Matches($Text, '(?m)^NOTICES\tcount=(\d+)\t(.+)$')) {
+    $rows += [pscustomobject]@{ N = [int]$x.Groups[1].Value; Message = $x.Groups[2].Value }
+  }
+  $m = [regex]::Match($Text, '(?m)^NOTICES\tTOTAL\tnotices=(\d+)\tprinted=(\d+)\taggregated=(\d+)')
+  if (-not $m.Success) {
+    # No table at all: the tree has no notices to count.
+    return [pscustomobject]@{ Present = $false; Notices = 0; Printed = 0; Aggregated = 0; Rows = $rows }
+  }
+  return [pscustomobject]@{
+    Present = $true
+    Notices = [int]$m.Groups[1].Value
+    Printed = [int]$m.Groups[2].Value
+    Aggregated = [int]$m.Groups[3].Value
+    Rows = $rows
+  }
+}
+
+# The number of RENDERED `ParseError` lines in a scan's output. After 0506
+# this is the PRINTED notices -- the ones that can hide a finding -- plus any
+# ParseError-family defect, which would render `error:`. The gate compares it
+# with the table's `printed` count, and the comparison is the proof that there
+# is no such defect.
 function Get-ParseErrorCount {
   param([string]$Text)
   return @([regex]::Matches($Text, '\(ParseError\)')).Count
+}
+
+# THE KIND of a notice: the construct its message names.
+#
+# ONE rule, here, and the gate FAILS on a message it cannot map. A new
+# construct form that the README's table could not name has to be loud: a
+# breakdown that quietly dropped it would leave the published table short a
+# row without saying so.
+function Get-NoticeKind {
+  param([string]$Message)
+  $i = $Message.IndexOf(' is outside the analyzed subset')
+  if ($i -ge 0) { return $Message.Substring(0, $i) }
+  return $Message
 }
 
 function Get-Summary {
@@ -239,25 +295,44 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # Nothing noticed, because nothing re-measured them -- a published number that
 # is not re-measured is a number that is wrong, and it is wrong silently.
 #
-#   $PARSERR_TOTAL   the rendered `ParseError` lines over the seven pinned
-#                    corpora AND this repository's own source, with the
-#                    per-file printing cap lifted. Without the cap lifted this
-#                    number is a property of the CAP and not of the corpus.
+#   $NOTICE_TOTAL    the notices over the seven pinned corpora AND this
+#                    repository's own source, with the per-file printing cap
+#                    lifted. Without the cap lifted this number is a property
+#                    of the CAP and not of the corpus.
+#
+#                    IT WAS THE RENDERED `ParseError` LINES BEFORE 0506, and
+#                    it is the tree's NOTICE COUNT now, because 0506 stopped
+#                    rendering every notice: a notice is printed one per line
+#                    only when it can hide a finding, and the rest are counted
+#                    by shape. The number the README publishes did not move --
+#                    the number of notices is the same -- but the MEASUREMENT
+#                    that produces it did, and a measurement that reads a
+#                    rendering the tool no longer produces measures nothing.
 #   $SELF_NOTICES    the own-source notices by kind, the same cap-lifted
 #                    measurement. The README's table IS this string, and the
 #                    order is the order the README prints.
-#   $SELF_EXPR       the expression-level notices -- the ones that can switch a
-#   $SELF_DECL       frame audit off -- and the declaration-level ones, which
-#                    cannot. A kind whose name ends in " declaration" is
-#                    declaration-level; every other kind is expression-level.
+#   $SELF_PRINTED    the own-source notices that lie INSIDE some function's
+#   $SELF_AGGREGATED extent -- the ones that can hide a finding, and are
+#                    printed one per line -- and the ones that lie outside
+#                    every function's extent, which hide nothing and are
+#                    counted by shape.
+#
+#                    THE SPLIT IS THE ANALYZER'S OWN GEOMETRY, and it is not
+#                    the shape-of-the-message proxy that used to stand in for
+#                    it. The proxy put 1,023 of the core corpus's notices in
+#                    the expression-level class and 9,073 in the other; the
+#                    geometry puts 1,144 and 8,952. The geometry is right in
+#                    BOTH directions: it counts 132 expression notices the
+#                    proxy's list did not name, and it excludes 11 top-level
+#                    expressions the proxy called expression-level.
+$NOTICE_TOTAL = '19569'
+$SELF_FILES = '183'
+$SELF_NOTICES = 'test declaration=1383|if expression=103|struct declaration=60|derive declaration=53|enum declaration=24|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
+$SELF_PRINTED = '124'
+$SELF_AGGREGATED = '1526'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
-$PARSERR_TOTAL = '19544'
-$SELF_FILES = '181'
-$SELF_NOTICES = 'test declaration=1359|if expression=103|struct declaration=60|derive declaration=53|enum declaration=24|anonymous function literal=17|const declaration=6|short lambda=2|try expression=1'
-$SELF_EXPR = '123'
-$SELF_DECL = '1502'
 $SUPPOFF_LOCAL = '597'
 $SUPPOFF_PARAM = '1137'
 
@@ -278,11 +353,11 @@ $RAISEQ_OTHERS = '0'
 # the bug was one reading away from being "the measurement drifted". A stage
 # that had compared silently would have passed.
 $emptyPins = @()
-if ([string]::IsNullOrWhiteSpace($PARSERR_TOTAL)) { $emptyPins += 'PARSERR_TOTAL' }
+if ([string]::IsNullOrWhiteSpace($NOTICE_TOTAL)) { $emptyPins += 'NOTICE_TOTAL' }
 if ([string]::IsNullOrWhiteSpace($SELF_FILES))    { $emptyPins += 'SELF_FILES' }
 if ([string]::IsNullOrWhiteSpace($SELF_NOTICES))  { $emptyPins += 'SELF_NOTICES' }
-if ([string]::IsNullOrWhiteSpace($SELF_EXPR))     { $emptyPins += 'SELF_EXPR' }
-if ([string]::IsNullOrWhiteSpace($SELF_DECL))     { $emptyPins += 'SELF_DECL' }
+if ([string]::IsNullOrWhiteSpace($SELF_PRINTED))  { $emptyPins += 'SELF_PRINTED' }
+if ([string]::IsNullOrWhiteSpace($SELF_AGGREGATED)) { $emptyPins += 'SELF_AGGREGATED' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_LOCAL)) { $emptyPins += 'SUPPOFF_LOCAL' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_PARAM)) { $emptyPins += 'SUPPOFF_PARAM' }
 if ($emptyPins.Count -gt 0) {
@@ -411,15 +486,62 @@ if ($failed.Count -eq 0) {
       Write-Output ('  the own-source file count matches the pin (' + $files + ')')
     }
 
+    # THE OWN-SOURCE NOTICES. 0506 changed what a scan RENDERS: a notice is
+    # printed one per line only when it can HIDE a finding -- when its region
+    # lies inside some function's extent -- and every other notice is counted
+    # by shape in one `NOTICES` table. So the gate reads the analyzer's OWN
+    # numbers -- the table's TOTAL line -- instead of counting rendered lines,
+    # and it checks that the halves reconcile against the SUMMARY.
+    $tab = Get-NoticeTable $text
+    $sumNotices = [int]([regex]::Match($sum, 'notices=(\d+)').Groups[1].Value)
+    $rendered = Get-ParseErrorCount $text
+    $rowSum = 0
+    foreach ($r in $tab.Rows) { $rowSum += $r.N }
+    if ($sumNotices -ne 0 -and -not $tab.Present) {
+      Write-Output ('  FAIL: the scan has ' + $sumNotices + ' notices but printed no NOTICES table.')
+      $script:stageOk = $false
+    } elseif ($tab.Notices -ne $sumNotices) {
+      Write-Output ('  FAIL: the NOTICES table says ' + $tab.Notices + ' notices, the SUMMARY says ' + $sumNotices + '.')
+      $script:stageOk = $false
+    } elseif (($tab.Printed + $tab.Aggregated) -ne $sumNotices) {
+      Write-Output ('  FAIL: printed ' + $tab.Printed + ' + aggregated ' + $tab.Aggregated + ' is not the ' + $sumNotices + ' notices.')
+      $script:stageOk = $false
+    } elseif ($rowSum -ne $tab.Aggregated) {
+      Write-Output ('  FAIL: the table''s rows add up to ' + $rowSum + ', its TOTAL line says ' + $tab.Aggregated + '.')
+      $script:stageOk = $false
+    } elseif ($rendered -ne $tab.Printed) {
+      Write-Output ('  FAIL: ' + $rendered + ' rendered ParseError lines, the table says ' + $tab.Printed + ' were printed.')
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  the notices reconcile: ' + $sumNotices + ' = ' + $tab.Printed + ' printed + ' + $tab.Aggregated + ' aggregated; ' + $rendered + ' rendered lines')
+    }
+    $script:selfNotices = $sumNotices
+    $script:selfPrinted = $tab.Printed
+    $script:selfAggregated = $tab.Aggregated
+
     # THE OWN-SOURCE NOTICES BY KIND. The README publishes this table, so the
-    # table is measured here and PINNED -- and the count of rendered
-    # `ParseError` lines is kept for the corpus stage, which sums the eight
-    # trees into the number the README publishes.
-    $script:selfParseErr = Get-ParseErrorCount $text
+    # table is measured here and PINNED.
+    #
+    # 0506: THE TABLE IS BUILT FROM BOTH HALVES -- the `NOTICES` table's rows
+    # carry the notices that hide nothing, and the rendered notice lines carry
+    # the ones that are printed -- so the breakdown is COMPLETE. Before 0506 it
+    # was built from the rendered lines alone, and after 0506 the rendered
+    # lines alone are only half of the notices: a table built from them would
+    # have lost every `test` declaration without saying so.
     $byKind = @{}
-    foreach ($m in [regex]::Matches($text, '(?m)^\d+:\d+ - notice: (.+?) is outside the analyzed subset')) {
-      $k = $m.Groups[1].Value
+    foreach ($r in $tab.Rows) {
+      $k = Get-NoticeKind $r.Message
+      if ($byKind.ContainsKey($k)) { $byKind[$k] = $byKind[$k] + $r.N } else { $byKind[$k] = $r.N }
+    }
+    foreach ($m in [regex]::Matches($text, '(?m)^\d+:\d+ - notice: (.+?) \(ParseError\) \[')) {
+      $k = Get-NoticeKind $m.Groups[1].Value
       if ($byKind.ContainsKey($k)) { $byKind[$k] = $byKind[$k] + 1 } else { $byKind[$k] = 1 }
+    }
+    $kindSum = 0
+    foreach ($k in $byKind.Keys) { $kindSum += $byKind[$k] }
+    if ($kindSum -ne $sumNotices) {
+      Write-Output ('  FAIL: the kinds add up to ' + $kindSum + ', the notices are ' + $sumNotices + '.')
+      $script:stageOk = $false
     }
     $order = @($SELF_NOTICES -split '\|' | ForEach-Object { ($_ -split '=')[0] })
     $got = (($order | ForEach-Object { $_ + '=' + [int]$byKind[$_] }) -join '|')
@@ -439,20 +561,16 @@ if ($failed.Count -eq 0) {
       Write-Output ('  FAIL: notice kinds that the pin does not name: ' + ($extra -join ', '))
       $script:stageOk = $false
     }
-    # THE EXPRESSION-LEVEL / DECLARATION-LEVEL SPLIT. A kind whose name ends in
-    # " declaration" is declaration-level -- it sits outside every function
-    # extent and cannot switch a frame audit off. Every other kind is
-    # expression-level.
-    $expr = 0; $decl = 0
-    foreach ($k in $byKind.Keys) {
-      if ($k.EndsWith(' declaration')) { $decl += $byKind[$k] } else { $expr += $byKind[$k] }
-    }
-    if ("$expr" -ne $SELF_EXPR -or "$decl" -ne $SELF_DECL) {
-      Write-Output ('  FAIL: expression-level ' + $expr + ' / declaration-level ' + $decl +
-                    ', pinned ' + $SELF_EXPR + ' / ' + $SELF_DECL + '.')
+    # THE SPLIT, and it is the analyzer's OWN geometry rather than a
+    # shape-of-the-message proxy: the notices that lie inside some function's
+    # extent are printed one per line, and the ones that lie outside every
+    # function's extent hide nothing and are counted by shape.
+    if ("$($script:selfPrinted)" -ne $SELF_PRINTED -or "$($script:selfAggregated)" -ne $SELF_AGGREGATED) {
+      Write-Output ('  FAIL: printed ' + $script:selfPrinted + ' / aggregated ' + $script:selfAggregated +
+                    ', pinned ' + $SELF_PRINTED + ' / ' + $SELF_AGGREGATED + '.')
       $script:stageOk = $false
     } else {
-      Write-Output ('  expression-level ' + $expr + ', declaration-level ' + $decl)
+      Write-Output ('  printed ' + $script:selfPrinted + ', aggregated ' + $script:selfAggregated)
     }
   }
   if (-not $script:lastOk) { $failed += 'self-scan' }
@@ -529,6 +647,47 @@ if ($failed.Count -eq 0) {
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'gate-roster' }
+  }
+
+  # --- 4c  the shared harness's own self-test ----------------------------------
+  #
+  # 0506. The harness has a FOURTH verdict now -- INCONCLUSIVE, for a run that
+  # produced no summary AND no compiler diagnostic -- and a verdict path that
+  # has never been shown to go red is a comment. This stage proves it goes red:
+  # it takes a COPY of `_verify` in TEMP, breaks the copy's summary-line regex
+  # for the MUTATION runs, and requires the copy's one-mutation gate to come out
+  # INCONCLUSIVE, to FAIL, and to exit non-zero.
+  #
+  # It is here, BEFORE the mutation gates, for the same reason the notice-labels
+  # stage is: it mutates a source file (in a copy of the tree, and restores it
+  # byte-identically), and a mutation gate that had mutated a source file would
+  # be read as part of it.
+  if ($failed.Count -eq 0) {
+    $HS = Join-Path $root '_verify\mutate_lib_selftest.ps1'
+    if (-not (Test-Path -LiteralPath $HS)) {
+      Write-Output ''
+      Write-Output 'MISSING: _verify\mutate_lib_selftest.ps1'
+      $failed += 'harness-selftest'
+    } else {
+      Stage 'the shared harness: the INCONCLUSIVE verdict, shown to go red' {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $HS 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = $prev
+        foreach ($ln in ($o -split "`r?`n")) {
+          if ($ln -match '(SELFTEST OK|FAIL|INCONCLUSIVE|NO RUN|RETRY)') { Write-Output ('  ' + $ln.Trim()) }
+        }
+        if ($code -ne 0) { $script:stageOk = $false }
+      }
+      if (-not $script:lastOk) { $failed += 'harness-selftest' }
+      $stageName = 'the shared harness: the INCONCLUSIVE verdict, shown to go red'
+      $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+      if ($seen -ne 1) {
+        Write-Output ''
+        Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+        $failed += 'harness-selftest'
+      }
+    }
   }
 }
 
@@ -718,7 +877,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1416,23 +1575,45 @@ $TARGETS = [ordered]@{
 if ($failed.Count -eq 0) {
   Stage 'corpus SUMMARY vs pinned baseline' {
     $drift = 0
-    $parseErr = $script:selfParseErr
+    $parseErr = $script:selfNotices
     foreach ($k in $TARGETS.Keys) {
       $p = Join-Path $repos $TARGETS[$k]
       if (-not (Test-Path $p)) { Write-Output ("  [ABSENT] {0,-16}" -f $k); $drift++; continue }
       $text = Scan-Tree $wasm $p
       $sum = Get-Summary $text
-      # THE RENDERED `ParseError` LINES, counted from the scan's own output and
-      # cross-checked against the SUMMARY's `notices` -- two numbers that must
-      # agree, because every notice is a scope limit and a scope limit is
-      # rendered as a `ParseError`.
-      $pe = Get-ParseErrorCount $text
+      # THE ANALYZER'S OWN NOTICE NUMBERS, and the reconciliation.
+      #
+      # 0506: the rendered `ParseError` lines are no longer the notice count
+      # -- they are the notices that can hide a finding, and the rest are
+      # counted by shape in the `NOTICES` table. So the gate reads the table's
+      # TOTAL line, and it checks three things:
+      #
+      #     the table's notices == the SUMMARY's notices
+      #     printed + aggregated == notices
+      #     the rendered `ParseError` lines == printed
+      #
+      # The last one is the proof that no ParseError-family DEFECT exists in
+      # the corpus: such a defect would render `error:` and be counted here
+      # too.
+      $tab = Get-NoticeTable $text
       $nt = [int]([regex]::Match($sum, 'notices=(\d+)').Groups[1].Value)
-      if ($pe -ne $nt) {
-        Write-Output ("  [DRIFT ] {0,-16} rendered {1} ParseError lines, the SUMMARY says {2}" -f $k, $pe, $nt)
+      $pe = Get-ParseErrorCount $text
+      $rowSum = 0
+      foreach ($r in $tab.Rows) { $rowSum += $r.N }
+      if ($tab.Notices -ne $nt) {
+        Write-Output ("  [DRIFT ] {0,-16} the NOTICES table says {1}, the SUMMARY says {2}" -f $k, $tab.Notices, $nt)
+        $drift++
+      } elseif (($tab.Printed + $tab.Aggregated) -ne $nt) {
+        Write-Output ("  [DRIFT ] {0,-16} printed {1} + aggregated {2} is not the {3} notices" -f $k, $tab.Printed, $tab.Aggregated, $nt)
+        $drift++
+      } elseif ($rowSum -ne $tab.Aggregated) {
+        Write-Output ("  [DRIFT ] {0,-16} the table's rows add up to {1}, the TOTAL line says {2}" -f $k, $rowSum, $tab.Aggregated)
+        $drift++
+      } elseif ($pe -ne $tab.Printed) {
+        Write-Output ("  [DRIFT ] {0,-16} rendered {1} ParseError lines, the table says {2} were printed" -f $k, $pe, $tab.Printed)
         $drift++
       }
-      $parseErr += $pe
+      $parseErr += $nt
       $want = $PINNED[$k]
       if ($sum -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $k, $sum) }
       else {
@@ -1446,11 +1627,11 @@ if ($failed.Count -eq 0) {
     # is the number the README publishes, and it is CHECKED here because a
     # number that is only written down cannot be wrong loudly -- it can only
     # be wrong quietly.
-    if ("$parseErr" -ne $PARSERR_TOTAL) {
-      Write-Output ('  [DRIFT ] the eight trees render ' + $parseErr + ' ParseError lines, pinned ' + $PARSERR_TOTAL + '.')
+    if ("$parseErr" -ne $NOTICE_TOTAL) {
+      Write-Output ('  [DRIFT ] the eight trees carry ' + $parseErr + ' notices, pinned ' + $NOTICE_TOTAL + '.')
       $drift++
     } else {
-      Write-Output ('  [MATCH ] the eight trees render ' + $parseErr + ' ParseError lines')
+      Write-Output ('  [MATCH ] the eight trees carry ' + $parseErr + ' notices')
     }
     if ($drift -eq 0) { return }
     if ($AllowCorpusDrift) { Write-Output '  (-AllowCorpusDrift: drift reported, not failed)'; return }
@@ -1668,6 +1849,49 @@ if (-not (Test-Path -LiteralPath $MSQ -PathType Leaf)) {
     Write-Output ''
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'finding-quality'
+  }
+}
+# --- the 0506 stage -------------------------------------------------------------
+# 0506 is the NOTICE FLOOD, and it changed the SHAPE of what a scan renders, so
+# the thing to pin is not a number but a RULE: a notice is printed one per line
+# only when it can hide a finding, and every other notice is counted by shape in
+# one table.
+#
+# The settle's row N3 is the sharp control for that rule -- the SAME "if
+# expression" message, printed inside a function and aggregated at module top
+# level -- and row N9 is the corpus measurement the README quotes. Both ship in
+# the narrative and in the README, and a published number that nothing checks can
+# go missing silently.
+#
+# The stage carries the same guard the 0505 stage carries, for the same reason:
+# the stage must APPEAR in the summary. "The gate passed" and "the gate ran what
+# it says it ran" are different claims, and only the second one is worth
+# anything.
+$MNF = Join-Path $root '_verify\settle_0506_notice_flood.ps1'
+if (-not (Test-Path -LiteralPath $MNF -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\settle_0506_notice_flood.ps1'
+  $failed += 'notice-flood'
+} else {
+  Stage 'the notice flood: which notices deserve a line, measured' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MNF 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(MISMATCH|MISSING|GATE OK|ABORT)' -or $ln -match '^\s+N\d+\s') {
+        Write-Output ('  ' + $ln.Trim())
+      }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'notice-flood' }
+  $stageName = 'the notice flood: which notices deserve a line, measured'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'notice-flood'
   }
 }
 # --- verdict -----------------------------------------------------------------

@@ -11,11 +11,15 @@ pub fn add_method_segments(@core.IfaceSymTab) -> Unit
 
 pub fn aggregate(Array[Verdict]) -> Summary
 
+pub fn count_by_shape(Array[@report.Report]) -> Array[(String, Int32)]
+
 pub let default_findings_shown_per_file : Int32
 
 pub fn dir_of(String) -> String
 
 pub fn is_coordinate(String) -> Bool
+
+pub fn is_hiding(@core.Span, Array[@core.Span]) -> Bool
 
 pub fn is_module_coord(String) -> Bool
 
@@ -25,21 +29,27 @@ pub fn method_segments(@core.IfaceSymTab) -> Array[String]
 
 pub fn moon_mod_version(String) -> String
 
+pub fn notice_lines(Int32, Int32, Array[@report.Report], Bool) -> Array[String]
+
 pub fn parse_moon_mod_imports(String) -> Array[String]
 
 pub fn parse_moon_version(String) -> String
+
+pub fn partition_findings(Array[@report.Report], Array[@core.Span], Bool) -> (Array[@report.Report], Array[@report.Report])
 
 pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
 
 pub fn show_plan(Int32, Int32) -> (Int32, Bool)
 
 pub fn split_coord(String) -> (String, String)
+
+pub fn split_findings(Array[@report.Report], Array[@core.Span]) -> (Array[@report.Report], Array[@report.Report])
 
 pub fn stamp_utc(Int64) -> String
 
@@ -78,6 +88,7 @@ pub(all) struct Verdict {
   notices : Int32
   region_line : Int32
   unreliable : Int32
+  hiding : Array[@core.Span]
 }
 
 // Type aliases

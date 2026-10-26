@@ -15,7 +15,7 @@
 #     mutate_0429.ps1  baseline=True  preflight=True  sha256=True
 #
 # THAT TABLE IS A MEASUREMENT OF THE DEFECT, NOT OF THE PRESENT, and it is worth saying
-# so, because it reads like a status report. MEASURED 2026-10-23: all 84 numbered gates
+# so, because it reads like a status report. MEASURED 2026-10-23: all 85 numbered gates
 # call `Invoke-MutationGate`, and it has NO pre-flight or SHA256 switch at all -- so every
 # one of them gets the baseline, the pre-flight and the SHA256 restore check, and ZERO
 # gates carry their own copy of the runner. `mutate_0412.ps1` and `mutate_0413.ps1`, the
@@ -470,6 +470,8 @@ function Invoke-MutationGate {
 
     $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
 
+    # A COMPILER DIAGNOSTIC IS WHAT MAKES A MISSING SUMMARY LINE THE MUTANT'S FAULT.
+    #
     # AN EMPTY RUN IS THE HARNESS'S FAULT, NOT THE MUTANT'S.
     #
     # Rule 2 says COMPILE-ERR is not a kill, and that is right: a mutant that does not
@@ -489,19 +491,56 @@ function Invoke-MutationGate {
     # no run, the verdict still fails; and a non-empty COMPILE-ERR -- an actual
     # compiler rejection -- is never retried, so declared non-buildable mutants keep
     # the verdict they declare.
+    #
+    # 0506: AND "NOTHING AT ALL" WAS TOO NARROW A TEST. MEASURED on gate 0466's M6
+    # during the 0506 release gate: `moon test` printed the COMPILER'S OWN WARNING --
+    #
+    #     Warning (unused_value): Unused variable 'n'
+    #
+    # -- and exited 1 WITHOUT a test summary. That is not an empty output, so the
+    # retry above did not fire, and the harness recorded COMPILE-ERR and blamed the
+    # mutation for a run that never happened. The same mutation on the same tree,
+    # run standalone, is SURVIVED with 1184/1184 green; and `moon test` on the
+    # mutated tree, with the package REBUILT, exits 0 and DOES print the summary
+    # (the warning goes to stderr, the summary to stdout). The machine was busy at
+    # the time -- another session's test binary was running -- and a starved build
+    # wears the same shape as a rejected one.
+    #
+    # THE THREE-WAY RULE, and the retry is the fourth case:
+    #
+    #     a summary line + a non-zero exit          -> KILLED
+    #     a summary line + a zero exit              -> SURVIVED
+    #     a COMPILER DIAGNOSTIC (`Error: [NNNN]`)   -> COMPILE-ERR
+    #     NONE OF THE ABOVE                          -> INCONCLUSIVE
+    #
+    # INCONCLUSIVE IS NOT A VERDICT. It is a failed measurement, and it FAILS the
+    # gate -- but it is retried once first, because the failure mode is fast (a
+    # starved binary answers in seconds) and a retry costs almost nothing. It can
+    # never manufacture a pass: if the retry also yields no summary, the mutation
+    # is reported INCONCLUSIVE and the gate fails.
+    $hasCompilerError = [regex]::IsMatch($out, 'Error:\s*\[\d+\]')
     $retried = $false
-    if ($ran.Count -eq 0 -and [string]::IsNullOrWhiteSpace($out)) {
-      Write-Output ('      EMPTY RUN: moon exited ' + $code + ' and printed nothing at all.')
-      Write-Output '      No summary line and no output is not a mutant that failed to build;'
-      Write-Output '      it is a run that never happened. Retrying once.'
+    if ($ran.Count -eq 0 -and -not $hasCompilerError) {
+      if ([string]::IsNullOrWhiteSpace($out)) {
+        Write-Output ('      EMPTY RUN: moon exited ' + $code + ' and printed nothing at all.')
+        Write-Output '      No summary line and no output is not a mutant that failed to build;'
+        Write-Output '      it is a run that never happened. Retrying once.'
+      } else {
+        Write-Output ('      NO RUN: moon exited ' + $code + ' and printed no test summary,')
+        Write-Output ('      and nothing in its ' + $out.Length + ' characters is a compiler diagnostic.')
+        Write-Output '      A compiler that rejects a mutant ALWAYS says why (`Error: [NNNN]`), so'
+        Write-Output '      this is not the mutant failing to build -- it is a run that never happened.'
+        Write-Output '      Retrying once.'
+      }
       $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       $out = & $MoonExe test --target $Target 2>&1 | Out-String
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
+      $hasCompilerError = [regex]::IsMatch($out, 'Error:\s*\[\d+\]')
       $retried = $true
       if ($ran.Count -ge 1) {
-        Write-Output '      RETRY GOT A REAL RUN -- the empty run was transient, not a verdict.'
+        Write-Output '      RETRY GOT A REAL RUN -- the first run was transient, not a verdict.'
       } else {
         Write-Output ('      RETRY ALSO GOT NO RUN (moon exited ' + $code +
                       ', ' + $out.Length + ' chars). Still a failure, reported as such below.')
@@ -524,7 +563,7 @@ function Invoke-MutationGate {
       # measurement, but it is also the only evidence that the machine misbehaved.
       # Say so on the line rather than letting the retry pass for a clean kill.
       if ($retried) { $detail += ' [after an empty first run]' }
-    } else {
+    } elseif ($hasCompilerError) {
       $outcome = 'COMPILE-ERR'
       $detail = 'no Total tests line; moon exited ' + $code + ' after printing ' + $out.Length + ' chars'
       # Rule 2's verdict is right and must not be softened -- a mutant that does not
@@ -536,6 +575,18 @@ function Invoke-MutationGate {
       # contended _build, a killed compiler, a full disk all look like this -- so the
       # transcript is the difference between a flake and a cause.
       Write-Output '      the suite did not run. What moon test printed:'
+      foreach ($t in ($out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 20)) {
+        Write-Output ('        | ' + $t.TrimEnd())
+      }
+    } else {
+      # INCONCLUSIVE. No summary line, and nothing that says WHY -- so this is not a
+      # mutant that failed to build, and it is not a mutant that was caught. It is a
+      # measurement that did not happen, and it is reported as one: the gate FAILS,
+      # because a number nobody observed is not a number a document may quote.
+      $outcome = 'INCONCLUSIVE'
+      $detail = 'no test summary and no compiler diagnostic; moon exited ' + $code +
+        ' after printing ' + $out.Length + ' chars'
+      Write-Output '      the run did not happen and nothing said why. Not a verdict:'
       foreach ($t in ($out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 20)) {
         Write-Output ('        | ' + $t.TrimEnd())
       }
@@ -594,10 +645,19 @@ function Invoke-MutationGate {
       }
     }
 
-    if ($outcome -ne $want) { $script:MutationGateFailures += ($m.Name + ' (wanted ' + $want + ')') }
+    if ($outcome -eq 'INCONCLUSIVE') {
+      # A FAILED MEASUREMENT IS NOT A VERDICT, and it is not the mutant's fault
+      # either -- so it does not say "wanted SURVIVED", it says what happened.
+      $script:MutationGateFailures += ($m.Name + ' (INCONCLUSIVE: the run did not happen -- a failed measurement, not a verdict)')
+    } elseif ($outcome -ne $want) {
+      $script:MutationGateFailures += ($m.Name + ' (wanted ' + $want + ')')
+    }
     $results += [pscustomobject]@{ Mutation = $m.Name; Outcome = $outcome; Killed = $killed; Want = $want; Detail = $detail }
 
-    $tag = if ($want -eq 'SURVIVED') { '   [expected survivor]' } else { '' }
+    # The tag marks a row that MATCHED its declaration. A row that came out
+    # INCONCLUSIVE carries "[expected survivor]" next to a verdict it never got,
+    # which reads like a pass.
+    $tag = if ($want -eq 'SURVIVED' -and $outcome -eq 'SURVIVED') { '   [expected survivor]' } else { '' }
     Write-Output ('  ' + $outcome.PadRight(11) + ' ' + $m.Name + '  -- ' + $detail + $tag)
 
     # Rule 5. A declared non-KILLED outcome has to carry its argument -- and that

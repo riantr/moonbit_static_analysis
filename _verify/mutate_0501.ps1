@@ -110,11 +110,21 @@ fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {
   # function silences a binding in the FIRST -- which it cannot have read. This
   # is the blanket again, reached by a different road: the regions are no
   # longer sorted into the function they belong to.
+  #
+  # 0506 MOVED THE ANCHOR, AND THE MOVE IS THE POINT. The rule itself was the
+  # comparison, inline here; 0506 lifted it into `span_in_extent` so that the
+  # notice classification could ask the SAME question of all the functions at
+  # once. This row still mutates the CALL, in `holes_in`, because that is where
+  # the mutation's meaning lives: the regions are no longer sorted into the
+  # function they belong to. Mutating the shared rule instead would also have
+  # switched off the 0506 classification, so the row would have been testing
+  # two mechanisms at once -- and `mutate_0506`'s M1 and M2 already mutate that
+  # rule, from the rule's own side.
   @{
     Name = 'M4 the function''s extent is not checked'
     File = $WALK
     Find = @'
-    if t.start.line >= sp.start.line && t.start.line <= sp.end.line {
+    if span_in_extent(t, sp) {
       out.push(t)
     }
 '@.Replace("`r`n", "`n")

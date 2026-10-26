@@ -94,6 +94,7 @@ $gateCount = @(Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'm
 $evidence = @(
   @{ N = 'numbered mutation gates';      Want = $gateCount;        R = '^_verify\\mutate_0\d\d\d\.ps1$' }
   @{ N = 'the shared harness';           Want = 1;                R = '^_verify\\mutate_lib\.ps1$' }
+  @{ N = 'the harness self-test';        Want = 1;                R = '^_verify\\mutate_lib_selftest\.ps1$' }
   @{ N = 'the settle scripts';           Want = -1;               R = '^_verify\\settle_.*\.ps1$' }
   @{ N = 'the narrative';                Want = 1;                R = '^_verify\\NARRATIVE\.md$' }
   @{ N = 'the roster gate';              Want = 1;                R = '^_verify\\check_gate_roster\.ps1$' }
@@ -104,6 +105,7 @@ $evidence = @(
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }
+    @{ N = 'the notice-flood stage';      Want = 1;                R = '^_verify\\settle_0506_notice_flood\.ps1$' }
   @{ N = 'the README';                   Want = 1;                R = '^README\.md$' }
   @{ N = 'the Chinese README';           Want = 1;                R = '^README\.zh\.md$' }
   @{ N = 'the skill file';               Want = 1;                R = '^SKILL\.md$' }

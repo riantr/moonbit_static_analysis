@@ -10,6 +10,10 @@ import {
 // Values
 pub fn const_eval(@ast.Expr) -> Const?
 
+pub fn hiding_spans(Array[FnInfo], Array[@core.Span]) -> Array[@core.Span]
+
+pub fn span_in_extent(@core.Span, @core.Span) -> Bool
+
 pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int32, Array[String], Array[String], Array[@core.Span]) -> WalkResult
 
 // Errors
@@ -41,6 +45,7 @@ pub(all) struct WalkResult {
   fn_bindings : Array[Array[Binding]]
   findings : Array[@report.Report]
   partial : Bool
+  hiding : Array[@core.Span]
 }
 
 // Type aliases

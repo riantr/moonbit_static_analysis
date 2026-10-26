@@ -66,6 +66,176 @@ pub fn show_plan(n : Int32, cap : Int32) -> (Int32, Bool) {
 }
 
 ///|
+/// Is this region one of the ones that can hide a finding?
+///
+/// 0506. The membership test is EXACT -- the span is compared, not a line
+/// number and not a message. A region's identity is where it is, and two
+/// exclusions on the same line are two different regions.
+///
+/// It is `pub` so that this rule is pinned by this package's own tests: it is
+/// the one place where a region is decided to be a hiding region, and a rule
+/// that quietly loosened would put a notice in the wrong set without changing
+/// any count.
+pub fn is_hiding(sp : @core.Span, hiding : Array[@core.Span]) -> Bool {
+  for h in hiding {
+    if h == sp {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// Split a file's findings into the ones that deserve a line of the reader's
+/// screen and the ones that do not.
+///
+/// 0506. A notice is worth a line only when it can HIDE a finding -- that is,
+/// only when its region lies inside some function's extent, which is the
+/// geometry `@walk.hiding_spans` computes and `Verdict::hiding` carries. A
+/// notice outside every function's extent hides nothing: it is the analyzer
+/// saying "I did not read this declaration", and there is nothing the reader
+/// can do about it beyond knowing the count.
+///
+/// MEASURED on the pinned core corpus: 10,096 notices, of which 8,952 hide
+/// nothing and 1,144 can hide something. The OLD rendering -- the per-file cap
+/// as it ships -- was 9,128 lines of output to say 28 things, and with the cap
+/// lifted, so that every one of the 10,096 notices is on a line of its own, it
+/// is 11,223. (The renderer puts a blank line after each finding, so `wc -l`
+/// counts the same two outputs as 17,128 and 21,348.)
+///
+/// The rule is a POSITION and not a wording, and that is not a preference: the
+/// same "if expression is outside the analyzed subset" notice is printed when
+/// it sits inside a function and aggregated when it sits at module top level,
+/// because only the first is in a function's hole list.
+///
+/// It is `pub` so that the split is pinned by this package's own tests, and
+/// so that a reader of the output can ask the same question the renderer
+/// asked.
+pub fn split_findings(
+  findings : Array[@report.Report],
+  hiding : Array[@core.Span],
+) -> (Array[@report.Report], Array[@report.Report]) {
+  let printed : Array[@report.Report] = []
+  let aggregated : Array[@report.Report] = []
+  for r in findings {
+    if !r.is_notice() {
+      printed.push(r)
+    } else if is_hiding(r.span, hiding) {
+      printed.push(r)
+    } else {
+      aggregated.push(r)
+    }
+  }
+  (printed, aggregated)
+}
+
+///|
+/// The findings to PRINT for one file, and the notices to COUNT for it.
+///
+/// 0506. `--show-notices` is the WHOLE per-line list, which is the default's
+/// opposite: the default prints a notice only when it can hide a finding, and
+/// the flag prints every notice. The flag exists so that the complete list
+/// stays reachable -- every measurement that reads it needs it, and a reader
+/// looking for a specific construct wants it -- and so that a tool that
+/// printed 19,551 notice lines has a way to print them.
+///
+/// The flag changes no count: the SUMMARY's numbers are the same either way,
+/// and the aggregate table is not printed at all in this mode, because every
+/// notice is already on a line of its own and the table would be a second
+/// count of the same facts.
+///
+/// It is `pub` so that the rule is pinned: a flag that quietly started
+/// aggregating anyway would take the complete list away from every
+/// measurement that reads it.
+pub fn partition_findings(
+  findings : Array[@report.Report],
+  hiding : Array[@core.Span],
+  show_notices : Bool,
+) -> (Array[@report.Report], Array[@report.Report]) {
+  if show_notices {
+    (findings, [])
+  } else {
+    split_findings(findings, hiding)
+  }
+}
+
+///|
+/// The `NOTICES` table: the TOTAL line and one row per shape -- or NOTHING,
+/// when there is nothing to say.
+///
+/// 0506. The TOTAL line reconciles the two halves -- the notices printed per
+/// line and the notices aggregated -- against the tree's notice count, so a
+/// reader (and a gate) can check that nothing was dropped on the way: the
+/// rows plus the printed notices are the SUMMARY's `notices`.
+///
+/// The rows are `key=value` so that a gate can parse them without knowing
+/// the shape names, and the TOTAL line carries `notices=`, `printed=` and
+/// `aggregated=` for the same reason.
+///
+/// THE TABLE IS NOT SHOWN TWICE. With `--show-notices` every notice is
+/// already on a line of its own, and the table would be a second count of
+/// the same facts. And a tree with no notices has nothing to say about
+/// notices.
+///
+/// It is `pub` so that the table is pinned by this package's own tests: a
+/// table that stopped reconciling would still print, and the reader would
+/// have no way to tell.
+pub fn notice_lines(
+  total : Int32,
+  printed : Int32,
+  aggregated : Array[@report.Report],
+  show_notices : Bool,
+) -> Array[String] {
+  let out : Array[String] = []
+  if show_notices || total <= 0 {
+    return out
+  }
+  out.push(
+    "NOTICES\tTOTAL\tnotices=\{total}\tprinted=\{printed}\taggregated=\{aggregated.length()}\t\{printed} of them can hide a finding; the other \{aggregated.length()} cannot, and are counted by shape below",
+  )
+  for pair in count_by_shape(aggregated) {
+    let (msg, c) = pair
+    out.push("NOTICES\tcount=\{c}\t\{msg}")
+  }
+  out
+}
+
+///|
+/// The aggregated notices, counted BY SHAPE, and the number of them.
+///
+/// The shape is the whole message, because the message is what says which
+/// construct was not read -- "test declaration", "if expression" -- and a
+/// breakdown that lost that would not tell the reader what the analyzer
+/// skipped.
+///
+/// It is `pub` so that the shape is pinned: a breakdown that silently started
+/// counting something else would still add up to the right total.
+pub fn count_by_shape(
+  notices : Array[@report.Report],
+) -> Array[(String, Int32)] {
+  let counts : Map[String, Int32] = Map([])
+  for r in notices {
+    let c = match counts.get(r.message) {
+      Some(n) => n + 1
+      None => 1
+    }
+    counts.set(r.message, c)
+  }
+  let out : Array[(String, Int32)] = []
+  for k, c in counts {
+    out.push((k, c))
+  }
+  out.sort_by(fn(a : (String, Int32), b : (String, Int32)) {
+    if a.1 != b.1 {
+      b.1 - a.1
+    } else {
+      0
+    }
+  })
+  out
+}
+
+///|
 /// What the scan can honestly say about one file.
 ///
 /// `parsed` carries the whole weight. On a file the frontend did not understand,
@@ -102,6 +272,13 @@ pub(all) struct Verdict {
   /// Findings at or after `region_line` — derived from an already-wrong tree, so
   /// reported only as a count, never as results.
   unreliable : Int32
+  /// The subset-exclusion regions that lie inside some function's extent: the
+  /// notices that CAN hide a finding. See `@walk.hiding_spans`.
+  ///
+  /// 0506. Carried from the walk, because the walk owns the geometry: a
+  /// renderer that decided this on its own would be a second opinion about
+  /// which regions are in a function, and the two would drift.
+  hiding : Array[@core.Span]
 }
 
 ///|
@@ -241,6 +418,13 @@ pub fn tally_partial_reasons(
 /// every finding, so raising it reveals findings that were already counted
 /// and changes no number in the summary. The default is
 /// `default_findings_shown_per_file`.
+///
+/// 0506. `show_notices` is the WHOLE per-line list of notices, which is the
+/// default's opposite. By default a notice is printed only when it can hide a
+/// finding -- when its region lies inside some function's extent -- and the
+/// rest are counted by shape in the `NOTICES` table. `show_notices` prints
+/// every notice per line, which is what the tool did before 0506 and what
+/// every measurement that reads the rendered list needs.
 pub async fn scan(
   target : String,
   excludes : Array[String],
@@ -249,6 +433,7 @@ pub async fn scan(
   mmd_out : String,
   per_function : Bool,
   findings_shown_per_file : Int32,
+  show_notices : Bool,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -320,6 +505,13 @@ pub async fn scan(
   let kind_defects : Map[String, Int32] = Map([])
   let kind_notices : Map[String, Int32] = Map([])
   let kinds : Array[String] = [".mbt", ".mbti", ".mbtp", ".mbt.md", ".mbtx"]
+  // 0506. The notices that hide nothing, collected across the whole tree and
+  // printed ONCE, by shape, at the end. They are collected rather than counted
+  // here so the table can be a breakdown and not a second total: the per-file
+  // `notices=N` is already the file's count, and this is what the tree adds up
+  // to.
+  let aggregated_notices : Array[@report.Report] = []
+  let mut printed_notice_count = 0
   for f in files {
     // a directory with no `.mbt` of its own — a lone `.mbti`, a script — falls
     // back to the shared table, which is exactly what every file used before
@@ -347,12 +539,29 @@ pub async fn scan(
         println(
           "FOUND\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\t\{v.path}",
         )
-        let (shown, more) = show_plan(n, findings_shown_per_file)
+        // 0506. The printed set is the defects plus the notices that can HIDE
+        // something; the rest are counted. The per-file `notices=N` above is
+        // unchanged either way -- it is the file's notice count, and the count
+        // is not the problem, the VOLUME of lines about it was.
+        let (printed, aggregated) = partition_findings(
+          v.findings,
+          v.hiding,
+          show_notices,
+        )
+        for r in aggregated {
+          aggregated_notices.push(r)
+        }
+        for r in printed {
+          if r.is_notice() {
+            printed_notice_count += 1
+          }
+        }
+        let (shown, more) = show_plan(printed.length(), findings_shown_per_file)
         for i in 0..<shown {
-          println(v.findings[i].render())
+          println(printed[i].render())
         }
         if more {
-          println("...  \{n - shown} more in this file")
+          println("...  \{printed.length() - shown} more in this file")
         }
       }
     } else {
@@ -366,12 +575,27 @@ pub async fn scan(
         println(
           "PARTIAL\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tread up to line \{v.region_line}, \{v.unreliable} after it not shown\t\{v.path}",
         )
-        let (shown, more) = show_plan(n, findings_shown_per_file)
+        let (printed, aggregated) = partition_findings(
+          v.findings,
+          v.hiding,
+          show_notices,
+        )
+        for r in aggregated {
+          aggregated_notices.push(r)
+        }
+        for r in printed {
+          if r.is_notice() {
+            printed_notice_count += 1
+          }
+        }
+        let (shown, more) = show_plan(printed.length(), findings_shown_per_file)
         for i in 0..<shown {
-          println(v.findings[i].render())
+          println(printed[i].render())
         }
         if more {
-          println("...  \{n - shown} more before the boundary in this file")
+          println(
+            "...  \{printed.length() - shown} more before the boundary in this file",
+          )
         }
       }
     }
@@ -392,6 +616,47 @@ pub async fn scan(
   // is intentionally not part of the sum, and adding it on top of
   // `unreliable` would double-count. Asserted in the test `sa_test.mbt`.
   let s = aggregate(verdicts)
+  // 0506. The notices that hide nothing, printed ONCE for the whole tree, by
+  // shape. The TABLE is the aggregate's whole output: the count per shape is
+  // what a reader wants ("the analyzer did not read 6,148 test blocks"), and
+  // the per-line version of the same fact was 6,148 lines.
+  //
+  // Whether the table is shown at all, and what its TOTAL line says, are
+  // `notice_lines`' decisions -- they are pure, and they are pinned by this
+  // package's own tests. The TOTAL line reconciles the two halves -- the
+  // notices printed per line and the notices aggregated here -- against the
+  // SUMMARY's `notices`, so a reader (and a gate) can check that nothing was
+  // dropped on the way.
+  let total_notices = s.notices
+  // THE TABLE IS BOUND BEFORE THE LOOP, and that is not a style choice.
+  //
+  // `moon fmt` splits a long `for` header across lines -- `for` alone on one
+  // line, the iterator clause on the next -- and the frontend does not READ
+  // that shape: the parser bumps `for` and asks for the loop variable at once
+  // (`expect_name("loop variable")`), so the newline in between is the wrong
+  // token. MEASURED, with the toolchain as the oracle: `moon check` ACCEPTS
+  //
+  //     for
+  //       x in xs {
+  //
+  // and this analyzer reports the file PARTIAL with "expected loop variable".
+  // Writing that shape would have left the analyzer unable to read its own
+  // source, and the self-scan stage of the release gate would have failed on
+  // `files != parsed`. The bound variable keeps the header on one line.
+  //
+  // THIS IS NOT 0482's SETTLED REJECTION. 0482 settled the C-STYLE head on
+  // the line after the `for` -- `for` / `i = 0;` / ... -- and the toolchain
+  // REJECTS that shape, so the analyzer's rejection there is correct. The
+  // shape here is the MOONBIT-STYLE binder head, `for` / `x in xs {`, and
+  // the toolchain accepts it. The gap is real and it is NOT fixed here: it
+  // is a parser increment of its own, and it is written up in NARRATIVE.md
+  // with its measurement.
+  let table = notice_lines(
+    total_notices, printed_notice_count, aggregated_notices, show_notices,
+  )
+  for line in table {
+    println(line)
+  }
   let pct = if files.length() == 0 {
     0
   } else {
@@ -726,6 +991,7 @@ async fn analyze(
         notices: 0,
         region_line: 0,
         unreliable: 0,
+        hiding: [],
       }
     }
     ".mbtp" => {
@@ -740,6 +1006,7 @@ async fn analyze(
         notices: 0,
         region_line: 0,
         unreliable: 0,
+        hiding: [],
       }
     }
     ".mbt.md" => {
@@ -775,6 +1042,7 @@ async fn analyze(
         notices,
         region_line: cut,
         unreliable: total - reliable.length(),
+        hiding: r.hiding,
       }
     }
     _ => {
@@ -822,6 +1090,7 @@ async fn analyze(
         notices,
         region_line: cut,
         unreliable: total - reliable.length(),
+        hiding: r.hiding,
       }
     }
   }

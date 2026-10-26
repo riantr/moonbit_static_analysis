@@ -56,6 +56,7 @@ fn mm_verdict(
     notices,
     region_line,
     unreliable,
+    hiding: [],
   }
 }
 

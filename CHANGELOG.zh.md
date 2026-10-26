@@ -128,6 +128,82 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.36 — 一条 notice 只有在可能藏住一条发现时才值得占一行，而这是由它的**位置**决定的
+
+**这个抱怨是关于体积的，而它是对的。** 在固定的核心语料（`moonbitlang/core`
+0.1.20260920+7d59c7ec9，1029 个文件）上实测，只改这一件事，别的都不动，用默认的每文件
+打印上限：
+
+| | 输出行数 | 渲染出来的 notice | 发现 |
+|---|---:|---:|---:|
+| 之前 | 9128 | 7971 | 28 |
+| 之后 | 2279 | 1133 | 28 |
+
+这里的输出行数是**有内容**的行数。渲染器在每条发现后面会空一行，所以 `wc -l`
+数同一份输出会得到 17,128 和 3,441；而把每文件上限撤掉——10096 条 notice 每条
+各占一行——则是 11,223。
+
+那 28 条发现是**同样的** 28 条。洪水是为了说 28 件事而印了 7971 行；语料里的 10096 条 notice 中有
+66.5%——6148 条 `test declaration` 和 566 条 `block starts with 'test'`——说的是这个项目自己的
+测试套件。
+
+**NOTICE 的总数没有动。** SUMMARY 仍然写着 `notices=10096`；七个语料基线逐字节相同；
+`actionable=28` 不变。动的是有多少条 notice 值得占读者屏幕上一行。
+
+**哪一条 notice 值得占一行，由它的位置决定，而不是由它的措辞决定。** 只有当一条 notice
+所在的区域落在某个函数体的范围内——也就是它可能藏住一条发现——它才会被逐行打印；而这正是
+分析器本来就在用的几何：它靠这个判断哪些区域在某个函数的洞列表里。最锋利的对照是**同一条
+消息在两个位置**：
+
+```
+fn g() -> Int { let d = if true { 1 } else { 2 } d }   -- 在函数体内部
+let d = if true { 1 } else { 2 }                        -- 在模块顶层
+```
+
+两条渲染出来都是 "if expression is outside the analyzed subset"，而只有第一条能藏住发现。
+所以归类用的是**分析器自己的范围**，从 walk 一路带到渲染器；而区域的归属判定比较的是
+**整个 span**：同一行上的两处排除是两个不同的区域。
+
+**代替它的那两个代理在两个方向上都是错的。** 有两个脚本靠自己的一份消息形状清单来划分；
+在核心语料上它们把 1023 条 notice 划进表达式级、9073 条划进另一类，而几何给出的是
+1144 和 8952。几何多算了 132 条代理清单里根本没提的表达式级 notice（`loop expression`、
+`lexmatch expression`、``descending range direction`、`inclusive range end`），也少算了
+11 条代理叫作表达式级、几何叫作藏不住东西的顶层表达式。两个脚本现在都**读**分析器的划分，
+不再自己猜。
+
+**现在的输出长什么样。** 藏不住东西的 notice 按形状汇总，在整棵树的末尾只印一次：
+
+```
+NOTICES	TOTAL	notices=10096	printed=1144	aggregated=8952	1144 of them can hide a finding; the other 8952 cannot, and are counted by shape below
+NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
+```
+
+`--show-notices` 把完整的逐行列表恢复回来——和之前的渲染一模一样——而且它不改动任何计数。
+
+**三个数互相核对得上。** `notices` == `printed` + `aggregated` == SUMMARY 的 `notices`，
+每一行加起来等于 `aggregated`，而渲染出来的 `ParseError` 行数正好等于 `printed`——最后
+这一条就是「树里没有任何 `ParseError` 家族的真缺陷」的证明，因为那样的缺陷会渲染成
+`error:`，把这个等式打破。
+
+**`test` 块的排除还在。** 语料里 66.5% 的 notice 说的是测试代码，这一版**汇总**它们而不是
+逐条打印；它并不去分析它们。
+
+在 `moonbitlang/core` 上实测（1029 个文件，同一台机器）：
+
+| | files | parsed | actionable | notices |
+|---|---|---|---|---|
+| 0.4.35 | 1029 | 984 | 28 | 10096 |
+| 0.4.36 | 1029 | **984** | **28** | **10096** |
+
+语料上一个数字都没动，而这正是重点：这一版改的是工具**打印**什么，不是工具**找到**什么。
+
+自身源码自扫 183/183，actionable=0。测试 1184 js / 1286 wasm / 1184 wasm-gc。变异门现在
+是 85 个：480 个存活变异，440 个预期被杀，其中 363 个点名了必须变红的是哪个测试。
+
+这一版发现的一个解析器缺口已经量过，但**不在这一版里修**——`moon fmt` 会把过长的 `for`
+头拆成多行，而前端读不了那个形状，`moon check` 却接受它——写在 `_verify/NARRATIVE.md`
+的第 0506 节里。
+
 ## 0.4.35 — 返回标注可以写 `raise?`，而推导式的条件曾经被直接扔掉
 
 两个增量，第二个之所以存在，是因为第一个让更多代码变得可读。

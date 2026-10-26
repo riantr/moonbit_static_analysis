@@ -321,6 +321,15 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
   let mut n_parse = 0
   let mut n_subset = 0
   let mut first_error = 0
+  // 0506. The fences' hiding regions, merged. A fence is an independent
+  // snippet analysed on its own, so each one's geometry is its own -- and a
+  // literate document's fences carry REAL line numbers, so the merged spans
+  // stay distinct and the merge is a union rather than a re-derivation.
+  //
+  // The LITERATE frontend's OWN exclusion ("block starts with 'test'") is a
+  // top-level block, so it is in no function's extent and it is not hiding
+  // anything: it is not added here, and it is aggregated by the renderer.
+  let hiding : Array[@core.Span] = []
   let reasons : Map[String, Int32] = Map([])
   let mut reason = ""
   let mut reason_n = 0
@@ -358,6 +367,9 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // blocker across all of them.
     n_parse += r.n_parse
     n_subset += r.n_subset
+    for h in r.hiding {
+      hiding.push(h)
+    }
     if r.first_error_line > 0 &&
       (first_error == 0 || r.first_error_line < first_error) {
       first_error = r.first_error_line
@@ -385,6 +397,7 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     parse_reason: reason,
     n_subset,
     first_error_line: first_error,
+    hiding,
   }
 }
 

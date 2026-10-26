@@ -43,6 +43,13 @@ pub(all) struct PipelineResult {
   /// derived from a tree that is already wrong. Subset exclusions do NOT move
   /// this boundary — skipping a `test` block leaves the code after it intact.
   first_error_line : Int32
+  /// The subset-exclusion regions that lie inside some function's extent --
+  /// the notices that CAN hide a finding. See `@walk.hiding_spans`.
+  ///
+  /// 0506. Carried, not recomputed, because the geometry is the WALK's: it is
+  /// the walk that decides whether a region is in a function's hole list, and
+  /// a second opinion about that would be a second geometry.
+  hiding : Array[@core.Span]
 }
 
 ///|
@@ -248,6 +255,7 @@ fn run_core(
     parse_reason: reason,
     n_subset: parsed.skips.length(),
     first_error_line: parsed.first_error,
+    hiding: wr.hiding,
   }
 }
 

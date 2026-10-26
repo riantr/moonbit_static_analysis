@@ -375,11 +375,11 @@ foreach ($e in $expect) {
 # says". That is the question a gate can actually answer, and it is the
 # question that keeps a README from publishing a number nobody re-measured.
 $relTxt2 = [System.IO.File]::ReadAllText((Join-Path $root '_verify\release.ps1'), [System.Text.Encoding]::UTF8)
-$peM  = [regex]::Match($relTxt2, "\`$PARSERR_TOTAL\s*=\s*'(\d+)'")
+$peM  = [regex]::Match($relTxt2, "\`$NOTICE_TOTAL\s*=\s*'(\d+)'")
 $sfM  = [regex]::Match($relTxt2, "\`$SELF_FILES\s*=\s*'(\d+)'")
 $snM  = [regex]::Match($relTxt2, "\`$SELF_NOTICES\s*=\s*'([^']*)'")
-$sxM  = [regex]::Match($relTxt2, "\`$SELF_EXPR\s*=\s*'(\d+)'")
-$sdM  = [regex]::Match($relTxt2, "\`$SELF_DECL\s*=\s*'(\d+)'")
+$sxM  = [regex]::Match($relTxt2, "\`$SELF_PRINTED\s*=\s*'(\d+)'")
+$sdM  = [regex]::Match($relTxt2, "\`$SELF_AGGREGATED\s*=\s*'(\d+)'")
 $loM  = [regex]::Match($relTxt2, "\`$SUPPOFF_LOCAL\s*=\s*'(\d+)'")
 $paM  = [regex]::Match($relTxt2, "\`$SUPPOFF_PARAM\s*=\s*'(\d+)'")
 if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
@@ -395,8 +395,8 @@ if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -an
   $sd = $sdM.Groups[1].Value
   $lo = $loM.Groups[1].Value
   $pa = $paM.Groups[1].Value
-  Write-Output ('  (release.ps1 pins: ParseError ' + $peTotal + ', own-source files ' + $sf + ', notice table ' + (@($sn -split '\|').Count) +
-                ' kinds, expression-level ' + $sx + ', declaration-level ' + $sd +
+  Write-Output ('  (release.ps1 pins: notices ' + $peTotal + ', own-source files ' + $sf + ', notice table ' + (@($sn -split '\|').Count) +
+                ' kinds, printed ' + $sx + ', aggregated ' + $sd +
                 ', suppression off ' + $lo + ' / ' + $pa + ')')
 }
 
@@ -428,16 +428,23 @@ if ($sn -ne '') {
     $more.Add(@{ F = 'README.zh.md'; S = ($noticeLabel[$kind].zh + ' | ' + $kv[1]); N = ('notice table (zh): ' + $kind) })
   }
 }
-$more.Add(@{ F = 'README.md';    S = ('**' + $peTotal + '**'); N = 'the rendered ParseError count' })
-$more.Add(@{ F = 'README.zh.md'; S = ('**' + $peTotal + '**'); N = 'the rendered ParseError count (zh)' })
+$more.Add(@{ F = 'README.md';    S = ('**' + $peTotal + '**'); N = 'the notice count over the eight trees' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + $peTotal + '**'); N = 'the notice count over the eight trees (zh)' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count' })
 $more.Add(@{ F = 'README.zh.md'; S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count (zh)' })
 $more.Add(@{ F = 'README.zh.md'; S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count (zh)' })
-$more.Add(@{ F = 'README.md';    S = ('exclusion (' + $sx + ' of them)'); N = 'the expression-level exclusions' })
-$more.Add(@{ F = 'README.md';    S = ('exclusion (' + $sd + ')'); N = 'the declaration-level exclusions' })
-$more.Add(@{ F = 'README.zh.md'; S = ($LP + $sx + ' 条' + $RP); N = 'the expression-level exclusions (zh)' })
-$more.Add(@{ F = 'README.zh.md'; S = ($LP + $sd + ' 条' + $RP); N = 'the declaration-level exclusions (zh)' })
+# THE SPLIT. 0506 changed what the two numbers ARE: they used to be the
+# expression-level and declaration-level notices, worked out from the SHAPE of
+# each message, and they are now the notices the analyzer itself printed and
+# the ones it itself aggregated -- the split the analyzer's own geometry
+# makes. The old proxy called a top-level `short lambda` expression-level,
+# which it is not: it is outside every function's extent, and it hides
+# nothing.
+$more.Add(@{ F = 'README.md';    S = ('**' + $sx + '** of them sit inside'); N = 'the printed notices' })
+$more.Add(@{ F = 'README.md';    S = ('**' + $sd + '** sit outside'); N = 'the aggregated notices' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + $sx + '** 条落在某个函数体的范围内'); N = 'the printed notices (zh)' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + $sd + '** 条在所有函数体之外'); N = 'the aggregated notices (zh)' })
 # THE OWN-SOURCE FILE COUNT, DERIVED FROM THE PIN. It used to be the literal
 # `178` written into THIS gate, which is a number that can only ever agree with
 # itself -- the release gate measured the count and never compared it with

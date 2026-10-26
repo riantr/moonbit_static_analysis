@@ -71,8 +71,23 @@ function Scan-Tree {
   $dir = Join-Path $env:TEMP ('notice_' + [guid]::NewGuid().ToString('N').Substring(0,8))
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $out = Join-Path $dir 'o.txt'; $err = Join-Path $dir 'o.err'
+  # `--show-notices` IS PASSED HERE, and it is not optional.
+  #
+  # 0506 changed what a scan RENDERS: a notice is printed one per line only
+  # when it can HIDE a finding -- when its region lies inside some function's
+  # extent -- and every other notice is counted by shape in one `NOTICES`
+  # table. This check is about the LABEL CONTRACT ("a scope limit is rendered
+  # `notice:`, and `notice:` is used for nothing else"), and the contract
+  # applies to EVERY notice, not only to the ones that can hide a finding.
+  #
+  # So this scan asks for the WHOLE per-line list, which is what the flag is
+  # for. Without it the literate frontend's own exclusion -- a top-level block,
+  # and therefore outside every function's extent -- would be aggregated and
+  # never rendered, and this check's fixture (b) would report that a scope
+  # limit was not labelled `notice:` -- which is not what happened: it was
+  # counted, not mislabelled.
   Start-Process -FilePath $moonrun `
-    -ArgumentList @($wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps',
+    -ArgumentList @($wasm, $Path, '--show-notices', '--extern-iface-dir', $repos, '--no-auto-fetch-deps',
                     '--findings-shown-per-file', '1000000') `
     -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait | Out-Null
   $text = ''

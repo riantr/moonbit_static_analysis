@@ -33,6 +33,7 @@ async fn main {
   //   moonx riantr/moonbit_static_analysis@latest <target> [--exclude <dir>]...
   //                                          [--extern-iface-dir <dir>]...
   //                                          [--no-auto-fetch-deps]
+  //                                          [--show-notices]
   //                                          [--findings-shown-per-file N]
   //   <target>                registry coordinate (author/module[@version]) or a path
   //   --exclude               a directory name to skip, repeatable
@@ -65,6 +66,17 @@ async fn main {
   //                           flag analyzes every function as if it were the
   //                           program's entry point, with its parameters bound
   //                           to fresh abstract values of their declared types.
+  //   --show-notices          Print EVERY notice per line, not only the ones
+  //                           that can hide a finding. By default a notice is
+  //                           printed only when it sits inside a function's
+  //                           extent -- that is, when a conclusion may have
+  //                           been withheld because of it -- and the rest are
+  //                           counted by shape in the `NOTICES` table. This flag
+  //                           restores the whole per-line list, which is what
+  //                           the tool printed before 0506 and what a reader
+  //                           wants when they are looking for a specific
+  //                           construct. It changes no count: the SUMMARY's
+  //                           numbers are the same either way.
   //   --findings-shown-per-file N
   //                           How many findings are PRINTED per file (default 40).
   //                           This is a PRINTING limit: the SUMMARY counts come
@@ -82,6 +94,7 @@ async fn main {
   // anything else = on, writing exactly here.
   let mut mmd_out = ""
   let mut per_function = false
+  let mut show_notices = false
   let mut findings_shown_per_file = @sa.default_findings_shown_per_file
   let mut i = 1
   while i < args.length() {
@@ -138,6 +151,8 @@ async fn main {
       mmd_out = "@"
     } else if a == "--per-function" {
       per_function = true
+    } else if a == "--show-notices" {
+      show_notices = true
     } else if a == "--no-auto-fetch-deps" {
       auto_fetch_deps = false
     } else if target == "" {
@@ -153,6 +168,6 @@ async fn main {
   }
   @sa.scan(
     target, excludes, extern_iface_dirs, auto_fetch_deps, mmd_out, per_function,
-    findings_shown_per_file,
+    findings_shown_per_file, show_notices,
   )
 }

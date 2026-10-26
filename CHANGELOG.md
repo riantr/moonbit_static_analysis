@@ -154,6 +154,90 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.36 — a notice is printed only when it can hide a finding, and which one that is depends on where it sits
+
+**The complaint was about volume, and it was right.** On the pinned core corpus
+(`moonbitlang/core` 0.1.20260920+7d59c7ec9, 1029 files), with the default per-file
+printing cap and nothing else changed:
+
+| | output lines | rendered notices | findings |
+|---|---:|---:|---:|
+| before | 9128 | 7971 | 28 |
+| after | 2279 | 1133 | 28 |
+
+The output-line counts are the lines that CARRY TEXT. The renderer puts a blank
+line after each finding, so `wc -l` counts the same two outputs as 17,128 and
+3,441, and with the per-file cap lifted -- every one of the 10,096 notices on a
+line of its own -- as 11,223.
+
+The 28 findings are the SAME 28. The flood was 7,971 lines of output to say 28 things, and
+66.5% of the corpus's 10,096 notices -- 6,148 `test declaration` and 566 `block starts with
+'test'` -- were about the project's own test suite.
+
+**THE NUMBER OF NOTICES DID NOT MOVE.** The SUMMARY still says `notices=10096`; the seven
+corpus pins are byte-identical; `actionable=28` is unchanged. What moved is how many
+notices earn a line of the reader's screen.
+
+**WHICH NOTICE DESERVES A LINE IS A POSITION AND NOT A WORDING.** A notice is printed only
+when it can hide a finding — that is, only when its region lies inside some function's
+extent, which is the geometry the analyzer already used to decide which regions are in a
+function's hole list. The sharp control is the SAME message in both positions:
+
+```
+fn g() -> Int { let d = if true { 1 } else { 2 } d }   -- inside a function
+let d = if true { 1 } else { 2 }                        -- module top level
+```
+
+Both render "if expression is outside the analyzed subset", and only the first can hide a
+finding. So the classification is the analyzer's OWN EXTENTS, carried from the walk to the
+renderer, and the region membership test compares the SPAN exactly: two exclusions on the
+same line are two different regions.
+
+**THE PROXIES THAT STOOD IN FOR IT WERE WRONG IN BOTH DIRECTIONS.** Two scripts worked the
+split out from a list of message shapes; on the core corpus they put 1,023 notices in the
+expression-level class and 9,073 in the other, where the geometry puts 1,144 and 8,952.
+The geometry counts 132 expression notices the proxies' lists did not name (`loop
+expression`, `lexmatch expression`, `descending range direction`, `inclusive range
+end`), and it excludes 11 top-level expressions the proxies called expression-level. Both
+scripts now READ the analyzer's split instead of guessing at it.
+
+**WHAT THE OUTPUT LOOKS LIKE NOW.** The notices that hide nothing are counted by shape,
+once for the whole tree, at the end of the scan:
+
+```
+NOTICES	TOTAL	notices=10096	printed=1144	aggregated=8952	1144 of them can hide a finding; the other 8952 cannot, and are counted by shape below
+NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
+```
+
+`--show-notices` restores the whole per-line list — the old rendering, exactly — and it
+changes no count.
+
+**THE THREE NUMBERS RECONCILE.** `notices` == `printed` + `aggregated` == the SUMMARY's
+`notices`, the rows add up to `aggregated`, and the rendered `ParseError` lines are exactly
+`printed` — which is the proof that no `ParseError`-family DEFECT exists in the tree,
+because such a defect would render `error:` and break that equality.
+
+**THE `test`-BLOCK EXCLUSION STAYS.** 66.5% of the corpus's notices are about test code,
+and this release COUNTS them instead of printing them; it does not analyse them.
+
+Measured on `moonbitlang/core` (1029 files, same machine):
+
+| | files | parsed | actionable | notices |
+|---|---|---|---|---|
+| 0.4.35 | 1029 | 984 | 28 | 10096 |
+| 0.4.36 | 1029 | **984** | **28** | **10096** |
+
+Nothing moved on the corpus, and that is the point: this release changes what the tool
+PRINTS, not what it FINDS.
+
+Self-scan 183/183, actionable=0. Tests 1184 js / 1286 wasm / 1184 wasm-gc. The mutation
+gates are 85 now: 480 live mutations, 440 of them expecting a kill, and 363 naming the
+test that must go red.
+
+A parser gap this increment found, measured and NOT fixed here — `moon fmt` splits a long
+`for` header across lines and the frontend does not read that shape, while `moon check`
+accepts it — is written up in `_verify/NARRATIVE.md`, section 0506.
+
 ## 0.4.35 — a return annotation may say `raise?`, and a comprehension's condition was being thrown away
 
 Two increments, and the second one exists because the first one made more code readable.

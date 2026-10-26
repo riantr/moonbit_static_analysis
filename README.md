@@ -52,6 +52,9 @@ a defect in the analysed code. On that same tree `moon check --target all` repor
   so a type used from another package is not reported as undefined.
 - ✅ **Honest coverage** — a file the frontend could not finish is reported `PARTIAL`, and
   its post-boundary findings are **counted and not shown**.
+- ✅ **A notice only where it can matter** — a notice is printed per line only when it can
+  hide a finding; the rest are counted by shape in one table. `--show-notices` brings the
+  whole list back.
 - ✅ **State-machine audit** — the same three inspections over plain-data machine tables:
   states as bindings, drive slots as a type contract, the course as abstract execution.
 - ✅ **Mermaid diagram output** — `--mmd` / `--mmd-auto`, opt-in, and a truncated diagram
@@ -64,14 +67,14 @@ a defect in the analysed code. On that same tree `moon check --target all` repor
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.35
+moon add riantr/moonbit_static_analysis@0.4.36
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.35",
+  "riantr/moonbit_static_analysis@0.4.36",
 }
 ```
 
@@ -236,7 +239,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.35_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.36_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -286,6 +289,7 @@ moonx riantr/moonbit_static_analysis@latest <target> [flags]
 | `--mmd-auto` | the same, but pick the name and write it to the **working directory** — never inside the analysed tree. |
 | `--per-function` | enter the behavioral lens at each **function** rather than at the module. |
 | `--findings-shown-per-file N` | how many findings are **printed** per file (default 40). A printing limit, not an analysis limit: the SUMMARY counts come from every finding, so raising it reveals findings that were already counted and changes no summary number. |
+| `--show-notices` | print **every** notice per line, not only the ones that can hide a finding. By default a notice is printed only when its region lies inside a function's extent -- that is, when a conclusion may have been withheld because of it -- and every other notice is counted by shape in one `NOTICES` table. This flag restores the whole per-line list, which is what the tool printed before 0.4.36, and it changes no count: the SUMMARY's numbers are the same either way. |
 
 `--mmd` requires its path and `--mmd-auto` is a separate flag, on purpose: an optional
 value is ambiguous, because in `<target> --mmd <path>` the bare word after `--mmd` could
@@ -321,6 +325,25 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 - `actionable + notices + unreliable` = `total`, asserted in the line. `withheld` is
   reported alongside it but is a subset of `unreliable`, so it is intentionally not part of
   the sum.
+- **A notice is printed only when it can hide a finding.** Since 0.4.36 the scan prints a
+  notice per line only when its region lies inside some function's extent -- that is, when a
+  conclusion may have been withheld because of it -- and counts every other notice by shape
+  in one `NOTICES` table at the end of the scan:
+
+```
+NOTICES	TOTAL	notices=10096	printed=1144	aggregated=8952	1144 of them can hide a finding; the other 8952 cannot, and are counted by shape below
+NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
+```
+
+  The table's `notices` is the SUMMARY's `notices`, its `printed` plus its `aggregated` is
+  that number again, and its rows add up to its `aggregated`: three numbers from three
+  different computations, and a reader can check that nothing was dropped on the way.
+  The excerpt above is the TOTAL line and the largest row; the table carries one row per
+  shape, largest first.
+  The `printed` count is the CLASSIFICATION and not a promise that every one of those
+  lines reached the screen — the per-file printing cap still applies to them, and the
+  `... N more in this file` line says how many it hid. `--show-notices` restores the
+  whole per-line list.
 
 **Cross-file type symbol resolution** — a `.mbt` that uses a type declared in another
 package (e.g. `Command` from `@argparse`) would otherwise fire `undefined name
@@ -354,21 +377,30 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (181 files), with the per-file printing cap lifted so the count is the
+project's own source (183 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1359 | | `anonymous function literal` | 17 |
+| `test` declaration | 1383 | | `anonymous function literal` | 18 |
 | `if` expression | 103 | | `const` declaration | 6 |
 | `struct` declaration | 60 | | `short lambda` | 2 |
 | `derive` declaration | 53 | | `try` expression | 1 |
 | `enum` declaration | 24 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
-and not notices to be reworded. The distinction that matters: an **expression-level**
-exclusion (123 of them) sits inside a function body and can switch that body's audit off;
-a **declaration-level** exclusion (1502) sits outside every function extent and cannot.
+and not notices to be reworded. The distinction that matters is not the wording but the
+**position**: **124** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1526** sit outside every function's
+extent, hide nothing, and are counted by shape in one table at the end of the scan.
+
+**The split is the analyzer's own geometry, and it is a position rather than a wording.**
+A region inside a function's extent is in that function's hole list, so the frame audit
+could not judge a binding the region might have read; a region outside every function's
+extent is in no function's list at all, so it hides nothing. The same
+`if expression is outside the analyzed subset` notice is printed when it sits inside a
+function and counted when it sits at module top level -- so a rule keyed on the message
+would be wrong about one of the two.
 
 **The `match` expression row is gone**: since 0.4.34 the arms of a `match` are read, and
 arms are ordinary code, so a `match` is no longer a region that was "read past but not
@@ -388,9 +420,11 @@ consumer of the finding goes through:
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,544** rendered
-`ParseError` lines, every one of them a scope limit. That is why the fix moves no number —
-the two predicates agree numerically on today's corpora — and why only one of them is right.
+per-file printing cap lifted so the count is the whole finding set: **19,569** notices,
+every one of them a scope limit. The scan says so itself: its `NOTICES` table counts
+**3,375** of them as printed per line and **16,194** as aggregated, and the 3,375 is
+exactly the number of rendered `ParseError` lines. A genuine defect of this family would
+render `error:` and break that equality -- and none does.
 
 ### A region silences the bindings it could have read, and no others
 
@@ -528,7 +562,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1262/1262 on wasm; 1176/1176 on js and wasm-gc
+moon test --deny-warn                # 1286/1286 on wasm; 1184/1184 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -560,7 +594,7 @@ it**; **the notice labels, and a check that a scope limit is not an error**; **t
 audit, and a check that a region silences only the bindings it could have read**; the
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
-gate** — 84 of them.
+gate** — 85 of them.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
@@ -575,7 +609,7 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 84 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 85 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -640,9 +674,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **84 mutation gates**, each of which mutates
+The gate is not optional decoration: it runs **85 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **464** live mutations, **425** expect a kill; **348** of them also name the test
+Of the **480** live mutations, **440** expect a kill; **363** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing

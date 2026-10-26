@@ -58,6 +58,20 @@ pub(all) struct WalkResult {
   /// frame copy and would otherwise report the same unprovable name from its
   /// own table — three lenses, one rule. See `fn Walker::resolve`.
   partial : Bool
+  /// The subset of the frontend's UNREAD regions that lie inside some
+  /// function's extent -- the regions that CAN hide a finding.
+  ///
+  /// 0506. A deliberate subset exclusion is a notice, and a notice is either
+  /// worth a line of the reader's screen or it is not. The answer is the
+  /// GEOMETRY, and it is the geometry this file already owns: a region inside
+  /// a function's extent is in that function's hole list, so the frame audit
+  /// could not judge a binding it might have read; a region OUTSIDE every
+  /// function's extent is in no function's list and hides nothing at all.
+  ///
+  /// The measurement that made this worth carrying: on the pinned core corpus
+  /// 10,096 notices, of which 8,952 are outside every function's extent and
+  /// 1,144 are inside one. See `hiding_spans`.
+  hiding : Array[@core.Span]
 }
 
 ///|
@@ -416,6 +430,62 @@ fn Walker::assign_to(self : Walker, name : String) -> Unit {
 }
 
 ///|
+/// Is this region inside that extent?
+///
+/// ONE rule, and it is used in TWO places, because a second spelling of the
+/// same geometry is how two parts of the analyzer come to disagree about which
+/// regions hide a finding. `Walker::holes_in` asks it of one function at a
+/// time; `hiding_spans` asks it of all of them at once.
+///
+/// The rule is a LINE range, and it is the range the parser gives: the
+/// function's extent runs from its header to its closing brace
+/// (`Parser::parse_fn` builds it as `start: sp.start, end: endsp.end`), and a
+/// region is in that function when it STARTS on one of the function's lines.
+/// The start, not the overlap: the parser records a region at the construct
+/// it declined to analyse, and that construct is where the region begins.
+pub fn span_in_extent(inner : @core.Span, extent : @core.Span) -> Bool {
+  inner.start.line >= extent.start.line && inner.start.line <= extent.end.line
+}
+
+///|
+/// The unread regions that lie inside SOME function's extent -- the ones that
+/// can hide a finding.
+///
+/// 0506. This is the whole of the "is this notice worth printing" question,
+/// and it is asked of the ANALYZER'S OWN GEOMETRY rather than of a list of
+/// message shapes, for a reason that is not a matter of taste: the same
+/// message can sit in either position. MEASURED on fixtures, with the
+/// toolchain as the oracle:
+///
+///     fn g() -> Int { let d = if true { 1 } else { 2 } d }   // inside a function
+///     let d = if true { 1 } else { 2 }                        // module top level
+///
+/// Both render the SAME notice -- "if expression is outside the analyzed
+/// subset" -- and the first can hide a finding while the second cannot hide
+/// anything, because the second is in no function's hole list. A rule keyed on
+/// the wording would answer both the same way, and would be wrong about one
+/// of them.
+///
+/// A LOCAL function is covered by its enclosing top-level one: the local
+/// function's extent lies inside the top-level function's extent, so a region
+/// inside the local function is inside the top-level one too.
+pub fn hiding_spans(
+  fns : Array[FnInfo],
+  unread : Array[@core.Span],
+) -> Array[@core.Span] {
+  let out : Array[@core.Span] = []
+  for t in unread {
+    for f in fns {
+      if span_in_extent(t, f.span) {
+        out.push(t)
+        break
+      }
+    }
+  }
+  out
+}
+
+///|
 /// The regions the frontend chose NOT to analyse that fall inside one
 /// function's extent `sp`.
 ///
@@ -442,7 +512,7 @@ fn Walker::assign_to(self : Walker, name : String) -> Unit {
 fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {
   let out : Array[@core.Span] = []
   for t in self.unread {
-    if t.start.line >= sp.start.line && t.start.line <= sp.end.line {
+    if span_in_extent(t, sp) {
       out.push(t)
     }
   }
@@ -1803,6 +1873,7 @@ pub fn walk_module(
     fn_bindings,
     findings: w.findings,
     partial: w.partial,
+    hiding: hiding_spans(fns, unread),
   }
 }
 

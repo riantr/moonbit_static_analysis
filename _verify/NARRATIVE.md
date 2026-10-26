@@ -7684,3 +7684,275 @@ three different products, with three different costs, and they disagree about wh
 package-level calls in the pinned corpus. It does not say which of the three answers to
 build, and writing that down here would be exactly the kind of number-without-a-rule
 this project keeps correcting.
+
+## 0506: THE NOTICE FLOOD -- AND WHICH NOTICE DESERVES A LINE IS A POSITION, NOT A WORDING
+
+THE COMPLAINT WAS ABOUT VOLUME, and it was right. MEASURED on the pinned core corpus
+(`moonbitlang/core` 0.1.20260920+7d59c7ec9, 1029 files), with the default per-file
+printing cap and nothing else changed:
+
+    before    9128 lines of output, 7971 of them rendered notices, 28 findings
+    after     2279 lines of output, 1133 of them rendered notices, 28 findings
+
+The output-line counts are the lines that CARRY TEXT. The renderer puts a blank
+line after each finding, so `wc -l` counts the same two outputs as 17,128 and
+3,441, and with the per-file cap lifted -- every one of the 10,096 notices on a
+line of its own -- as 11,223.
+
+**AND THE LINE COUNT WAS ALSO QUOTED WRONG, IN A SENTENCE RATHER THAN IN A
+MEASUREMENT.** Four source files and a gate script said "on the pinned core corpus
+that was 10,096 notices and 17,128 lines of output to say 28 things". 17,128 is a
+REAL number, and it belongs to the OLD rendering -- as `wc -l` counts it, because the
+renderer puts a blank line after each finding. The lines that carry text are 9,128,
+and the rendering in which every one of the 10,096 notices is on a line of its own is
+11,223 (21,348 with the blanks). So ONE output was counted two ways in two
+documents, and the sentence attached the wrong one to the wrong rendering. The
+correction states the convention wherever a count is quoted; no count changes.
+
+=> 判据: A NUMBER QUOTED WITHOUT ITS CONVENTION IS A NUMBER THAT CANNOT BE
+RE-DERIVED. The same output was 9,128 lines and 17,128 lines, and BOTH were true,
+and a reader counting the real output had no way to tell which was which. The
+convention is now stated wherever the count is quoted -- the lines that carry text
+-- and the `wc -l` count is quoted with it.
+
+The 28 findings are the SAME 28. The flood was 7,971 lines of output to say 28 things,
+and 66.5% of the corpus's 10,096 notices -- 6,148 `test declaration` notices and 566
+`block starts with 'test'` notices -- were about the project's own test suite.
+
+**THE NUMBER OF NOTICES DID NOT MOVE, and that is the point of the increment.** The
+SUMMARY still says `notices=10096`. The seven corpus pins are byte-identical.
+`actionable=28` is unchanged. What moved is how many of the notices earn a line of the
+reader's screen.
+
+### THE RULE IS A POSITION, NOT A WORDING
+
+A notice is worth a line only when it can HIDE a finding -- that is, only when its
+region lies inside some function's extent, which is the geometry `@walk.holes_in`
+already used to decide which regions are in a function's hole list. A region outside
+every function's extent is in no function's list at all, so it hides nothing.
+
+**THE SHARP CONTROL IS THE SAME MESSAGE IN BOTH POSITIONS.** MEASURED, with the
+toolchain as the oracle:
+
+    fn g() -> Int { let d = if true { 1 } else { 2 } d }   -- inside a function
+    let d = if true { 1 } else { 2 }                        -- module top level
+
+Both render the SAME notice -- "if expression is outside the analyzed subset" -- and the
+first can hide a finding while the second cannot, because the second is in no
+function's hole list. A rule keyed on the wording would answer both the same way, and
+it would be wrong about one of them. So the classification is the analyzer's OWN
+EXTENTS, carried from the walk (`@walk.span_in_extent`, `@walk.hiding_spans`) to the
+renderer (`@sa.is_hiding`, `@sa.split_findings`), and the region membership test
+compares the SPAN exactly: two exclusions on the same line are two different regions.
+
+### THE OLD PROXIES WERE WRONG IN BOTH DIRECTIONS
+
+Two scripts used to work the split out for themselves, from a list of message shapes:
+`_verify/backlog.ps1` (five shapes: `match expression`, `if expression`, `try
+expression`, `short lambda`, `anonymous function literal`) and `_verify/release.ps1`
+("a kind whose name ends in ` declaration` is declaration-level"). On the core corpus
+the proxies put 1,023 notices in the expression-level class and 9,073 in the other.
+THE GEOMETRY puts 1,144 and 8,952, and it is right in BOTH directions:
+
+  * **132 notices the proxies did not name** -- `loop expression` (95), `lexmatch
+    expression` (8), `descending range direction` (19), `inclusive range end` (10).
+    Every one of them is an EXPRESSION, so every one of them sits inside a function and
+    can hide a finding. The proxies' lists simply did not mention them.
+  * **11 notices the proxies called expression-level and the geometry calls
+    hiding-nothing** -- 10 `short lambda` and 1 `anonymous function literal` at MODULE
+    TOP LEVEL. They are expressions, but they are not inside any function, so they are
+    in no function's hole list.
+
+So the geometry is not a refinement of the proxies. It answers a different question, and
+it answers it from the analyzer's own extents. Both scripts now READ the analyzer's
+split instead of guessing at it: `release.ps1` reads the `NOTICES` table's TOTAL line,
+and `backlog.ps1` reads the same line and builds its per-message breakdown from BOTH
+halves -- the table's rows carry the notices that hide nothing, and the rendered notice
+lines carry the ones that are printed.
+
+### WHAT THE OUTPUT LOOKS LIKE NOW
+
+The notices that hide nothing are counted BY SHAPE, once for the whole tree, at the end
+of the scan:
+
+```
+NOTICES	TOTAL	notices=10096	printed=1144	aggregated=8952	1144 of them can hide a finding; the other 8952 cannot, and are counted by shape below
+NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
+```
+
+`--show-notices` restores the whole per-line list -- the OLD rendering, exactly -- and
+it changes no count. The flag is what every measurement that reads the complete list
+needs, and it is what a reader looking for a specific construct wants.
+
+**THE `printed` COUNT IS THE CLASSIFICATION AND NOT A PROMISE THAT EVERY ONE OF THOSE
+LINES REACHED THE SCREEN.** The per-file printing cap still applies to them, and on
+the core corpus it hides 11 of the 1,144 (one file, one `... 11 more in this file`
+line). The first draft of the TOTAL line said "1144 of them ... are printed per line",
+which is FALSE in the default mode, and it was corrected in place before this section
+was written.
+
+### THE RECONCILIATION
+
+Three numbers, from three different computations, and they must agree:
+
+    notices  == printed + aggregated == the SUMMARY's `notices`
+    the rendered `ParseError` lines == printed
+    the table's rows add up to `aggregated`
+
+The last of those is the PROOF that no `ParseError`-family DEFECT exists in the tree.
+A defect of that family renders `error:` and is matched by the `(ParseError)` matcher
+too, so "the rendered ParseError lines are exactly the printed notices" says that every
+`ParseError` in the tree is a scope limit -- which is the claim 0.4.35's label fix made
+about a rendering that no longer exists.
+
+### THE PINS THAT MOVED, AND THE ONES THAT DID NOT
+
+The seven corpus SUMMARYs did not move at all: `notices=3457`, `698`, `186`, `1654`,
+`1799`, `29`, `10096`. The `$PARSERR_TOTAL` pin did not move either -- 19,544 became
+**19,569**, and the +25 is this increment's own source: 24 `test declaration` notices
+from the two new test files and 1 `anonymous function literal` from `count_by_shape`'s
+sort. What DID change is the MEASUREMENT that produces it: the rendered `ParseError`
+lines are no longer the notice count, so the pin is read from the `NOTICES` table's
+TOTAL line now, and it is a different number for the same trees.
+
+The own-source pins moved with the source:
+
+    $SELF_FILES        181 -> 183     the two new test files
+    $SELF_NOTICES      test declaration 1359 -> 1383, if expression 103, anonymous
+                       function literal 17 -> 18, the rest unchanged
+    $SELF_PRINTED      (was $SELF_EXPR)  123 -> 124
+    $SELF_AGGREGATED   (was $SELF_DECL) 1502 -> 1526
+
+The +24 in the aggregated class is the 24 top-level `test` blocks of the two new test
+files: they are outside every function's extent, so they hide nothing. The +1 in the
+printed class is the anonymous function literal this increment's own sort adds. The
+class names changed because the old names described a PROXY and the new ones describe
+what the analyzer does.
+
+### THE GATE
+
+`_verify/settle_0506_notice_flood.ps1`, 10 rows, GATE OK: the `if` inside a function is
+printed; a top-level `test` block is aggregated; **the SAME `if expression` message at
+module top level is aggregated** (the sharp control); both in ONE file are told apart;
+`--show-notices` prints both; the SUMMARY says the same in both modes; the aggregate
+reconciles; the default prints fewer notice lines; the pinned corpus is 10,096 / 1,144
+/ 8,952; the corpus SUMMARY is the same in both modes.
+
+`_verify/mutate_0506.ps1`, 16 mutations: **15 killed with their named test confirmed**,
+and ONE declared survivor with its argument attached -- the root package has no test
+file, so `moon test` cannot observe the CLI's plumbing at all, and the rule is pinned by
+the settle's row N5 instead. Every restore was verified byte-identical by SHA256.
+
+`src/walk/walk_0506_test.mbt` is the FIRST test file in the `walk` package, and
+`src/sa/sa_0506_test.mbt` carries the split. The suite is 1286 on wasm and 1184 on js
+and wasm-gc -- the 102-test difference is the async packages, which do not run on js.
+
+**FOUR THINGS THE GATE CAUGHT, ALL OF THEM IN THIS INCREMENT.**
+
+  * **The settle measured a different corpus from the release gate.** It scanned
+    without `--extern-iface-dir`, so its corpus numbers were `files=1018 actionable=27`
+    while the gate's were `files=1029 actionable=28` -- two numbers written down twice
+    that disagreed with each other, because they were two measurements. The settle now
+    uses the gate's invocation, and its `WANT_CORE_FILES` pin -- which was DEAD, an
+    unused variable that nothing asserted -- is now asserted, because a pin nobody
+    checks is a number nobody keeps.
+  * **The README gate found the stale published counts.** 85 mutation gates (not 84),
+    480 live mutations (not 464), 440 expecting a kill (not 425), 363 naming the test
+    (not 348), and the test counts 1286/1286 and 1184/1184. That is the gate doing its
+    job: a number that is only written down cannot be wrong loudly.
+  * **The roster gate found the new mutation gate missing from `release.ps1`.** A gate
+    on disk but not in the list is a gate that does not run, and it looks exactly like
+    a gate that passes.
+  * **THE FIRST PROBE OF THE PARSER GAP BELOW REPORTED THE WRONG THING.** It printed
+    CLEAN for four fixtures, three of which do not read. The reason: the scanner runs
+    `moon info` in the target, which GENERATED a `pkg.generated.mbti` into the fixture
+    directory, and the probe's `CLEAN` regex matched THAT file's line and not the
+    fixture's. The probe was reading a different file's verdict. A probe that matches
+    a line without checking WHICH file it belongs to is a probe that will lie, and it
+    lied here.
+
+### THE GAP THIS INCREMENT FOUND, AND DID NOT FIX
+
+`moon fmt` splits a long `for` header across lines -- `for` alone on one line, the
+iterator clause on the next -- and **the frontend does not read that shape.** The parser
+bumps `for` and asks for the loop variable at once (`expect_name("loop variable")`), so
+the newline in between is the wrong token.
+
+MEASURED, with the toolchain as the oracle:
+
+    moon check       ACCEPTS   for\n  x in xs {
+    this analyzer    PARTIAL   "expected loop variable"
+
+**THIS IS NOT 0482's SETTLED REJECTION.** 0482 settled the C-STYLE head on the line
+after the `for` -- `for` / `i = 0;` / ... -- and the toolchain REJECTS that shape, so
+the analyzer's rejection there is correct and deliberate. The shape here is the
+MOONBIT-STYLE binder head, `for` / `x in xs {`, and the toolchain accepts it.
+
+It was found by the increment itself: the first draft of the table-printing loop in
+`src/sa/main.mbt` had that shape, and the self-scan went to `files=183 parsed=182`
+with the boundary on the `for` line. The code was rewritten to bind the table first so
+that the header stays on one line, and the gap is NOT fixed here: it is a parser
+increment of its own, with its own settle, its own tests and its own mutation gate. It
+is written up here so that the next increment does not have to rediscover it.
+
+### WHAT IS NOT IN THIS INCREMENT
+
+The `test`-block exclusion STAYS. 66.5% of the corpus's notices are about test code,
+and 0506 counts them instead of printing them -- it does not ANALYSE them. Reading
+test bodies is a separate coverage increment.
+
+The shape of the aggregate is the whole message, and the README's table is the
+construct name it begins with. A message this repository has no name for FAILS the
+release gate rather than vanishing from the published table.
+
+And `nosec` stays third and gated on a policy decision (0505): a false positive is
+FIXED here, 0504's precedent, rather than suppressed on the assumption that the user may
+be right.
+
+### AND THE HARNESS MISREPORTED A BUSY HOST AS A COMPILE ERROR
+
+The 0506 release gate failed on gate 0466, and the mutation was NOT the reason.
+`moon test` printed the COMPILER'S OWN WARNING and exited 1 with no test summary:
+
+    moon.exe : Warning: [0002]
+      Warning (unused_value): Unused variable 'n'
+
+The harness had no summary line, so it recorded COMPILE-ERR and blamed the mutant --
+and the mutant is a DECLARED SURVIVOR, so the gate failed. MEASURED on the same tree:
+
+    the same mutation, run standalone        SURVIVED, 1184/1184 still green
+    `moon test` on the mutated tree, REBUILT  exit 0, and the summary IS printed
+    a genuine compiler rejection             moon prints `Error: [0011]`
+
+The third line is the discriminator, and it is the same one the compiler gives: a
+compiler that rejects a mutant ALWAYS says why. The failure had nothing to do with
+the mutation -- another session's test binary was running on the same machine, and a
+starved build wears the same shape as a rejected one.
+
+**SO THE HARNESS NOW SAYS FOUR THINGS, NOT THREE.**
+
+    a summary line + a non-zero exit          -> KILLED
+    a summary line + a zero exit              -> SURVIVED
+    a COMPILER DIAGNOSTIC (`Error: [NNNN]`)   -> COMPILE-ERR
+    NONE OF THE ABOVE                          -> INCONCLUSIVE
+
+INCONCLUSIVE is not a verdict. It is a FAILED MEASUREMENT: it is retried once -- the
+failure mode is fast, so the retry is cheap -- and if the retry does not rescue it,
+it FAILS the gate, because a number nobody observed is not a number a document may
+quote. It cannot manufacture a pass: a mutant that genuinely does not build still
+prints `Error: [NNNN]` and still comes out COMPILE-ERR, which is what gates 0412 M3
+and 0430 M4 declare and what they still come out as.
+
+**AND THE NEW VERDICT PATH IS SHOWN TO GO RED**, because a verdict path that has never
+been shown to go red is a comment. `_verify/mutate_lib_selftest.ps1` is a STAGE of the
+release gate: it copies `_verify` into TEMP, breaks the copy's summary-line regex for
+the MUTATION runs -- the BASELINE's regex is left alone, because a demonstration that
+breaks the baseline proves nothing about the mutation path -- and requires the copy's
+one-mutation gate to come out INCONCLUSIVE, to FAIL, and to exit non-zero.
+
+=> 判据: A GATE THAT FAILS FOR THE WRONG REASON IS WORSE THAN NO GATE, AND THE
+WRONG REASON IS THE ONE NOBODY LOOKS AT. This one was going to be read as "the 0466
+mutation is not what it says it is" -- a claim about the ANALYZER, published by a
+failure that was really about the machine. The fix is not to re-roll the gate until
+it passes; the fix is to tell a rejected build from a run that never happened, and
+to say that a run that cannot be scored is not a verdict about anything.

@@ -327,6 +327,8 @@ $guards = @(
   @{ N = 'every restore is proven by SHA256';             T = '$sha0 -ne (Get-FileHash' }
   @{ N = 'a failed restore is a failure';                 T = '(restore)' }
   @{ N = 'COMPILE-ERR is distinguished from a kill';       T = "`$outcome = 'COMPILE-ERR'" }
+  @{ N = 'a run that never happened is INCONCLUSIVE';       T = "`$outcome = 'INCONCLUSIVE'" }
+  @{ N = 'a compiler rejection is told from a run that never happened'; T = 'Error:\s*\[\d+\]' }
   @{ N = 'SURVIVED is distinguished from a kill';          T = "`$outcome = 'SURVIVED'" }
   @{ N = 'a named-test claim is checked';                 T = '(named test did not go red)' }
   @{ N = 'a declared non-KILLED outcome must carry an argument'; T = 'with no argument)' }

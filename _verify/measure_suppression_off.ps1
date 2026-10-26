@@ -38,7 +38,17 @@ $target = Join-Path $root 'src\walk\walk.mbt'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $normalWasm = Join-Path $env:TEMP ('_wasm_supp_off_normal_' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.wasm')
 
-$anchor = 'if t.start.line >= sp.start.line && t.start.line <= sp.end.line {'
+# THE PATCH TARGET IS THE CALL, NOT THE RULE. 0506 moved the line-range rule
+# out of `holes_in` and into `span_in_extent`, which is now SHARED by two
+# mechanisms: the suppression's `holes_in` and the notice classification's
+# `hiding_spans`. Patching the rule itself would switch off BOTH, and this
+# stage is about the suppression alone -- so the patch replaces `holes_in`'s
+# own test, the one call whose second argument is the function extent.
+# (The first version of this anchor was the rule's own text, `if t.start.line
+# >= sp.start.line && ...`, and 0506 made it vanish: the stage then failed
+# with "the patch anchor is not unique", which was true and also misleading --
+# the anchor was not there AT ALL.)
+$anchor = 'if span_in_extent(t, sp) {'
 $patched = 'if false {'
 
 # THE PINS live in release.ps1's pin table -- ONE place, the same place the
@@ -70,8 +80,23 @@ $trees = [ordered]@{
 $origBytes = [System.IO.File]::ReadAllBytes($target)
 $origSha = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
 $origText = [System.Text.Encoding]::UTF8.GetString($origBytes)
-if (([regex]::Matches($origText, [regex]::Escape($anchor))).Count -ne 1) {
-  Write-Output 'FAIL: the patch anchor is not unique in walk.mbt -- the source is not what this stage expects.'
+$anchorCount = ([regex]::Matches($origText, [regex]::Escape($anchor))).Count
+if ($anchorCount -ne 1) {
+  # THE COUNT IS REPORTED, not just "not unique". A count of 0 means the rule
+  # MOVED again; a count above 1 means the source grew a second copy of the
+  # same test. Different failures, different fixes, so the message says which.
+  Write-Output ('FAIL: the patch anchor occurs ' + $anchorCount + ' times in walk.mbt (it must be exactly 1) -- the source is not what this stage expects.')
+  exit 1
+}
+# AND THE ANCHOR MUST BE INSIDE `holes_in`. `span_in_extent` is shared with
+# `hiding_spans`, so an anchor naming the RULE would switch off the notice
+# classification as well. This one names `holes_in`'s call, and this guard
+# proves the patch lands there and nowhere else.
+$holesAt = $origText.IndexOf('fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {')
+$nextFnAt = $origText.IndexOf("`nfn ", $holesAt + 1)
+$anchorAt = $origText.IndexOf($anchor)
+if ($holesAt -lt 0 -or $anchorAt -lt $holesAt -or $anchorAt -gt $nextFnAt) {
+  Write-Output 'FAIL: the patch anchor is not inside Walker::holes_in -- the patch would not switch off the suppression.'
   exit 1
 }
 if ($origText.Contains($patched)) {
