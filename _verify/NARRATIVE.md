@@ -7491,6 +7491,17 @@ calls in the pinned corpus have their arity and argument types unchecked**, acro
 files. The 159 `.mbti` files carry 2,116 `pub fn` declarations, and every one of them
 reaches the analyzer as a name and nothing else.
 
+**AND THE LAST CLAUSE WAS WRONG, AND IT WAS WRONG ABOUT THE ANALYZER, NOT ABOUT THE
+FORMAT.** "Reaches the analyzer as a name and nothing else" is true of the SYMBOL
+TABLE and false of the `.mbti`: the parser reads the parameter list out of every one
+of those declarations and the table is what drops it. The premise this section rests
+on -- "a `.mbti` gives a name and never its parameter list" -- is therefore a
+statement about WHERE THE INFORMATION IS DROPPED, not about what the format
+carries, and the difference is the difference between "the information is not there"
+and "we drop it". Measured 2026-10-28; the correction and the numbers are in the
+0508 section below, and the instrument that produced them is
+`_verify/measure_0508_unchecked.ps1`.
+
 A number written down here is a number the settle re-derives, and a number the settle
 re-derives is a number the narrative has to agree with: row D1 of the settle reads these
 eight lines back out of THIS FILE and fails the gate if any of them disagrees with what
@@ -8129,11 +8140,14 @@ The type lens checks a call's arity and its argument types ONLY when it has read
 callee's signature. There are three kinds of call where it never has:
 
 ```
-    a name known only by NAME      a `.mbti` of another package declares the name and
-                                   never its parameters
+    a name known only by NAME      the ANALYZER keeps the name and drops the parameter
+                                   list the `.mbti` already gave it
     a method call                  the method's signature is not in the source at all
     a `..` chain link              a method call wearing different syntax
 ```
+
+**THE FIRST LINE OF THAT BLOCK WAS CORRECTED ON 2026-10-28, AND THE MEASUREMENT THAT
+CORRECTED IT IS IN THE 0508 SECTION BELOW.**
 
 Until 0507 the tool said **nothing** about any of them, so *"I could not check this"* and
 *"there is nothing to report"* were the same output -- and a file with no findings and
@@ -8277,3 +8291,101 @@ and it answers it with the smallest thing that is true: not a new severity, not 
 second report, but one word beside the finding that says how much was checked, one
 stable id beside the family name that survives a rename, and one number on the verdict
 line that says how many calls went unverified.
+## 0508: THE THREE KINDS, MEASURED -- AND THE FIRST ONE WAS WRONG
+
+**THIS SECTION SHIPS NO CODE.** It is a measurement, and it is here because the
+0507 section it corrects asserted something that turned out to be false.
+
+### THE PREMISE WAS FALSE, AND IT WAS FALSE ABOUT THE FORMAT
+
+The 0505 plan rested on a premise and 0507 repeated it: "a `.mbti` gives a name and
+never its parameter list". The `.mbti` DOES declare the parameters.
+`iface_signature` reads the parameter list out of every `pub fn` line --
+`paren_parts`, `split_top_commas`, `label_type`
+(`src/moonfiles/moonfiles.mbt:917-931`) -- and keeps only the referenced type
+names. What never had the parameters is the SYMBOL TABLE: `IfaceSymTab`
+(`src/core/core.mbt:97`) has no slot for a signature, so the parameter list the
+parser produced is dropped one line later.
+
+So the premise is true of the TABLE and false of the FORMAT, and the difference is
+the difference between "the information is not there" and "we drop it". Every
+design that follows from "it is not there" is aimed at the wrong thing.
+
+### THE MEASUREMENT
+
+The instrument is `_verify/measure_0508_unchecked.ps1`. It patches ONE file --
+`src/types/infer.mbt` -- with counters the shipped analyzer does not have, builds
+the wasm, scans the eight trees, and restores the file byte-identically
+(SHA256-proven) before rebuilding the binary, so the binary on disk matches the
+committed source again. The counters it adds are ADDED TO the shipped ones and
+never replace them, so the sum the instrument computes has to equal the shipped
+`SUMMARY` on every tree. That is the control, and it is why these numbers are
+trusted: a measurement that cannot reproduce the number it is explaining is not a
+measurement.
+
+The eight trees are the seven pinned corpora and this repository own source.
+
+    0508 the unchecked calls, eight trees          : 28040
+    0508   a name known only by NAME               : 2634
+    0508   a method call                            : 25331
+    0508   a `..` chain link                        : 75
+
+**SO THE METHOD CALL IS NOT ONE KIND, IT IS THREE, AND ONLY ONE OF THE THREE IS
+ABOUT SIGNATURES.** A method call `x.f(..)` can only be checked if the receiver
+TYPE is known -- so the method can be found -- and the parameter list is in hand
+-- so the arguments can be checked. The type model has no variant for a NAMED
+type: `Ty` (`src/types/types.mbt:10-39`) is Unknown / None / int / float / bool /
+str / list / function / union, so every struct, class and enum is `TUnknown`,
+because `ann_to_ty` falls through to `TUnknown` for any name it does not
+recognise (`src/types/types.mbt:161,187`).
+
+    0508 method calls, receiver type KNOWN          : 3766
+    0508 method calls, receiver type UNKNOWN        : 18322
+    0508 method calls, qualifier receiver           : 3243
+    0508 `..` links, receiver type UNKNOWN          : 75
+    0508 `.mbti`-only callees, a plain fn           : 510
+    0508 `.mbti`-only callees, a `Type::method`     : 2124
+
+**AND THE PRIZE IS NOT WHERE THE FIRST HYPOTHESIS SAID.** The hypothesis was that
+the `.mbti` bucket would be the cheapest and the largest win, because the
+parameters were already parsed and thrown away. Measured, the `.mbti` bucket is
+9.4% of the unchecked calls and the method-call bucket is 90.3%. So the track the
+reader would pick -- read the method signatures -- is the RIGHT one; it is just not
+the `.mbti` table alone.
+
+Keeping the parameter list the `.mbti` parser already reads reaches the 3,766
+method calls whose receiver type is known, the 3,243 qualified calls
+(`@pkg.f(..)`, whose signature the `.mbti` carries as `pub fn pkg::f(..)`), and
+the 2,634 `.mbti`-only callees -- 9,643 at most, and only for the calls whose
+receiver type the analyzer can already name. The other 18,322 method calls have a
+receiver whose type is a struct, a class or an enum, and `Ty` cannot represent
+one, so no signature table reaches them until the TYPE MODEL grows a named-type
+variant.
+
+The `.mbti` files of the seven corpora carry 4,938 `Type::method` entries and
+1,152 plain `pub fn` entries. All of them are sitting there unused.
+
+**AND THE `..` LINKS ARE NOT A TRACK.** 75 calls, 0.3% of the total, every one of
+them with an unknown receiver type: they are the method-call problem wearing
+different syntax, not a separate one.
+
+### WHAT THIS CHANGES
+
+The next increment is not "keep the parameter list in `IfaceSymTab`". It is two
+layers, and the measurement says which is bigger:
+
+1. the SIGNATURE layer -- keep the parameter list the `.mbti` parser already reads,
+   so the qualified calls and the `.mbti`-only callees become checkable. At most
+   9,643 of the 28,040.
+2. the TYPE layer -- a named-type variant in `Ty`, so a struct, class or enum
+   receiver has a type and its methods can be found. The 18,322.
+
+The `..` chain links are not a third item; they are the second item with different
+syntax.
+
+=> 鍒ゆ嵁: A PREMISE ABOUT WHAT A FORMAT CARRIES IS NOT A PREMISE UNTIL THE FORMAT
+HAS BEEN READ. The 0505 plan and the 0507 section both said a `.mbti` gives a name
+and never its parameter list, and both said it as though it were a fact about the
+format. It was a fact about a symbol table, and the difference cost one increment
+of aim. The measurement that corrected it is the instrument above, and its own
+control is that it has to reproduce the shipped `SUMMARY` to be believed.

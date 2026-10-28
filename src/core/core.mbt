@@ -101,10 +101,13 @@ pub struct IfaceSymTab {
   /// Declared value names: `pub fn new(...) -> ...`, `pub const X : ... = ...`.
   ///
   /// A hit returns `TUnknownFn` (we know it is a value; we do not model its
-  /// signature, so no arity or argument check may run against it). A `.mbti`
-  /// gives us the declaration name and never the parameter list, so any
-  /// arity invented here would be a guess the checks would then report as
-  /// fact.
+  /// signature, so no arity or argument check may run against it). The `.mbti`
+  /// DOES declare the parameter list -- `iface_signature` parses it
+  /// (`src/moonfiles/moonfiles.mbt:917-931`) -- and this table is what drops
+  /// it: there is no slot here for a signature. So an arity invented from the
+  /// name alone would still be a guess the checks would report as fact, but the
+  /// guess is OURS and not the format's. Measured 2026-10-28; see the 0508
+  /// block of `_verify/NARRATIVE.md`.
   ///
   /// THE BOOL IS `is_const` (since 0.4.16). It used to be written `true` and
   /// read by nobody. It carries a distinction the type lens needs: a `const`

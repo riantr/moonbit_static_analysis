@@ -30,11 +30,14 @@ test "the type lens discloses a method call it could not check" {
 }
 
 ///|
-/// A call to a name known only by NAME. The `.mbti` of another package
-/// declares the name and never its parameters, so the analyzer resolves the
-/// name, types the result as unknown, and checks neither the arity nor the
-/// argument types -- deliberately, because asserting something about a
-/// signature it never read is the one claim this lens cannot make.
+/// A call to a name known only by NAME. The `.mbti` of another package declares
+/// the name AND its parameters -- the parser reads the parameter list
+/// (`src/moonfiles/moonfiles.mbt:917-931`) and the cross-file symbol table is
+/// what drops it -- so the analyzer resolves the name, types the result as
+/// unknown, and checks neither the arity nor the argument types -- deliberately,
+/// because asserting something about a signature it never read is the one claim
+/// this lens cannot make. Measured 2026-10-28; see the 0508 block of
+/// `_verify/NARRATIVE.md`.
 ///
 /// The name is NOT reported as undefined either: it IS a name, and the
 /// binding exists. The two facts are different, and the disclosure is what
