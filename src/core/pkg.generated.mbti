@@ -6,6 +6,8 @@ pub fn ambient_names() -> Array[String]
 
 pub fn builtin_method_names() -> Array[String]
 
+pub fn family_by_id(String) -> Family?
+
 pub fn path_tail(String) -> String
 
 pub fn pos(Int32, Int32) -> Pos
@@ -26,6 +28,13 @@ pub(all) struct Advice {
   how : String
 }
 
+pub(all) enum Confidence {
+  High
+  Low
+  Undecided
+} derive(Eq)
+pub fn Confidence::name(Self) -> String
+
 pub(all) enum Family {
   FParse
   FUndefinedName
@@ -38,8 +47,10 @@ pub(all) enum Family {
   FMethodError
   FCondBool
   FUnreachable
+  FStaleNosec
 } derive(Eq)
 pub fn Family::advice(Self) -> Advice
+pub fn Family::id(Self) -> String
 pub fn Family::merge_group(Self) -> String
 pub fn Family::name(Self) -> String
 pub fn Family::severity(Self) -> Severity

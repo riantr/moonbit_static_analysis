@@ -11,11 +11,19 @@ pub fn add_method_segments(@core.IfaceSymTab) -> Unit
 
 pub fn aggregate(Array[Verdict]) -> Summary
 
+pub fn apply_nosec(Array[@report.Report], Array[Nosec]) -> (Array[@report.Report], Array[@report.Report])
+
+pub fn apply_profile(Array[@report.Report], Profile) -> Array[@report.Report]
+
 pub fn count_by_shape(Array[@report.Report]) -> Array[(String, Int32)]
 
 pub let default_findings_shown_per_file : Int32
 
+pub fn default_profile() -> Profile
+
 pub fn dir_of(String) -> String
+
+pub fn family_ids() -> Array[String]
 
 pub fn is_coordinate(String) -> Bool
 
@@ -35,13 +43,17 @@ pub fn parse_moon_mod_imports(String) -> Array[String]
 
 pub fn parse_moon_version(String) -> String
 
+pub fn parse_nosec(String) -> Array[Nosec]
+
 pub fn partition_findings(Array[@report.Report], Array[@core.Span], Bool) -> (Array[@report.Report], Array[@report.Report])
+
+pub fn profile_keeps(@core.Family, Profile) -> Bool
 
 pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool, Profile) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
 
@@ -57,9 +69,25 @@ pub fn tally_partial_reasons(Array[Verdict]) -> (Map[String, Int32], Map[String,
 
 pub fn target_version(String, String) -> String
 
+pub fn validate_profile(Array[String], Array[String]) -> (Array[String], String)
+
 // Errors
 
 // Types and methods
+pub(all) struct Nosec {
+  line : Int32
+  blanket : Bool
+  ids : Array[String]
+}
+pub fn Nosec::covers_family(Self, @core.Family) -> Bool
+pub fn Nosec::stale_message(Self) -> String
+
+pub(all) struct Profile {
+  include_ids : Array[String]
+  exclude_ids : Array[String]
+  honor_nosec : Bool
+}
+
 pub(all) struct ScanProvenance {
   target : String
   version : String
@@ -76,6 +104,7 @@ pub struct Summary {
   unreliable : Int32
   withheld : Int32
   total : Int32
+  n_unchecked : Int32
 }
 
 pub(all) struct Verdict {
@@ -89,6 +118,7 @@ pub(all) struct Verdict {
   region_line : Int32
   unreliable : Int32
   hiding : Array[@core.Span]
+  n_unchecked : Int32
 }
 
 // Type aliases

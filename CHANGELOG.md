@@ -154,6 +154,83 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.37 — a finding now says how much was CHECKED, and the calls that were not checked are counted
+
+**Three things were ported from `bandit`, and the plan for them was written down and
+measured one release earlier** (0.4.35's "porting plan" section, NARRATIVE.md §0505).
+That plan named three transfers and left one question open: *what does the analyzer do
+about a call it cannot check?* This version answers it.
+
+**THE CONFIDENCE AXIS.** The severity says how bad a finding is *if it is real*; the
+confidence says how sure the analyzer is that it is real, and the two are independent.
+Three values, three situations:
+
+| confidence | the lens… | the family |
+|---|---|---|
+| `high` | had the declaration, the signature or the type in front of it | everything else |
+| `low` | was reasoning from a **name** alone | `UndefinedName` |
+| `undecided` | could not decide at all | a declared scope limit |
+
+It is rendered in the bracket that already held the lens tag, and it is in the JSON
+record beside `severity`:
+
+```
+12:3 - error: no visible binding for 'cmd' (UndefinedName) [structural, MSA-002, low]
+```
+
+**THE STABLE FAMILY IDS.** The public family *name* is a second, hand-maintained
+vocabulary — five of the original eleven names are not the tag with its `F` removed — so
+a consumer that pinned `"family": "ArgTypeMismatch"` got no warning at all when the
+name moved. An **id** is allocated once and **never renumbered**: `MSA-001` … `MSA-012`.
+They are hand-allocated on purpose, and `_verify/check_family_roster.ps1` checks the
+table: one id per family, no id used twice, the ids contiguous from `MSA-001`, and the
+inverse table the exact reverse of the forward one.
+
+**THE PROFILE.** `--families <ids>` and `--exclude-families <ids>` select families by
+id, and the profile is **checked before the scan runs**: an id this version does not know
+is a `WARNING` and the scan still runs (a family added in a later release must not make
+an older analyzer's profile unusable), and an id that is both included and excluded is an
+`ERROR` and the scan does not run at all.
+
+**THE `nosec`.** `// nosec` silences every finding on its line; `// nosec MSA-007`
+silences that one family on that line. It is **off by default** — a tool that stops
+reporting a finding because of a comment in the analysed source has an output the reader
+cannot trust without reading that source first. A `// nosec` that suppresses **nothing**
+is reported as a finding of its own (`StaleNosec`, `MSA-012`), because a stale
+suppression is a fact about the source.
+
+**AND THE CALLS THAT WERE NOT CHECKED ARE NOW COUNTED.** The type lens checks a call's
+arity and argument types only when it has read the callee's signature: a `.mbti` gives a
+name and never a parameter list, a method's signature is not in the source at all, and a
+`..` chain link is a method call wearing different syntax. Until now the tool said
+nothing about any of them, so *"I could not check this"* and *"there is nothing to
+report"* were the same output — and a file with no findings and four hundred unchecked
+calls printed exactly like a clean file. The count is on the file's verdict line
+(`unchecked=N`) and on the `SUMMARY`, where it is deliberately **not** part of the sum.
+
+Measured on the seven pinned corpora:
+
+| | files | parsed | actionable | notices | unchecked |
+|---|---:|---:|---:|---:|---:|
+| 0.4.36 | 1029 | 984 | 28 | 10096 | — |
+| 0.4.37 | 1029 | **984** | **28** | **10096** | **7867** |
+
+**NOTHING ELSE MOVED, and that is the point.** `actionable`, `notices`, `unreliable`,
+`withheld` and `total` are unchanged on all seven corpora. The three transfers change
+what the analyzer *says* about a finding, not which findings it makes; a transfer that
+had moved a finding count would be a change to the analysis, with a different
+justification and a different gate.
+
+The two numbers that DO differ are two different quantities, and the difference is
+exactly what it should be. The 0505 plan measured **16,250** package-level calls whose
+signature is known by name only. The analyzer's own count is larger because it counts
+**method calls** and **`..` chain links** as well — two more kinds of call whose
+signature it never reads. The 0505 number is still true; it was always about one kind of
+call.
+
+Suite: 1196 js / 1316 wasm / 1196 wasm-gc. Gates: **86** numbered mutation gates, 495
+live mutations, every restore byte-identical.
+
 ## 0.4.36 — a notice is printed only when it can hide a finding, and which one that is depends on where it sits
 
 **The complaint was about volume, and it was right.** On the pinned core corpus

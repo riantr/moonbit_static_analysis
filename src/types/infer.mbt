@@ -20,6 +20,13 @@ priv struct Infer {
   sigs : Array[Sig]
   findings : Array[@report.Report]
   vst : Array[@core.Frame]
+  /// 0507. The calls this lens could NOT check, because it could not read the
+  /// callee's signature: a name known only from a `.mbti` of another package,
+  /// a method call, and a `..` chain link. Each of them is a real call whose
+  /// arguments are unchecked, and today that silence is indistinguishable
+  /// from "there was nothing to check". The count is the disclosure that
+  /// stops the two from reading the same.
+  mut n_unchecked : Int32
 }
 
 ///|
@@ -53,6 +60,7 @@ fn new_infer(extern_iface : @core.IfaceSymTab, partial : Bool) -> Infer {
     sigs: [],
     findings: [],
     vst: [],
+    n_unchecked: 0,
   }
 }
 
@@ -307,6 +315,12 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
           // Known to be a value, signature not read: the call is real, the
           // arguments are unchecked, and the result is unknown. Deliberately
           // does NOT fall through to the "not callable" arm below.
+          //
+          // 0507. The call is counted as UNCHECKED. It is a real call whose
+          // arguments this lens did not check, and the count is what the scan
+          // discloses instead of rounding "I could not check this" down to
+          // "nothing to report".
+          self.n_unchecked += 1
           for arg in args {
             ignore(self.ty_of(arg, TUnknown))
           }
@@ -346,6 +360,12 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
       if !base.is_qualifier() {
         ignore(self.ty_of(base, TUnknown))
       }
+      // 0507. A method call is a call whose signature this lens never read, for
+      // the same reason the `TUnknownFn` arm above does not fall through: the
+      // analyzer has the method's NAME and not its parameter list. It is
+      // counted as UNCHECKED, because "I did not check this call" and "there
+      // is nothing wrong with this call" have to be different statements.
+      self.n_unchecked += 1
       for arg in args {
         ignore(self.ty_of(arg, TUnknown))
       }
@@ -368,7 +388,10 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     //
     // A qualifier receiver (`@pkg..f(..)`) is typed as TUnknown: `@pkg` is a
     // package and not a value, so there is no receiver type to report.
-    EDotDot(base, _, args, _) =>
+    EDotDot(base, _, args, _) => {
+      // 0507. The same disclosure as `EMethodCall`: a `..` link's signature is
+      // not read either, so the call is counted as UNCHECKED.
+      self.n_unchecked += 1
       if base.is_qualifier() {
         for arg in args {
           ignore(self.ty_of(arg, TUnknown))
@@ -381,6 +404,7 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         }
         bt
       }
+    }
     EIndex(base, idx) => {
       let bt = self.ty_of(base, TUnknown)
       let it = self.ty_of(idx, TUnknown)
@@ -1089,5 +1113,10 @@ pub fn infer_full(
       decl_span: @core.zero_span(),
     })
   }
-  TypeResult::{ syms, sigs: inf.sigs, findings: inf.findings, }
+  TypeResult::{
+    syms,
+    sigs: inf.sigs,
+    findings: inf.findings,
+    n_unchecked: inf.n_unchecked,
+  }
 }

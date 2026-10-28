@@ -49,7 +49,10 @@ function Get-Findings([string]$dir) {
   $out = & 'C:\Users\31379\.moon\bin\moonrun.exe' $wasm $dir --extern-iface-dir $repos 2>&1 | Out-String
   $total = 0; $behav = 0; $only = 0
   foreach ($ln in ($out -split "`n")) {
-    if ($ln -notmatch '\(([A-Za-z]+)\)\s*\[([a-z+]+)\]\s*$') { continue }
+    # 0507. The bracket carries the lenses, the family's stable id and the
+    # confidence. The LENS TAG is the first comma-separated part; matching the
+    # whole bracket would make every finding UNMATCHED and the count zero.
+    if ($ln -notmatch '\(([A-Za-z]+)\)\s*\[([a-z+\-]+)(, MSA-\d{3}, (high|low|undecided))?\]\s*$') { continue }
     $total++
     $lenses = $Matches[2] -split '\+'
     $hasB = $lenses -contains 'behavior'

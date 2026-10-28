@@ -450,6 +450,44 @@ pub(all) enum Severity {
 } derive(Eq)
 
 ///|
+/// The confidence axis: how much did the lens CHECK when it produced this
+/// finding?
+///
+/// 0507. The severity of a finding says how bad it is IF IT IS REAL. The
+/// confidence says how sure the analyzer is that it is real, and the two are
+/// independent: a finding can be severe and uncertain, or trivial and certain.
+///
+/// The three values are the three situations a lens can be in:
+///
+///   High      -- the lens had the declaration, the signature or the type in
+///                front of it, and the finding follows from what it read.
+///   Low       -- the lens was reasoning from a NAME alone: it could not see
+///                the declaration, so the finding rests on the name and on the
+///                absence of a binding it can see.
+///   Undecided -- the lens could not decide at all: the construct is outside
+///                the subset it reads, or a read failed. These are the
+///                analyzer's OWN scope limits, and they are the findings it
+///                renders `notice:`.
+///
+/// A finding is NOT dropped for being uncertain. It is REPORTED at a lower
+/// confidence -- and that is the whole difference between a silence that reads
+/// as "nothing to report" and a statement about how much was checked.
+pub(all) enum Confidence {
+  High
+  Low
+  Undecided
+} derive(Eq)
+
+///|
+pub fn Confidence::name(self : Confidence) -> String {
+  match self {
+    High => "high"
+    Low => "low"
+    Undecided => "undecided"
+  }
+}
+
+///|
 /// The three analysis lenses, in pipeline order. Ranks order merged lens
 /// lists and pick the representative (most specific) message.
 pub(all) enum Lens {
@@ -500,6 +538,7 @@ pub(all) enum Family {
   FMethodError
   FCondBool
   FUnreachable
+  FStaleNosec
 } derive(Eq)
 
 ///|
@@ -516,6 +555,77 @@ pub fn Family::name(self : Family) -> String {
     FMethodError => "MethodError"
     FCondBool => "NonBooleanCond"
     FUnreachable => "Unreachable"
+    FStaleNosec => "StaleNosec"
+  }
+}
+
+///|
+/// The STABLE id of a family: the name a consumer can quote across versions.
+///
+/// 0507. The public NAME of a family is a second, hand-maintained vocabulary --
+/// five of the original eleven names are not the tag with its `F` removed --
+/// and renaming one changes the JSON output silently, so a consumer that pins
+/// `"family": "ArgTypeMismatch"` in a suppression or a CI filter gets no
+/// warning at all. An id is not that. An id is ALLOCATED and NEVER
+/// RENUMBERED: `MSA-007` means the same family in 0.4.36 and in every version
+/// after it, whatever the family is called.
+///
+/// THE TABLE IS HAND-ALLOCATED ON PURPOSE. Deriving the id from the enum's
+/// position would renumber every family after an insertion, which is exactly
+/// the thing an id must not do. So the table is written out here, one line per
+/// family, and `_verify/check_family_roster.ps1` checks it: one id per family,
+/// no id used twice, and no id ever reused. A family added later takes the
+/// NEXT FREE NUMBER -- `MSA-012` is the first id allocated after the original
+/// eleven, and it is the stale-suppression finding of transfer 3.
+pub fn Family::id(self : Family) -> String {
+  match self {
+    FParse => "MSA-001"
+    FUndefinedName => "MSA-002"
+    FUnusedLocal => "MSA-003"
+    FUnusedParam => "MSA-004"
+    FParamChanged => "MSA-005"
+    FAssignType => "MSA-006"
+    FArgType => "MSA-007"
+    FOpMismatch => "MSA-008"
+    FMethodError => "MSA-009"
+    FCondBool => "MSA-010"
+    FUnreachable => "MSA-011"
+    FStaleNosec => "MSA-012"
+  }
+}
+
+///|
+/// The family with this stable id, if there is one.
+///
+/// 0507. The INVERSE of `Family::id`. A profile and a `nosec` comment both
+/// quote an id, and both have to know which family it names -- and an id that
+/// names nothing is a USER ERROR, not a family. So the lookup returns `None`
+/// rather than defaulting to some family, and the caller decides what an
+/// unknown id means: a warning in the profile's case, and a stale suppression
+/// in the `nosec`'s.
+///
+/// THIS TABLE IS WRITTEN OUT AGAIN, and that is a liability, so it is CHECKED
+/// rather than trusted. `_verify/check_family_roster.ps1` reads both tables out
+/// of this file -- `Family::id`'s and this one's -- and asserts that they are
+/// exact inverses of each other, that no id is used twice, and that the ids
+/// form a contiguous run from `MSA-001`. A number written down twice will
+/// disagree with itself eventually; two tables that disagree are a fact the
+/// reader cannot see, so a gate compares them.
+pub fn family_by_id(id : String) -> Family? {
+  match id {
+    "MSA-001" => Some(FParse)
+    "MSA-002" => Some(FUndefinedName)
+    "MSA-003" => Some(FUnusedLocal)
+    "MSA-004" => Some(FUnusedParam)
+    "MSA-005" => Some(FParamChanged)
+    "MSA-006" => Some(FAssignType)
+    "MSA-007" => Some(FArgType)
+    "MSA-008" => Some(FOpMismatch)
+    "MSA-009" => Some(FMethodError)
+    "MSA-010" => Some(FCondBool)
+    "MSA-011" => Some(FUnreachable)
+    "MSA-012" => Some(FStaleNosec)
+    _ => None
   }
 }
 
@@ -526,6 +636,7 @@ pub fn Family::severity(self : Family) -> Severity {
     FParse | FUndefinedName | FArgType | FOpMismatch | FMethodError => Error
     FAssignType | FCondBool | FUnreachable => Warning
     FUnusedLocal | FUnusedParam | FParamChanged => Warning
+    FStaleNosec => Warning
   }
 }
 

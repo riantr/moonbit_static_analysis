@@ -108,8 +108,13 @@ foreach ($k in $targets.Keys) {
   $txt = [System.IO.File]::ReadAllText((Join-Path $baseDir "$k.txt"))
   $lines = @($txt -split "`r?`n" | Where-Object { $_ -match '^\d+:\d+ - (error|warning|hint): ' })
   $withB = @($lines | Where-Object {
+    # 0507. The bracket carries the METADATA: the lenses, the family's stable
+    # id, and the confidence. The LENS TAG is the first comma-separated part;
+    # taking the whole bracket would make the tag "structural, MSA-002, low"
+    # and the lens count would read zero for every finding.
     $tag = ([regex]::Match($_, '\[([^\]]*)\]\s*$')).Groups[1].Value
-    ($tag -split '\+') -contains 'behavior'
+    $lens = (($tag -split ',')[0]).Trim()
+    ($lens -split '\+') -contains 'behavior'
   })
   $grandTotal += $lines.Count
   $grandBehavior += $withB.Count

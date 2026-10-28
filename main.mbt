@@ -21,6 +21,25 @@ fn parse_count(s : String) -> Int32? {
 }
 
 ///|
+/// Split a comma- or space-separated list of family ids.
+///
+/// 0507. Both separators are accepted because both are natural to type, and a
+/// list that is split wrongly would silently select the wrong families.
+fn split_ids(s : String) -> Array[String] {
+  let out : Array[String] = []
+  for part in s.split(",") {
+    let p = part.to_owned()
+    for piece in p.split(" ") {
+      let t = piece.trim().to_owned()
+      if t != "" {
+        out.push(t)
+      }
+    }
+  }
+  out
+}
+
+///|
 async fn main {
   let args = @env.args()
   // NOTE: this cannot exit non-zero. MoonBit exposes no process-exit entry point
@@ -86,6 +105,34 @@ async fn main {
   //                           defects on one file -- the first forty findings were
   //                           all notices and the thirty-eight defects behind them
   //                           were never printed.
+  //   --families MSA-007,MSA-002
+  //                           Report ONLY these families, by their STABLE id.
+  //                           The ids are listed in the README and are the
+  //                           `MSA-NNN` codes that appear in every rendered
+  //                           finding and in the JSON record. An id this version
+  //                           does not know is a WARNING and the scan still
+  //                           runs -- a family added in a later release must not
+  //                           make a profile unusable. An id that is BOTH
+  //                           included and excluded is an ERROR and the scan
+  //                           does not run at all: the two rules contradict each
+  //                           other, and which one won would be an accident of
+  //                           the order of two `if`s.
+  //   --exclude-families MSA-007
+  //                           Report everything EXCEPT these families. The
+  //                           same id vocabulary, the same rules.
+  //   --honor-nosec
+  //                           Honour `// nosec` comments in the analysed
+  //                           source: `// nosec` silences every finding on that
+  //                           line, and `// nosec MSA-007` silences that one
+  //                           family on that line. OFF by default, and the
+  //                           default is a decision rather than an omission: a
+  //                           tool that stops reporting a finding because of a
+  //                           comment in the analysed source has an output the
+  //                           reader cannot trust without reading that source
+  //                           first. A `nosec` that suppresses NOTHING is
+  //                           reported as a finding of its own -- a stale
+  //                           suppression is a fact about the source, and the
+  //                           source is what this tool analyses.
   let mut target = ""
   let excludes : Array[String] = []
   let extern_iface_dirs : Array[String] = []
@@ -96,6 +143,12 @@ async fn main {
   let mut per_function = false
   let mut show_notices = false
   let mut findings_shown_per_file = @sa.default_findings_shown_per_file
+  // 0507. The family PROFILE: which families to report, and whether the
+  // `nosec` comments in the analysed source are honoured. Both are off by
+  // default, and the profile is validated BEFORE the scan runs.
+  let family_include : Array[String] = []
+  let family_exclude : Array[String] = []
+  let mut honor_nosec = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -131,6 +184,26 @@ async fn main {
           return
         }
       }
+    } else if a == "--families" {
+      if i + 1 >= args.length() {
+        println("ERROR\t--families needs a list of family ids")
+        return
+      }
+      i += 1
+      for id in split_ids(args[i]) {
+        family_include.push(id)
+      }
+    } else if a == "--exclude-families" {
+      if i + 1 >= args.length() {
+        println("ERROR\t--exclude-families needs a list of family ids")
+        return
+      }
+      i += 1
+      for id in split_ids(args[i]) {
+        family_exclude.push(id)
+      }
+    } else if a == "--honor-nosec" {
+      honor_nosec = true
     } else if a == "--mmd" {
       // The path is REQUIRED here, and that is a decision rather than an
       // omission. An optional value would be ambiguous: in
@@ -166,8 +239,40 @@ async fn main {
   if target == "" {
     target = "."
   }
+  // 0507. THE PROFILE IS VALIDATED BEFORE THE SCAN RUNS, and the two rules
+  // are different on purpose:
+  //
+  //   * an id this version does not know is a WARNING, and the scan still
+  //     runs. A family added in a later release must not make an older
+  //     analyzer's profile unusable, and a typo must be loud rather than
+  //     fatal.
+  //   * an id that is BOTH included and excluded is an ERROR, and the scan
+  //     does not run at all. The two rules contradict each other, so there is
+  //     no reading of the profile that satisfies both, and which one won
+  //     would be decided by the order of two `if`s inside the scanner.
+  let (profile_warnings, profile_error) = @sa.validate_profile(
+    family_include, family_exclude,
+  )
+  for w in profile_warnings {
+    println("WARNING\t\{w}")
+  }
+  if profile_error != "" {
+    println("ERROR\t\{profile_error}")
+    return
+  }
   @sa.scan(
-    target, excludes, extern_iface_dirs, auto_fetch_deps, mmd_out, per_function,
-    findings_shown_per_file, show_notices,
+    target,
+    excludes,
+    extern_iface_dirs,
+    auto_fetch_deps,
+    mmd_out,
+    per_function,
+    findings_shown_per_file,
+    show_notices,
+    @sa.Profile::{
+      include_ids: family_include,
+      exclude_ids: family_exclude,
+      honor_nosec,
+    },
   )
 }

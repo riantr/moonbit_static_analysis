@@ -35,6 +35,12 @@ fn lens_tag(lenses : Array[@core.Lens]) -> String {
       names.push(l.name())
     }
   }
+  if names.length() == 0 {
+    // A finding no lens produced -- the stale-suppression finding of 0507 --
+    // carries no lens at all. An empty bracket would read as a rendering
+    // accident, so the tag says so.
+    return "-"
+  }
   names.join("+")
 }
 
@@ -116,11 +122,60 @@ fn is_scope_limit(message : String) -> Bool {
 }
 
 ///|
+/// The confidence of this finding: how much the lens CHECKED when it produced
+/// it.
+///
+/// 0507. ONE definition, and every consumer uses it -- the rendered line, the
+/// JSON record, and the per-confidence counts. A second copy of the question
+/// somewhere else is how a diagram ends up drawing a defect as a notice while
+/// the number beside it says the opposite.
+///
+/// THE RULE, and it is the 0505 plan's three situations exactly:
+///
+///   * a scope limit -- "this construct is outside the analyzed subset" -- is
+///     the lens saying it could not DECIDE. `undecided`.
+///   * a finding whose family reasons from a NAME alone is `low`. The only one
+///     is `UndefinedName`: the analyzer found no binding for the name, and the
+///     binding it could not find may be in a file, or in a package, it was
+///     never given. A reader who is told this is told the truth about it.
+///   * everything else had the declaration, the signature or the type in front
+///     of the lens, and is `high`.
+///
+/// COMPUTED, NOT A FIELD. A field would have to be filled in at every one of
+/// the thirty-odd places a Report is constructed, and a missed one would be a
+/// finding with the wrong confidence and no way to notice. A function has one
+/// definition and cannot drift.
+pub fn Report::confidence(self : Report) -> @core.Confidence {
+  if self.is_notice() {
+    return @core.Undecided
+  }
+  if self.family == @core.FUndefinedName {
+    return @core.Low
+  }
+  @core.High
+}
+
+///|
 pub fn Report::render(self : Report) -> String {
   let buf = StringBuilder()
   let sev = self.severity_label()
+  // The bracket carries the finding's METADATA: the lenses that saw it, the
+  // family's STABLE id, and the confidence. The family NAME stays in the
+  // parentheses alone, because that is the spelling a consumer has been
+  // reading for a dozen releases and the name is still the name.
+  //
+  // The id and the confidence are in the bracket rather than in the
+  // parentheses ON PURPOSE: the parentheses are the family, and every gate
+  // that reads a finding line compares that field against a family name. The
+  // bracket was already the metadata slot, and putting the two new fields
+  // there keeps every family comparison in the repository working unchanged.
+  let meta = lens_tag(self.lenses) +
+    ", " +
+    self.family.id() +
+    ", " +
+    self.confidence().name()
   buf.write_string(
-    "\{self.span.start.line}:\{self.span.start.col} - \{sev}: \{self.message} (\{self.family.name()}) [\{lens_tag(self.lenses)}]\n",
+    "\{self.span.start.line}:\{self.span.start.col} - \{sev}: \{self.message} (\{self.family.name()}) [\{meta}]\n",
   )
   for fr in self.vst {
     buf.write_string("  in \{fr.func} at \{fr.file}:\{fr.line}\n")

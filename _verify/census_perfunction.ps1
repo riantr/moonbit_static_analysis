@@ -127,11 +127,16 @@ foreach ($k in $C.Keys) {
     $t = $l -split "`t"
     if ($t.Count -ge 2 -and ($t[0] -in @('FOUND','PARTIAL','CLEAN'))) { $cur = ($t[-1].Trim() -replace ('^' + $corpusRoot + '[\\/]'), ''); continue }
     if (($l -match ' - error: ' -or $l -match ' - warning: ') -and $l -notmatch '\(ParseError\)') {
-      $m = [regex]::Match($l, '^(?<f>\d+):(?<c>\d+) - (?<sev>error|warning): (?<msg>.*) \((?<cat>[A-Za-z]+)\) \[(?<lens>[a-z+]+)\]$')
+      # 0507. The rendered finding carries its METADATA in the bracket:
+      # the lenses, the family's STABLE id, and the confidence. The pattern
+      # REQUIRES all three, so a change to the shape fails this gate loudly
+      # instead of turning every finding into an UNCLASSIFIED row that reads
+      # as "the census found something it could not name".
+      $m = [regex]::Match($l, '^(?<f>\d+):(?<c>\d+) - (?<sev>error|warning): (?<msg>.*) \((?<cat>[A-Za-z]+)\) \[(?<lens>[a-z+\-]+), (?<id>MSA-\d{3}), (?<conf>high|low|undecided)\]$')
       if ($m.Success) {
-        $rows += [pscustomobject]@{ Corpus = $k; File = $cur; Line = [int]$m.Groups['f'].Value; Sev = $m.Groups['sev'].Value; Msg = $m.Groups['msg'].Value; Fam = (Classify $m.Groups['msg'].Value) }
+        $rows += [pscustomobject]@{ Corpus = $k; File = $cur; Line = [int]$m.Groups['f'].Value; Sev = $m.Groups['sev'].Value; Msg = $m.Groups['msg'].Value; Fam = (Classify $m.Groups['msg'].Value); Id = $m.Groups['id'].Value; Conf = $m.Groups['conf'].Value }
       } else {
-        $rows += [pscustomobject]@{ Corpus = $k; File = $cur; Line = -1; Sev = '?'; Msg = $l; Fam = 'UNCLASSIFIED' }
+        $rows += [pscustomobject]@{ Corpus = $k; File = $cur; Line = -1; Sev = '?'; Msg = $l; Fam = 'UNCLASSIFIED'; Id = ''; Conf = '' }
       }
     }
   }

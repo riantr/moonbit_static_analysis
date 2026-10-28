@@ -381,8 +381,20 @@ fn cap(limit : Int32, n : Int32) -> Int32 {
 /// Which inspection a finding is hung off: the FIRST lens that saw it, in lens
 /// order. A merged finding (all three lenses) belongs to the structural pass,
 /// because that is the first one that ran.
+///
+/// 0507. A finding with NO LENS AT ALL is possible for the first time: the
+/// stale-suppression finding of transfer 3 is produced by the scanner, not by
+/// a lens, and it carries an empty lens list. `sorted[0]` on an empty list is
+/// a crash, and a crash while drawing a diagram is the worst possible way to
+/// find out -- the text report is the authoritative output and the drawing is
+/// an opt-in extra, so the extra must not take the report down with it.
+///
+/// The empty case reads as `none`, which is what it is: no inspection saw it.
 fn primary_lens(lenses : Array[@core.Lens]) -> String {
   let sorted = by_rank(lenses)
+  if sorted.length() == 0 {
+    return "none"
+  }
   match sorted[0] {
     @core.LStructural => "struct"
     @core.LType => "type"

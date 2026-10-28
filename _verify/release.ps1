@@ -325,11 +325,11 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19569'
-$SELF_FILES = '183'
-$SELF_NOTICES = 'test declaration=1383|if expression=103|struct declaration=60|derive declaration=53|enum declaration=24|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
+$NOTICE_TOTAL = '19603'
+$SELF_FILES = '187'
+$SELF_NOTICES = 'test declaration=1413|if expression=103|struct declaration=62|derive declaration=54|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
 $SELF_PRINTED = '124'
-$SELF_AGGREGATED = '1526'
+$SELF_AGGREGATED = '1560'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -802,6 +802,47 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4f2  THE FAMILY ROSTER -----------------------------------------------------
+# 0507 added the STABLE FAMILY IDS, and the id table is HAND-ALLOCATED on
+# purpose: deriving it from the enum's position would renumber every family
+# after an insertion, which is the one thing an id must never do.
+#
+# Two tables are written out by hand -- `Family::id` and `family_by_id` -- and
+# the compiler enforces the FIRST one (a new family breaks the build there)
+# and NOTHING about the second (a missing arm in a string match simply never
+# matches). A family whose id could not be selected in a profile and could not
+# be named in a `nosec`, with nothing saying so, is exactly the kind of defect
+# a reader cannot see.
+#
+# So the gate compares the two tables, and the enum, and it checks that the
+# ids are CONTIGUOUS from MSA-001: a gap means a number was allocated and never
+# used, and a family given a number in the middle of the run means every
+# suppression written against that number now names a different family.
+#
+# It is placed here, before the mutation gates, for the same reason as the
+# notice-labels stage: it reads the tree, and a mutation gate that has mutated
+# a source file would be read as part of it.
+if ($failed.Count -eq 0) {
+  $FR = Join-Path $root '_verify\check_family_roster.ps1'
+  if (-not (Test-Path $FR)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_family_roster.ps1'
+    $failed += 'family-roster'
+  } else {
+    Stage 'the family roster: one id each, contiguous, and reversible' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $FR 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(FAIL|ROSTER OK|ROSTER FAILED|MISSING|ids:|members:|values:|names:)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'family-roster' }
+  }
+}
+
 # --- 4g  the frame audit, per binding -----------------------------------------
 # The gate checks that the frame audit judges each BINDING against the regions
 # that can reach it: a binding declared after a region is judged, a binding
@@ -877,7 +918,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1553,14 +1594,31 @@ if ($SkipMutations) {
 # findings is thin, and it is the whole of it: see the DIRECTION 2 block in
 # NARRATIVE.md for why the behaviour lens needs `--per-function` to be reached
 # at all.
+#
+# 0507 ADDED `unchecked` TO EVERY ONE OF THESE PINS, and the reason is that a
+# number that is not re-measured is a number that is wrong silently.
+#
+# `unchecked` is NOT a finding count. It is the number of CALLS the type lens
+# could not check, because it never read the callee's signature: a name known
+# only from another package's `.mbti`, a method call, and a `..` chain link.
+# It is printed BESIDE the sum and is deliberately NOT part of it -- an
+# unchecked call is not a defect, and adding it to `total` would break the
+# identity the SUMMARY prints.
+#
+# WHAT DID NOT MOVE, and that is the point of the whole increment: `actionable`,
+# `notices`, `unreliable`, `withheld` and `total` are UNCHANGED on all seven
+# corpora. The three transfers from bandit change what the analyzer SAYS about
+# a finding, not which findings it makes. A transfer that had moved a finding
+# count would be a transfer that changed the analysis, and that is a different
+# increment with a different justification.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 total=3457'
-  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 total=699'
-  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 total=186'
-  'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 total=1654'
-  'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 total=1799'
-  'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 total=29'
-  'moonbit_core'    = 'files=1029 parsed=984 actionable=28 notices=10096 unreliable=646 withheld=65 total=10770'
+  'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3457'
+  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 unchecked=1340 total=699'
+  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 unchecked=754 total=186'
+  'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1654'
+  'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2897 total=1799'
+  'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
+  'moonbit_core'    = 'files=1029 parsed=984 actionable=28 notices=10096 unreliable=646 withheld=65 unchecked=7867 total=10770'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -1892,6 +1950,49 @@ if (-not (Test-Path -LiteralPath $MNF -PathType Leaf)) {
     Write-Output ''
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'notice-flood'
+  }
+}
+# --- the 0507 stage -------------------------------------------------------------
+# 0507 is the THREE TRANSFERS from bandit: the confidence axis, the stable
+# family ids and the checked profile, and the `nosec` with its stale-
+# suppression warning. It changed what the analyzer SAYS about a finding, and
+# NOT which findings it makes -- so the corpus pins moved in exactly one
+# field (`unchecked`) and in nothing else.
+#
+# The settle's rows are the MEASUREMENTS of the three transfers: the
+# confidence each situation produces, the profile's two rules, and the
+# `nosec`'s four behaviours. They ship in the narrative and in the README, and
+# a published number that nothing checks can go missing silently.
+#
+# The stage carries the same guard the 0505 and 0506 stages carry, for the same
+# reason: the stage must APPEAR in the summary. "The gate passed" and "the
+# gate ran what it says it ran" are different claims, and only the second one
+# is worth anything.
+$MTR = Join-Path $root '_verify\settle_0507_bandit_transfers.ps1'
+if (-not (Test-Path -LiteralPath $MTR -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\settle_0507_bandit_transfers.ps1'
+  $failed += 'bandit-transfers'
+} else {
+  Stage 'the three bandit transfers: measured, not asserted' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MTR 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(MISMATCH|MISSING|GATE OK|ABORT)' -or $ln -match '^\s+T\d+\s') {
+        Write-Output ('  ' + $ln.Trim())
+      }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'bandit-transfers' }
+  $stageName = 'the three bandit transfers: measured, not asserted'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'bandit-transfers'
   }
 }
 # --- verdict -----------------------------------------------------------------

@@ -33,6 +33,7 @@ pub(all) struct PipelineResult {
   n_subset : Int32
   first_error_line : Int32
   hiding : Array[@core.Span]
+  n_unchecked : Int32
 }
 
 // Type aliases

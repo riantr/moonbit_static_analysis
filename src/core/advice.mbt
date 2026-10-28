@@ -80,5 +80,10 @@ pub fn Family::advice(self : Family) -> Advice {
         why: "A statement follows a `return`, `break` or `continue` on every path to it, so it can never execute.",
         how: "Delete it. If it was meant to run, the control flow above it needs to change.",
       }
+    FStaleNosec =>
+      Advice::{
+        why: "A `// nosec` comment on this line suppressed NOTHING. The comment names a finding family, and no finding of that family was reported here -- so the defect it used to silence is gone, or was never there, or the family id in the comment does not exist. A suppression that suppresses nothing is dead weight in the source, and it is a sign that the code it referred to has changed.",
+        how: "Delete the comment. If the comment is still needed, the finding it was meant to silence is not being reported -- check the family id against the roster (`MSA-001` and up) and check that the line is the line the finding is on.",
+      }
   }
 }

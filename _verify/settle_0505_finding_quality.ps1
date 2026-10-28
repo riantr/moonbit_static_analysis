@@ -82,13 +82,24 @@ if (-not (Test-Path -LiteralPath $moonrun)) {
 # changes on purpose -- the corpus pin moves, or a family is added -- the pin
 # and the narrative are updated in the SAME commit, and the gate is what
 # makes forgetting to do that visible.
+#
+# 0507 IMPLEMENTED THE PLAN, and this script's rows were WRITTEN TO PIN THE
+# ABSENCE of the three transfers. They now pin their PRESENCE, and the flip
+# is recorded in NARRATIVE.md. That is the point of a settle: it is a
+# measurement of the CURRENT state, and when the state changes on purpose the
+# measurement moves with it -- re-pinned, never loosened.
+#
+# `$WANT_FAMILIES` moved from 11 to 12 because the stale-suppression finding
+# (MSA-012) is a family of its own. `$WANT_NAME_DIFFERS` did NOT move: the
+# new family's public name IS its tag minus the `F`, so the five names that
+# differ from their tag are the same five.
 # ---------------------------------------------------------------------------
 $WANT_REACH_TOTAL   = 19843   # calls to a package-level function, pinned corpus
 $WANT_REACH_UNCHECK = 16250   # of those, the signature is known by NAME only
 $WANT_REACH_FILES   = 657     # files carrying an unchecked call
 $WANT_MBTI_FILES    = 159     # .mbti files in the pinned corpus
 $WANT_MBTI_PUBFN    = 2116    # `pub fn` declarations across them
-$WANT_FAMILIES      = 11      # members of the `Family` enum
+$WANT_FAMILIES      = 12      # members of the `Family` enum
 $WANT_NAME_DIFFERS  = 5       # of them, whose public name is not the tag minus `F`
 
 $fail = 0
@@ -122,9 +133,9 @@ function Invoke-Scan {
   $txt = [System.IO.File]::ReadAllText($o)
   $findings = @()
   foreach ($l in ($txt -split "`r?`n")) {
-    $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \(([A-Za-z]+)\) \[([a-z,]+)\]$')
+    $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \(([A-Za-z]+)\) \[([a-z+\-]+), (MSA-\d{3}), (high|low|undecided)\]$')
     if ($m.Success) {
-      $findings += [pscustomobject]@{ Label = $m.Groups[1].Value; Message = $m.Groups[2].Value; Family = $m.Groups[3].Value }
+      $findings += [pscustomobject]@{ Label = $m.Groups[1].Value; Message = $m.Groups[2].Value; Family = $m.Groups[3].Value; Id = $m.Groups[5].Value; Confidence = $m.Groups[6].Value }
     }
   }
   $sum = [regex]::Match($txt, '(?m)^SUMMARY.*$').Value
@@ -467,18 +478,30 @@ if (-not $enumM.Success -or -not $nameM.Success) {
   }
 }
 
-# B3 -- THE OUTPUT SURFACE. A finding is rendered with its family NAME, and
-# carries no id and no confidence token.
+# B3 -- THE OUTPUT SURFACE. 0507 ADDED THE ID AND THE CONFIDENCE, so a finding
+# is rendered with its family NAME, its family's STABLE ID, and the
+# confidence the lens reached.
+#
+# The row was INVERTED by 0507: it used to assert that the rendered line
+# carried the name and NO id and NO confidence, which was the plan's premise.
+# The premise was true when the row was written and it is FALSE now, so the
+# row now asserts the implemented state. A settle that keeps asserting the
+# absence of a thing that now exists is a settle that has stopped measuring.
 $r = Invoke-Scan -Dir $a3
 if ($r.Findings.Count -eq 1) {
   $line = @($r.Text -split "`r?`n" | Where-Object { $_ -match '^\d+:\d+ - ' })[0]
   $hasName = ($line -match '\(ArgTypeMismatch\)')
-  $hasId = ($line -match '\b(MSA|[A-Z]{2,6})-[0-9]{2,}\b')
-  $hasConf = ($line -match '(?i)\b(confidence|confidence:|low|medium|high)\b')
-  if ($hasName -and -not $hasId -and -not $hasConf) {
-    Say-OK 'B3' 'OK' ('the rendered finding carries the NAME only: ' + $line.Trim())
+  # The lens tag is whatever lens produced the finding. This fixture's finding
+  # comes from the TYPE lens, and the first version of this row pinned
+  # `structural` -- a guess about the shape, made when the bracket held only
+  # the lens tag. The row is about the SHAPE (a lens tag, the family's id, a
+  # confidence), so it matches the shape and does not pin which lens it was.
+  $hasId = ($line -match '\[[^,\]]+, MSA-007,')
+  $hasConf = ($line -match ', high\]')
+  if ($hasName -and $hasId -and $hasConf) {
+    Say-OK 'B3' 'OK' ('the rendered finding carries the NAME, the id and the confidence: ' + $line.Trim())
   } else {
-    Say-Bad 'B3' 'a name and no id/confidence token' $line.Trim() 'the rendered shape moved'
+    Say-Bad 'B3' 'a name, an id and a confidence' $line.Trim() 'the rendered shape moved'
   }
 } else {
   Say-Bad 'B3' '1 finding' ($r.Findings.Count.ToString()) 'the fixture did not produce its finding'
@@ -487,6 +510,8 @@ if ($r.Findings.Count -eq 1) {
 # B4 -- THE JSON BRIDGE. Its Finding record is the machine-readable output,
 # and it is read from the source because building the js bridge is not part of
 # this settle.
+#
+# 0507 ADDED `confidence` AND `family_id` to it, so this row was INVERTED too.
 $jTxt = [System.IO.File]::ReadAllText((Join-Path $root 'src\jsoncli\main.mbt'), [System.Text.Encoding]::UTF8)
 $fM = [regex]::Match($jTxt, '(?s)struct Finding \{(.*?)\}\s*derive\(ToJson\)')
 if (-not $fM.Success) {
@@ -499,31 +524,42 @@ if (-not $fM.Success) {
   }
   $hasSev = ($fields -contains 'severity')
   $hasConf = ($fields -contains 'confidence')
-  $hasId = (($fields -contains 'id') -or ($fields -contains 'family_id'))
-  if ($hasSev -and -not $hasConf -and -not $hasId) {
-    Say-OK 'B4' 'OK' ('the Finding record has `severity` and no `confidence` and no id: ' + ($fields -join ', '))
+  $hasId = ($fields -contains 'family_id')
+  if ($hasSev -and $hasConf -and $hasId) {
+    Say-OK 'B4' 'OK' ('the Finding record has `severity`, `confidence` and `family_id`: ' + ($fields -join ', '))
   } else {
-    Say-Bad 'B4' 'severity, no confidence, no id' ($fields -join ', ') 'the JSON shape moved'
+    Say-Bad 'B4' 'severity, confidence and family_id' ($fields -join ', ') 'the JSON shape moved'
   }
 }
 
 # ---------------------------------------------------------------------------
 Write-Output ''
-Write-Output '--- 3. THERE IS NO USER-FACING SUPPRESSION, NO CONFIG, NO FAMILY SELECTION ---'
+Write-Output '--- 3. THE FAMILY SELECTION AND THE SUPPRESSION ARE FLAGS, AND BOTH ARE OFF BY DEFAULT ---'
 $fix = Join-Path $dir 'fix'
 New-Item -ItemType Directory -Force -Path $fix | Out-Null
 [System.IO.File]::WriteAllText((Join-Path $fix 'user.mbt'), "fn main() -> Unit {`n  let x = nosuchfn(1)`n  ignore(x)`n}`n", $enc)
 
-# C1 -- A CONFIG FLAG IS REFUSED, NOT IGNORED. An unknown flag after the
-# target is an error, so "the analyzer has no profile" is a fact about the
-# argument parser and not an omission someone might patch over.
+# C1 -- THE FAMILY SELECTION IS A FLAG, AND AN UNKNOWN FLAG IS STILL REFUSED.
+#
+# 0507 INVERTED THIS ROW'S CLAIM. It used to assert that "there is no config
+# file and no family selection", and it proved it by showing that `--profile`
+# was refused as an unknown flag. The REFUSAL is still true -- `--profile` was
+# never the spelling -- but the conclusion it supported is false now: there IS
+# a family selection, and its spelling is `--families` / `--exclude-families`.
+#
+# So the row pins BOTH halves. The second half is the control for the first: a
+# parser that refused EVERYTHING would have satisfied the old row too, which
+# is exactly what a row that only checked a refusal is worth.
 $o = Join-Path $dir 'c1.out'
 Start-Process -FilePath $moonrun -ArgumentList @($wasm, $fix, '--profile', 'anything') -RedirectStandardOutput $o -RedirectStandardError ($o + '.err') -NoNewWindow -Wait | Out-Null
 $t1 = [System.IO.File]::ReadAllText($o)
-if ($t1 -match 'ERROR\tunexpected extra argument: --profile') {
-  Say-OK 'C1' 'OK' 'an unknown flag is REFUSED: there is no config file and no family selection'
+$refused = ($t1 -match 'ERROR\tunexpected extra argument: --profile')
+$r = Invoke-Scan -Dir $fix -Extra @('--families', 'MSA-002')
+$accepted = ($r.Summary -ne '' -and $r.Findings.Count -eq 1)
+if ($refused -and $accepted) {
+  Say-OK 'C1' 'OK' 'an unknown flag is REFUSED, and the real spelling --families is accepted and selects'
 } else {
-  Say-Bad 'C1' 'ERROR unexpected extra argument: --profile' ($t1.Trim()) 'the argument parser changed'
+  Say-Bad 'C1' 'an unknown flag refused AND --families accepted' ('refused=' + $refused + ' accepted=' + $accepted) 'the argument parser changed'
 }
 
 # C2 -- THE CONTROL FOR C1. A KNOWN flag after the target is accepted and the
@@ -536,17 +572,32 @@ if ($r.Findings.Count -eq 1) {
   Say-Bad 'C2' '1 finding' ($r.Findings.Count.ToString()) 'the known flag was not accepted'
 }
 
-# C3 -- THERE IS NO USER-FACING SUPPRESSION. A defect on a line carrying a
-# `# nosec` comment is still reported. This is the state transfer 3 would
-# change, pinned so the change is visible when it happens.
+# C3 -- THE `nosec` IS OFF BY DEFAULT. A defect on a line carrying a
+# `// nosec` comment is still reported, because a tool that stops reporting a
+# finding because of a comment in the ANALYSED source has an output the reader
+# cannot trust without reading that source first.
+#
+# 0507 INVERTED THIS ROW'S CLAIM. It used to assert that there was no
+# user-facing suppression AT ALL; the suppression is there now, and the
+# DEFAULT is the row.
 $ns = Join-Path $dir 'nosec'
 New-Item -ItemType Directory -Force -Path $ns | Out-Null
 [System.IO.File]::WriteAllText((Join-Path $ns 'user.mbt'), "fn main() -> Unit {`n  let x = nosuchfn(1) // nosec`n  ignore(x)`n}`n", $enc)
 $r = Invoke-Scan -Dir $ns
 if ($r.Findings.Count -eq 1) {
-  Say-OK 'C3' 'OK' 'a `// nosec` comment does not suppress anything: the finding is still reported'
+  Say-OK 'C3' 'OK' 'a `// nosec` comment suppresses nothing BY DEFAULT: the finding is still reported'
 } else {
-  Say-Bad 'C3' '1 finding' ($r.Findings.Count.ToString()) 'the finding changed'
+  Say-Bad 'C3' '1 finding' ($r.Findings.Count.ToString()) 'the default changed'
+}
+
+# C4 -- AND WITH THE FLAG, IT DOES SUPPRESS. C3 alone would be satisfied by a
+# parser that refused the flag, so the two halves are pinned together: the
+# suppression is OFF by default and ON when asked for.
+$r = Invoke-Scan -Dir $ns -Extra @('--honor-nosec')
+if ($r.Findings.Count -eq 0) {
+  Say-OK 'C4' 'OK' 'with --honor-nosec, the `// nosec` comment DOES suppress the finding on its line'
+} else {
+  Say-Bad 'C4' '0 findings' ($r.Findings.Count.ToString()) 'the nosec did not suppress'
 }
 
 # ---------------------------------------------------------------------------

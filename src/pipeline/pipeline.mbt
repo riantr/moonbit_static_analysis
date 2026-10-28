@@ -50,6 +50,15 @@ pub(all) struct PipelineResult {
   /// the walk that decides whether a region is in a function's hole list, and
   /// a second opinion about that would be a second geometry.
   hiding : Array[@core.Span]
+  /// 0507. The calls the TYPE lens could not check, because it never read the
+  /// callee's signature: a name known only from another package's `.mbti`, a
+  /// method call, and a `..` chain link.
+  ///
+  /// THIS IS NOT A FINDING COUNT. It is the size of the part of the program
+  /// the type lens did not check, and it travels with the result so the scan
+  /// can disclose it instead of rounding "I could not check this" down to
+  /// "nothing to report".
+  n_unchecked : Int32
 }
 
 ///|
@@ -256,6 +265,7 @@ fn run_core(
     n_subset: parsed.skips.length(),
     first_error_line: parsed.first_error,
     hiding: wr.hiding,
+    n_unchecked: tr.n_unchecked,
   }
 }
 

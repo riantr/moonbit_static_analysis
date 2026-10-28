@@ -371,6 +371,12 @@ pub(all) struct TypeResult {
   syms : Array[TypedSym]
   sigs : Array[Sig]
   findings : Array[@report.Report]
+  /// 0507. The calls this lens could NOT check: a call to a name it knows only
+  /// by NAME (a `.mbti` of another package), a method call, and a `..` chain
+  /// link. Each of them is a real call whose arguments went unverified, and
+  /// until now that silence was indistinguishable from "there was nothing to
+  /// check".
+  n_unchecked : Int32
 }
 
 ///|

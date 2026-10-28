@@ -50,7 +50,16 @@ test "merged rendering carries the machine's own vocabulary" {
   assert_true(text.contains("失忆"))
   assert_true(text.contains("浑噩"))
   assert_true(text.contains("站立"))
-  assert_true(text.contains("[structural]"))
+  // 0507. The bracket carries the metadata: the lenses, the family's STABLE id
+  // and the confidence. The machine's findings are `UndefinedName` -- the
+  // family that reasons from a NAME alone -- so the confidence is `low`.
+  // 0507. The bracket carries the metadata: the lenses, the family's STABLE id
+  // and the confidence. The machine's own findings are rendered through the
+  // same `Report::render` as every other finding, so they carry the same
+  // shape -- and `UnusedLocal` is a family that had the declaration in front
+  // of the lens, so its confidence is `high`.
+  assert_true(text.contains("[structural, MSA-003, high]"))
+  assert_true(text.contains("[structural, MSA-011, high]"))
 }
 
 ///|

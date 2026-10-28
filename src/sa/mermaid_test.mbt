@@ -57,6 +57,7 @@ fn mm_verdict(
     region_line,
     unreliable,
     hiding: [],
+    n_unchecked: 0,
   }
 }
 

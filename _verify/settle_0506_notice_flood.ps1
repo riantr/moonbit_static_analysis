@@ -124,9 +124,16 @@ function Invoke-Scan {
   $txt = [System.IO.File]::ReadAllText($o)
   $findings = @()
   foreach ($l in ($txt -split "`r?`n")) {
-    $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \(([A-Za-z]+)\) \[([a-z,]+)\]$')
+    # 0507 CHANGED THE BRACKET. It used to hold one lowercase tag -- the lens
+    # list, e.g. `[structural]` -- and it now holds THREE comma-separated
+    # fields: the lens list, the family's stable id (`MSA-NNN`), and the
+    # confidence. The old pattern `[a-z,]+` cannot match `MSA-007`, so every
+    # row that reads the rendered lines found NOTHING and reported a mismatch
+    # that looked like a change in the analyzer's behaviour and was really a
+    # change in how the gate parses the output.
+    $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \(([A-Za-z]+)\) \[([a-z,-]+), (MSA-\d{3}), (high|low|undecided)\]$')
     if ($m.Success) {
-      $findings += [pscustomobject]@{ Label = $m.Groups[1].Value; Message = $m.Groups[2].Value; Family = $m.Groups[3].Value; Line = $l }
+      $findings += [pscustomobject]@{ Label = $m.Groups[1].Value; Message = $m.Groups[2].Value; Family = $m.Groups[3].Value; Id = $m.Groups[5].Value; Confidence = $m.Groups[6].Value; Line = $l }
     }
   }
   $sum = [regex]::Match($txt, '(?m)^SUMMARY.*$').Value

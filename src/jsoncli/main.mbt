@@ -9,12 +9,22 @@
 
 ///|
 /// one finding, flattened for JSON
+///
+/// 0507. Two fields beside `severity`:
+///   * `confidence` -- how much the lens CHECKED. The severity says how bad the
+///     finding is if it is real; the confidence says how sure the analyzer is
+///     that it is real, and the two are independent.
+///   * `family_id` -- the family's STABLE id. `family` is the public NAME, and
+///     a name is a second vocabulary that can be renamed without anybody
+///     noticing; the id cannot be renumbered, so a consumer can pin it.
 struct Finding {
   line : Int32
   col : Int32
   severity : String
+  confidence : String
   message : String
   family : String
+  family_id : String
   lenses : Array[String]
   vst : Array[FrameRep]
 } derive(ToJson)
@@ -76,8 +86,10 @@ fn to_finding(rep : @report.Report) -> Finding {
     line: rep.span.start.line,
     col: rep.span.start.col,
     severity,
+    confidence: rep.confidence().name(),
     message: rep.message,
     family: rep.family.name(),
+    family_id: rep.family.id(),
     lenses: rep.lenses.map(lens => lens.name()),
     vst,
   }

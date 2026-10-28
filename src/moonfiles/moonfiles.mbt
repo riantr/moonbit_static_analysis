@@ -398,6 +398,10 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     n_subset,
     first_error_line: first_error,
     hiding,
+    // 0507. The literate frontend runs no TYPE lens, so it has no unchecked
+    // calls to disclose. Zero is the honest number here, not a default: the
+    // type lens is the only thing that counts them.
+    n_unchecked: 0,
   }
 }
 

@@ -34,6 +34,7 @@ fn v_parsed() -> @sa.Verdict {
     region_line: 0,
     unreliable: 0,
     hiding: [],
+    n_unchecked: 0,
   }
 }
 
@@ -56,6 +57,7 @@ fn v_partial_with_findings() -> @sa.Verdict {
     region_line: 10,
     unreliable: 5,
     hiding: [],
+    n_unchecked: 0,
   }
 }
 
@@ -78,6 +80,7 @@ fn v_partial_empty() -> @sa.Verdict {
     region_line: 1,
     unreliable: 4,
     hiding: [],
+    n_unchecked: 0,
   }
 }
 
@@ -399,6 +402,7 @@ fn v_partial_at(path : String, reason : String) -> @sa.Verdict {
     region_line: 1,
     unreliable: 0,
     hiding: [],
+    n_unchecked: 0,
   }
 }
 

@@ -7523,12 +7523,12 @@ given a confidence and reported.
 ### SECOND: STABLE FAMILY IDS, AND A PROFILE THAT IS CHECKED
 
 The public vocabulary of a finding is its family, and the family is spelled with a NAME.
-`Family` is a closed eleven-member enum (`src/core/core.mbt:491-503`) and its public
-spelling is a hand-written `match` (`core.mbt:506-521`). The names and the enum tags are
+`Family` is a closed twelve-member enum (`src/core/core.mbt:529-542`) and its public
+spelling is a hand-written `match` (`core.mbt:545-560`). The names and the enum tags are
 not the same thing:
 
 ```
-    0505 the family roster, families              : 11
+    0505 the family roster, families              : 12
     0505 the family roster, names that differ     : 5
 
 AND WHEN THE ROSTER MOVES, THESE TWO NUMBERS MOVE WITH IT, and the fix is to RE-READ
@@ -7538,7 +7538,7 @@ reading. The four corpus numbers move only when the corpus pin moves, which is t
 coupling the 0503 reach figure has always had.
 ```
 
-Five of the eleven public names are not the tag with its `F` removed: `FParse` ->
+Five of the twelve public names are not the tag with its `F` removed: `FParse` ->
 `ParseError`, `FAssignType` -> `AssignTypeMismatch`, `FArgType` -> `ArgTypeMismatch`,
 `FOpMismatch` -> `OperatorMismatch`, `FCondBool` -> `NonBooleanCond`. So the name is a
 second, hand-maintained vocabulary that has to be kept in step with the first, and
@@ -7645,6 +7645,20 @@ what the analyzer DOES, and the answer is read back from the analyzer itself:
 * D1 -- this section's eight numbers, read back out of THIS FILE and checked against
   the measurement.
 
+**AND 0507 INVERTED FIVE OF THOSE ROWS, IN PLACE.** B3 and B4 now assert that the
+rendered finding carries the id and the confidence and that the JSON record carries
+`confidence` and `family_id`; C1 now asserts that the real spelling `--families` is
+accepted AND that an unknown flag is still refused; C3 now asserts that a `// nosec`
+suppresses nothing BY DEFAULT, and a new row C4 asserts that it DOES suppress with
+`--honor-nosec`. The row count is still sixteen and the D1 row is unchanged except
+for the roster, which moved from 11 to 12 because the stale-suppression finding is a
+family of its own.
+
+A settle that keeps asserting the absence of a thing that now exists is a settle that
+has stopped measuring, so the rows moved with the state -- RE-PINNED, never loosened.
+The numbers this section quotes are the numbers the settle re-derives, and that
+coupling is the whole point of having a settle at all.
+
 AND THERE IS NO MUTATION GATE FOR THIS INCREMENT, and that is a fact about WHAT THIS
 INCREMENT IS rather than an omission. A mutation gate mutates SOURCE and proves that a
 test goes red; this increment changes no source, so there is nothing to mutate and a
@@ -7684,6 +7698,12 @@ three different products, with three different costs, and they disagree about wh
 package-level calls in the pinned corpus. It does not say which of the three answers to
 build, and writing that down here would be exactly the kind of number-without-a-rule
 this project keeps correcting.
+
+**0507 ANSWERED IT, AND IT ANSWERED IT WITH THE THIRD ONE.** The separate "unchecked"
+count, disclosed on the file's own verdict line and on the SUMMARY, and NOT part of the
+finding count -- and the two remaining questions the plan left open (`nosec` honoured
+by default or not, and the policy behind it) were answered by NOT deciding them: the
+suppression is off unless it is asked for. See the 0507 section.
 
 ## 0506: THE NOTICE FLOOD -- AND WHICH NOTICE DESERVES A LINE IS A POSITION, NOT A WORDING
 
@@ -7956,3 +7976,304 @@ mutation is not what it says it is" -- a claim about the ANALYZER, published by 
 failure that was really about the machine. The fix is not to re-roll the gate until
 it passes; the fix is to tell a rejected build from a run that never happened, and
 to say that a run that cannot be scored is not a verdict about anything.
+## 0507: THE THREE TRANSFERS, LANDED -- AND WHAT THE ANALYZER NOW SAYS ABOUT A FINDING
+
+0505 WAS A PLAN. It named three things to port from PyCQA's `bandit` -- a per-finding
+confidence axis, stable family ids with a checked profile, and `nosec` with a warning
+when a suppression matched nothing -- and it MEASURED every premise the plan rested on,
+so that the plan would not be built on a premise that stopped being true while nobody
+was looking.
+
+THIS SECTION IS THE PLAN, BUILT. And it is measured the same way the plan was: every
+number below is re-derived by `_verify/settle_0507_bandit_transfers.ps1` against the real
+scanner, with a control for each, and the settle is a stage of the release gate.
+
+And the plan left one question open, which this increment answers: **what does the
+analyzer do about a call it cannot check?** Silence, a low-confidence finding, or a
+separate "unchecked" count are three different products with three different costs, and
+they disagree about what a `CLEAN` file means. The answer here is the third one, and the
+first thing transfer 1 has to settle.
+
+### THE CONFIDENCE AXIS, AND WHAT IT IS NOT
+
+The severity of a finding says how bad it is **IF IT IS REAL**. The confidence says how
+much the lens **CHECKED** before it produced it, and the two are independent: a finding
+can be severe and uncertain, or trivial and certain. There are exactly three values, and
+they are the three situations a lens can be in:
+
+```
+    high      the lens had the declaration, the signature or the type in front of it
+    low       the lens was reasoning from a NAME alone
+    undecided the lens could not decide at all
+```
+
+THE RULE, and it is the 0505 plan's three situations exactly:
+
+* a **scope limit** -- "this construct is outside the analyzed subset" -- is the lens
+  saying it could not DECIDE, and is `undecided`;
+* a finding whose family reasons from a **name** alone is `low`. The only one is
+  `UndefinedName`: the analyzer found no binding for the name, and the binding it could
+  not find may be in a file, or in a package, it was never given;
+* everything else had the declaration, the signature or the type in front of the lens, and
+  is `high`.
+
+**IT IS COMPUTED, NOT A FIELD, AND THAT IS THE WHOLE ARGUMENT FOR THE SHAPE.** A `Report`
+is constructed at about thirty places -- the walk, the type lens, the interpreter, the
+pipeline, the literate frontend, the lexer, the parser, the state audit -- and a field
+would have to be filled in at every one of them. A missed one would be a finding with the
+wrong confidence and **no way to notice**: there is nothing to compare it against, because
+the field is the only copy of the fact. A function has one definition and cannot drift.
+`src/report/report.mbt` computes it, and the renderer, the JSON record and the per-family
+counts all read that one function.
+
+**A FINDING IS NOT DROPPED FOR BEING UNCERTAIN.** It is REPORTED at a lower confidence --
+and that is the entire difference between a silence that reads as "nothing to report" and
+a statement about how much was checked. The 0505 plan called this a false negative, and
+the false negative was never the absence of a finding: it was the absence of a way to
+tell a finding apart from a silence.
+
+### THE STABLE FAMILY IDS, AND THE ROSTER THAT CHECKS THEM
+
+The public vocabulary of a finding is its family, and the family is spelled with a NAME.
+Five of the original eleven names are not the tag with its `F` removed: `FParse` ->
+`ParseError`, `FAssignType` -> `AssignTypeMismatch`, `FArgType` -> `ArgTypeMismatch`,
+`FOpMismatch` -> `OperatorMismatch`, `FCondBool` -> `NonBooleanCond`. So the name is a
+second, hand-maintained vocabulary that has to be kept in step with the first, and
+nothing enforced that. Renaming a family changes the JSON output silently, and a consumer
+that pins `"family": "ArgTypeMismatch"` in a suppression or a CI filter gets no warning at
+all.
+
+An **id** is a contract: allocated once and **never renumbered**. `MSA-001` means the same
+family in 0.4.37, the release that allocated it, and in every version after it, whatever
+the family is called.
+
+```
+    MSA-001 ParseError        MSA-005 ParamChanged       MSA-009 MethodError
+    MSA-002 UndefinedName     MSA-006 AssignTypeMismatch MSA-010 NonBooleanCond
+    MSA-003 UnusedLocal       MSA-007 ArgTypeMismatch    MSA-011 Unreachable
+    MSA-004 UnusedParam       MSA-008 OperatorMismatch   MSA-012 StaleNosec
+```
+
+**THE TABLE IS HAND-ALLOCATED ON PURPOSE.** Deriving an id from the enum's position would
+renumber every family after an insertion, which is the one thing an id must never do. So
+the table is written out, one line per family.
+
+**AND TWO TABLES EXIST, AND A GATE COMPARES THEM.** `Family::id` is the forward table and
+`family_by_id` is the inverse one. The compiler enforces the FIRST: a new family breaks
+the build there, because the match is exhaustive over the enum. It enforces NOTHING about
+the SECOND, because that match is on strings and a missing arm would simply never match --
+a family whose id could not be selected in a profile and could not be named in a `nosec`,
+with nothing saying so. A number written down twice will disagree with itself eventually,
+and a disagreement between two tables is invisible to the reader: the analyzer would
+quietly accept one spelling of an id and not the other.
+
+`_verify/check_family_roster.ps1` compares them, and it compares them to the ENUM: one id
+per family, no id used twice, the ids a **contiguous run** from `MSA-001`, and the inverse
+table the exact reverse of the forward one. The contiguity is the "never renumbered"
+property made checkable: a gap means a number was allocated and never used, and a family
+given a number in the middle of the run means every suppression written against that
+number now names a different family.
+
+### THE PROFILE, AND THE TWO RULES THAT CHECK IT
+
+`--families <ids>` and `--exclude-families <ids>` select families by id, and the profile
+is validated **before the scan runs**:
+
+* an id that names NO family is a **WARNING**, not an error. The reader asked for a
+  family this version does not have -- one added in a later release, or a typo -- and the
+  scan still runs, because the reader asked for a scan. A profile that silently ignored
+  an id would read as "that family has no findings", which is a very different claim from
+  "that family is not this version's".
+* an id that is BOTH included and excluded is an **ERROR**, and the scan does not run at
+  all. The two rules contradict each other and no reading of the profile satisfies both,
+  so which one won would be decided by the order of two `if`s inside the scanner.
+
+The filter is applied to the WHOLE report list, **before** the trusted-region split, so
+`total`, `unreliable` and `notices` all describe the same findings. A filter applied after
+the split would leave `total` counting findings the reader can never see.
+
+### THE `nosec`, AND THE STALE SUPPRESSION THAT IS ALSO A FINDING
+
+```
+    // nosec              silences every family on this line
+    // nosec MSA-007      silences that one family on this line
+    // nosec MSA-007 MSA-002
+```
+
+The comment has to **BE** a nosec comment: it must start with `nosec`. A comment that
+merely mentions the word is not one, because a suppression that can be switched on by
+mentioning the word is a suppression that gets switched on by accident. The **last** `//`
+on the line is the comment, so a URL in a string literal does not hide a real `nosec` and
+a string that CONTAINS one does not become one.
+
+**IT IS OFF BY DEFAULT, and the default is a decision rather than an omission.** A tool
+that stops reporting a finding because of a comment in the ANALYSED source has an output
+the reader cannot trust without reading that source first. The policy question -- should a
+`nosec` be honoured by default? -- is NOT decided here, and the way this increment
+avoids deciding it is that the default is the conservative one and the switch is
+explicit.
+
+**A `nosec` THAT SUPPRESSED NOTHING IS A FINDING OF ITS OWN.** `StaleNosec`, `MSA-012`,
+severity warning, and it carries **no lens**: no lens produced it, and the rendered
+bracket says so with a dash rather than pretending a lens saw it. A stale suppression is
+dead weight in the source, and it is a sign that the code it referred to has changed.
+
+**AND THE ORDER IS WHAT MAKES THE WARNING USEFUL.** The suppressions are applied FIRST
+and the stale findings are produced AFTER, so a blanket `// nosec` cannot silence the
+warning about its own staleness -- which would make the warning disappear exactly when
+it is the one thing the reader needs.
+
+### AND THE CALLS THAT WERE NOT CHECKED ARE COUNTED
+
+The type lens checks a call's arity and its argument types ONLY when it has read the
+callee's signature. There are three kinds of call where it never has:
+
+```
+    a name known only by NAME      a `.mbti` of another package declares the name and
+                                   never its parameters
+    a method call                  the method's signature is not in the source at all
+    a `..` chain link              a method call wearing different syntax
+```
+
+Until 0507 the tool said **nothing** about any of them, so *"I could not check this"* and
+*"there is nothing to report"* were the same output -- and a file with no findings and
+four hundred unchecked calls printed exactly like a clean file. The count now travels with
+the pipeline result and is disclosed twice: on the file's own verdict line
+(`unchecked=N`) and on the `SUMMARY`, where it is deliberately **not** part of the sum,
+because an unchecked call is not a defect and adding it to `total` would break the
+identity the SUMMARY prints.
+
+**AND HERE ARE TWO NUMBERS THAT LOOK LIKE A CORRECTION AND ARE NOT.** The 0505 plan
+measured **16,250** package-level calls whose signature is known by name only, out of
+19,843 package-level calls. The analyzer's own count over the same seven corpora is
+**23,427**. These are DIFFERENT quantities and neither corrects the other: the 0505
+figure counted ONE kind of call (package-level, name-only), and the analyzer counts
+three. This increment did **not** measure the analyzer's package-level subset separately,
+so the two figures are not comparable, and the 0505 figure is not wrong -- it was always
+about one kind of call.
+
+### WHAT DID NOT MOVE, AND WHY THAT IS THE POINT
+
+```
+    0507 the family roster, families   : 12
+    0507 the family roster, ids         : 12
+    0507 the confidence axis, values     : 3
+```
+
+On all seven pinned corpora, `actionable`, `notices`, `unreliable`, `withheld` and
+`total` are **UNCHANGED**. Only one field of the corpus pins moved, and it is the new
+one:
+
+| corpus | files | parsed | actionable | notices | unchecked |
+|---|---:|---:|---:|---:|---:|
+| moui | 608 | 608 | 0 | 3457 | 7678 |
+| moonbit_labeler | 37 | 37 | 1 | 698 | 1340 |
+| moonbit_image | 18 | 18 | 0 | 186 | 754 |
+| async | 419 | 419 | 0 | 1654 | 2879 |
+| proton | 137 | 137 | 0 | 1799 | 2897 |
+| proton_contract | 4 | 4 | 0 | 29 | 12 |
+| moonbit_core | 1029 | 984 | 28 | 10096 | 7867 |
+
+**A TRANSFER THAT HAD MOVED A FINDING COUNT WOULD BE A CHANGE TO THE ANALYSIS, NOT TO
+THE REPORTING**, and it would need a different justification and a different gate. What
+0507 does is change what the analyzer SAYS about a finding -- how much was checked, which
+family it is in a vocabulary that survives a rename, and how many calls were never
+checked at all -- and that is a reporting change, so the evidence is the same numbers
+plus one new one.
+
+The two other published numbers that moved are the ones that move whenever the analyzer's
+own source grows, and they moved because this increment added four files to it:
+
+```
+    the eight trees' notices          19569 -> 19603
+    this repository's own files          183 ->   187
+    the own-source notices            1650 ->  1684
+```
+
+### THE SETTLE
+
+`_verify/settle_0507_bandit_transfers.ps1`, nineteen rows, no compiler oracle needed
+because nothing here is a question about the LANGUAGE -- every row is a question about
+what the analyzer DOES, and the answer is read back from the analyzer itself:
+
+* T1..T4 -- the confidence axis: the three situations produce the three values, and the
+  axis has exactly three of them;
+* T5, T6 -- the ids: every rendered finding carries a roster id, and the JSON record
+  carries `severity`, `confidence` and `family_id`;
+* T7..T10 -- the profile: the include set keeps exactly its family, the exclude set
+  drops exactly its family, an unknown id WARNS and the scan still runs, and an
+  include/exclude overlap ERRORS and no scan runs;
+* T11..T14 -- the `nosec`: off by default, on with `--honor-nosec`, a stale one is
+  reported, and the stale finding is a first-class finding with an id and a confidence;
+* T15..T17 -- the disclosure: the count reaches the verdict line and the SUMMARY, a
+  file with nothing to check says zero, and the count is NOT a finding;
+* T18, T19 -- the roster the analyzer hands out, and this section's three numbers read
+  back out of THIS FILE.
+
+### THE GATE
+
+`_verify/mutate_0507.ps1`, fifteen mutations, and every one of them names the test that
+must go red. Fourteen are killed; the fifteenth is a DECLARED SURVIVOR with its
+argument attached, because the root package has no test file and the CLI's plumbing is
+therefore invisible to `moon test` -- the place it IS observable is the settle, whose
+rows T11 and T12 scan a fixture with and without `--honor-nosec` and assert both halves.
+
+### WHAT THE RELEASE GATE CAUGHT IN THE GATES THIS INCREMENT TOUCHED
+
+Two of the gates this increment touched were WRONG when the release gate ran them, and
+both failures had the same cause: **a gate that PARSES the analyzer's output was still
+parsing the output as it looked before 0507.**
+
+`_verify/settle_0506_notice_flood.ps1` read a rendered finding with the pattern
+`\[([a-z,]+)\]` -- a bracket that held ONE lowercase tag, the lens list. The bracket
+holds THREE fields now: the lens list, the family's id (`MSA-NNN`) and the confidence,
+and `MSA-007` is not `[a-z,]+`. So the pattern matched nothing, and six of the settle's
+ten rows reported a MISMATCH that read like a change in the analyzer's BEHAVIOUR -- a
+notice that used to be printed going missing -- and was really a change in how the gate
+read the output.
+
+**AND TWO OF THE FOUR ROWS THAT STILL PASSED PASSED FOR THE WRONG REASON.** N2 and N3
+assert that a notice is printed ZERO times, and a parser that matches nothing reports
+zero. They were satisfied by the broken pattern, not by the behaviour they are about: a
+row that asserts "printed zero times" cannot tell "aggregated" from "not parsed". The
+rows that passed for the RIGHT reason are the two that read the SUMMARY, which does not
+depend on the rendered shape at all.
+
+`_verify/settle_0505_finding_quality.ps1`'s row B3 was re-pinned by this increment to
+assert that a rendered finding carries its family NAME, its id and its confidence, and
+the re-pin spelled the lens tag out as `structural`. The fixture's finding comes from
+the TYPE lens, so the row failed on a rendered line that was exactly right. The row is
+about the SHAPE -- a lens tag, the family's id, a confidence -- and it now matches the
+shape rather than pinning which lens produced it.
+
+**A GATE THAT READS THE OUTPUT IS A GATE THAT CAN BREAK WHEN THE OUTPUT CHANGES**, and
+the failure it produces points at the ANALYZER rather than at the gate. That is the
+worst direction for a gate to break in: the row says "the tool stopped printing
+notices", and the reader's first act is to go and look at the tool.
+
+### WHAT IS NOT IN THIS INCREMENT
+
+**THE POLICY DECISION IS STILL UNMADE.** Whether a `nosec` should be honoured by default
+is a question about what a reader of the output is owed, and this increment does not
+answer it; it only makes the conservative choice the default and leaves the switch
+explicit. The 0505 section said the third transfer "waits on a decision about policy that
+has not been made", and that is still true -- what changed is that the capability now
+exists and the decision is a one-line change rather than an increment.
+
+**THERE IS STILL NO CONFIG FILE.** A profile is a flag, not a file: the analyzer only
+ever READS the target's tree, and a configuration file it reads from that tree would be
+one more thing the reader has to trust.
+
+**AND THE CONFIDENCE IS STILL NOT PER-CALL.** It is per FINDING, computed from the family
+and the scope limit. A finding that is `high` is a finding whose family checked
+something; it does not say WHICH thing was checked, and a family that checks two
+different things in two different ways cannot express that in one word. That is a limit
+of the three values, and the values were chosen to be three.
+
+=> 判据: A TOOL THAT CANNOT SAY WHAT IT DID NOT CHECK SAYS NOTHING, AND A READER
+WHO CANNOT TELL A SILENCE FROM A CLEAN RESULT WILL EVENTUALLY READ ONE AS THE OTHER.
+The 0505 plan found the problem and left the answer open; this increment answers it,
+and it answers it with the smallest thing that is true: not a new severity, not a
+second report, but one word beside the finding that says how much was checked, one
+stable id beside the family name that survives a rename, and one number on the verdict
+line that says how many calls went unverified.

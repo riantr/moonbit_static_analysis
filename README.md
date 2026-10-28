@@ -67,14 +67,14 @@ a defect in the analysed code. On that same tree `moon check --target all` repor
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.36
+moon add riantr/moonbit_static_analysis@0.4.37
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.36",
+  "riantr/moonbit_static_analysis@0.4.37",
 }
 ```
 
@@ -239,7 +239,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.36_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.37_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -290,6 +290,9 @@ moonx riantr/moonbit_static_analysis@latest <target> [flags]
 | `--per-function` | enter the behavioral lens at each **function** rather than at the module. |
 | `--findings-shown-per-file N` | how many findings are **printed** per file (default 40). A printing limit, not an analysis limit: the SUMMARY counts come from every finding, so raising it reveals findings that were already counted and changes no summary number. |
 | `--show-notices` | print **every** notice per line, not only the ones that can hide a finding. By default a notice is printed only when its region lies inside a function's extent -- that is, when a conclusion may have been withheld because of it -- and every other notice is counted by shape in one `NOTICES` table. This flag restores the whole per-line list, which is what the tool printed before 0.4.36, and it changes no count: the SUMMARY's numbers are the same either way. |
+| `--families MSA-007,MSA-002` | report **only** these families, by their **stable id**. The ids are the `MSA-NNN` codes every rendered finding and every JSON record carries; the full roster is in [Confidence, ids, profiles and `nosec`](#confidence-ids-profiles-and-nosec). An id this version does not know is a `WARNING` and the scan still runs -- a family added in a later release must not make an older analyzer's profile unusable, and a typo must be loud rather than fatal. |
+| `--exclude-families MSA-007` | report everything **except** these families. The same id vocabulary and the same rules. An id that is **both** included and excluded is an `ERROR` and the scan does not run at all: the two rules contradict each other, and which one won would be decided by the order of two `if`s inside the scanner. |
+| `--honor-nosec` | honour `// nosec` comments in the **analysed** source: `// nosec` silences every finding on that line, and `// nosec MSA-007` silences that one family on that line. **Off by default**, and the default is a decision rather than an omission: a tool that stops reporting a finding because of a comment in the analysed source has an output the reader cannot trust without reading that source first. A `// nosec` that suppresses **nothing** is reported as a finding of its own -- a stale suppression is a fact about the source, and the source is what this tool analyses. |
 
 `--mmd` requires its path and `--mmd-auto` is a separate flag, on purpose: an optional
 value is ambiguous, because in `<target> --mmd <path>` the bare word after `--mmd` could
@@ -303,11 +306,11 @@ equally be a second, unexpected target, and there is no way to tell the two apar
 
 ```
 SCANNED	107 files under ...\ML\CI
-CLEAN	.mbti	...\CI/pof/pkg.generated.mbti
-PARTIAL	.mbt	defects=2	notices=1	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
-12:3 - error: ... (UndefinedName) [behavior]
+CLEAN	.mbti	unchecked=0	...\CI/pof/pkg.generated.mbti
+PARTIAL	.mbt	defects=2	notices=1	unchecked=17	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
+12:3 - error: ... (UndefinedName) [behavior, MSA-002, low]
 PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
+SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	unchecked=2841	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)
 ```
 
 - **`PARSED` is the headline.** The frontend covers a SUBSET of MoonBit, so what it cannot
@@ -324,7 +327,9 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
 - Unparsed files are grouped **BY REASON** rather than listed one per line.
 - `actionable + notices + unreliable` = `total`, asserted in the line. `withheld` is
   reported alongside it but is a subset of `unreliable`, so it is intentionally not part of
-  the sum.
+  the sum. **`unchecked` is not a finding count either**: it is how many calls the type
+  lens could not check, and it is printed beside the sum precisely so it cannot be read
+  as part of it.
 - **A notice is printed only when it can hide a finding.** Since 0.4.36 the scan prints a
   notice per line only when its region lies inside some function's extent -- that is, when a
   conclusion may have been withheld because of it -- and counts every other notice by shape
@@ -360,6 +365,83 @@ known value whose signature was not read — so a call like `Command(...)` neith
 write `@pkg.T::m`, so with exact matching the two spellings never met and the only common
 way of naming another package never hit.
 
+### Confidence, ids, profiles and `nosec`
+
+Since 0.4.37 every finding carries **two facts beside its severity**, and both are in the
+bracket that already held the lens tag:
+
+```
+12:3 - error: no visible binding for 'cmd' (UndefinedName) [structural, MSA-002, low]
+```
+
+**THE CONFIDENCE IS HOW MUCH THE LENS CHECKED.** The severity says how bad the finding is
+*if it is real*; the confidence says how sure the analyzer is that it is real, and the two
+are independent — a finding can be severe and uncertain, or trivial and certain. There
+are exactly three values, and they are the three situations a lens can be in:
+
+| confidence | the lens… | the family |
+|---|---|---|
+| `high` | had the declaration, the signature or the type in front of it | everything else |
+| `low` | was reasoning from a **name** alone | `UndefinedName` (MSA-002) — the binding it could not find may be in a file, or in a package, it was never given |
+| `undecided` | could not decide at all | a declared scope limit — the analyzer's own blind spot, rendered `notice:` |
+
+A finding is **not** dropped for being uncertain. It is reported at a lower confidence —
+and that is the whole difference between a silence that reads as "nothing to report" and
+a statement about how much was checked.
+
+**THE ID IS THE STABLE NAME.** The public family name is a second, hand-maintained
+vocabulary: five of the original eleven names are not the tag with its `F` removed
+(`FParse` → `ParseError`, `FAssignType` → `AssignTypeMismatch`, `FArgType` →
+`ArgTypeMismatch`, `FOpMismatch` → `OperatorMismatch`, `FCondBool` → `NonBooleanCond`). A
+consumer that pinned `"family": "ArgTypeMismatch"` in a suppression or a CI filter got no
+warning at all when the name moved, because a name is not a contract. An **id** is
+allocated once and **never renumbered**, so it survives a rename:
+
+| id | family | id | family |
+|---|---|---|---|
+| `MSA-001` | `ParseError` | `MSA-007` | `ArgTypeMismatch` |
+| `MSA-002` | `UndefinedName` | `MSA-008` | `OperatorMismatch` |
+| `MSA-003` | `UnusedLocal` | `MSA-009` | `MethodError` |
+| `MSA-004` | `UnusedParam` | `MSA-010` | `NonBooleanCond` |
+| `MSA-005` | `ParamChanged` | `MSA-011` | `Unreachable` |
+| `MSA-006` | `AssignTypeMismatch` | `MSA-012` | `StaleNosec` |
+
+The ids are hand-allocated on purpose — deriving one from the enum's position would
+renumber every family after an insertion, which is the one thing an id must never do —
+and `_verify/check_family_roster.ps1` **checks** the table: one id per family, no id used
+twice, the ids a contiguous run from `MSA-001`, and the inverse table (id → family) the
+exact reverse of the forward one. Two tables written down twice will disagree eventually,
+and a disagreement between them is invisible, so a gate compares them.
+
+**THE PROFILE SELECTS FAMILIES BY ID**, and it is checked before the scan runs: an id this
+version does not know is a `WARNING` and the scan still runs; an id that is both included
+and excluded is an `ERROR` and the scan does not run at all. The filter is applied to the
+whole report list *before* the trusted-region split, so `total`, `unreliable` and
+`notices` all describe the same findings.
+
+**THE `nosec` IS PER LINE AND PER FAMILY**, and it is **off by default**:
+
+```moonbit
+let x = cmd()          // nosec              -- silences every finding on this line
+let y = cmd()          // nosec MSA-002      -- silences that one family on this line
+```
+
+A `// nosec` that suppresses **nothing** is reported as a finding of its own —
+`StaleNosec`, `MSA-012` — because a suppression that has gone stale is dead weight in the
+source and a sign that the code it referred to has changed. The stale finding is produced
+*after* the suppression pass, so a blanket `// nosec` cannot silence the warning about its
+own staleness.
+
+**AND THE CALLS THE ANALYZER COULD NOT CHECK ARE DISCLOSED.** The type lens checks a
+call's arity and argument types only when it has read the callee's signature; a `.mbti`
+gives a name and never a parameter list, a method's signature is not in the source at all,
+and a `..` chain link is a method call wearing different syntax. Until 0.4.37 the tool
+said nothing about any of them, so *I could not check this* and *there is nothing to
+report* were the same output — and a file with no findings and four hundred unchecked
+calls printed exactly like a clean file. Now the count is on the file's own verdict line
+(`unchecked=N`) and on the `SUMMARY`, where it is deliberately **not** part of the sum.
+Measured on the seven pinned corpora: **23,427** unchecked calls, against **28** findings.
+
 ## Coverage and limits
 
 ### What this tool does not compete with
@@ -377,21 +459,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (183 files), with the per-file printing cap lifted so the count is the
+project's own source (187 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1383 | | `anonymous function literal` | 18 |
+| `test` declaration | 1413 | | `anonymous function literal` | 18 |
 | `if` expression | 103 | | `const` declaration | 6 |
-| `struct` declaration | 60 | | `short lambda` | 2 |
-| `derive` declaration | 53 | | `try` expression | 1 |
-| `enum` declaration | 24 | | | |
+| `struct` declaration | 62 | | `short lambda` | 2 |
+| `derive` declaration | 54 | | `try` expression | 1 |
+| `enum` declaration | 25 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **124** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1526** sit outside every function's
+audit off, so they are printed one per line; the other **1560** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -420,9 +502,9 @@ consumer of the finding goes through:
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,569** notices,
+per-file printing cap lifted so the count is the whole finding set: **19,603** notices,
 every one of them a scope limit. The scan says so itself: its `NOTICES` table counts
-**3,375** of them as printed per line and **16,194** as aggregated, and the 3,375 is
+**3,375** of them as printed per line and **16,228** as aggregated, and the 3,375 is
 exactly the number of rendered `ParseError` lines. A genuine defect of this family would
 render `error:` and break that equality -- and none does.
 
@@ -562,7 +644,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1286/1286 on wasm; 1184/1184 on js and wasm-gc
+moon test --deny-warn                # 1316/1316 on wasm; 1196/1196 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -594,7 +676,7 @@ it**; **the notice labels, and a check that a scope limit is not an error**; **t
 audit, and a check that a region silences only the bindings it could have read**; the
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
-gate** — 85 of them.
+gate** — 86 of them.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
@@ -609,7 +691,7 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 85 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 86 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -674,9 +756,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **85 mutation gates**, each of which mutates
+The gate is not optional decoration: it runs **86 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **480** live mutations, **440** expect a kill; **363** of them also name the test
+Of the **495** live mutations, **454** expect a kill; **377** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing

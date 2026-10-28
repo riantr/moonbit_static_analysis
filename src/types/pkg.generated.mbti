@@ -54,6 +54,7 @@ pub(all) struct TypeResult {
   syms : Array[TypedSym]
   sigs : Array[Sig]
   findings : Array[@report.Report]
+  n_unchecked : Int32
 }
 
 pub(all) struct TypedSym {

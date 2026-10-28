@@ -279,6 +279,15 @@ pub(all) struct Verdict {
   /// renderer that decided this on its own would be a second opinion about
   /// which regions are in a function, and the two would drift.
   hiding : Array[@core.Span]
+  /// 0507. The calls the type lens could NOT check in this file: a call to a
+  /// name known only from another package's `.mbti`, a method call, and a
+  /// `..` chain link.
+  ///
+  /// THIS IS WHAT MAKES `CLEAN` HONEST. A file with no findings and 400
+  /// unchecked calls is not a file with nothing wrong in it -- it is a file
+  /// this analyzer could not check, and before 0507 the two printed the same
+  /// word.
+  n_unchecked : Int32
 }
 
 ///|
@@ -306,6 +315,15 @@ pub struct Summary {
   withheld : Int32
   /// Pre-boundary + post-boundary. Equals `actionable + notices + unreliable`.
   total : Int32
+  /// 0507. The calls the type lens could not check, over every file.
+  ///
+  /// NOT PART OF THE SUM, and it must not be: an unchecked call is not a
+  /// finding, and adding it to `total` would break the identity the SUMMARY
+  /// prints. It is printed BESIDE the sum because it is the number that says
+  /// how much of the program the type lens did not read -- which is the
+  /// difference between "there is nothing wrong here" and "there is nothing
+  /// wrong here that I was able to check".
+  n_unchecked : Int32
 }
 
 ///|
@@ -323,10 +341,12 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
   let mut unreliable = 0
   let mut withheld = 0
   let mut total = 0
+  let mut n_unchecked = 0
   for v in verdicts {
     let n = v.findings.length()
     total += v.total
     unreliable += v.unreliable
+    n_unchecked += v.n_unchecked
     // Per-file contribution to the pre-boundary totals. When n == 0 and the
     // file is partial, v.notices is 0 (notices are a count within findings),
     // so the addition below is a no-op and does not skew the totals.
@@ -352,6 +372,7 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
     unreliable,
     withheld,
     total,
+    n_unchecked,
   }
 }
 
@@ -434,6 +455,7 @@ pub async fn scan(
   per_function : Bool,
   findings_shown_per_file : Int32,
   show_notices : Bool,
+  profile : Profile,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -520,7 +542,7 @@ pub async fn scan(
       Some(t) => t
       None => iface_tab
     }
-    let v = analyze(f, tab, per_function)
+    let v = analyze(f, tab, per_function, profile)
     verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
     let d = v.findings.length() - v.notices
@@ -534,10 +556,16 @@ pub async fn scan(
       // report `actionable=92` when the true defect count was 0, which is worse
       // than reporting nothing: it reads as "this tool found 92 problems here".
       if n == 0 {
-        println("CLEAN\t\{v.kind}\t\{v.path}")
+        // 0507. `unchecked` says how many calls the type lens could NOT check
+        // in this file. It is printed on the CLEAN line too, because a clean
+        // file whose calls went unchecked is the case the word "clean" used
+        // to hide: there was nothing to report, and nothing had been checked
+        // either. The count is a disclosure, not a finding, and it is NOT part
+        // of the SUMMARY's sum.
+        println("CLEAN\t\{v.kind}\tunchecked=\{v.n_unchecked}\t\{v.path}")
       } else {
         println(
-          "FOUND\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\t\{v.path}",
+          "FOUND\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tunchecked=\{v.n_unchecked}\t\{v.path}",
         )
         // 0506. The printed set is the defects plus the notices that can HIDE
         // something; the rest are counted. The per-file `notices=N` above is
@@ -573,7 +601,7 @@ pub async fn scan(
       let n = v.findings.length()
       if n > 0 {
         println(
-          "PARTIAL\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tread up to line \{v.region_line}, \{v.unreliable} after it not shown\t\{v.path}",
+          "PARTIAL\t\{v.kind}\tdefects=\{n - v.notices}\tnotices=\{v.notices}\tunchecked=\{v.n_unchecked}\tread up to line \{v.region_line}, \{v.unreliable} after it not shown\t\{v.path}",
         )
         let (printed, aggregated) = partition_findings(
           v.findings,
@@ -695,7 +723,7 @@ pub async fn scan(
     }
   }
   println(
-    "SUMMARY\tfiles=\{files.length()}\tparsed=\{s.parsed_files}\tactionable=\{s.actionable}\tnotices=\{s.notices}\tunreliable=\{s.unreliable}\twithheld=\{s.withheld}\ttotal=\{s.total}\t(actionable+notices+unreliable = total; withheld ⊆ unreliable)",
+    "SUMMARY\tfiles=\{files.length()}\tparsed=\{s.parsed_files}\tactionable=\{s.actionable}\tnotices=\{s.notices}\tunreliable=\{s.unreliable}\twithheld=\{s.withheld}\tunchecked=\{s.n_unchecked}\ttotal=\{s.total}\t(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)",
   )
   if !complete {
     println(
@@ -958,10 +986,50 @@ fn kind_of(p : String) -> String {
 }
 
 ///|
+/// The findings a file contributes, after the PROFILE and after the `nosec`.
+///
+/// 0507. THE ORDER IS THE POINT, and it is the order the two features have to
+/// be composed in:
+///
+///   1. the PROFILE, which removes whole families the reader does not want;
+///   2. the `nosec`, which removes individual findings on individual lines;
+///   3. the STALE-SUPPRESSION findings, which are produced LAST so that a
+///      blanket `// nosec` cannot silence the warning about its own
+///      staleness.
+///
+/// The stale findings are produced against the PROFILED list, so a `nosec`
+/// that names a family the profile already removed is reported as stale: it
+/// is not doing anything for the reader either, and saying so is the truth.
+///
+/// The result is what the TRUSTED-REGION SPLIT then works on, so `total`,
+/// `unreliable` and `notices` all describe the same set of findings.
+fn filtered_reports(
+  raw : Array[@report.Report],
+  src : String,
+  profile : Profile,
+) -> Array[@report.Report] {
+  let filtered = apply_profile(raw, profile)
+  let mut nosecs : Array[Nosec] = []
+  if profile.honor_nosec {
+    nosecs = parse_nosec(src)
+  }
+  let (kept, stale) = apply_nosec(filtered, nosecs)
+  let all : Array[@report.Report] = []
+  for r in kept {
+    all.push(r)
+  }
+  for r in stale {
+    all.push(r)
+  }
+  all
+}
+
+///|
 async fn analyze(
   p : String,
   extern_iface : @core.IfaceSymTab,
   per_function : Bool,
+  profile : Profile,
 ) -> Verdict {
   let src = read_or(p)
   let n = base_of(p)
@@ -980,7 +1048,11 @@ async fn analyze(
     // Both frontends are line-based and produce no cascade, so the whole file is
     // trusted: region_line 0, nothing withheld.
     ".mbti" => {
-      let rs = @moonfiles.iface(src, n, extern_iface)
+      let rs = filtered_reports(
+        @moonfiles.iface(src, n, extern_iface),
+        src,
+        profile,
+      )
       Verdict::{
         path: p,
         kind: k,
@@ -992,10 +1064,11 @@ async fn analyze(
         region_line: 0,
         unreliable: 0,
         hiding: [],
+        n_unchecked: 0,
       }
     }
     ".mbtp" => {
-      let rs = @moonfiles.proof(src, n)
+      let rs = filtered_reports(@moonfiles.proof(src, n), src, profile)
       Verdict::{
         path: p,
         kind: k,
@@ -1007,11 +1080,13 @@ async fn analyze(
         region_line: 0,
         unreliable: 0,
         hiding: [],
+        n_unchecked: 0,
       }
     }
     ".mbt.md" => {
       let r = @moonfiles.literate(src, n)
-      let total = r.reports.length()
+      let reports = filtered_reports(r.reports, src, profile)
+      let total = reports.length()
       // Same trusted-region split as `.mbt`: n_parse already excludes the
       // deliberate fence skips, so a document whose only complaint is "this
       // fence was not analysed" is still a document that was read, and a
@@ -1019,7 +1094,7 @@ async fn analyze(
       let cut = r.first_error_line
       let reliable : Array[@report.Report] = []
       let mut notices = 0
-      for rep in r.reports {
+      for rep in reports {
         if cut > 0 && rep.span.start.line >= cut {
           continue
         }
@@ -1043,6 +1118,7 @@ async fn analyze(
         region_line: cut,
         unreliable: total - reliable.length(),
         hiding: r.hiding,
+        n_unchecked: 0,
       }
     }
     _ => {
@@ -1055,7 +1131,8 @@ async fn analyze(
       } else {
         @pipeline.run(src, n, extern_iface)
       }
-      let total = r.reports.length()
+      let reports = filtered_reports(r.reports, src, profile)
+      let total = reports.length()
       // The trusted region: everything before the first genuine read failure.
       //
       // A genuine read failure cannot survive this cut: a real failure on that
@@ -1067,7 +1144,7 @@ async fn analyze(
       let cut = r.first_error_line
       let reliable : Array[@report.Report] = []
       let mut notices = 0
-      for rep in r.reports {
+      for rep in reports {
         if cut > 0 && rep.span.start.line >= cut {
           continue
         }
@@ -1091,6 +1168,7 @@ async fn analyze(
         region_line: cut,
         unreliable: total - reliable.length(),
         hiding: r.hiding,
+        n_unchecked: r.n_unchecked,
       }
     }
   }
