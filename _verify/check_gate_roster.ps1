@@ -116,7 +116,7 @@ function Get-Text([string]$Path) {
 # the copy to fail WITH THE RIGHT MESSAGE. The real tree is never touched: the
 # copy is made fresh for every fault, so one fault cannot mask another.
 #
-# The faults are the four the gate checks, plus the two directions of the roster
+# The faults are the five the gate checks, plus the two directions of the roster
 # mismatch -- because a roster check that only catches ONE direction catches the
 # direction nobody is looking for.
 if ($SelfTest) {
@@ -202,6 +202,17 @@ if ($SelfTest) {
         $p = Join-Path $c 'mutate_lib.ps1'
         $t = Get-Text $p
         $t = $t.Replace(('all ' + $count + ' numbered gates'), ('all ' + ($count - 1) + ' numbered gates'))
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+      }
+    }
+    [pscustomobject]@{
+      N = 'a moon invocation that does not name the project root'
+      Expect = 'do not name the project root'
+      Apply = {
+        param($c)
+        $p = Join-Path $c 'mutate_lib.ps1'
+        $t = Get-Text $p
+        $t = $t.Replace('-C $Root test --target', 'test --target')
         [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
       }
     }
@@ -348,6 +359,25 @@ if ($missingGuards.Count -gt 0) {
   $fail++
 } else {
   Write-Output ('  OK: all ' + $guards.Count + ' guarantees are present in the harness.')
+}
+# EVERY MOON INVOCATION MUST NAME THE PROJECT ROOT. `moon` resolves the project
+# from the CURRENT DIRECTORY, so an invocation that does not name it works only
+# by accident -- and when it does not work it says "not in a Moon project",
+# which the harness reports as "the suite does not compile". That is a verdict
+# about the SUITE for a mistake about the DIRECTORY, and the reader believes it.
+# The harness resolves `$Root` for every FILE it touches; the moon calls were
+# the only ones that did not, so this counts them against the root.
+$moonCalls = @([regex]::Matches($lib, '\$MoonExe\s+(?![=])')).Count
+$rootedCalls = @([regex]::Matches($lib, '\$MoonExe\s+-C\s+\$Root\s')).Count
+if ($moonCalls -eq 0) {
+  Write-Output '  MISSING: mutate_lib.ps1 makes no moon invocation at all.'
+  $fail++
+} elseif ($moonCalls -ne $rootedCalls) {
+  Write-Output ('  MISSING: ' + ($moonCalls - $rootedCalls) + ' of ' + $moonCalls + ' moon invocation(s) do not name the project root.')
+  Write-Output '        A gate run from the wrong directory reports "the suite does not compile".'
+  $fail++
+} else {
+  Write-Output ('  OK: all ' + $moonCalls + ' moon invocations name the project root.')
 }
 # The runner scores the FULL suite. A --filter in the harness would bring back the
 # 0.4.13 defect, where a glob that selects zero tests reports green for anything.

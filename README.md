@@ -681,10 +681,11 @@ gate** — 86 of them.
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
 that passes. `_verify/check_gate_roster.ps1` compares the two rosters in **both**
-directions, and its `-SelfTest` injects six defects into a copy of `_verify` — a gate the
+directions, and its `-SelfTest` injects seven defects into a copy of `_verify` — a gate the
 list does not name, a gate in the list that is not on disk, a gate off the shared harness,
 a guarantee deleted from the harness, a `--filter` in the harness, a stale count in the
-harness header — and requires each to be caught. **All six are.**
+harness header, a moon invocation that does not name the project root — and requires each
+to be caught. **All seven are.**
 
 **What the registry receives is checked too.** `.moonignore` decides what gets packaged,
 and a list of intentions that nothing exercises is a comment.

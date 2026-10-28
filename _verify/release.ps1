@@ -614,7 +614,7 @@ if ($failed.Count -eq 0) {
 # This stage sits BEFORE the mutation gates on purpose: a release run costs about
 # half an hour, and it should not spend that on a roster that is already known to
 # be wrong. The self-test runs first, because a gate that has never been shown to
-# go red is a comment -- it injects six defects into a COPY of `_verify` in TEMP
+# go red is a comment -- it injects seven defects into a COPY of `_verify` in TEMP
 # and requires the copy to fail with the right message.
 if ($failed.Count -eq 0) {
   $GR = Join-Path $root '_verify\check_gate_roster.ps1'
@@ -623,7 +623,7 @@ if ($failed.Count -eq 0) {
     Write-Output 'MISSING: _verify\check_gate_roster.ps1'
     $failed += 'gate-roster'
   } else {
-    Stage 'gate roster: self-test (six injected defects must be caught)' {
+    Stage 'gate roster: self-test (seven injected defects must be caught)' {
       $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GR -SelfTest 2>&1 | Out-String
       $code = $LASTEXITCODE

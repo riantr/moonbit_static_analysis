@@ -8383,9 +8383,43 @@ layers, and the measurement says which is bigger:
 The `..` chain links are not a third item; they are the second item with different
 syntax.
 
-=> 鍒ゆ嵁: A PREMISE ABOUT WHAT A FORMAT CARRIES IS NOT A PREMISE UNTIL THE FORMAT
+### AND THE GATE THAT MEASURED IT HAD A TRAP OF ITS OWN
+
+**A GATE INVOKED FROM THE WRONG DIRECTORY REPORTED THAT THE SUITE DID NOT COMPILE,
+AND THE SUITE HAD NOT BEEN COMPILED AT ALL.** The shared harness resolves its project
+root for every FILE it touches -- `Invoke-MutationGate` takes `$Root` from
+`$PSScriptRoot` and joins every mutation's path against it -- and then ran `moon test`
+in the INHERITED CURRENT DIRECTORY. `moon` resolves the project from the current
+directory, so a gate invoked from anywhere but the repository root printed "not in a
+Moon project", and the harness reported that as "ABORT: baseline did not run ... The
+suite does not compile".
+
+Measured 2026-10-29: three gates run from the parent directory all aborted at the
+baseline, with a verdict about the code, and no code was compiled at all.
+
+**THE FILE PATHS WERE ROOTED AND THE MOON CALLS WERE NOT, AND THAT INCONSISTENCY IS
+WHAT LET THE TRAP THROUGH.** Every invocation now names the root (`-C $Root`), and
+`_verify/check_gate_roster.ps1` COUNTS the invocations that name it against the ones
+that do not -- so a fourth, unrooted call fails the roster gate instead of waiting to
+be discovered. That check is the seventh injected defect in that gate's self-test, and
+it is shown to go red: the copy with an unrooted invocation fails with "do not name the
+project root".
+
+**AND THE FAILURE NAMED THE VICTIM, NOT THE CAUSE.** The harness printed the real
+reason under the headline -- "what moon test actually printed: ... not in a Moon
+project" -- and the headline said the suite did not compile. A reader believes the
+headline. This is the same defect the 0507 section recorded for a gate whose regex
+stopped matching the analyzer's output: a gate that fails toward the thing it watches
+will be believed.
+
+=> 判据: A PREMISE ABOUT WHAT A FORMAT CARRIES IS NOT A PREMISE UNTIL THE FORMAT
 HAS BEEN READ. The 0505 plan and the 0507 section both said a `.mbti` gives a name
 and never its parameter list, and both said it as though it were a fact about the
 format. It was a fact about a symbol table, and the difference cost one increment
 of aim. The measurement that corrected it is the instrument above, and its own
 control is that it has to reproduce the shipped `SUMMARY` to be believed.
+=> 判据: A GATE'S FAILURE MUST NAME THE CAUSE, NOT THE VICTIM. "The suite does not
+compile" and "not in a Moon project" are two claims, and the reader believes the
+first one. The trap was live in every gate in the repository, and the only reason it
+was found is that somebody ran a gate by hand from the wrong place -- which is exactly
+what a harness that took its root from the script's own location would have survived.

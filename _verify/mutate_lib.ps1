@@ -380,8 +380,18 @@ function Invoke-MutationGate {
 
   # ---- BASELINE --------------------------------------------------------------
   # Rule 1. Without this, every count below is uninterpretable.
+  #
+  # `-C $Root` IS NOT OPTIONAL, and it is here for a measured reason. `moon`
+  # resolves the project from the CURRENT DIRECTORY, so a gate invoked from
+  # anywhere but the repository root prints "not in a Moon project" -- and this
+  # harness reported that as "the suite does not compile", which accuses the
+  # SUITE for a mistake about the DIRECTORY. The file paths in this harness are
+  # already `$Root`-relative; the moon calls were the only ones that were not,
+  # and that inconsistency is what let the trap through.
+  # Measured 2026-10-29: three gates run from the parent directory all aborted
+  # with "baseline did not run", and the suite had not been compiled at all.
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  $base = & $MoonExe test --target $Target 2>&1 | Out-String
+  $base = & $MoonExe -C $Root test --target $Target 2>&1 | Out-String
   $ErrorActionPreference = $prev
   $bRan = [regex]::Matches($base, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
   if ($bRan.Count -lt 1) {
@@ -464,7 +474,7 @@ function Invoke-MutationGate {
     Write-TextWithRetry -Path $path -Text ($norm.Replace($findN, $replN).Replace($nl, $eol)) -Enc $enc
 
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $MoonExe test --target $Target 2>&1 | Out-String
+    $out = & $MoonExe -C $Root test --target $Target 2>&1 | Out-String
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
 
@@ -533,7 +543,7 @@ function Invoke-MutationGate {
         Write-Output '      Retrying once.'
       }
       $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-      $out = & $MoonExe test --target $Target 2>&1 | Out-String
+      $out = & $MoonExe -C $Root test --target $Target 2>&1 | Out-String
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       $ran = [regex]::Matches($out, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
