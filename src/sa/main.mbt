@@ -118,7 +118,26 @@ pub fn split_findings(
   let printed : Array[@report.Report] = []
   let aggregated : Array[@report.Report] = []
   for r in findings {
-    if !r.is_notice() {
+    // 0508. THE DEMOTED FINDING IS PRINTED, NOT AGGREGATED, and the reason is
+    // that the two kinds of notice are not the same KIND OF THING.
+    //
+    // A declared scope limit is a SHAPE: the same message repeated across a
+    // file, so counting it by shape loses nothing and the 0506 rule -- a
+    // notice is printed per line only when its region can hide a finding --
+    // is the right rule for it.
+    //
+    // A LOW-CONFIDENCE finding is SPECIFIC: a name, at a line. Aggregating it
+    // into a shape table would take the name and the place away, which is
+    // HIDING it, and the demotion was chosen over hiding it for exactly that
+    // reason. So it is printed, with its `notice:` label, and it is still not
+    // in the actionable count.
+    //
+    // BEFORE 0508 this test was `!r.is_notice()`, and the demoted finding was
+    // therefore aggregated with the scope limits -- and the 0505 and 0507
+    // settles, whose rows claim that the analyzer REPORTS an undefined name,
+    // went red. Those rows are the house's own record of what the analyzer
+    // says, and a demotion that changes what it says is not a demotion.
+    if !r.is_declared_scope_limit() {
       printed.push(r)
     } else if is_hiding(r.span, hiding) {
       printed.push(r)
@@ -160,6 +179,34 @@ pub fn partition_findings(
 }
 
 ///|
+/// How many of these findings are NOTICES -- the findings the analyzer does not
+/// stand behind.
+///
+/// 0508. This is a function and not an inline loop because the demotion makes
+/// the COUNT a thing that can be wrong on its own: a low-confidence finding
+/// leaves the `actionable` count and enters the `notices` count, and the two
+/// counts are computed in two places -- once per file, and once over what was
+/// printed. An inline loop in each place is two copies of the question, and a
+/// copy that asks a slightly different question is how the SUMMARY and the
+/// per-file line end up disagreeing.
+///
+/// It asks `@report.is_notice` and nothing else: the same predicate the
+/// renderer asks, so the label on a line and the number beside it cannot
+/// disagree about the same finding.
+///
+/// It is `pub` so that a test can pin it: a count that no test can call is a
+/// count that no test can check.
+pub fn count_notices(reports : Array[@report.Report]) -> Int32 {
+  let mut n = 0
+  for r in reports {
+    if r.is_notice() {
+      n += 1
+    }
+  }
+  n
+}
+
+///|
 /// The `NOTICES` table: the TOTAL line and one row per shape -- or NOTHING,
 /// when there is nothing to say.
 ///
@@ -191,7 +238,7 @@ pub fn notice_lines(
     return out
   }
   out.push(
-    "NOTICES\tTOTAL\tnotices=\{total}\tprinted=\{printed}\taggregated=\{aggregated.length()}\t\{printed} of them can hide a finding; the other \{aggregated.length()} cannot, and are counted by shape below",
+    "NOTICES\tTOTAL\tnotices=\{total}\tprinted=\{printed}\taggregated=\{aggregated.length()}\t\{printed} of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other \{aggregated.length()} are counted by shape below",
   )
   for pair in count_by_shape(aggregated) {
     let (msg, c) = pair
@@ -579,11 +626,7 @@ pub async fn scan(
         for r in aggregated {
           aggregated_notices.push(r)
         }
-        for r in printed {
-          if r.is_notice() {
-            printed_notice_count += 1
-          }
-        }
+        printed_notice_count += count_notices(printed)
         let (shown, more) = show_plan(printed.length(), findings_shown_per_file)
         for i in 0..<shown {
           println(printed[i].render())
@@ -611,11 +654,7 @@ pub async fn scan(
         for r in aggregated {
           aggregated_notices.push(r)
         }
-        for r in printed {
-          if r.is_notice() {
-            printed_notice_count += 1
-          }
-        }
+        printed_notice_count += count_notices(printed)
         let (shown, more) = show_plan(printed.length(), findings_shown_per_file)
         for i in 0..<shown {
           println(printed[i].render())
@@ -1093,16 +1132,16 @@ async fn analyze(
       // document that hits a real failure keeps everything before it.
       let cut = r.first_error_line
       let reliable : Array[@report.Report] = []
-      let mut notices = 0
       for rep in reports {
         if cut > 0 && rep.span.start.line >= cut {
           continue
         }
         reliable.push(rep)
-        if rep.is_notice() {
-          notices += 1
-        }
       }
+      // 0508. THE NOTICE COUNT IS A FUNCTION, so the number and the label on
+      // the line are the same question asked in ONE place. A low-confidence
+      // finding is a notice, so it leaves `actionable` and enters `notices`.
+      let notices = count_notices(reliable)
       Verdict::{
         path: p,
         kind: k,
@@ -1143,16 +1182,16 @@ async fn analyze(
       // disagree about what a notice is.
       let cut = r.first_error_line
       let reliable : Array[@report.Report] = []
-      let mut notices = 0
       for rep in reports {
         if cut > 0 && rep.span.start.line >= cut {
           continue
         }
         reliable.push(rep)
-        if rep.is_notice() {
-          notices += 1
-        }
       }
+      // 0508. THE NOTICE COUNT IS A FUNCTION, so the number and the label on
+      // the line are the same question asked in ONE place. A low-confidence
+      // finding is a notice, so it leaves `actionable` and enters `notices`.
+      let notices = count_notices(reliable)
       Verdict::{
         path: p,
         kind: k,

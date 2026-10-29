@@ -140,18 +140,32 @@ test "the marker separates the two kinds exactly" {
 /// The family still matters. A message carrying the marker on a family that is
 /// not FParse is a normal defect, not a notice: the marker says WHAT the
 /// message is about, and the family says WHICH kind of finding it is.
+///
+/// 0508. THE EXAMPLE FAMILY CHANGED, and the reason is the demotion. It used to
+/// be `FUndefinedName`, which is a `low`-confidence family and is therefore a
+/// NOTICE since 0508 -- for a reason that has nothing to do with the marker.
+/// The claim this row makes is that the MARKER ALONE decides nothing, so it
+/// now uses a family that is neither `FParse` nor low-confidence: a message
+/// carrying the marker on it is still not a notice.
 test "the marker alone does not make a notice" {
   let rep = mk(
-    @core.FUndefinedName,
-    "no visible binding for 'x' (outside the analyzed subset)",
+    @core.FUnusedLocal,
+    "local variable 'x' assigned but may not be used (outside the analyzed subset)",
   )
   assert_false(rep.is_notice())
+  assert_false(rep.is_declared_scope_limit())
 }
 
 ///|
 /// A notice is rendered `notice:` and a defect is rendered `error:`. The two
 /// labels are different strings, so a reader -- or a grep -- can tell them
 /// apart without knowing the tool's internals.
+///
+/// 0508. "A defect" HERE MEANS A FINDING THE ANALYZER STANDS BEHIND. The
+/// example used to be `FUndefinedName`, which is a `low`-confidence family and
+/// is DEMOTED to a `notice:` since 0508 -- so the example is now a
+/// high-confidence error family, and the demotion has its own rows in
+/// `report_0508_test.mbt`.
 test "the rendered label is notice for a notice and error for a defect" {
   // 0502. THE EXAMPLE IS A `lexmatch` MESSAGE NOW, and it used to be the `match`
   // one. A `match` is read, so the parser does not emit that message any more --
@@ -165,7 +179,7 @@ test "the rendered label is notice for a notice and error for a defect" {
   assert_true(n.render().contains(" - notice: "))
   assert_false(n.render().contains(" - error: "))
 
-  let d = mk(@core.FUndefinedName, "no visible binding for 'x'")
+  let d = mk(@core.FArgType, "argument 1 to 'f' has incompatible type 'Int'")
   assert_eq(d.severity_label(), "error")
   assert_true(d.render().contains(" - error: "))
   assert_false(d.render().contains(" - notice: "))

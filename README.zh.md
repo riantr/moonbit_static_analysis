@@ -13,8 +13,9 @@
 它能读 MoonBit 工具链的每一种文件后缀 —— `.mbt` / `.mbtx` / `.mbti` / `.mbt.md` /
 `.mbtp` —— 而且 **绝不修改被扫描的目标**：被分析的仓库既不依赖本模块，也不会被本模块改动。
 
-在 `moonbitlang/core`（1029 个文件）上的实测：**解析 984 个，actionable 28 条**——这 28 条
+在 `moonbitlang/core`（1029 个文件）上的实测：**解析 984 个，actionable 10 条**——这 10 条
 **没有一条**是本前端读不到的构造或算不出来的运算符，**没有一条是被分析代码的缺陷**。
+0.4.38 降级的那 18 条——分析器解不出来的名字——算作 notice，不在这 10 条里。
 同一棵树上 `moon check --target all` 只报**一条**错误，在一个 `.mbt.md` 文档文件里。
 
 ## 目录
@@ -62,14 +63,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.37
+moon add riantr/moonbit_static_analysis@0.4.38
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.37",
+  "riantr/moonbit_static_analysis@0.4.38",
 }
 ```
 
@@ -222,7 +223,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.37_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.38_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
@@ -286,10 +287,10 @@ moonx riantr/moonbit_static_analysis@latest <target> [旗标]
 ```
 SCANNED	107 files under ...\ML\CI
 CLEAN	.mbti	unchecked=0	...\CI/pof/pkg.generated.mbti
-PARTIAL	.mbt	defects=2	notices=1	unchecked=17	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
-12:3 - error: ... (UndefinedName) [behavior, MSA-002, low]
+PARTIAL	.mbt	defects=1	notices=2	unchecked=17	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
+12:3 - notice: ... (UndefinedName) [behavior, MSA-002, low]
 PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	unchecked=2841	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)
+SUMMARY	files=107	parsed=32	actionable=56	notices=212	unreliable=15759	withheld=6769	unchecked=2841	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)
 ```
 
 - **`PARSED` 才是头条。** 前端覆盖的是 MoonBit 的一个**子集**，所以它读不懂的部分量的是
@@ -307,7 +308,7 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
   汇总进扫描末尾的一张 `NOTICES` 表：
 
 ```
-NOTICES	TOTAL	notices=10096	printed=1144	aggregated=8952	1144 of them can hide a finding; the other 8952 cannot, and are counted by shape below
+NOTICES	TOTAL	notices=10114	printed=1162	aggregated=8952	1162 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 8952 are counted by shape below
 NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
 ```
 
@@ -336,18 +337,23 @@ NOTICES	count=6148	test declaration is outside the analyzed subset; its body was
 0.4.37 起，每条发现都带着**严重度之外的两个事实**，都在原本放透镜标签的那个方括号里：
 
 ```
-12:3 - error: no visible binding for 'cmd' (UndefinedName) [structural, MSA-002, low]
+12:3 - notice: no visible binding for 'cmd' (UndefinedName) [structural, MSA-002, low]
 ```
 
 **置信度说的是透镜检查了多少。** 严重度说的是这条发现**如果是真的**有多糟；置信度说的是分析器
 有多确定它是真的——两者互相独立：一条发现可以又严重又不确定，也可以无关紧要却非常确定。一共
 三个值，正好是透镜可能处的三种境地：
 
-| 置信度 | 透镜…… | 家族 |
-|---|---|---|
-| `high` | 手边就有声明、签名或类型 | 其余全部 |
-| `low` | 只在**名字**上推理 | `UndefinedName`（MSA-002）——它没找到的那个绑定，可能在它根本没拿到的某个文件、某个包里 |
-| `undecided` | 根本没法判断 | 一条声明出来的范围限制——分析器自己的盲区，渲染成 `notice:` |
+| 置信度 | 透镜…… | 家族 | 渲染成 |
+|---|---|---|---|
+| `high` | 手边就有声明、签名或类型 | 其余全部 | 它自己的严重度 |
+| `low` | 只在**名字**上推理 | `UndefinedName`（MSA-002）——它没找到的那个绑定，可能在它根本没拿到的某个文件、某个包里 | `notice:` |
+| `undecided` | 根本没法判断 | 一条声明出来的范围限制——分析器自己的盲区 | `notice:` |
+
+**0.4.38 起，这条轴开始决定事情。** 分析器站不住脚的发现被**降级**：渲染成 `notice:`，计入
+`notices` 而不是 `actionable`。它**没有被藏起来**——家族、稳定 id、置信度、还有读者屏幕上
+属于它自己的那一行都还在；变的是标签和桶。一条 `low` 的发现说的是*它没找到的那个绑定可能在
+它根本没拿到的某个文件、某个包里*，而 `actionable` 是你应该去看的那张单子。
 
 一条发现**不会**因为不确定就被丢掉。它只是被以更低的置信度报出来——而这正是「沉默读起来像
 『没什么可报』」和「一句关于检查了多少的陈述」之间的全部差别。
@@ -410,20 +416,20 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 
 每一个它读过去**却没有分析**的声明或表达式形式都会报成一条 notice，而那条 notice 说的是
 **工具**，不是你的代码——所以它渲染成 **`notice:`**，一个自己的标签，而不是借来的 `error:`。
-在本项目自己的源码上实测（187 个文件，把每个文件 40 条的打印上限放开，所以数的是全部
+在本项目自己的源码上实测（189 个文件，把每个文件 40 条的打印上限放开，所以数的是全部
 发现而不是每份文件的前 40 条）：
 
 | notice | 条数 | | notice | 条数 | |
 |---|---:|---|---|---:|---|
-| `test` 声明 | 1413 | | 匿名函数字面量 | 18 |
-| `if` 表达式 | 103 | | `const` 声明 | 6 |
+| `test` 声明 | 1427 | | 匿名函数字面量 | 18 |
+| `if` 表达式 | 104 | | `const` 声明 | 6 |
 | `struct` 声明 | 62 | | 短 lambda | 2 |
 | `derive` 声明 | 54 | | `try` 表达式 | 1 |
 | `enum` 声明 | 25 | | | |
 
 去掉其中任何一行，都需要为那个形式做一个 AST 节点，所以它们是**功能**，不是措辞问题。
-真正要紧的区别不在措辞，而在**位置**：**124** 条落在某个函数体的范围内，会把那个函数体的
-审计整个关掉，所以它们逐行打印；其余 **1560** 条在所有函数体之外，什么也藏不住，于是在
+真正要紧的区别不在措辞，而在**位置**：**125** 条落在某个函数体的范围内，会把那个函数体的
+审计整个关掉，所以它们逐行打印；其余 **1574** 条在所有函数体之外，什么也藏不住，于是在
 扫描结束时按形状汇总成一张表。
 
 **这个划分来自分析器自己的几何，而不是来自措辞。** 落在函数体范围内的区域在那个函数的洞
@@ -443,12 +449,14 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 | 它是什么 | 渲染成 | 计入 |
 |---|---|---|
 | 一条声明过的范围限制 | `notice:` | notice——不进 `actionable` |
+| 一条低置信度的发现（0.4.38 起） | `notice:` | notice——不进 `actionable` |
 | 文件里的一个真缺陷 | `error:` | actionable |
 
 在七个固定语料和本项目自己的源码上实测（把每个文件 40 条的打印上限放开，所以数的是全部
-发现而不是每份文件的前 40 条）：**19,603** 条 notice，**每一条**都是范围限制。扫描自己也这么说：
-它的 `NOTICES` 表把其中 **3,375** 条算作逐行打印、**16,228** 条算作汇总，而 3,375 正好等于
-渲染出来的 `ParseError` 行数——这个家族的真缺陷会渲染成 `error:`，打破这个等式，而一个都没有。
+发现而不是每份文件的前 40 条）：**19,636** 条 notice——每一条声明过的范围限制，加上 0.4.38
+降级的那些低置信度发现。扫描自己也这么说：它的 `NOTICES` 表把其中 **3,394** 条算作逐行打印、
+**16,242** 条算作汇总，而 3,394 正好等于渲染出来的 notice 行数——范围限制和降级的发现加
+在一起。这个家族的真缺陷会渲染成 `error:`，发布门禁单独数这一类并要求它为零，而一个都没有。
 
 ### 一个区域只让它「可能读到过」的绑定闭嘴
 
@@ -495,30 +503,42 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 
 > **这个视图还不算可靠，旗标是可选的就是因为这个。** 它由
 > `_verify/census_perfunction.ps1` 在**全部七个**固定语料上量，发版门禁**把数字钉住**。
-> 现在它报 **50** 条 `actionable`，而模块视图报 28 条。**这 50 条里有 49 条是本前端读不到的
-> 构造或算不出来的运算符；第 50 条是真缺陷**——`moonbit_labeler` 里一个赋了值却没被读的
+> 现在它报 **29** 条 `actionable`，而模块视图报 10 条。**这 29 条里有 28 条是本前端读不到的
+> 构造或算不出来的运算符；第 29 条是真缺陷**——`moonbit_labeler` 里一个赋了值却没被读的
 > 局部变量，也是本工具在任何一个语料上报出的第一条真缺陷。
 >
 > | 家族 | 条数 | 透镜当时主张什么 |
 > |---|---:|---|
-> | A | 12 | 十六进制浮点字面量（`0x1.0p1023`）没被读出来，于是指数部分成了未定义名 |
-> | B | 5 | BigInt 字面量的 `N` 后缀（`0N`）没被读出来 |
 > | C | 6 | 两个数组之间的 `==` |
 > | D | 3 | `Int + Char` 与 `List + List` |
 > | E | 3 | 结构体上的 `*` |
-> | F | 2 | 分析器看不见的名字——同包兄弟文件里的辅助函数、类型参数的方法、`.mbti` 索引里没有的内部 API、模块限定名 |
 > | G | 11 | unreachable code——透镜自己对代码的主张 |
 > | H | 1 | 赋了值却没被读的局部变量——透镜自己对代码的主张，也是这次普查里唯一一条真缺陷 |
 > | I | 1 | `Double` 上的 `abs` |
 > | J | 1 | 两个函数值上的 `*` |
 > | K | 3 | 带具名实参的本地调用 |
+>
+> **还有 21 条被降级了。** 0.4.38 起，分析器站不住脚的发现渲染成 `notice:`、算作 notice 而
+> 不是 actionable，而普查把降级的那一组单列一张表、单列一个总数——一组离开普查的发现，就是
+> 一组可能悄悄消失的发现。这 21 条全都带着 `low` 置信度，而且全都是分析器解不出来的名字。
+>
+> **模块视图数到的是 18 条，而且不是同样的那 18 条。** 两个视图是两次分析——这个视图把每个
+> 函数都当成入口，模块视图拿的是整个模块——所以它们找到的不是同一批名字：在 `moonbit_core`
+> 里这个视图报 19 条、模块视图报 18 条，其中只有 **15** 条是同一个位置。这和上面 29 对 10 的
+> 差别是同一回事，两个视图始终是分开的，不能相加。
+>
+> | 降级家族 | 条数 | 透镜当时主张什么 |
+> |---|---:|---|
+> | A | 12 | 十六进制浮点字面量（`0x1.0p1023`）没被读出来，于是指数部分成了未定义名 |
+> | B | 5 | BigInt 字面量的 `N` 后缀（`0N`）没被读出来 |
+> | F | 2 | 分析器看不见的名字——同包兄弟文件里的辅助函数、类型参数的方法、`.mbti` 索引里没有的内部 API、模块限定名 |
 > | L | 2 | 已记录的 `#doc(hidden)` 边界 |
 >
 > **「能过」是量出来的，不是假设的。** `moon check --target all` 在 `moonbitlang/core` 上
-> 恰好报**一条**错误，在 `json/README.mbt.md`，而它不在带发现的**二十个**文件之列。
+> 恰好报**一条**错误，在 `json/README.mbt.md`，而它不在带发现的**十六个**文件之列。
 > 这只是一半：没有诊断的文件和没人打开过的文件长得一模一样，所以
 > `_verify/control_perfunction_census.ps1` 往这些文件里（**副本上**）各追加一个故意的
-> 类型错误，并要求错误原样回来——**20 / 20**。
+> 类型错误，并要求错误原样回来——**16 / 16**。
 >
 > **L 家族那两条是「已记录的边界」而不是缺陷**：跨包的 `#doc(hidden)` 函数没法从依赖的
 > **源码**索引——只能从它的 `.mbti`——所以 `@locale.LocalePreferences::resolve` 在
@@ -570,7 +590,7 @@ src/jsoncli   DeepSeek Harness 的 JSON 桥
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 1316/1316；js 与 wasm-gc 1196/1196
+moon test --deny-warn                # wasm 1330/1330；js 与 wasm-gc 1204/1204
 moon run src/cli                     # 程序 demo + 文件种类 demo + 样例机器审计
 ```
 
@@ -596,7 +616,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 README 自己的链接、锚点、版本与计数**；**变异门名册，以及一个证明它会变红的自测**；**注册表
 到底会收到什么，以及一道保证碎屑不会混进去的检查**；**通知的标签，以及一道保证范围限制不会被
 当成错误的检查**；**帧审计，以及一道保证一个区域只让「它可能读到过」的绑定闭嘴的检查**；已发布包
-自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**86** 个。
+自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**87** 个。
 
 这份名册是**被检查的，不是被断言的**：一个在磁盘上存在、却不在名册里的变异门**永远不会跑**，
 而一个不会跑的变异门和一个跑绿了的变异门长得一模一样。`_verify/check_gate_roster.ps1`
@@ -609,7 +629,7 @@ README 自己的链接、锚点、版本与计数**；**变异门名册，以及
 **发到注册表的东西也被检查。** 打包哪些文件由 `.moonignore` 决定，而一份没人验证过的
 意图清单就是一句注释。`_verify/check_package_contents.ps1` 跑 `moon package --list`
 ——和 `moon publish` 用的是同一条命令——并断言：碎屑**不在**（提交信息草稿、扫描产物、
-凭据、门禁记录、remeasure 转储），证据**在**（86 道变异门及其 harness、settle 脚本、
+凭据、门禁记录、remeasure 转储），证据**在**（87 道变异门及其 harness、settle 脚本、
 叙述、名册门，以及读者会被引去的那几份文档），并且每一个被 git 跟踪的文件都发得出去。
 **两个方向都已被证明会变红**：把 `COMMIT_*.md` 那条规则注释掉，包里就多出 23 份草稿，
 门禁失败；把 `_verify/NARRATIVE.md` 排除掉，叙述就没了，门禁也失败。
@@ -664,9 +684,9 @@ mermaid 图和 JSON 桥全都走它——所以标签和数字不可能互相打
 
 4. 提一个 pull request。
 
-这道门禁不是装饰：它会跑 **86 道变异门**，每一道都改源码、要求一个测试变红、
+这道门禁不是装饰：它会跑 **87 道变异门**，每一道都改源码、要求一个测试变红、
 并证明恢复是逐字节一致的。
-**495** 个存活变异里，**454** 个预期被杀；其中 **377 个**还点名了必须变红的是哪个测试，
+**504** 个存活变异里，**462** 个预期被杀；其中 **385 个**还点名了必须变红的是哪个测试，
 所以门禁日志说的是**哪个**测试在守着这道防线，而不只是「有东西红了」。
 这三个数字都由 README 门禁**从门禁源码自己算出来**——没有被检查过的公开数字，
 是会悄悄消失的。

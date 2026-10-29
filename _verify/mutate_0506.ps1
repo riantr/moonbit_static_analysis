@@ -218,16 +218,23 @@ pub fn span_in_extent(inner : @core.Span, extent : @core.Span) -> Bool {
   # M9 A DEFECT IS NEVER AGGREGATED. The aggregation is about notices. A
   # defect is the one thing the reader came for, and dropping one would hide
   # the very finding the tool exists to report.
+  #
+  # 0508 RE-ANCHORED THIS ONE. The branch used to read `!r.is_notice()`, and
+  # the demotion changed what that branch means: `is_notice` is now the answer
+  # to two questions, and a low-confidence finding -- which is NOT a defect --
+  # would have been aggregated with the scope limits. The branch now asks the
+  # scope-limit question, and this mutation is still the same defect: the
+  # defect is aggregated.
   @{
     Name = 'M9 a defect is aggregated'
     File = $SA
     Find = @'
-    if !r.is_notice() {
+    if !r.is_declared_scope_limit() {
       printed.push(r)
     } else if is_hiding(r.span, hiding) {
 '@.Replace("`r`n", "`n")
     Repl = @'
-    if !r.is_notice() {
+    if !r.is_declared_scope_limit() {
       aggregated.push(r)
     } else if is_hiding(r.span, hiding) {
 '@.Replace("`r`n", "`n")

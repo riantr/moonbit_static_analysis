@@ -17,6 +17,8 @@ pub fn apply_profile(Array[@report.Report], Profile) -> Array[@report.Report]
 
 pub fn count_by_shape(Array[@report.Report]) -> Array[(String, Int32)]
 
+pub fn count_notices(Array[@report.Report]) -> Int32
+
 pub let default_findings_shown_per_file : Int32
 
 pub fn default_profile() -> Profile

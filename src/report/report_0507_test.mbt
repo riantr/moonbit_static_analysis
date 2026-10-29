@@ -93,9 +93,14 @@ test "confidence: a scope limit is undecided" {
 /// is `UndefinedName`: the analyzer found no binding for the name, and the
 /// binding it could not find may be in a file, or in a package, it was never
 /// given. A reader who is told this is told the truth about it.
+///
+/// 0508. THE CONFIDENCE IS THE 0507 CLAIM AND IT IS UNCHANGED. What 0508 adds
+/// is what the analyzer DOES with a `low` finding -- it demotes it to a notice,
+/// so it is not in the `actionable` count -- and that behaviour is pinned in
+/// `report_0508_test.mbt`, not here. A row in this file that asserted the
+/// finding was NOT a notice would be asserting the pre-0508 world.
 test "confidence: a family that reasons from a name alone is low" {
   let r = mk0507(@core.FUndefinedName, "undefined variable 'x'")
-  assert_true(!r.is_notice())
   assert_true(r.confidence() == @core.Low)
   assert_eq(r.confidence().name(), "low")
 }

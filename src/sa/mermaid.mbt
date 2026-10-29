@@ -214,13 +214,13 @@ fn emit_file(
   }
   if v.notices > 0 {
     let head = if v.notices == 1 {
-      "1 finding on this file is a NOTICE, not a defect: a declaration form this"
+      "1 finding on this file is a NOTICE, not a defect: the analyzer does not"
     } else {
-      "\{v.notices} of the findings on this file are NOTICES: a declaration form this"
+      "\{v.notices} of the findings on this file are NOTICES: the analyzer does not"
     }
     note(out, "\{fid}_struct", [
-      head, "analyzer does not model was skipped whole. They are excluded from the",
-      "actionable count.",
+      head, "stand behind them -- a form it does not model, or a name it could not",
+      "resolve. They are excluded from the actionable count.",
     ])
   }
   if v.unreliable > 0 {
@@ -273,11 +273,28 @@ fn emit_file(
         // accounting. FParse is counted in `notices` and subtracted from
         // `actionable`, and it means a form this analyzer does not model on
         // `.mbt`, or a per-file-kind frontend rule on the others.
-        note(out, eid, [
-          "NOTICE — counted in `notices`, excluded from `actionable`.", "ParseError covers a form this analyzer does not model and a per-file-kind",
-          "frontend rule. The message above says which; do not read it as a defect",
-          "just because it is drawn like one.",
-        ])
+        //
+        // 0508. AND THE NOTE IS ABOUT THE KIND OF NOTICE NOW, not about the
+        // family. A notice used to be ONE thing -- a declared scope limit,
+        // always an FParse -- so the note could name the family. Since the
+        // demotion a notice is EITHER a scope limit OR a low-confidence
+        // finding, and a note that said "ParseError covers a form this
+        // analyzer does not model" under an UndefinedName node would be a
+        // FALSE STATEMENT about the node above it.
+        let body = if rep.is_declared_scope_limit() {
+          [
+            "NOTICE — counted in `notices`, excluded from `actionable`.", "ParseError covers a form this analyzer does not model and a per-file-kind",
+            "frontend rule. The message above says which; do not read it as a defect",
+            "just because it is drawn like one.",
+          ]
+        } else {
+          [
+            "NOTICE — counted in `notices`, excluded from `actionable`.", "The analyzer was not sure: the family reasons from a NAME alone, so the",
+            "binding it could not find may be in a file, or in a package, it was never",
+            "given. It is reported, not hidden — it is just not on the actionable list.",
+          ]
+        }
+        note(out, eid, body)
       } else {
         let a = rep.family.advice()
         let body = ["WHY: " + a.why, "HOW: " + a.how]

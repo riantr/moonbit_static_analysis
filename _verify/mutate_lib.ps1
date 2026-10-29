@@ -15,7 +15,7 @@
 #     mutate_0429.ps1  baseline=True  preflight=True  sha256=True
 #
 # THAT TABLE IS A MEASUREMENT OF THE DEFECT, NOT OF THE PRESENT, and it is worth saying
-# so, because it reads like a status report. MEASURED 2026-10-23: all 86 numbered gates
+# so, because it reads like a status report. MEASURED 2026-10-23: all 87 numbered gates
 # call `Invoke-MutationGate`, and it has NO pre-flight or SHA256 switch at all -- so every
 # one of them gets the baseline, the pre-flight and the SHA256 restore check, and ZERO
 # gates carry their own copy of the runner. `mutate_0412.ps1` and `mutate_0413.ps1`, the
@@ -390,12 +390,73 @@ function Invoke-MutationGate {
   # and that inconsistency is what let the trap through.
   # Measured 2026-10-29: three gates run from the parent directory all aborted
   # with "baseline did not run", and the suite had not been compiled at all.
+  # ONE copy of the summary-line pattern for the baseline, and it is used by
+  # BOTH halves of the baseline below (the first run and the retry).
+  #
+  # The harness carries that pattern THREE times on purpose -- the baseline, the
+  # mutation run and the mutation run's own retry -- so that breaking one of
+  # them does not break the others. `_verify/mutate_lib_selftest.ps1` proves
+  # that: it breaks the MUTATION path's copies in a copy of the tree, leaves the
+  # baseline's intact, and requires the copy's gate to reach its mutation row
+  # and score it INCONCLUSIVE. A FOURTH literal copy would leave two intact and
+  # that self-test would (rightly) refuse to run -- which is what it did, the
+  # first time this retry was written with its own literal.
+  $summaryRx = 'Total tests: (\d+), passed: (\d+), failed: (\d+)'
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   $base = & $MoonExe -C $Root test --target $Target 2>&1 | Out-String
+  $bCode = $LASTEXITCODE
   $ErrorActionPreference = $prev
-  $bRan = [regex]::Matches($base, 'Total tests: (\d+), passed: (\d+), failed: (\d+)')
+  $bRan = [regex]::Matches($base, $summaryRx)
+  # 0508. THE BASELINE GETS THE RULE THE MUTATION RUNS ALREADY HAVE.
+  #
+  # Measured 2026-10-30, in the 0.4.38 release run: gate 0470 aborted at its
+  # BASELINE with "baseline did not run ... The suite does not compile", and its
+  # transcript showed that `moon test` had printed NOTHING AT ALL -- no summary,
+  # no diagnostic, no output on either stream. That is the shape of a run that
+  # never happened: a contended `_build`, a starved binary, a killed compiler.
+  # The suite was fine -- 1330/1330 in every other gate of the same run, and the
+  # same tree passes this gate standalone.
+  #
+  # The mutation runs already know this. A run with no summary and no compiler
+  # diagnostic is INCONCLUSIVE there: it is retried once, and it FAILS the gate
+  # if the retry does not happen either. The baseline had no such rule, so it
+  # reported the machine's hiccup as a verdict about the CODE -- and it named the
+  # victim ("the suite does not compile") instead of the cause.
+  #
+  # So the baseline asks the same question and gets the same answer: a baseline
+  # with no summary and no compiler diagnostic is a FAILED MEASUREMENT, and it is
+  # retried once. A compiler diagnostic IS a verdict about the tree, and it is
+  # NOT retried. And the retry can never manufacture a pass: if the second run
+  # does not produce a summary either, the gate FAILS, and it says what happened
+  # instead of blaming the suite.
+  if ($bRan.Count -lt 1 -and -not [regex]::IsMatch($base, 'Error:\s*\[\d+\]')) {
+    if ([string]::IsNullOrWhiteSpace($base)) {
+      Write-Output 'EMPTY RUN: moon printed nothing at all -- the run did not happen. Retrying once.'
+    } else {
+      Write-Output ('NO RUN: moon exited ' + $bCode + ' and printed no test summary,')
+      Write-Output ('      and nothing in its ' + $base.Length + ' characters is a compiler diagnostic.')
+      Write-Output '      A compiler that rejects the tree ALWAYS says why (`Error: [NNNN]`), so'
+      Write-Output '      this is not a broken suite -- it is a run that never happened. Retrying once.'
+    }
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $base = & $MoonExe -C $Root test --target $Target 2>&1 | Out-String
+    $bCode = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    $bRan = [regex]::Matches($base, $summaryRx)
+    if ($bRan.Count -ge 1) {
+      Write-Output '  RETRY GOT A REAL RUN -- the first run was transient, not a verdict.'
+    } else {
+      Write-Output ('  RETRY ALSO GOT NO RUN (moon exited ' + $bCode + ', ' + $base.Length + ' chars).')
+    }
+  }
   if ($bRan.Count -lt 1) {
-    Write-Output 'ABORT: baseline did not run (no `Total tests:` line). The suite does not compile.'
+    if ([regex]::IsMatch($base, 'Error:\s*\[\d+\]')) {
+      Write-Output 'ABORT: the baseline did not run (no `Total tests:` line). The suite does not compile:'
+    } else {
+      Write-Output 'ABORT: the baseline did not run, and it did not happen twice.'
+      Write-Output '      This is a FAILED MEASUREMENT, not a verdict about the tree: the suite did'
+      Write-Output '      not compile is NOT what was observed -- nothing was observed.'
+    }
     # Rule 2 reads the ABSENCE of a line, which is correct -- but an absence with no
     # evidence attached is exactly what makes a transient failure unrootable, and a
     # transient failure here is indistinguishable from a broken tree until you can

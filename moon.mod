@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.4.37"
+version = "0.4.38"
 
 readme = "README.md"
 
@@ -38,5 +38,5 @@ preferred_target = "wasm"
 warnings = "-0079"
 
 import {
-  "moonbitlang/async@0.22.5",
+  "moonbitlang/async@0.22.6",
 }

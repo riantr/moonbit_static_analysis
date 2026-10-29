@@ -190,13 +190,19 @@ function Scan-Tree {
 # reconcile:
 #
 #     notices == printed + aggregated == the SUMMARY's `notices`
-#     the rendered `ParseError` lines == printed
+#     the rendered `notice:` lines == printed
 #
-# THE LAST ONE IS THE PROOF THAT NO ParseError-FAMILY DEFECT EXISTS. A defect
-# of that family renders `error:` and is matched by the `(ParseError)` matcher
-# too, so "the rendered ParseError lines are exactly the printed notices" says
-# that every ParseError in the tree is a scope limit -- which is the claim
-# 0500 made about a rendering that no longer exists.
+# THE LAST ONE IS THE PROOF THAT NOTHING WAS DROPPED ON THE WAY. Every notice
+# the analyzer counted as printed is on a line of the reader's screen, and
+# every `notice:` line on the screen is one of them.
+#
+# 0508 CHANGED THE SPELLING, NOT THE CLAIM. Before the demotion the printed
+# notices were the scope limits alone, so the gate counted the rendered
+# `ParseError` lines and got the same set. The demotion put the low-confidence
+# findings on a line of their own too -- a demotion that HID them would take
+# the name and the place away -- so the count is of the RENDERED NOTICE lines
+# now, and the ParseError family has its own check beside it: a defect of that
+# family renders `error:`, and the count of those must be zero.
 function Get-NoticeTable {
   param([string]$Text)
   $rows = @()
@@ -217,14 +223,43 @@ function Get-NoticeTable {
   }
 }
 
-# The number of RENDERED `ParseError` lines in a scan's output. After 0506
-# this is the PRINTED notices -- the ones that can hide a finding -- plus any
-# ParseError-family defect, which would render `error:`. The gate compares it
-# with the table's `printed` count, and the comparison is the proof that there
-# is no such defect.
-function Get-ParseErrorCount {
+# THE RENDERED NOTICE LINES, and the ParseError-FAMILY DEFECTS.
+#
+# 0508. THE DEMOTION CHANGED WHAT A NOTICE LINE IS, and this is where the gate
+# learned it. Before 0508 the declared scope limit was the ONLY kind of notice,
+# so "the rendered `ParseError` lines" and "the rendered notice lines" were the
+# same set, and the gate could count one and compare it with the table's
+# `printed`. After 0508 there are TWO kinds of notice on the reader's screen:
+# the scope limit, which renders `(ParseError)`, and the low-confidence finding
+# the analyzer does not stand behind, which renders its OWN family. So the
+# count is of the NOTICE lines, and the ParseError family keeps a SEPARATE
+# check.
+#
+# THE CHECK IS THE SAME CLAIM AS BEFORE, SPELLED DIFFERENTLY:
+#
+#     every ParseError-family finding in the tree renders `notice:`
+#
+# A genuine defect of that family renders `error:` -- the label the analyzer
+# gives a finding it stands behind -- so a defect is counted here, and the
+# count must be zero. The family is read from the line's PARENTHESES and never
+# from its message: a message may carry parentheses of its own ("no method
+# matching +(Struct)"), and a matcher that read the family out of the message
+# would silently stop seeing the defects it is looking for.
+function Get-NoticeLineCount {
   param([string]$Text)
-  return @([regex]::Matches($Text, '\(ParseError\)')).Count
+  return @([regex]::Matches($Text, '(?m)^\d+:\d+ - notice: ')).Count
+}
+
+# The ParseError-family findings that are NOT notices: a genuine defect of
+# that family. Zero is the only acceptable answer, and it is measured on every
+# tree the gate scans.
+function Get-ParseErrorDefectCount {
+  param([string]$Text)
+  $n = 0
+  foreach ($l in ($Text -split "`r?`n")) {
+    if ($l.Contains('(ParseError)') -and -not $l.Contains(' - notice: ')) { $n++ }
+  }
+  return $n
 }
 
 # THE KIND of a notice: the construct its message names.
@@ -237,7 +272,11 @@ function Get-NoticeKind {
   param([string]$Message)
   $i = $Message.IndexOf(' is outside the analyzed subset')
   if ($i -ge 0) { return $Message.Substring(0, $i) }
-  return $Message
+  # 0508. A notice that is NOT a scope limit is a DEMOTED FINDING -- the
+  # low-confidence finding the analyzer does not stand behind. It is named as
+  # such and not by its message: the message names a SYMBOL, and a table of
+  # symbols is not a table of kinds.
+  return 'demoted finding'
 }
 
 function Get-Summary {
@@ -325,11 +364,11 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19603'
-$SELF_FILES = '187'
-$SELF_NOTICES = 'test declaration=1413|if expression=103|struct declaration=62|derive declaration=54|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
-$SELF_PRINTED = '124'
-$SELF_AGGREGATED = '1560'
+$NOTICE_TOTAL = '19636'
+$SELF_FILES = '189'
+$SELF_NOTICES = 'test declaration=1427|if expression=104|struct declaration=62|derive declaration=54|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
+$SELF_PRINTED = '125'
+$SELF_AGGREGATED = '1574'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -492,9 +531,15 @@ if ($failed.Count -eq 0) {
     # by shape in one `NOTICES` table. So the gate reads the analyzer's OWN
     # numbers -- the table's TOTAL line -- instead of counting rendered lines,
     # and it checks that the halves reconcile against the SUMMARY.
+    #
+    # 0508: the demotion puts the low-confidence findings on a line of their
+    # own as well, so "the rendered lines" are the NOTICE lines now -- the
+    # scope limits and the demoted findings together -- and the ParseError
+    # family has its own check beside the reconciliation.
     $tab = Get-NoticeTable $text
     $sumNotices = [int]([regex]::Match($sum, 'notices=(\d+)').Groups[1].Value)
-    $rendered = Get-ParseErrorCount $text
+    $rendered = Get-NoticeLineCount $text
+    $peDefect = Get-ParseErrorDefectCount $text
     $rowSum = 0
     foreach ($r in $tab.Rows) { $rowSum += $r.N }
     if ($sumNotices -ne 0 -and -not $tab.Present) {
@@ -510,10 +555,13 @@ if ($failed.Count -eq 0) {
       Write-Output ('  FAIL: the table''s rows add up to ' + $rowSum + ', its TOTAL line says ' + $tab.Aggregated + '.')
       $script:stageOk = $false
     } elseif ($rendered -ne $tab.Printed) {
-      Write-Output ('  FAIL: ' + $rendered + ' rendered ParseError lines, the table says ' + $tab.Printed + ' were printed.')
+      Write-Output ('  FAIL: ' + $rendered + ' rendered notice lines, the table says ' + $tab.Printed + ' were printed.')
+      $script:stageOk = $false
+    } elseif ($peDefect -ne 0) {
+      Write-Output ('  FAIL: ' + $peDefect + ' ParseError-family findings render as something other than a notice.')
       $script:stageOk = $false
     } else {
-      Write-Output ('  the notices reconcile: ' + $sumNotices + ' = ' + $tab.Printed + ' printed + ' + $tab.Aggregated + ' aggregated; ' + $rendered + ' rendered lines')
+      Write-Output ('  the notices reconcile: ' + $sumNotices + ' = ' + $tab.Printed + ' printed + ' + $tab.Aggregated + ' aggregated; ' + $rendered + ' rendered notice lines, and no ParseError-family defect')
     }
     $script:selfNotices = $sumNotices
     $script:selfPrinted = $tab.Printed
@@ -533,7 +581,7 @@ if ($failed.Count -eq 0) {
       $k = Get-NoticeKind $r.Message
       if ($byKind.ContainsKey($k)) { $byKind[$k] = $byKind[$k] + $r.N } else { $byKind[$k] = $r.N }
     }
-    foreach ($m in [regex]::Matches($text, '(?m)^\d+:\d+ - notice: (.+?) \(ParseError\) \[')) {
+    foreach ($m in [regex]::Matches($text, '(?m)^\d+:\d+ - notice: (.+?) \([A-Za-z]+\) \[')) {
       $k = Get-NoticeKind $m.Groups[1].Value
       if ($byKind.ContainsKey($k)) { $byKind[$k] = $byKind[$k] + 1 } else { $byKind[$k] = 1 }
     }
@@ -918,7 +966,7 @@ if ($failed.Count -eq 0) {
 }
 
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507','0508')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -1618,7 +1666,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1654'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2897 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
-  'moonbit_core'    = 'files=1029 parsed=984 actionable=28 notices=10096 unreliable=646 withheld=65 unchecked=7867 total=10770'
+  'moonbit_core'    = 'files=1029 parsed=984 actionable=10 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10770'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -1628,6 +1676,39 @@ $TARGETS = [ordered]@{
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
   'moonbit_core'    = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+}
+
+# --- 6a  THE NOTICE RECONCILIATION CAN GO RED ---------------------------------
+# A gate that has never been seen to go red is a comment.
+#
+# The corpus stage below proves that no ParseError-family DEFECT exists in the
+# corpora, by counting the ones that render `error:`. That count must be zero
+# -- and a counter that counts nothing would be zero the same way. So this
+# stage runs the SAME counter over a REAL defect: a malformed interface file,
+# which the literate frontend reports as a genuine ParseError defect and
+# renders `error:`.
+#
+# It is the ANALYZER'S OWN OUTPUT that is measured, not a line of text written
+# here: a synthetic line would only prove that the counter counts synthetic
+# lines.
+if ($failed.Count -eq 0) {
+  Stage 'the notice reconciliation can go red (a real defect is seen)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $fx = Join-Path $env:TEMP ('reldefect_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path $fx | Out-Null
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Join-Path $fx 'bad.mbti'), "package demo`n`ntype Shape`n`nthis line is not a signature and not a type declaration`n", $enc)
+    $text = Scan-Tree $wasm $fx
+    $defects = Get-ParseErrorDefectCount $text
+    if ($defects -lt 1) {
+      Write-Output ('  FAIL: the defect counter saw ' + $defects + ' defect(s) in a tree that has one. It would pass the corpus stage on nothing.')
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  a real ParseError defect renders error:, and the counter sees it (' + $defects + ')')
+    }
+    $ErrorActionPreference = $prev
+  }
+  if (-not $script:lastOk) { $failed += 'notice-reconciliation' }
 }
 
 if ($failed.Count -eq 0) {
@@ -1648,14 +1729,19 @@ if ($failed.Count -eq 0) {
       #
       #     the table's notices == the SUMMARY's notices
       #     printed + aggregated == notices
-      #     the rendered `ParseError` lines == printed
+      #     the rendered `notice:` lines == printed
       #
-      # The last one is the proof that no ParseError-family DEFECT exists in
-      # the corpus: such a defect would render `error:` and be counted here
-      # too.
+      # 0508: THE THIRD ONE IS COUNTED OVER THE NOTICE LINES, not over the
+      # `ParseError` lines. The demotion put the low-confidence findings on a
+      # line of their own, and they are notices and not ParseError-family
+      # findings, so counting the family would have compared two different sets
+      # -- and the corpus stage went red on exactly that, 1144 against 1162.
+      # The family keeps its OWN check beside the reconciliation: a defect of
+      # that family renders `error:`, and the count of those must be zero.
       $tab = Get-NoticeTable $text
       $nt = [int]([regex]::Match($sum, 'notices=(\d+)').Groups[1].Value)
-      $pe = Get-ParseErrorCount $text
+      $rendered = Get-NoticeLineCount $text
+      $peDefect = Get-ParseErrorDefectCount $text
       $rowSum = 0
       foreach ($r in $tab.Rows) { $rowSum += $r.N }
       if ($tab.Notices -ne $nt) {
@@ -1667,8 +1753,11 @@ if ($failed.Count -eq 0) {
       } elseif ($rowSum -ne $tab.Aggregated) {
         Write-Output ("  [DRIFT ] {0,-16} the table's rows add up to {1}, the TOTAL line says {2}" -f $k, $rowSum, $tab.Aggregated)
         $drift++
-      } elseif ($pe -ne $tab.Printed) {
-        Write-Output ("  [DRIFT ] {0,-16} rendered {1} ParseError lines, the table says {2} were printed" -f $k, $pe, $tab.Printed)
+      } elseif ($rendered -ne $tab.Printed) {
+        Write-Output ("  [DRIFT ] {0,-16} rendered {1} notice lines, the table says {2} were printed" -f $k, $rendered, $tab.Printed)
+        $drift++
+      } elseif ($peDefect -ne 0) {
+        Write-Output ("  [DRIFT ] {0,-16} {1} ParseError-family findings render as something other than a notice" -f $k, $peDefect)
         $drift++
       }
       $parseErr += $nt
@@ -1711,11 +1800,26 @@ $PERFN = [ordered]@{
   'moonbit_labeler' = '1'
   'moonbit_image'   = '0'
   'async'           = '0'
+  'proton'          = '0'
+  'proton_contract' = '0'
+  'moonbit_core'    = '28'
+}
+$PERFN_TOTAL = '29'
+# 0508. THE DEMOTED SET, pinned beside the actionable one for the same reason.
+# A finding the analyzer does not stand behind is rendered `notice:` and leaves
+# the actionable count -- and a set of findings that leaves the census is a set
+# that can go missing silently. These 21 are the low-confidence ones, and they
+# are the population the false-positive families A/B/F/L track.
+$PERFN_DEMOTED = [ordered]@{
+  'moui'            = '0'
+  'moonbit_labeler' = '0'
+  'moonbit_image'   = '0'
+  'async'           = '0'
   'proton'          = '2'
   'proton_contract' = '0'
-  'moonbit_core'    = '47'
+  'moonbit_core'    = '19'
 }
-$PERFN_TOTAL = '50'
+$PERFN_DEMOTED_TOTAL = '21'
 # THE POSITIVE CONTROL'S FILE COUNT, pinned here for the same reason the census
 # total is: it is a corpus number, and the corpus numbers live in ONE place.
 # `_verify/check_readme_links.ps1` DERIVES the README's expectation from this
@@ -1723,7 +1827,10 @@ $PERFN_TOTAL = '50'
 # corpus numbers at once and the README kept publishing the old ones, because
 # the gate's literals were a second copy of the fact and nothing compared the
 # two copies.
-$CONTROL_N = '20'
+# 0508 MOVED THIS PIN: the demotion took four files out of the actionable set --
+# they carried a low-confidence finding and nothing the analyzer stands behind --
+# so the control's file count is 16 and not 20.
+$CONTROL_N = '16'
 
 if ($failed.Count -eq 0) {
   $CS = Join-Path $root '_verify\census_perfunction.ps1'
@@ -1739,20 +1846,33 @@ if ($failed.Count -eq 0) {
       $ErrorActionPreference = $prev
       $total = ''
       $perCorpus = ''
+      $demotedTotal = ''
+      $demotedCorpus = ''
       foreach ($ln in ($o -split "`r?`n")) {
         if ($ln -match '^PER-FUNCTION CENSUS actionable = (\d+)') { $total = $Matches[1] }
+        elseif ($ln -match '^PER-FUNCTION CENSUS demoted = (\d+)') { $demotedTotal = $Matches[1] }
         elseif ($ln -match '^\s+per corpus: (.+)$') { $perCorpus = $Matches[1] }
-        elseif ($ln -match '^\s+(\S+)\s+actionable=\d+\s+files=') {
+        elseif ($ln -match '^\s+demoted per corpus: (.+)$') { $demotedCorpus = $Matches[1] }
+        elseif ($ln -match '^\s+(\S+)\s+actionable=(\d+)\s+demoted=(\d+)\s+files=') {
           $name = $Matches[1]
-          $n = [int]([regex]::Match($ln, 'actionable=(\d+)').Groups[1].Value)
+          $n = [int]$Matches[2]
+          $dn = [int]$Matches[3]
           $want = [int]$PERFN[$name]
-          if ($n -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $name, $n) }
-          else { Write-Output ("  [DRIFT ] {0,-16} pinned {1}, actual {2}" -f $name, $want, $n); $script:stageOk = $false }
+          $wantD = [int]$PERFN_DEMOTED[$name]
+          if ($n -eq $want -and $dn -eq $wantD) {
+            Write-Output ("  [MATCH ] {0,-16} actionable {1}  demoted {2}" -f $name, $n, $dn)
+          } else {
+            Write-Output ("  [DRIFT ] {0,-16} actionable pinned {1}, actual {2}; demoted pinned {3}, actual {4}" -f $name, $want, $n, $wantD, $dn)
+            $script:stageOk = $false
+          }
         }
       }
       if ($total -eq '') { Write-Output '  FAIL: the census printed no total.'; $script:stageOk = $false }
       elseif ($total -ne $PERFN_TOTAL) { Write-Output ("  FAIL: total {0}, pinned {1}." -f $total, $PERFN_TOTAL); $script:stageOk = $false }
       else { Write-Output ("  TOTAL {0}   ({1})" -f $total, $perCorpus) }
+      if ($demotedTotal -eq '') { Write-Output '  FAIL: the census printed no demoted total.'; $script:stageOk = $false }
+      elseif ($demotedTotal -ne $PERFN_DEMOTED_TOTAL) { Write-Output ("  FAIL: demoted total {0}, pinned {1}." -f $demotedTotal, $PERFN_DEMOTED_TOTAL); $script:stageOk = $false }
+      else { Write-Output ("  DEMOTED {0}   ({1})" -f $demotedTotal, $demotedCorpus) }
       if ($code -ne 0) { Write-Output '  FAIL: the census script exited non-zero (an UNCLASSIFIED finding).'; $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'perfunction-census' }
@@ -1993,6 +2113,43 @@ if (-not (Test-Path -LiteralPath $MTR -PathType Leaf)) {
     Write-Output ''
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'bandit-transfers'
+  }
+}
+# --- the 0508 stage -------------------------------------------------------------
+# 0508 is THE CONFIDENCE DEMOTION: the axis that shipped in 0507 is ACTED on for
+# the first time. A finding the analyzer does not stand behind is rendered
+# `notice:` and is counted in `notices` rather than in `actionable` -- and it is
+# NOT hidden: it keeps its family, its stable id, its confidence and its line on
+# the reader's screen.
+#
+# The settle's rows are the MEASUREMENTS of the demotion, on the real scanner:
+# the label, the counts, the two kinds of notice, and the split that PRINTS a
+# demoted finding while AGGREGATING a scope limit.
+$MDT = Join-Path $root '_verify\settle_0508_confidence_demotion.ps1'
+if (-not (Test-Path -LiteralPath $MDT -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\settle_0508_confidence_demotion.ps1'
+  $failed += 'confidence-demotion'
+} else {
+  Stage 'the confidence demotion: measured, not asserted' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $MDT 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(MISMATCH|MISSING|GATE OK|ABORT)' -or $ln -match '^\s+D\d+\s') {
+        Write-Output ('  ' + $ln.Trim())
+      }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'confidence-demotion' }
+  $stageName = 'the confidence demotion: measured, not asserted'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'confidence-demotion'
   }
 }
 # --- verdict -----------------------------------------------------------------

@@ -36,11 +36,18 @@ fn mk_notice(msg : String, line : Int32) -> @report.Report {
 
 ///|
 /// A defect: a real finding, not a scope limit.
+///
+/// 0508. THE FAMILY CHANGED, and the reason is the demotion. It used to be
+/// `FUndefinedName`, which is a `low`-confidence family and is therefore a
+/// NOTICE since 0508 -- so this fixture would have been a notice, and a row
+/// that says "a defect is printed, never aggregated" would have been asserting
+/// it about something that is not a defect any more. A defect is a finding the
+/// analyzer STANDS BEHIND, so the fixture is a high-confidence one.
 fn mk_defect(line : Int32) -> @report.Report {
   @report.Report::{
-    family: @core.FUndefinedName,
+    family: @core.FArgType,
     lenses: [@core.LStructural],
-    message: "no visible binding for 'x'",
+    message: "argument 1 to 'f' has incompatible type 'Int'",
     span: { start: @core.pos(line, 1), end: @core.pos(line, 2), },
     vst: [],
   }

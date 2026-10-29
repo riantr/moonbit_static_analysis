@@ -45,14 +45,32 @@ fn lens_tag(lenses : Array[@core.Lens]) -> String {
 }
 
 ///|
-/// Is this report a NOTICE -- a declared scope limit of this analyzer -- rather
-/// than a defect in the code that was analysed?
+/// Is this report a NOTICE -- a finding the analyzer does NOT STAND BEHIND --
+/// rather than a defect in the code that was analysed?
 ///
 /// ONE definition, and every caller must use it. The rendered label, the
 /// SUMMARY's `actionable` count and the mermaid drawing all answer the same
 /// question, and a second copy of the question somewhere else is how a diagram
 /// ends up drawing a defect as a notice while the number beside it says the
 /// opposite.
+///
+/// TWO KINDS OF NOTICE, AND `confidence` IS WHAT TELLS THEM APART:
+///
+///   * a DECLARED SCOPE LIMIT -- "this construct is outside the analyzed
+///     subset; it was read but not analysed" -- is the analyzer saying it could
+///     not DECIDE at all. Its confidence is `undecided`.
+///   * a LOW-CONFIDENCE finding -- the analyzer decided, but on less than it
+///     would like: the family reasons from a NAME alone. Its confidence is
+///     `low`.
+///
+/// 0508. The second kind was NOT a notice before, and it is the answer to the
+/// question bandit answers with `Issue.filter`: an issue carries a severity AND
+/// a confidence, and a finding the analyzer is not sure about does not clear
+/// the actionable threshold. IT IS DEMOTED, NOT HIDDEN. The finding is still
+/// rendered, still counted, and still carries its family, its stable id and
+/// its confidence -- so a reader sees it and a machine sees it. What changes is
+/// the LABEL and the counts: a low-confidence finding is rendered `notice:`,
+/// and it is counted in `notices` rather than in `actionable`.
 ///
 /// WHY IT IS NOT `family == FParse`. FParse is ONE family carrying TWO
 /// meanings: a deliberate exclusion ("match expression is outside the analyzed
@@ -73,6 +91,24 @@ fn lens_tag(lenses : Array[@core.Lens]) -> String {
 /// moves no count -- but only one of them is right, and the wrong one is the
 /// one that called a scope limit an `error:`.
 pub fn Report::is_notice(self : Report) -> Bool {
+  self.is_declared_scope_limit() || self.confidence() == @core.Low
+}
+
+///|
+/// Is this report a DECLARED SCOPE LIMIT -- the analyzer saying it could not
+/// DECIDE AT ALL?
+///
+/// The narrower question, kept apart from `is_notice` because the two say
+/// DIFFERENT things: a scope limit is `undecided` (the analyzer read nothing
+/// it could judge), and a low-confidence finding is `low` (the analyzer judged,
+/// on less than it would like). Both are notices; only the first is a scope
+/// limit.
+///
+/// It is `pub` because the SOURCE convention it holds in place is checked
+/// against the source by `_verify/check_notice_labels.ps1`: every producer of
+/// an `FParse` report is told apart by MECHANISM there, never by its text, so
+/// the marker and the mechanism cannot drift apart.
+pub fn Report::is_declared_scope_limit(self : Report) -> Bool {
   self.family == @core.FParse && is_scope_limit(self.message)
 }
 
@@ -91,6 +127,13 @@ pub fn Report::is_notice(self : Report) -> Bool {
 /// `src/core/core_proof.mbtp` proves it), and it is not what decides whether a
 /// finding is actionable. The actionability question is `is_notice`, and the
 /// count that answers it is `v.notices`.
+///
+/// 0508. A LOW-CONFIDENCE FINDING IS DEMOTED HERE TOO, and the family severity
+/// it loses is not lost: the rendered bracket still carries the family name,
+/// the family's stable id and the confidence, and the family's own severity is
+/// a documented property of the family (`Family::severity`). What the label
+/// says is WHICH AXIS THE FILTER ACTED ON -- a finding the analyzer stands
+/// behind keeps its severity, and a finding it does not is a `notice:`.
 pub fn Report::severity_label(self : Report) -> String {
   if self.is_notice() {
     return "notice"
@@ -137,16 +180,34 @@ fn is_scope_limit(message : String) -> Bool {
 ///   * a finding whose family reasons from a NAME alone is `low`. The only one
 ///     is `UndefinedName`: the analyzer found no binding for the name, and the
 ///     binding it could not find may be in a file, or in a package, it was
-///     never given. A reader who is told this is told the truth about it.
+///     never given -- or, for the state-machine audit, in a machine the caller
+///     never gave. A reader who is told this is told the truth about it.
 ///   * everything else had the declaration, the signature or the type in front
 ///     of the lens, and is `high`.
+///
+/// 0508. THE `low` CASE IS THE ONE THE FILTER ACTS ON. `bandit` filters an
+/// issue by its severity AND its confidence, and a finding the analyzer is not
+/// sure about does not clear the threshold. The threshold here is
+/// `Report::is_notice`: a `low` finding is demoted to a `notice:` and is
+/// counted as a notice, so it is not in the `actionable` count -- and it is
+/// NOT HIDDEN, because the demotion changes the label and the counts and
+/// nothing else.
+///
+/// THE SCOPE LIMIT IS TOLD FROM THE LOW FINDING BY MECHANISM, NOT BY THE
+/// CONFIDENCE. `is_notice` asks two questions and `confidence` answers one:
+/// the scope-limit question is the family AND the marker, and the
+/// low-confidence question is the family alone. So `confidence` asks the
+/// SCOPE-LIMIT question (`is_declared_scope_limit`), and never asks
+/// `is_notice` -- the two would otherwise be each other's answer, and a pair
+/// of mutually recursive predicates is a pair that can both be wrong in a way
+/// nothing notices.
 ///
 /// COMPUTED, NOT A FIELD. A field would have to be filled in at every one of
 /// the thirty-odd places a Report is constructed, and a missed one would be a
 /// finding with the wrong confidence and no way to notice. A function has one
 /// definition and cannot drift.
 pub fn Report::confidence(self : Report) -> @core.Confidence {
-  if self.is_notice() {
+  if self.is_declared_scope_limit() {
     return @core.Undecided
   }
   if self.family == @core.FUndefinedName {

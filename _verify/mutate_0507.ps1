@@ -57,18 +57,31 @@ Invoke-MutationGate -Name '0507' -Target 'wasm' -Mutations @(
   # outside the analyzed subset" is the analyzer saying it could not DECIDE.
   # Reporting it at `high` would claim the opposite: that the lens read the
   # construct and found nothing wrong with it.
+  #
+  # 0508 RE-ANCHORED THIS ONE, and the reason is worth recording. The
+  # predicate `confidence()` asks changed from `is_notice()` to
+  # `is_declared_scope_limit()` -- because the demotion made `is_notice()` the
+  # answer to TWO questions and `confidence()` the answer to one, and two
+  # mutually recursive predicates can both be wrong in a way nothing notices.
+  # The anchor moved with the line, because an anchor that stops matching is a
+  # mutation that never happens, and a gate that reports a result for a
+  # mutation it never performed is worse than no gate.
+  #
+  # The CONTEXT that differs was re-anchored, not the line re-typed: the rule
+  # being pinned is still "a scope limit is undecided", and the replacement
+  # says the same thing about the same predicate.
   @{
     Name = 'M1 a scope limit is not undecided'
     File = $REPORT
     Find = @'
 pub fn Report::confidence(self : Report) -> @core.Confidence {
-  if self.is_notice() {
+  if self.is_declared_scope_limit() {
     return @core.Undecided
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
 pub fn Report::confidence(self : Report) -> @core.Confidence {
-  if self.is_notice() {
+  if self.is_declared_scope_limit() {
     return @core.High
   }
 '@.Replace("`r`n", "`n")

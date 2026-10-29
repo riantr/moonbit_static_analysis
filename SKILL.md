@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.37 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.38 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -71,7 +71,7 @@ NOTPARSE	75 files, 6769 finding(s) withheld — they measure what this analyzer
       e.g. D:\src\...\CI/pof/aggregator.mbt
   13x  unexpected token `:`
       e.g. D:\src\...\CI/pof/queue.mbt
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
+SUMMARY	files=107	parsed=32	actionable=56	notices=212	unreliable=15759	withheld=6769	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable)
 ```
 
 - **The reason under `NOTPARSE` names the token.** `parse_atom`'s catch-all used to
@@ -814,7 +814,7 @@ on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `@sa.provenance_for(target, root)` collects four facts and
 `@sa.scan_artifact_name(prov, root)` lays them out —
 `<package>_<version>_<moonbit>_<UTC stamp>.mmd`, e.g.
-`moonbit_static_analysis_0.4.37_0.1.20261023_20261024T060000Z.mmd`.
+`moonbit_static_analysis_0.4.38_0.1.20261023_20261024T060000Z.mmd`.
 
 Read that name as provenance, not decoration: it is what distinguishes two
 scans of the same tree. `package` is the coordinate, or the **resolved**

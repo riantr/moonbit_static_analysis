@@ -19,6 +19,7 @@ pub(all) struct Report {
   vst : Array[@core.Frame]
 }
 pub fn Report::confidence(Self) -> @core.Confidence
+pub fn Report::is_declared_scope_limit(Self) -> Bool
 pub fn Report::is_notice(Self) -> Bool
 pub fn Report::render(Self) -> String
 pub fn Report::severity_label(Self) -> String

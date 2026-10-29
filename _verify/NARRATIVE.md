@@ -8423,3 +8423,170 @@ compile" and "not in a Moon project" are two claims, and the reader believes the
 first one. The trap was live in every gate in the repository, and the only reason it
 was found is that somebody ran a gate by hand from the wrong place -- which is exactly
 what a harness that took its root from the script's own location would have survived.
+
+### AND THEN THE AXIS WAS ACTED ON: THE DEMOTION
+
+**THE CONFIDENCE AXIS SHIPPED IN 0507 AND NOTHING ACTED ON IT.** Every finding carried
+`high`, `low` or `undecided`, in the rendering and in the JSON record, and the axis
+changed no decision: the `actionable` count was the number it would have been if the
+axis had never been built. The clause of the transfer that was still open is the one
+bandit implements as a filter over two axes --
+
+    bandit/core/issue.py:79-106    an issue carries a severity AND a confidence
+    bandit/core/issue.py:147-167   and the filter needs BOTH to clear the thresholds
+
+0508 is that filter. A finding the analyzer does not stand behind is rendered
+`notice:` and is counted in `notices` rather than in `actionable`.
+
+**AND IT IS A DEMOTION, NOT A HIDE.** The finding keeps its family, its stable id and
+its confidence, and it keeps a line of the reader's screen. What changes is the LABEL
+and the bucket. A low-confidence finding is demoted to a notice, and NOT hidden.
+
+**THE RULE, IN ONE LINE.** A finding is a NOTICE iff the analyzer does not stand
+behind it:
+
+    Report::is_notice()  =  is_declared_scope_limit()  ||  confidence() == Low
+
+and the two questions are told apart BY MECHANISM, not by the confidence:
+
+    is_declared_scope_limit()  =  family == FParse  &&  the message carries the marker
+    confidence()                =  a scope limit          -> Undecided
+                                   FUndefinedName          -> Low
+                                   everything else         -> High
+
+`confidence()` asks the SCOPE-LIMIT question and never asks `is_notice()`. A pair of
+mutually recursive predicates is a pair that can both be wrong in a way nothing
+notices, and the least bad outcome of that is a stack overflow.
+
+**THE FIRST IMPLEMENTATION HID THE FINDING, AND THREE SETTLES WENT RED.** The split
+that decides which notices get a line of the reader's screen used `!r.is_notice()`, so
+the demoted finding was aggregated with the scope limits -- and the 0505 and 0507
+settles, whose rows claim that the analyzer REPORTS an undefined name, went red.
+Those rows are the house's own record of what the analyzer says, and a demotion that
+changes what it says is not a demotion. The fix: the split keys on
+`is_declared_scope_limit()` -- a scope limit is a SHAPE and aggregates, and a
+low-confidence finding is SPECIFIC (a name, at a line) and is printed.
+
+**MEASURED, on the seven pinned corpora, in the per-function view:**
+
+    actionable    50 -> 29
+    demoted        0 -> 21   (moonbit_core 19, proton 2)
+
+and in the per-file view of `moonbit_core`:
+
+    actionable    28 -> 10
+    notices    10096 -> 10114   (+18)
+    printed     1144 -> 1162    (+18 -- the demoted ones, which are printed)
+    aggregated  8952 -> 8952    (unchanged -- a demoted finding is never aggregated)
+
+The census now keeps the demoted set in its own table and its own total, beside the
+actionable one, because a set of findings that leaves the census is a set that can go
+missing silently. Every one of the 21 carries the confidence `low`, and every one of
+them landed in a named family -- the four families the false-positive tracker already
+knew: A (a hex float literal the lexer does not read), B (a BigInt literal's `N`
+suffix), F (a name the analyzer cannot see) and L (the documented `#doc(hidden)`
+limit).
+
+**THE QUOTED NUMBERS, which `_verify/settle_0508_confidence_demotion.ps1` checks
+against its own measurement:**
+
+    0508 the demoted finding, label: notice
+    0508 the demoted finding, confidence: low
+    0508 the demoted finding, family id: MSA-002
+    0508 the demoted finding, actionable count: 0
+    0508 the demoted finding, notice count: 1
+
+**AND THE COUNT IS A FUNCTION NOW.** The notice count was an inline loop in two
+places -- once per file, and once over what was printed -- and the demotion makes the
+COUNT a thing that can be wrong on its own, because a low-confidence finding leaves
+`actionable` and enters `notices`. Two inline loops are two copies of the question.
+They are now one function, `count_notices`, which asks `@report.is_notice` and
+nothing else -- the same predicate the renderer asks, so the label on a line and the
+number beside it cannot disagree about the same finding.
+
+**AND THE GATE THAT CHECKED IT WENT RED FIRST.** The corpus stage reconciled "the
+rendered `ParseError` lines" against the table's `printed` count, and that equality
+WAS the proof that no ParseError-family defect existed -- a defect of that family
+renders `error:` and is counted by the same matcher. The demotion broke the equality
+BY CONSTRUCTION: the demoted findings render `notice:` and carry their own family, so
+the two counts became two different sets, and the stage went red on `moonbit_core`
+
+    rendered 1144 ParseError lines, the table says 1162 were printed
+
+and it was RIGHT to: the check had been asking a question the demotion made
+ambiguous. The count is now of the RENDERED NOTICE lines -- the scope limits and the
+demoted findings together, which is what `printed` means now -- and the ParseError
+family keeps its OWN check beside the reconciliation: a defect of that family renders
+`error:`, and the count of those must be zero. The claim is the same one, spelled
+differently, and it is still a real check: a defect would break it.
+
+**AND THE CHECK WAS SHOWN TO GO RED.** A counter whose expected value is zero is also
+the value a counter that counts nothing would produce, so the gate now runs the SAME
+counter over a REAL defect -- a malformed interface file, which the literate frontend
+reports as a genuine ParseError defect and renders `error:` -- and requires the counter
+to see it. It does, and the stage is named "the notice reconciliation can go red (a
+real defect is seen)".
+
+**AND THE TWO VIEWS COUNT DIFFERENT NAMES.** The census counts 21 demoted findings and
+the module view counts 18, and the difference is not a rounding. In `moonbit_core` the
+per-function view reports 19 sites and the module view 18, and only 15 of them are the
+SAME site -- the two views analyze different scopes, so they find different names. The
+seven that differ are measured: the module view has `bigint/bigint_default.mbt` x2 and
+`builtin/bytes_find.mbt` x1 that the per-function view does not, and the per-function
+view has `math/scalbn.mbt` x3 and `hashmap/utils.mbt` x1 that the module view does not.
+And in `proton` the per-function view reports 2 (`@locale.LocalePreferences::resolve`,
+the documented `#doc(hidden)` limit) that the module view does not report at all.
+
+**AND THE RELEASE RUN FAILED ON A GATE THAT HAD NOT RUN AT ALL.** The 0.4.38 release
+run reported `RELEASE GATE FAILED: mutate:0470`, and the transcript says why: `moon test`
+printed NOTHING AT ALL -- no summary, no diagnostic, no output on either stream. That is
+the shape of a run that never happened (a contended `_build`, a starved binary, a killed
+compiler), and the suite was fine: 1330/1330 in every other gate of the same run, and
+gate 0470 standalone is 5 killed of 5 on the same tree.
+
+The harness already knew this shape for the MUTATION runs -- a run with no summary and no
+compiler diagnostic is INCONCLUSIVE, it is retried once, and it FAILS the gate if the
+retry does not happen either. The BASELINE had no such rule, so it reported the
+machine's hiccup as a verdict about the code, in the words "The suite does not compile".
+The baseline asks the same question now and gets the same answer: a baseline with no
+summary and no compiler diagnostic is a FAILED MEASUREMENT and is retried once; a
+compiler diagnostic is a verdict about the tree and is NOT retried; and the retry can
+never manufacture a pass -- if the second run does not produce a summary either, the
+gate fails and says what happened.
+
+AND THE FIRST VERSION OF THAT FIX WAS CAUGHT BY THE HARNESS'S OWN SELF-TEST. It wrote
+its OWN copy of the summary-line pattern, and `mutate_lib_selftest.ps1` refused to run:
+that pattern is carried THREE times on purpose -- the baseline, the mutation run and the
+mutation run's own retry -- so that breaking one of them does not break the others, and
+the self-test breaks all but the first in a copy of the tree and requires the copy's gate
+to reach its mutation row and score it INCONCLUSIVE. A FOURTH copy left two intact and
+the self-test said "the copy does not keep exactly one intact summary-line regex". The
+fix is one variable: the baseline uses `$summaryRx` in both halves of it, and the pattern
+is carried three times again.
+
+=> 判据: THE RULE THAT MAKES A MEASUREMENT HONEST HAS TO BE THE SAME AT EVERY LEVEL.
+The mutation runs had "a run that did not happen is not a verdict"; the baseline, one
+step earlier in the same file, did not -- and the release run paid for the difference: a
+gate that reported a broken suite, on a tree where the suite was green.
+
+=> 判据: AN AXIS THAT NOTHING ACTS ON IS A COLUMN. The confidence was on every
+finding, in the rendering and in the JSON record, and it changed no decision: the
+actionable count was the same number it would have been if the axis had never been
+built. The axis earns its place the moment something is decided with it.
+=> 判据: A DEMOTION THAT CHANGES WHAT THE TOOL REPORTS IS NOT A DEMOTION. The first
+implementation used the demotion's own predicate to decide what to print, and the
+demoted finding was aggregated away -- so the 0505 and 0507 settles, which record
+what the analyzer says, went red. The label and the bucket change; the finding, its
+place and its line do not.
+=> 判据: TWO INLINE LOOPS ARE TWO COPIES OF THE QUESTION. The demotion moved a
+finding from one count to the other, and the two counts were computed in two places.
+One function, one predicate, one number.
+=> 判据: A GATE THAT HAS NEVER BEEN SHOWN TO GO RED IS A COMMENT. The reconciliation
+had been a proof for two years, and the demotion turned it into a comparison of two
+different sets -- which failed loudly, and that was the gate working. But a check
+whose expected value is ZERO needs a control: zero is also what a counter that counts
+nothing produces.
+=> 判据: TWO VIEWS ARE TWO MEASUREMENTS, AND THE README HAS TO SAY WHICH IS WHICH.
+The census said 21 demoted and the module view said 18, and a reader holding both
+numbers and no sentence would have had to guess whether one of them was wrong.
+Neither was.

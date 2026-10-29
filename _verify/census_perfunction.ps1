@@ -20,6 +20,16 @@
 # notice: `unreachable code` and `unused local` are warnings, and they are
 # findings.
 #
+# 0508. AND WHAT COUNTS AS "DEMOTED". The scanner now renders a finding the
+# analyzer DOES NOT STAND BEHIND as `notice:` -- a declared scope limit (the
+# analyzer could not decide) OR a low-confidence finding (the analyzer decided,
+# on less than it would like). Both leave the `actionable` count. The census
+# counts them separately, in their own table and their own total, because they
+# are the population the false-positive families A/B/F track and a set of
+# findings that leaves the census is a set that can go missing silently.
+# `ParseError` is excluded from both sets: it is the analyzer talking about its
+# own subset, not a finding in the analysed code.
+#
 # THE FAMILIES. Every actionable finding must land in a named family, and a
 # finding that lands in none is printed as UNCLASSIFIED and makes this script
 # FAIL. A census that silently buckets what it does not understand is a census
@@ -100,6 +110,8 @@ function Classify([string]$msg) {
 
 $total = 0
 $allRows = @()
+$demotedTotal = 0
+$allDemoted = @()
 $unclassified = 0
 
 Write-Output '=== the per-function census, seven pinned corpora ==='
@@ -123,27 +135,41 @@ foreach ($k in $C.Keys) {
   $lines = $txt -split "`r?`n"
   $cur = ''
   $rows = @()
+  $drows = @()
   foreach ($l in $lines) {
     $t = $l -split "`t"
     if ($t.Count -ge 2 -and ($t[0] -in @('FOUND','PARTIAL','CLEAN'))) { $cur = ($t[-1].Trim() -replace ('^' + $corpusRoot + '[\\/]'), ''); continue }
-    if (($l -match ' - error: ' -or $l -match ' - warning: ') -and $l -notmatch '\(ParseError\)') {
+    # 0508. A finding the analyzer DOES NOT STAND BEHIND is rendered `notice:`
+    # and is NOT actionable -- so it is not in the count below. It is collected
+    # here anyway, because the demotion is a change to what the analyzer CLAIMS
+    # and a set of findings that leaves the census is a set that can go missing
+    # silently. `ParseError` is excluded from BOTH sets for the reason it was
+    # always excluded: it is a notice the analyzer raises about its own subset,
+    # not a finding in the analysed code.
+    $isActionable = (($l -match ' - error: ' -or $l -match ' - warning: ') -and $l -notmatch '\(ParseError\)')
+    $isDemoted = ($l -match ' - notice: ' -and $l -notmatch '\(ParseError\)')
+    if ($isActionable -or $isDemoted) {
       # 0507. The rendered finding carries its METADATA in the bracket:
       # the lenses, the family's STABLE id, and the confidence. The pattern
       # REQUIRES all three, so a change to the shape fails this gate loudly
       # instead of turning every finding into an UNCLASSIFIED row that reads
       # as "the census found something it could not name".
-      $m = [regex]::Match($l, '^(?<f>\d+):(?<c>\d+) - (?<sev>error|warning): (?<msg>.*) \((?<cat>[A-Za-z]+)\) \[(?<lens>[a-z+\-]+), (?<id>MSA-\d{3}), (?<conf>high|low|undecided)\]$')
+      $m = [regex]::Match($l, '^(?<f>\d+):(?<c>\d+) - (?<sev>error|warning|notice): (?<msg>.*) \((?<cat>[A-Za-z]+)\) \[(?<lens>[a-z+\-]+), (?<id>MSA-\d{3}), (?<conf>high|low|undecided)\]$')
       if ($m.Success) {
-        $rows += [pscustomobject]@{ Corpus = $k; File = $cur; Line = [int]$m.Groups['f'].Value; Sev = $m.Groups['sev'].Value; Msg = $m.Groups['msg'].Value; Fam = (Classify $m.Groups['msg'].Value); Id = $m.Groups['id'].Value; Conf = $m.Groups['conf'].Value }
+        $row = [pscustomobject]@{ Corpus = $k; File = $cur; Line = [int]$m.Groups['f'].Value; Sev = $m.Groups['sev'].Value; Msg = $m.Groups['msg'].Value; Fam = (Classify $m.Groups['msg'].Value); Id = $m.Groups['id'].Value; Conf = $m.Groups['conf'].Value }
       } else {
-        $rows += [pscustomobject]@{ Corpus = $k; File = $cur; Line = -1; Sev = '?'; Msg = $l; Fam = 'UNCLASSIFIED'; Id = ''; Conf = '' }
+        $row = [pscustomobject]@{ Corpus = $k; File = $cur; Line = -1; Sev = '?'; Msg = $l; Fam = 'UNCLASSIFIED'; Id = ''; Conf = '' }
       }
+      if ($isActionable) { $rows += $row } else { $drows += $row }
     }
   }
   $n = $rows.Count
+  $dn = $drows.Count
   $total += $n
-  Write-Output ("  {0,-16} actionable={1,-4} {2}" -f $k, $n, $sum)
+  $demotedTotal += $dn
+  Write-Output ("  {0,-16} actionable={1,-4} demoted={2,-4} {3}" -f $k, $n, $dn, $sum)
   $allRows += $rows
+  $allDemoted += $drows
   Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $err -Force -ErrorAction SilentlyContinue
 }
@@ -158,13 +184,27 @@ foreach ($g in $byFam) {
   if ($what) { Write-Output ("      {0}" -f $what) }
 }
 Write-Output ''
+Write-Output '=== the demoted findings (0508: rendered `notice:`, so NOT actionable) ==='
+$byDem = $allDemoted | Group-Object Fam | Sort-Object Name
+foreach ($g in $byDem) {
+  $what = ''
+  foreach ($f in $FAMILIES) { if ($f.Name -eq $g.Name) { $what = $f.What } }
+  Write-Output ("  {0,-52} {1,4}" -f $g.Name, $g.Count)
+  if ($what) { Write-Output ("      {0}" -f $what) }
+}
+Write-Output ('  the confidence they carry: ' + ((($allDemoted | Group-Object Conf | Sort-Object Name | ForEach-Object { $_.Name + '=' + $_.Count }) -join ' ')))
+Write-Output ''
 Write-Output ("PER-FUNCTION CENSUS actionable = " + $total)
 Write-Output ('  per corpus: ' + (($allRows | Group-Object Corpus | Sort-Object Name | ForEach-Object { $_.Name + '=' + $_.Count }) -join ' '))
+Write-Output ("PER-FUNCTION CENSUS demoted = " + $demotedTotal)
+Write-Output ('  demoted per corpus: ' + (($allDemoted | Group-Object Corpus | Sort-Object Name | ForEach-Object { $_.Name + '=' + $_.Count }) -join ' '))
 $unclassified = @($allRows | Where-Object { $_.Fam -eq 'UNCLASSIFIED' })
-if ($unclassified.Count -gt 0) {
+$unclassifiedDemoted = @($allDemoted | Where-Object { $_.Fam -eq 'UNCLASSIFIED' })
+if (($unclassified.Count + $unclassifiedDemoted.Count) -gt 0) {
   Write-Output ''
-  Write-Output ('UNCLASSIFIED findings: ' + $unclassified.Count)
+  Write-Output ('UNCLASSIFIED findings: ' + ($unclassified.Count + $unclassifiedDemoted.Count))
   foreach ($u in $unclassified) { Write-Output ('  ' + $u.Corpus + ' ' + $u.File + ':' + $u.Line + '  ' + $u.Msg) }
+  foreach ($u in $unclassifiedDemoted) { Write-Output ('  ' + $u.Corpus + ' ' + $u.File + ':' + $u.Line + '  ' + $u.Msg) }
   exit 1
 }
-Write-Output 'every actionable finding landed in a named family.'
+Write-Output 'every actionable finding and every demoted finding landed in a named family.'

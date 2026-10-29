@@ -72,15 +72,21 @@ if (-not (Test-Path -LiteralPath $moonrun)) {
 #
 # So the geometry is not a refinement of the proxy. It answers a different
 # question, and it answers it from the analyzer's own extents.
-$WANT_CORE_TOTAL   = 10096   # the notices in the pinned core corpus
+# 0508 MOVED THE PINS, and it moved them because the demotion moved the
+# corpus: `moonbit_core` actionable 28 -> 10 and notices 10096 -> 10114. The
+# 18 findings that changed are the low-confidence ones, and they are all
+# PRINTED -- so the printed count is 1144 + 18 = 1162 and the aggregated count
+# is UNCHANGED, because a low-confidence finding is specific (a name, at a
+# line) and is never aggregated into a shape.
+$WANT_CORE_TOTAL   = 10114   # the notices in the pinned core corpus
 $WANT_CORE_AGGREG  = 8952    # of them, outside every function's extent
-$WANT_CORE_PRINTED = 1144    # of them, inside one
+$WANT_CORE_PRINTED = 1162    # of them, printed per line
 $WANT_CORE_FILES   = 1029    # files in the pinned corpus
 # The corpus SUMMARY as `_verify/release.ps1` pins it. These three are the
 # same measurement: the settle scans the corpus the way the release gate
 # scans it, so these numbers and the gate's corpus pins are one number each,
 # not two that have to be kept in step by hand.
-$WANT_CORE_ACTIONABLE = 28
+$WANT_CORE_ACTIONABLE = 10
 $WANT_CORE_PARSED    = 984
 
 $fail = 0
@@ -131,7 +137,16 @@ function Invoke-Scan {
     # row that reads the rendered lines found NOTHING and reported a mismatch
     # that looked like a change in the analyzer's behaviour and was really a
     # change in how the gate parses the output.
-    $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \(([A-Za-z]+)\) \[([a-z,-]+), (MSA-\d{3}), (high|low|undecided)\]$')
+    #
+    # 0508 FIXED A SECOND HALF OF THE SAME CLASS, and the demotion is what
+    # exposed it. The lens list here was `[a-z,-]+`, which does NOT contain
+    # `+` -- so a MERGED finding, whose lens tag is `structural+type`, did not
+    # match and was not counted. Every scope limit carries a single lens, so
+    # the count was right until the demotion brought the merged findings into
+    # the printed set: 18 of them, 15 with a `+` in the tag, and the printed
+    # count came out 15 short of the tool's own. The pattern is the same one
+    # `settle_0505_finding_quality.ps1` and `census_perfunction.ps1` use.
+    $m = [regex]::Match($l, '^\d+:\d+ - (error|warning|hint|notice): (.*) \(([A-Za-z]+)\) \[([a-z+\-]+), (MSA-\d{3}), (high|low|undecided)\]$')
     if ($m.Success) {
       $findings += [pscustomobject]@{ Label = $m.Groups[1].Value; Message = $m.Groups[2].Value; Family = $m.Groups[3].Value; Id = $m.Groups[5].Value; Confidence = $m.Groups[6].Value; Line = $l }
     }

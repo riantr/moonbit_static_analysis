@@ -58,7 +58,7 @@ test "merge: one defect, three lenses, ONE finding" {
   assert_eq(rep.lenses.length(), 3)
   assert_eq(
     rep.render(),
-    "2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior, MSA-002, low]\n  in main() at u.mbt:4\n  in g at u.mbt:1\n",
+    "2:10 - notice: undefined variable 'missing' (UndefinedName) [structural+type+behavior, MSA-002, low]\n  in main() at u.mbt:4\n  in g at u.mbt:1\n",
   )
 }
 
@@ -250,7 +250,7 @@ test "report rendering appends the lens tag once per lens, sorted" {
   }
   assert_eq(
     rep.render(),
-    "2:5 - error: undefined variable 'x' (UndefinedName) [structural+type+behavior, MSA-002, low]\n",
+    "2:5 - notice: undefined variable 'x' (UndefinedName) [structural+type+behavior, MSA-002, low]\n",
   )
 }
 

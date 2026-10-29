@@ -154,6 +154,108 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.38 — a finding the analyzer does not stand behind is demoted to a notice, and it is NOT hidden
+
+**THE CONFIDENCE AXIS WAS A COLUMN.** 0.4.37 gave every finding a confidence — `high`, `low`
+or `undecided` — and rendered it in the bracket and in the JSON record. Nothing acted on it:
+the `actionable` count was the number it would have been if the axis had never been built.
+The clause of the `bandit` transfer that was still open is the one bandit implements as a
+filter over two axes — an issue carries a severity AND a confidence, and the filter needs
+BOTH to clear the thresholds. This version is that filter.
+
+**THE RULE, IN ONE LINE.** A finding is a NOTICE iff the analyzer does not stand behind it:
+
+    Report::is_notice()  =  is_declared_scope_limit()  ||  confidence() == Low
+
+and the two questions are told apart **by mechanism**, not by the confidence: a scope limit
+is the family AND the marker, and the low-confidence family is the family alone.
+`confidence()` asks the scope-limit question and never asks `is_notice` — a pair of mutually
+recursive predicates is a pair that can both be wrong in a way nothing notices.
+
+**IT IS A DEMOTION, NOT A HIDE.** The finding keeps its family, its stable id, its confidence
+and its own line on the reader's screen. What changes is the LABEL (`notice:`) and the bucket
+(it is counted in `notices`, not in `actionable`).
+
+| | before | after |
+|---|---|---|
+| a low-confidence finding | `error:`, and actionable | `notice:`, and a notice |
+| a finding the analyzer stands behind | `error:` / `warning:` | unchanged |
+| a declared scope limit | `notice:` | unchanged |
+
+**THE FIRST IMPLEMENTATION HID THE FINDING, AND THREE SETTLES WENT RED.** The split that
+decides which notices get a line used `!r.is_notice()`, so the demoted finding was aggregated
+with the scope limits — and the 0505 and 0507 settles, whose rows claim that the analyzer
+REPORTS an undefined name, went red. Those rows are the house's own record of what the
+analyzer says, and a demotion that changes what it says is not a demotion. The split now keys
+on the scope-limit question: a scope limit is a SHAPE and aggregates, and a low-confidence
+finding is SPECIFIC — a name, at a line — and is printed.
+
+Measured on the seven pinned corpora, in the per-function view:
+
+    actionable    50 -> 29
+    demoted        0 -> 21   (moonbit_core 19, proton 2)
+
+and in the per-file view of `moonbit_core`:
+
+    actionable    28 -> 10
+    notices    10096 -> 10114   (+18)
+    printed     1144 -> 1162    (+18 -- the demoted ones, which are printed)
+    aggregated  8952 -> 8952    (unchanged -- a demoted finding is never aggregated)
+
+The per-function census now keeps the demoted set in its own table and its own total, beside
+the actionable one: a set of findings that leaves the census is a set that can go missing
+silently. All 21 carry the confidence `low`, and all 21 landed in a named family — the four
+the false-positive tracker already knew (A, B, F and L).
+
+**AND THE GATE THAT CHECKED IT WENT RED FIRST, AND WAS FIXED.** The corpus stage reconciled
+"the rendered `ParseError` lines" against the table's `printed` count, and that equality WAS
+the proof that no ParseError-family defect existed — a defect of that family renders `error:`
+and is counted by the same matcher. The demotion broke it by construction: the demoted
+findings render `notice:` and carry their own family, so the two counts became two different
+sets, and the stage went red on `moonbit_core` with `rendered 1144 ParseError lines, the
+table says 1162 were printed`. The count is now of the RENDERED NOTICE lines — the scope
+limits and the demoted findings together, which is what `printed` means now — and the
+ParseError family keeps its OWN check beside the reconciliation: a defect of that family
+renders `error:`, and the count of those must be zero. A gate whose expected value is zero
+needs a control, because zero is also what a counter that counts nothing produces: a new
+stage runs that same counter over a REAL malformed interface file and requires it to see the
+defect.
+
+**AND THE RELEASE RUN ITSELF FAILED ON A GATE THAT HAD NOT RUN.** Gate 0470 aborted at
+its BASELINE with "the suite does not compile", and its transcript shows `moon test`
+printed nothing at all — no summary, no diagnostic, no output on either stream. That is
+the shape of a run that never happened, and the suite was fine: 1330/1330 in every other
+gate of the same run, and 0470 standalone is 5 of 5 killed on the same tree. The harness
+already had the rule for the MUTATION runs — no summary and no compiler diagnostic is a
+failed measurement, retried once, and a failed gate if the retry does not happen either —
+and the baseline, one step earlier in the same file, did not. It does now: the baseline
+is retried once on the same condition, a compiler diagnostic is still a verdict about the
+tree and is not retried, and the retry cannot manufacture a pass.
+
+**THE TWO VIEWS COUNT DIFFERENT NAMES, AND THE README SAYS SO WHERE BOTH ARE PUBLISHED.**
+The census counts 21 demoted findings and the module view counts 18, and the difference is
+not a rounding: in `moonbit_core` the per-function view reports 19 and the module view 18,
+and only **15** of those are the same site. They are two analyses — this one takes every
+function as an entry point, the module view takes the module — which is the same difference
+as the 29 against the 10 the census already publishes.
+
+**AND THE POSITIVE CONTROL MOVED WITH IT.** The control appends a deliberate type error to
+every file that carries an actionable finding and requires the error back: **16 of 16**, and
+not 20 of 20 — the demotion took four files out of the actionable set.
+
+**AND THE DEPENDENCY MOVED.** `moonbitlang/async` 0.22.5 → 0.22.6, the latest on the
+registry. Every corpus number above was measured under the new dependency, and not one of
+them moved.
+
+| | files | parsed | actionable | notices | unchecked |
+|---|---:|---:|---:|---:|---:|
+| 0.4.36 | 1029 | 984 | 28 | 10096 | — |
+| 0.4.37 | 1029 | **984** | **28** | **10096** | **7867** |
+| 0.4.38 | 1029 | **984** | **10** | **10114** | **7867** |
+
+Suite: 1204 js / 1330 wasm / 1204 wasm-gc. Gates: **87** numbered mutation gates, 504 live
+mutations, every restore byte-identical.
+
 ## 0.4.37 — a finding now says how much was CHECKED, and the calls that were not checked are counted
 
 **Three things were ported from `bandit`, and the plan for them was written down and

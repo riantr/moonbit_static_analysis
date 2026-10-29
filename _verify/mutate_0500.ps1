@@ -48,16 +48,24 @@ Invoke-MutationGate -Name '0500' -Target 'wasm' -Mutations @(
   # again -- including the lexer's malformed literals and `moonfiles`'
   # malformed interface text, which are defects. The test that says a genuine
   # defect is not a notice goes red.
+  #
+  # 0508 RE-ANCHORED THIS ONE. The scope-limit question used to be the whole
+  # of `Report::is_notice`; the demotion made `is_notice` the answer to TWO
+  # questions and moved the scope-limit half into `is_declared_scope_limit`.
+  # The rule being pinned did not move -- the scope-limit question is still
+  # "the family AND the marker" -- so the anchor moved with the code rather
+  # than being re-typed. An anchor that stops matching is a mutation that
+  # never happens.
   @{
     Name = 'M1 the notice predicate stops asking whether it is a scope limit'
     File = $REPORT
     Find = @'
-pub fn Report::is_notice(self : Report) -> Bool {
+pub fn Report::is_declared_scope_limit(self : Report) -> Bool {
   self.family == @core.FParse && is_scope_limit(self.message)
 }
 '@.Replace("`r`n", "`n")
     Repl = @'
-pub fn Report::is_notice(self : Report) -> Bool {
+pub fn Report::is_declared_scope_limit(self : Report) -> Bool {
   self.family == @core.FParse
 }
 '@.Replace("`r`n", "`n")
@@ -69,16 +77,20 @@ pub fn Report::is_notice(self : Report) -> Bool {
   # on a family that is not FParse at all, which would be a normal defect
   # relabelled and stopped counting. The test that says the marker alone does
   # not make a notice goes red.
+  #
+  # 0508 RE-ANCHORED THIS ONE TOO, for the same reason as M1: the scope-limit
+  # question moved into `is_declared_scope_limit`, and the marker-alone rule
+  # moved with it.
   @{
     Name = 'M2 the notice predicate stops asking which family it is'
     File = $REPORT
     Find = @'
-pub fn Report::is_notice(self : Report) -> Bool {
+pub fn Report::is_declared_scope_limit(self : Report) -> Bool {
   self.family == @core.FParse && is_scope_limit(self.message)
 }
 '@.Replace("`r`n", "`n")
     Repl = @'
-pub fn Report::is_notice(self : Report) -> Bool {
+pub fn Report::is_declared_scope_limit(self : Report) -> Bool {
   is_scope_limit(self.message)
 }
 '@.Replace("`r`n", "`n")

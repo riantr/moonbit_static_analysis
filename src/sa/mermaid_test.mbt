@@ -64,13 +64,23 @@ fn mm_verdict(
 ///|
 /// A parsed file carrying `n` findings, cycled across three families so more
 /// than one inspection owns a node in the drawing.
+///
+/// 0508. THE FAMILIES CHANGED, and the reason is the demotion. They used to be
+/// `UndefinedName`, `UnusedLocal` and `ArgType`, and `UndefinedName` is a
+/// `low`-confidence family and is therefore a NOTICE since 0508 -- so this
+/// fixture would have been a file WITH notices, and the rows that use it are
+/// about DEFECT nodes and about a file that has no notice at all. The three
+/// families here are ones the analyzer STANDS BEHIND.
 fn mm_parsed_with(n : Int32) -> @sa.Verdict {
-  let fams = [@core.FUndefinedName, @core.FUnusedLocal, @core.FArgType]
+  let fams = [
+    (@core.FUnusedLocal, "local variable 'x' assigned but may not be used"),
+    (@core.FArgType, "argument 1 to 'f' has incompatible type 'Int'"),
+    (@core.FMethodError, "no method matching f(Int)"),
+  ]
   let reps = []
   for i in 0..<n {
-    reps.push(
-      mm_rep(fams[i % 3], [@core.LStructural], "no visible binding 'x'", 10 + i),
-    )
+    let (fam, msg) = fams[i % 3]
+    reps.push(mm_rep(fam, [@core.LStructural], msg, 10 + i))
   }
   mm_verdict("src/a.mbt", reps, true, 0, 0, 0)
 }
@@ -90,6 +100,12 @@ fn mm_partial() -> @sa.Verdict {
 
 ///|
 /// A parsed file carrying 2 notices alongside its defects.
+///
+/// 0508. THE THIRD FINDING USED TO BE AN `UndefinedName`, which is a
+/// `low`-confidence family and is a NOTICE since 0508 -- so the fixture would
+/// have carried THREE notices and its `notices` count would have been wrong.
+/// It is a defect the analyzer stands behind now, and the file carries the two
+/// scope limits it claims to.
 fn mm_with_notices() -> @sa.Verdict {
   mm_verdict(
     "src/c.mbt",
@@ -106,7 +122,7 @@ fn mm_with_notices() -> @sa.Verdict {
         "test decl is outside the subset",
         4,
       ),
-      mm_rep(@core.FUndefinedName, [@core.LType], "no visible binding", 5),
+      mm_rep(@core.FArgType, [@core.LType], "argument 1 to 'f' is wrong", 5),
     ],
     true,
     0,
@@ -429,7 +445,7 @@ test "every finding node explains itself" {
   assert_eq(mm_occurrences(src, "WHY: "), 3)
   assert_eq(mm_occurrences(src, "HOW: "), 3)
   // The real advice table, not a placeholder.
-  assert_true(src.contains("WHY: No visible binding"))
+  assert_true(src.contains("WHY: A local binding was assigned"))
 }
 
 ///|
@@ -704,6 +720,53 @@ test "a notice carries no how-to-fix advice" {
 }
 
 ///|
+/// A DEMOTED FINDING IS A NOTICE TOO, AND ITS NOTE SAYS SO. The note under a
+/// notice node used to name the FAMILY -- "ParseError covers a form this
+/// analyzer does not model" -- which was true while a notice was always a
+/// scope limit, and became a FALSE STATEMENT under a demoted finding: a
+/// finding the analyzer could not resolve is not a form it does not model. A
+/// note that says the wrong thing about the node above it is worse than no
+/// note at all.
+test "a demoted finding carries the not-sure note" {
+  let v = mm_verdict(
+    "src/h.mbt",
+    [
+      mm_rep(
+        @core.FUndefinedName,
+        [@core.LStructural],
+        "no visible binding for 'x'",
+        9,
+      ),
+    ],
+    true,
+    0,
+    0,
+    1,
+  )
+  let src = @sa.mermaid_states(
+    [v],
+    @sa.aggregate([v]),
+    @sa.ScanProvenance::{
+      target: "self",
+      version: "0.4.4",
+      scanned_at: "20261009T051511Z",
+      moonbit: "0.1.20260920",
+    },
+    0,
+    0,
+  )
+  // The node is a notice...
+  assert_true(src.contains("NOTICE — "))
+  // ...and the note under it is about the analyzer's UNCERTAINTY, not about a
+  // form the analyzer does not model.
+  assert_true(src.contains("The analyzer was not sure"))
+  assert_false(
+    src.contains("ParseError covers a form this analyzer does not model"),
+  )
+  assert_eq(mm_check(src), [])
+}
+
+///|
 /// The negative control for the split: a file with NO notice must not grow a
 /// notice node or a notice-marked transition. A renderer that simply labelled
 /// every node "notice" would pass the two tests above.
@@ -711,7 +774,7 @@ test "a file with no notice draws no notice node" {
   let src = mm_render([mm_parsed_with(3)], 0, 0)
   assert_false(src.contains("notice ParseError"))
   assert_false(src.contains("NOTICE — "))
-  assert_true(src.contains("defect UndefinedName"))
+  assert_true(src.contains("defect UnusedLocal"))
   assert_eq(mm_check(src), [])
 }
 

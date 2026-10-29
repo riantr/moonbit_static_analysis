@@ -19,14 +19,20 @@
 #
 #   1. THE OUTPUT CONTRACT. On a real scan, a message that carries the marker
 #      is rendered `notice:`, and `notice:` is only ever used for a message
-#      that carries it. A count of zero fails the check, because a check that
-#      passes on nothing is not a check.
+#      that carries it -- or for a LOW-CONFIDENCE finding, which the 0508
+#      demotion puts there. A count of zero fails the check, because a check
+#      that passes on nothing is not a check.
 #
 #   2. THE FOUR PRODUCER PATHS. The marker is not one message: four different
 #      producers make FParse reports, two of them deliberate and two of them
 #      genuine. Each path is exercised by a fixture and the expected label is
 #      asserted, so the classifier is checked against the tool's OWN messages
 #      rather than against literals written here.
+#
+#   2b. THE DEMOTION, AND ITS CONTROL. A low-confidence finding is rendered
+#      `notice:` and carries `low`, and it is NOT left as an `error:`; and a
+#      finding the analyzer STANDS BEHIND keeps its own label, so the demotion
+#      is not a blanket softening of every finding.
 #
 #   3. THE SOURCE CONVENTION. The marker is a CONVENTION, so it has to be
 #      held in place or it rots: a new exclusion message that stops carrying
@@ -104,10 +110,19 @@ function Get-Findings {
   $rows = @()
   foreach ($ln in ($Text -split "`r?`n")) {
     if ($ln -match '^\s*(\d+):(\d+) - (error|warning|hint|notice): (.*) \((\w+)\) \[([^\]]*)\]\s*$') {
+      # `$Matches` is overwritten by the NEXT match, so the groups are taken
+      # out first and the bracket is read afterwards.
+      $line = $Matches[1]; $col = $Matches[2]; $label = $Matches[3]
+      $message = $Matches[4]; $family = $Matches[5]; $bracket = $Matches[6]
+      # 0508. The bracket carries the CONFIDENCE, and the confidence is what
+      # says WHICH KIND of notice a `notice:` line is.
+      $conf = ''
+      if ($bracket -match ',\s*(MSA-\d{3}),\s*(high|low|undecided)\s*$') { $conf = $Matches[2] }
       $rows += [pscustomobject]@{
-        Line = $Matches[1]; Col = $Matches[2]; Label = $Matches[3]
-        Message = $Matches[4]; Family = $Matches[5]
-        Marked = $Matches[4].Contains($MARKER)
+        Line = $line; Col = $col; Label = $label
+        Message = $message; Family = $family
+        Marked = $message.Contains($MARKER)
+        Conf = $conf
       }
     }
   }
@@ -125,12 +140,21 @@ $own = Get-Findings (Scan-Tree $root)
 $marked = @($own | Where-Object { $_.Marked })
 $notices = @($own | Where-Object { $_.Label -eq 'notice' })
 $wrongLabel = @($marked | Where-Object { $_.Label -ne 'notice' })
-$wrongNotice = @($notices | Where-Object { -not $_.Marked })
+# 0508. A `notice:` IS USED FOR TWO KINDS OF FINDING, and the confidence in the
+# bracket says which: a declared scope limit (the marker) or a LOW-CONFIDENCE
+# finding (the demotion). So "notice: is used for nothing else" becomes
+# "notice: is used for nothing but those two", and the row below checks the
+# demotion's OWN direction as well: a low-confidence finding that is NOT a
+# notice would be a finding the filter did not act on.
+$lowNotices = @($notices | Where-Object { $_.Conf -eq 'low' })
+$wrongNotice = @($notices | Where-Object { -not $_.Marked -and $_.Conf -ne 'low' })
+$lowNotDemoted = @($own | Where-Object { $_.Conf -eq 'low' -and $_.Label -ne 'notice' })
 $genuineError = @($own | Where-Object { $_.Family -eq 'ParseError' -and -not $_.Marked })
 
 Write-Output ('  rendered findings            ' + $own.Count)
 Write-Output ('  carrying the marker          ' + $marked.Count)
 Write-Output ('  labelled notice:             ' + $notices.Count)
+Write-Output ('    of them, low-confidence    ' + $lowNotices.Count)
 Write-Output ('  ParseError NOT carrying it   ' + $genuineError.Count)
 if ($marked.Count -eq 0) {
   Write-Output '  FAIL: no rendered finding carries the marker. The check would pass on nothing.'
@@ -142,12 +166,17 @@ if ($wrongLabel.Count -gt 0) {
   $fail++
 }
 if ($wrongNotice.Count -gt 0) {
-  Write-Output ('  FAIL: ' + $wrongNotice.Count + ' finding(s) labelled notice: without carrying the marker:')
+  Write-Output ('  FAIL: ' + $wrongNotice.Count + ' finding(s) labelled notice: without carrying the marker and without being low-confidence:')
   $wrongNotice | Select-Object -First 5 | ForEach-Object { Write-Output ('      ' + $_.Line + ':' + $_.Col + ' - ' + $_.Message) }
   $fail++
 }
-if ($wrongLabel.Count -eq 0 -and $wrongNotice.Count -eq 0) {
-  Write-Output '  every scope limit is labelled notice:, and notice: is used for nothing else   OK'
+if ($lowNotDemoted.Count -gt 0) {
+  Write-Output ('  FAIL: ' + $lowNotDemoted.Count + ' low-confidence finding(s) NOT demoted to notice:')
+  $lowNotDemoted | Select-Object -First 5 | ForEach-Object { Write-Output ('      ' + $_.Line + ':' + $_.Col + ' - ' + $_.Label + ': ' + $_.Message) }
+  $fail++
+}
+if ($wrongLabel.Count -eq 0 -and $wrongNotice.Count -eq 0 -and $lowNotDemoted.Count -eq 0) {
+  Write-Output '  every scope limit is labelled notice:, every low-confidence finding is demoted to notice:, and notice: is used for nothing else   OK'
 }
 
 # --- 2. the four producer paths, each with its own fixture --------------------
@@ -212,6 +241,25 @@ fn broken() {
 }
 '@, $enc)
 
+# (e) THE DEMOTION. A name the analyzer could not resolve is a LOW-CONFIDENCE
+# finding, and since 0508 it is rendered `notice:` and carries `low` in the
+# bracket -- NOT `error:`. It is reported, not hidden.
+#
+# (f) THE CONTROL for (e). A finding the analyzer STANDS BEHIND keeps its own
+# label, so the demotion is not a blanket softening: an unused local is still a
+# `warning:` and is still not a notice.
+[System.IO.File]::WriteAllText((Join-Path $fx 'e_undefined.mbt'), @'
+fn broken() {
+  println(missing_name)
+}
+'@, $enc)
+
+[System.IO.File]::WriteAllText((Join-Path $fx 'f_defect.mbt'), @'
+fn dead() {
+  let unused_thing = 1
+}
+'@, $enc)
+
 $fxRows = Get-Findings (Scan-Tree $fx)
 $fxNotices = @($fxRows | Where-Object { $_.Label -eq 'notice' })
 $fxErrors = @($fxRows | Where-Object { $_.Label -eq 'error' })
@@ -220,15 +268,25 @@ $a = @($fxNotices | Where-Object { $_.Message -like '*match expression*' })
 $b = @($fxNotices | Where-Object { $_.Message -like '*MoonBit subset*' })
 $c = @($fxErrors | Where-Object { $_.Family -eq 'ParseError' })
 $d = @($fxNotices | Where-Object { $_.Message -like '*unterminated*' })
+# 0508. The demotion and its control.
+$e = @($fxRows | Where-Object { $_.Family -eq 'UndefinedName' -and $_.Label -eq 'notice' -and $_.Conf -eq 'low' })
+$eErr = @($fxRows | Where-Object { $_.Family -eq 'UndefinedName' -and $_.Label -eq 'error' })
+$f = @($fxRows | Where-Object { $_.Family -eq 'UnusedLocal' -and $_.Label -ne 'notice' })
 
 Write-Output ('  (a) program frontend, deliberate   labelled notice:   ' + $a.Count + $(if ($a.Count -ge 1) { '   OK' } else { '   FAIL' }))
 Write-Output ('  (b) literate frontend, deliberate   labelled notice:   ' + $b.Count + $(if ($b.Count -ge 1) { '   OK' } else { '   FAIL' }))
 Write-Output ('  (c) literate frontend, genuine      labelled error:    ' + $c.Count + $(if ($c.Count -ge 1) { '   OK' } else { '   FAIL' }))
 Write-Output ('  (d) lexer, genuine                  NOT a notice:      ' + $(if ($d.Count -eq 0) { 'OK' } else { 'FAIL (' + $d.Count + ')' }))
+Write-Output ('  (e) low-confidence finding          demoted to notice: ' + $e.Count + $(if ($e.Count -ge 1) { '   OK' } else { '   FAIL' }))
+Write-Output ('  (e) and NOT left as an error:      ' + $(if ($eErr.Count -eq 0) { 'OK' } else { 'FAIL (' + $eErr.Count + ')' }))
+Write-Output ('  (f) a finding the analyzer stands behind keeps its label: ' + $f.Count + $(if ($f.Count -ge 1) { '   OK' } else { '   FAIL' }))
 if ($a.Count -lt 1) { Write-Output '  FAIL: the program frontend''s deliberate exclusion was not labelled notice:.'; $fail++ }
 if ($b.Count -lt 1) { Write-Output '  FAIL: the literate frontend''s deliberate exclusion was not labelled notice:.'; $fail++ }
 if ($c.Count -lt 1) { Write-Output '  FAIL: the literate frontend''s genuine defect was not labelled error:.'; $fail++ }
 if ($d.Count -gt 0) { Write-Output '  FAIL: the lexer''s genuine defect was labelled notice:.'; $fail++ }
+if ($e.Count -lt 1) { Write-Output '  FAIL: a low-confidence finding was not demoted to notice:.'; $fail++ }
+if ($eErr.Count -gt 0) { Write-Output '  FAIL: a low-confidence finding was left as an error:.'; $fail++ }
+if ($f.Count -lt 1) { Write-Output '  FAIL: a finding the analyzer stands behind did not keep its own label.'; $fail++ }
 
 # --- 3. the source convention -------------------------------------------------
 Write-Output ''

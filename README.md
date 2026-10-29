@@ -15,10 +15,11 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1029 files): **984 parsed, 28 actionable** — and every one
-of the 28 is a construct this frontend does not read or an operator it does not model, not
-a defect in the analysed code. On that same tree `moon check --target all` reports exactly
-**one** error, in a `.mbt.md` doc file.
+Measured on `moonbitlang/core` (1029 files): **984 parsed, 10 actionable** — and every one
+of the 10 is a construct this frontend does not read or an operator it does not model, not
+a defect in the analysed code. The 18 findings demoted in 0.4.38 — names the analyzer could
+not resolve — are counted as notices and are not in that 10. On that same tree
+`moon check --target all` reports exactly **one** error, in a `.mbt.md` doc file.
 
 ## Contents
 
@@ -67,14 +68,14 @@ a defect in the analysed code. On that same tree `moon check --target all` repor
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.37
+moon add riantr/moonbit_static_analysis@0.4.38
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.37",
+  "riantr/moonbit_static_analysis@0.4.38",
 }
 ```
 
@@ -239,7 +240,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.37_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.38_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -307,10 +308,10 @@ equally be a second, unexpected target, and there is no way to tell the two apar
 ```
 SCANNED	107 files under ...\ML\CI
 CLEAN	.mbti	unchecked=0	...\CI/pof/pkg.generated.mbti
-PARTIAL	.mbt	defects=2	notices=1	unchecked=17	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
-12:3 - error: ... (UndefinedName) [behavior, MSA-002, low]
+PARTIAL	.mbt	defects=1	notices=2	unchecked=17	read up to line 36, 57 after it not shown	...\CI/pof/aggregator.mbt
+12:3 - notice: ... (UndefinedName) [behavior, MSA-002, low]
 PARSED	32/107 files understood (29.9%); 75 more read only up to their first parse error
-SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=6769	unchecked=2841	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)
+SUMMARY	files=107	parsed=32	actionable=56	notices=212	unreliable=15759	withheld=6769	unchecked=2841	total=16027	(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)
 ```
 
 - **`PARSED` is the headline.** The frontend covers a SUBSET of MoonBit, so what it cannot
@@ -336,7 +337,7 @@ SUMMARY	files=107	parsed=32	actionable=57	notices=211	unreliable=15759	withheld=
   in one `NOTICES` table at the end of the scan:
 
 ```
-NOTICES	TOTAL	notices=10096	printed=1144	aggregated=8952	1144 of them can hide a finding; the other 8952 cannot, and are counted by shape below
+NOTICES	TOTAL	notices=10114	printed=1162	aggregated=8952	1162 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 8952 are counted by shape below
 NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
 ```
 
@@ -371,7 +372,7 @@ Since 0.4.37 every finding carries **two facts beside its severity**, and both a
 bracket that already held the lens tag:
 
 ```
-12:3 - error: no visible binding for 'cmd' (UndefinedName) [structural, MSA-002, low]
+12:3 - notice: no visible binding for 'cmd' (UndefinedName) [structural, MSA-002, low]
 ```
 
 **THE CONFIDENCE IS HOW MUCH THE LENS CHECKED.** The severity says how bad the finding is
@@ -379,11 +380,19 @@ bracket that already held the lens tag:
 are independent — a finding can be severe and uncertain, or trivial and certain. There
 are exactly three values, and they are the three situations a lens can be in:
 
-| confidence | the lens… | the family |
-|---|---|---|
-| `high` | had the declaration, the signature or the type in front of it | everything else |
-| `low` | was reasoning from a **name** alone | `UndefinedName` (MSA-002) — the binding it could not find may be in a file, or in a package, it was never given |
-| `undecided` | could not decide at all | a declared scope limit — the analyzer's own blind spot, rendered `notice:` |
+| confidence | the lens… | the family | rendered |
+|---|---|---|---|
+| `high` | had the declaration, the signature or the type in front of it | everything else | its own severity |
+| `low` | was reasoning from a **name** alone | `UndefinedName` (MSA-002) — the binding it could not find may be in a file, or in a package, it was never given | `notice:` |
+| `undecided` | could not decide at all | a declared scope limit — the analyzer's own blind spot | `notice:` |
+
+**SINCE 0.4.38 THE AXIS DECIDES SOMETHING.** A finding the analyzer does not stand behind
+is **demoted**: it is rendered `notice:` and counted in `notices` rather than in
+`actionable`. It is **not** hidden — it keeps its family, its stable id, its confidence
+and its own line on the reader's screen; what changes is the label and the bucket. A
+`low` finding is the analyzer saying *the binding I could not find may be in a file, or
+in a package, I was never given*, and `actionable` is the list of things you should look
+at.
 
 A finding is **not** dropped for being uncertain. It is reported at a lower confidence —
 and that is the whole difference between a silence that reads as "nothing to report" and
@@ -459,21 +468,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (187 files), with the per-file printing cap lifted so the count is the
+project's own source (189 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1413 | | `anonymous function literal` | 18 |
-| `if` expression | 103 | | `const` declaration | 6 |
+| `test` declaration | 1427 | | `anonymous function literal` | 18 |
+| `if` expression | 104 | | `const` declaration | 6 |
 | `struct` declaration | 62 | | `short lambda` | 2 |
 | `derive` declaration | 54 | | `try` expression | 1 |
 | `enum` declaration | 25 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **124** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1560** sit outside every function's
+**position**: **125** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1574** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -499,14 +508,17 @@ consumer of the finding goes through:
 | what it is | rendered | counted as |
 |---|---|---|
 | a declared scope limit | `notice:` | a notice — excluded from `actionable` |
+| a low-confidence finding (since 0.4.38) | `notice:` | a notice — excluded from `actionable` |
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,603** notices,
-every one of them a scope limit. The scan says so itself: its `NOTICES` table counts
-**3,375** of them as printed per line and **16,228** as aggregated, and the 3,375 is
-exactly the number of rendered `ParseError` lines. A genuine defect of this family would
-render `error:` and break that equality -- and none does.
+per-file printing cap lifted so the count is the whole finding set: **19,636** notices —
+every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
+says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
+**16,242** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
+the scope limits and the demoted findings together. A genuine defect of this family would
+render `error:`, and the release gate counts those separately and requires zero — and there
+are none.
 
 ### A region silences the bindings it could have read, and no others
 
@@ -562,32 +574,47 @@ numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** It is measured
 > across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and the release
-> gate **pins** the number. Today it reports **50** `actionable` findings, where the module
-> view reports 28. **49 of the 50 are constructs this frontend does not read or operators
-> it does not model; the fiftieth is a genuine finding** — a local assigned and never read
+> gate **pins** the number. Today it reports **29** `actionable` findings, where the module
+> view reports 10. **28 of the 29 are constructs this frontend does not read or operators
+> it does not model; the twenty-ninth is a genuine finding** — a local assigned and never read
 > in `moonbit_labeler`, and the first true defect this tool has published on any corpus.
 >
 > | family | n | what the lens claimed |
 > |---|---:|---|
-> | A | 12 | a hex float literal (`0x1.0p1023`) is not read, so its exponent part is reported as an undefined name |
-> | B | 5 | a BigInt literal's `N` suffix (`0N`) is not read |
 > | C | 6 | `==` between two arrays |
 > | D | 3 | `Int + Char` and `List + List` |
 > | E | 3 | `*` on a struct |
-> | F | 2 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index, a module qualifier |
 > | G | 11 | unreachable code — the lens's own claim about the code |
 > | H | 1 | a local assigned and never read — the lens's own claim about the code, and the one finding in the census that is a real defect |
 > | I | 1 | `abs` on a `Double` |
 > | J | 1 | `*` on two function values |
 > | K | 3 | a local call with a named argument |
+>
+> **AND 21 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
+> rendered `notice:` and counted as a notice rather than as actionable, and the census keeps
+> the demoted set in its own table and its own total — a set of findings that leaves the
+> census is a set that can go missing silently. Every one of the 21 carries the confidence
+> `low`, and every one of them is a name the analyzer could not resolve.
+>
+> **THE MODULE VIEW COUNTS 18 OF THEM, AND IT IS NOT THE SAME 18.** The two views are two
+> analyses — this one takes every function as an entry point, the module view takes the
+> module — so they do not find the same names: in `moonbit_core` this view reports 19 and
+> the module view 18, and only **15** of those are the same site. That is the same difference
+> as the 29 against the 10 above, and the two views stay separate, not additive.
+>
+> | demoted family | n | what the lens claimed |
+> |---|---:|---|
+> | A | 12 | a hex float literal (`0x1.0p1023`) is not read, so its exponent part is reported as an undefined name |
+> | B | 5 | a BigInt literal's `N` suffix (`0N`) is not read |
+> | F | 2 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index, a module qualifier |
 > | L | 2 | the documented `#doc(hidden)` limit |
 >
 > **"Accepted" is measured, not assumed.** `moon check --target all` on `moonbitlang/core`
 > reports exactly **one** error, in `json/README.mbt.md`, and it is not one of the
-> **twenty** files that carry a finding. That is only half of it: a file with no
+> **sixteen** files that carry a finding. That is only half of it: a file with no
 > diagnostic is indistinguishable from a file nobody opened, so
 > `_verify/control_perfunction_census.ps1` appends a deliberate type error to each of those
-> files **in a copy** and requires the error back — **20 of 20**.
+> files **in a copy** and requires the error back — **16 of 16**.
 >
 > **The two in family L are the documented limit rather than a defect**: a cross-package
 > `#doc(hidden)` function cannot be indexed from the dependency's *source* — only from its
@@ -644,7 +671,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1316/1316 on wasm; 1196/1196 on js and wasm-gc
+moon test --deny-warn                # 1330/1330 on wasm; 1204/1204 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -676,7 +703,7 @@ it**; **the notice labels, and a check that a scope limit is not an error**; **t
 audit, and a check that a region silences only the bindings it could have read**; the
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
-gate** — 86 of them.
+gate** — 87 of them.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
@@ -692,7 +719,7 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 86 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 87 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -757,9 +784,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **86 mutation gates**, each of which mutates
+The gate is not optional decoration: it runs **87 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **495** live mutations, **454** expect a kill; **377** of them also name the test
+Of the **504** live mutations, **462** expect a kill; **385** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing
