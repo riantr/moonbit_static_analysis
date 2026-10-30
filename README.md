@@ -475,6 +475,16 @@ source and a sign that the code it referred to has changed. The stale finding is
 *after* the suppression pass, so a blanket `// nosec` cannot silence the warning about its
 own staleness.
 
+**AND IT REACHES THE FINDING'S OWN LINE, NOT THE WHOLE STATEMENT.** `bandit` unions the
+issue's line with the *context's* line range, so there a `// nosec` on the first line of a
+multi-line call silences what is three lines down. Here the line is the line: a `// nosec`
+on the statement's first line does **not** reach a name further down, and the name is
+reported where it is. Measured both ways — with the comment on the statement's first line
+the finding is still reported (as a `notice:`, because it is a name the analyzer could not
+resolve), and with the comment on the name's own line the file comes back clean. Widening
+the rule would move the pinned corpus baselines, so it is stated here rather than slipped
+in.
+
 **AND THE CALLS THE ANALYZER COULD NOT CHECK ARE DISCLOSED.** The type lens checks a
 call's arity and argument types only when it has read the callee's signature; a `.mbti`
 gives a name and never a parameter list, a method's signature is not in the source at all,

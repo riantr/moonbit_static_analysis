@@ -8704,6 +8704,39 @@ It is worth writing down, because both were silent.
    no reader would believe, and one that took a probe to see. The fix is to COUNT the
    prefix, not to type the number.
 
+### AND ONE MORE MEASUREMENT: WHAT A `nosec` DOES NOT REACH
+
+Re-checking the three transfers against the source, one difference from `bandit` showed up, and
+it had never been measured -- let alone written down.
+
+`bandit` applies a suppression to the CONTEXT, not to the line: `utils.get_nosec`
+(`utils.py:393-398`) scans the context's `linerange` for the first line that has an entry, and
+`tester._get_nosecs_from_contexts` (`tester.py:127-154`) unions the ISSUE's own line with the
+CONTEXT's line range. So there a `// nosec` on the first line of a multi-line call silences
+what is three lines down. The clause this transfer quotes says "per line", and this
+analyzer's rule IS the line -- but the difference was invisible until it was MEASURED:
+
+    a.mbt   println(  // nosec
+              undefined_name,
+            )
+            -> the finding is STILL REPORTED (as a notice:, MSA-002, low)
+
+    b.mbt   println(
+              undefined_name,  // nosec
+            )
+            -> the file comes back CLEAN
+
+So the rule is exactly the line the finding starts on, and a `// nosec` on the statement's
+first line reaches nothing. It is now written down in both READMEs.
+
+It is NOT being changed here. Widening it means carrying the enclosing statement's extent into
+every finding -- a new field on `Report`, a new constructor argument at every site, a new
+column in the JSON record -- and, worse, it would move the PINNED corpus baselines, because a
+corpus file with a `// nosec` on the first line of a multi-line statement would change count.
+That is a release of its own, with its own measurement, and it is not the clause the objective
+quoted. It is a candidate increment, recorded here so that it is a decision and not an
+accident.
+
 => 判据: A DEPENDENCY BUMP CAN CHANGE WHAT A USER'S MACHINE HAS TO PROVIDE. The bump was
 routine, the gate was green, and the artifact stopped running on every toolchain that was
 not the newest one. A version pin is a promise about the BUILD; it is also a promise about
@@ -8723,3 +8756,8 @@ comparing the things it thinks it is.
 => 判据: POWERSHELL VARIABLES ARE CASE-INSENSITIVE, AND A TYPED PARAMETER COERCES. A
 `[string]` parameter and a `$contract` local are one variable, and a hashtable assigned
 into it becomes a string without a word. The function was right; the scope was wrong.
+=> 判据: A DIFFERENCE FROM THE SOURCE THAT HAS NEVER BEEN MEASURED IS A DIFFERENCE NOBODY
+CAN ARGUE WITH. The `nosec` rule here is the line; bandit's is the context's line range. The
+clause the objective quotes says "per line", so the implementation was never wrong -- but the
+difference was undocumented, and an undocumented difference is one a reader has to discover
+the hard way. Measure it, then write it down.
