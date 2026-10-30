@@ -485,6 +485,16 @@ resolve), and with the comment on the name's own line the file comes back clean.
 the rule would move the pinned corpus baselines, so it is stated here rather than slipped
 in.
 
+**AND A SUPPRESSION THAT WORKED LEAVES NO TRACE IN THE COUNT.** `bandit` keeps **two**
+counters — `nosec` for blanket suppressions, `skipped_tests` for the id-targeted ones — so a
+reader can see how many findings the source's own comments took out of the report. Here a
+finding that a `// nosec` removed is simply not there: the SUMMARY counts what is left, and
+nothing says how many were taken. Measured: with `--honor-nosec` and two working
+suppressions, the output mentions a suppression nowhere. The analyzer does disclose the
+*opposite* case — the calls it could not check are counted as `unchecked` rather than rounded
+down to silence — so the two halves are not symmetric today, and the asymmetry is stated here
+rather than left for a reader to discover.
+
 **AND THE CALLS THE ANALYZER COULD NOT CHECK ARE DISCLOSED.** The type lens checks a
 call's arity and argument types only when it has read the callee's signature; a `.mbti`
 gives a name and never a parameter list, a method's signature is not in the source at all,

@@ -8737,6 +8737,34 @@ That is a release of its own, with its own measurement, and it is not the clause
 quoted. It is a candidate increment, recorded here so that it is a decision and not an
 accident.
 
+### AND A SECOND ONE: WHAT A SUPPRESSION THAT WORKED DOES NOT SAY
+
+The same pass over `bandit`'s §7 turned up a second difference, and this one is about what the
+tool DISCLOSES rather than about what it suppresses.
+
+`bandit` keeps TWO counters (`metrics.py:46-60`): `nosec` counts the blanket suppressions and
+`skipped_tests` the id-targeted ones, and the report says both -- "They are different kinds of
+user decision and are reported separately." So a reader of a bandit report can see how many
+findings the source's own comments took out of it.
+
+Here, a finding a `// nosec` removed is simply not there. Measured, with `--honor-nosec` and
+two working suppressions:
+
+    the whole output, top to bottom
+    -> FOUND   .mbt defects=1 notices=0 unchecked=0
+    -> SUMMARY files=1 parsed=1 actionable=1 notices=0 unreliable=0
+               withheld=0 unchecked=0 total=1
+    -> and not one line of it mentions a suppression
+
+That is the same shape as the calls the analyzer could not check -- and those ARE counted, as
+`unchecked`, because rounding them down to silence would be a lie. The opposite half, the
+findings that WERE removed, is not counted at all.
+
+It is stated in both READMEs and left as a candidate increment, because the fix is not a
+counter: it is a field on `Summary`, a constructor argument at every site that builds one, a
+column in the JSON record, and a number the corpus pins would then have to carry. That is a
+release of its own, and it is not the clause the objective quoted.
+
 => 判据: A DEPENDENCY BUMP CAN CHANGE WHAT A USER'S MACHINE HAS TO PROVIDE. The bump was
 routine, the gate was green, and the artifact stopped running on every toolchain that was
 not the newest one. A version pin is a promise about the BUILD; it is also a promise about
@@ -8761,3 +8789,7 @@ CAN ARGUE WITH. The `nosec` rule here is the line; bandit's is the context's lin
 clause the objective quotes says "per line", so the implementation was never wrong -- but the
 difference was undocumented, and an undocumented difference is one a reader has to discover
 the hard way. Measure it, then write it down.
+=> 判据: THE TOOL HAS TO SAY WHAT IT TOOK OUT, NOT ONLY WHAT IT KEPT. The analyzer counts the
+calls it could not check (`unchecked`) rather than rounding them down to silence -- and the
+findings a `// nosec` removed ARE rounded down to silence. Two halves of the same question,
+answered two different ways, and the reader cannot tell which half is which.
