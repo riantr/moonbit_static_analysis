@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.38 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.39 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -48,6 +48,17 @@ moonx riantr/moonbit_static_analysis@0.4.38 riantr/moonbit_doubleML
 >
 > `moonx` with no package path resolves the module's ROOT package, which is why
 > the command needs no `/src/sa` suffix.
+>
+> **IF `moonx` SAYS `failed to instantiate … .wasm`, IT IS A TOOLCHAIN FLOOR, NOT A
+> BUG IN THE TARGET.** The published wasm imports 90 symbols from
+> `moonbitlang/async`, and the host has to supply every one of them at
+> instantiation time — from the async bundled with the USER's toolchain. A
+> `LinkError: … "thread_pool/make_write_console_job": function import requires a
+> callable` means the toolchain's async is older than the one the artifact was
+> built against. 0.4.38 shipped that way; 0.4.39 is built against async 0.22.5
+> and links on any toolchain bundling 0.22.4 or 0.22.5. The fix on the user's
+> side is to use an older analyzer version or to upgrade the MoonBit toolchain —
+> NOT to change the project being scanned.
 
 ## Reading the output
 
@@ -814,7 +825,7 @@ on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `@sa.provenance_for(target, root)` collects four facts and
 `@sa.scan_artifact_name(prov, root)` lays them out —
 `<package>_<version>_<moonbit>_<UTC stamp>.mmd`, e.g.
-`moonbit_static_analysis_0.4.38_0.1.20261023_20261024T060000Z.mmd`.
+`moonbit_static_analysis_0.4.39_0.1.20261023_20261024T060000Z.mmd`.
 
 Read that name as provenance, not decoration: it is what distinguishes two
 scans of the same tree. `package` is the coordinate, or the **resolved**

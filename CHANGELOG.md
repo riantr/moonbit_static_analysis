@@ -154,6 +154,72 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.39 — the published wasm is linked against YOUR toolchain, and a gate now checks it
+
+**0.4.38 SHIPPED AN ARTIFACT THAT A USER COULD NOT RUN.** The report was exact:
+
+```
+Error: failed to instantiate `C:\Users\hp\.moon\registry\cache\assets\riantr\moonbit_static_analysis\0.4.38\moonbit_static_analysis.wasm`
+
+Caused by:
+    LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
+```
+
+The analyzer never ran. The module could not be **instantiated**.
+
+**WHY.** The published wasm is not self-contained: it imports symbols from `moonbitlang/async`,
+and the HOST has to supply every one of them when the module is instantiated. `moonx` supplies
+them from the async package bundled with the **user's** toolchain — not from the version this
+package pins in its own `moon.mod`. The 0.4.38 increment had bumped `moonbitlang/async`
+0.22.5 → 0.22.6, and 0.22.6 declares three more host-provided externs than 0.22.5 does:
+
+| symbol | declared as a host extern by |
+|---|---|
+| `thread_pool/make_write_console_job` | async 0.22.6 and later |
+| `thread_pool/make_read_console_job` | async 0.22.6 and later |
+| `thread_pool/get_read_console_result` | async 0.22.6 and later |
+
+0.22.4 and 0.22.5 declare none of the three, and both declare the other 90 the artifact needs.
+So the artifact's host requirement went from *a toolchain bundling async ≤ 0.22.5* to *a
+toolchain bundling async ≥ 0.22.6* — and the bump that made it so was a routine dependency
+bump that no test could see.
+
+**MEASURED, NOT GUESSED.** The import surfaces of the two published artifacts, read straight
+out of the wasm binaries:
+
+| artifact | total imports | from `moonbitlang/async` | the three console symbols |
+|---|---|---|---|
+| 0.4.37 (async 0.22.5) | 104 | 90 | absent |
+| 0.4.38 (async 0.22.6) | 107 | 93 | present |
+
+**THE FIX.** `moonbitlang/async` goes back to **0.22.5** — the newest async whose extern set a
+toolchain bundling 0.22.4 or 0.22.5 can satisfy — and the rebuilt artifact's import surface is
+**identical** to 0.4.37's: 104 imports, 90 from async, zero added, zero removed. It links on the
+toolchain 0.4.37 linked on.
+
+**AND NOW A GATE SEES IT.** The host requirements of an artifact are a property of its **BYTES**,
+and every gate in this repo runs the analyzer **from source** — the published bytes were never
+linked against a host, which is exactly why nothing saw it. So:
+
+- `_verify/host_requirements.txt` — the **contract**: the 90 symbols the artifact may require,
+  and the `min-host-async` floor (0.22.5).
+- `_verify/check_host_requirements.ps1` — the **gate**: it reads the wasm's import section
+  directly (a small wasm reader inside the script, no extra toolchain needed), compares the
+  artifact's `moonbitlang/async` imports against the contract **in both directions**, checks
+  that `moon.mod`'s pin and the contracted floor are one fact, and checks that the pinned
+  dependency really declares every contracted symbol as a host extern. A dependency bump that
+  widens the artifact's host requirements now fails this gate instead of quietly dropping users.
+- the same check runs against the **published asset** in `_verify/selfscan_published.ps1`,
+  because the local build and the published bytes are two files and only one of them is what the
+  user downloads.
+
+The gate is shown to go red three ways: its own self-test (a contract that does not allow a
+symbol the artifact requires, and a contract that lists one it does not), and — the real one —
+against the actual 0.4.38 artifact, which it rejects with the three offending symbols named.
+
+**WHAT A USER SHOULD DO.** On 0.4.38: use **0.4.37**, or upgrade the MoonBit toolchain. On
+0.4.39: nothing, unless the toolchain bundles an async older than 0.22.4.
+
 ## 0.4.38 — a finding the analyzer does not stand behind is demoted to a notice, and it is NOT hidden
 
 **THE CONFIDENCE AXIS WAS A COLUMN.** 0.4.37 gave every finding a confidence — `high`, `low`

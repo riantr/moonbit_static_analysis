@@ -240,6 +240,39 @@ if ($bad.Count -gt 0) {
   $fail++
 }
 
+# --- the PUBLISHED BYTES must satisfy the host contract --------------------------
+# The scan above proves that the published package RUNS on THIS host. That is a
+# different claim from the one a user cares about: the artifact's host
+# requirements are the symbols it IMPORTS, and a host with a newer async can
+# satisfy a wider set than a host with an older one. The contract in
+# `_verify\host_requirements.txt` says which set this artifact is allowed to
+# require, and the bytes that are actually published have to be the bytes that
+# were audited -- the local build and the published asset are two files, and
+# only one of them is what the user downloads.
+#
+# 0.4.38 is why this exists: it imported three symbols that only async 0.22.6
+# declares, so it ran on a current toolchain and failed on an older one.
+$assetDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) ('.moon\registry\cache\assets\riantr\moonbit_static_analysis\' + $mv)
+$asset = Join-Path $assetDir 'moonbit_static_analysis.wasm'
+if (Test-Path -LiteralPath $asset) {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $o = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root '_verify\check_host_requirements.ps1') -Wasm $asset 2>&1 | Out-String
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  foreach ($ln in ($o -split "`r?`n")) {
+    if ($ln -match '^(GATE OK|FAIL|ABORT|  ok|  \+|  -)') { Write-Output ('  ' + $ln.Trim()) }
+  }
+  if ($code -ne 0) {
+    Write-Output 'FAIL: the published bytes do not satisfy the host contract. A user whose toolchain is older cannot run them.'
+    $fail++
+  } else {
+    Write-Output '  ok  the published bytes satisfy the host contract'
+  }
+} else {
+  Write-Output ('  note  the published wasm was not found at ' + $asset)
+  Write-Output '        -- the host contract of the SHIPPED bytes was not checked here. The scan above still ran them.'
+}
+
 Write-Output ''
 if (-not $replaying) { Write-Output ("scratch kept for inspection: " + $scratch) }
 if ($fail -gt 0) { Write-Output ("ABORT: {0} check(s) failed." -f $fail); exit 1 }

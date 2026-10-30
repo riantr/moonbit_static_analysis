@@ -128,6 +128,65 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.39 —— 发布出去的 wasm 是对着**你的**工具链链接的，现在有门禁盯着这件事
+
+**0.4.38 发布了一个用户根本跑不起来的产物。** 报告写得很准确：
+
+```
+Error: failed to instantiate `C:\Users\hp\.moon\registry\cache\assets\riantr\moonbit_static_analysis\0.4.38\moonbit_static_analysis.wasm`
+
+Caused by:
+    LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
+```
+
+分析器一行都没跑。模块连**实例化**都过不去。
+
+**为什么。** 发布出去的 wasm 不是自包含的：它从 `moonbitlang/async` 导入符号，实例化时
+**宿主**必须把这些符号全都提供出来。`moonx` 提供的是**用户**工具链自带的那个 async——不是
+这个包自己 `moon.mod` 里钉住的那个版本。0.4.38 那一轮把 `moonbitlang/async` 从 0.22.5 升到了
+0.22.6，而 0.22.6 比 0.22.5 多声明了三个必须由宿主提供的 extern：
+
+| 符号 | 谁把它声明成宿主 extern |
+|---|---|
+| `thread_pool/make_write_console_job` | async 0.22.6 及以后 |
+| `thread_pool/make_read_console_job` | async 0.22.6 及以后 |
+| `thread_pool/get_read_console_result` | async 0.22.6 及以后 |
+
+0.22.4 和 0.22.5 三个都没声明，而且产物需要的另外 90 个它们都声明了。于是这个产物的宿主要求
+从*自带 async ≤ 0.22.5 的工具链*变成了*自带 async ≥ 0.22.6 的工具链*——而造成这件事的，是一次
+没有任何测试能看见的例行依赖升级。
+
+**是量出来的，不是猜出来的。** 两个已发布产物的导入面，直接从 wasm 二进制里读出来：
+
+| 产物 | 导入总数 | 来自 `moonbitlang/async` | 那三个 console 符号 |
+|---|---|---|---|
+| 0.4.37（async 0.22.5） | 104 | 90 | 没有 |
+| 0.4.38（async 0.22.6） | 107 | 93 | 有 |
+
+**修法。** `moonbitlang/async` 回到 **0.22.5**——自带 async 0.22.4 或 0.22.5 的工具链能满足的
+最新 async——重建之后产物的导入面和 0.4.37 的**完全一样**：104 个导入、90 个来自 async、
+不多一个也不少一个。它能在 0.4.37 能链接的那些工具链上链接起来。
+
+**而且现在有门禁看得见它了。** 产物的宿主要求是它**字节**的属性，而这个仓库里的每一道门禁都是
+**从源码**跑分析器的——发布出去的字节从来没跟宿主链接过，这正是没人看见的原因。所以：
+
+- `_verify/host_requirements.txt`——**清单**：产物允许要的 90 个符号，以及 `min-host-async`
+  这条下限（0.22.5）。
+- `_verify/check_host_requirements.ps1`——**门禁**：它直接读 wasm 的 import 段（脚本里自带一个
+  小 wasm 读取器，不依赖额外工具链），**双向**比较产物的 `moonbitlang/async` 导入和这份清单，
+  检查 `moon.mod` 里的钉版和清单里的下限是不是同一个事实，还检查被钉住的那个依赖真的把清单上
+  每个符号都声明成了宿主 extern。一次把宿主要求变宽的依赖升级，现在会让这道门变红，而不是悄悄
+  把用户甩掉。
+- 同一份检查也在 `_verify/selfscan_published.ps1` 里对**发布出去的产物**跑一遍——本地构建和
+  发布的字节是两个文件，而只有后者是用户真正下载到的那个。
+
+这道门有三种方式被证明会红：它自己的自测（一份没允许产物所需要的符号的清单，和一份列了产物
+并不需要的符号的清单），以及——真正的那个——拿真的 0.4.38 产物去跑，它会红，并且把三个肇事的
+符号一个一个点出来。
+
+**用户该怎么做。** 在 0.4.38 上：改用 **0.4.37**，或者升级 MoonBit 工具链。在 0.4.39 上：什么都不
+用做——除非你的工具链自带的 async 比 0.22.4 还老。
+
 ## 0.4.38 —— 分析器站不住脚的发现被降级为 notice，而且**没有被藏起来**
 
 **置信度这一根轴曾经只是一列。** 0.4.37 给每条发现一个置信度——`high`、`low` 或

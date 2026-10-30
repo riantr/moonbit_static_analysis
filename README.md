@@ -68,16 +68,50 @@ not resolve — are counted as notices and are not in that 10. On that same tree
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.38
+moon add riantr/moonbit_static_analysis@0.4.39
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.38",
+  "riantr/moonbit_static_analysis@0.4.39",
 }
 ```
+
+### The host your toolchain has to be
+
+The published wasm is **not self-contained**. It imports **90 symbols** from
+`moonbitlang/async` — the file IO, the process calls, the event loop — and the **host** has to
+supply every one of them when the module is instantiated. `moonx` supplies them from the
+`moonbitlang/async` that ships with **your** MoonBit toolchain, not from the version this
+package pins in its own `moon.mod`.
+
+So the artifact has a **floor**, and the floor is a property of the published *bytes*:
+
+| what | where |
+|---|---|
+| the symbols the artifact is allowed to require from a host | `_verify/host_requirements.txt` |
+| the gate that holds the artifact to them | `_verify/check_host_requirements.ps1` |
+| the same check against the **published** bytes | `_verify/selfscan_published.ps1` |
+
+The contract names 90 symbols and the newest `moonbitlang/async` whose extern set covers all
+of them: **0.22.5**. 0.22.4 declares the same 223 externs and covers them too, so the artifact
+links on any toolchain bundling either.
+
+**0.4.38 WAS BUILT FOR A NEWER HOST THAN MOST, AND A USER FOUND OUT.** Its
+`moonbitlang/async` had been bumped to 0.22.6, which declares three more host-provided
+symbols — `thread_pool/make_write_console_job`, `thread_pool/make_read_console_job` and
+`thread_pool/get_read_console_result`. A toolchain bundling 0.22.5 cannot supply them, and
+the failure arrives before the analyzer runs a single line:
+
+```
+LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
+```
+
+0.4.39 is built against async **0.22.5** again, and its import surface is identical to the one
+0.4.37 shipped — the surface that links on those toolchains. If you hit that error on 0.4.38:
+use **0.4.37** today, or upgrade your MoonBit toolchain, and take 0.4.39 when it is published.
 
 ## Quick start
 
@@ -240,7 +274,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.38_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.39_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -695,8 +729,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 ```
 
 `_verify/release.ps1` runs: the harness's own self-test; `moon fmt --check`;
-`moon check --deny-warn`; all three test targets; `moon build --target wasm`; the grammar
-probe's own verdicts; the own-source self-scan; **this README's own links, anchors,
+`moon check --deny-warn`; all three test targets; `moon build --target wasm`; **the host
+contract of the artifact — the symbols a user's toolchain has to supply, checked against the
+published bytes as well as the local build**; the grammar probe's own verdicts; the own-source
+self-scan; **this README's own links, anchors,
 versions and counts**; **the mutation-gate roster and a self-test that shows it can go
 red**; **what the registry will actually receive, and a check that the junk stays out of
 it**; **the notice labels, and a check that a scope limit is not an error**; **the frame

@@ -8590,3 +8590,136 @@ nothing produces.
 The census said 21 demoted and the module view said 18, and a reader holding both
 numbers and no sentence would have had to guess whether one of them was wrong.
 Neither was.
+
+## 0509: THE PUBLISHED BYTES ARE LINKED AGAINST YOUR TOOLCHAIN
+
+### THE REPORT
+
+A user ran the tool the way the README tells them to:
+
+```
+D:\src\moon>moonx riantr/moonbit_static_analysis@latest riantr/moonbit_static_analysis@latest
+Error: failed to instantiate `C:\Users\hp\.moon\registry\cache\assets\riantr\moonbit_static_analysis\0.4.38\moonbit_static_analysis.wasm`
+
+Caused by:
+    LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
+```
+
+The analyzer never ran. The module could not be INSTANTIATED. And the path in the error is
+the smoking gun: `C:\Users\hp\.moon\...` is not this machine. The artifact was published
+correctly and it does not run on a toolchain that is not the newest one.
+
+### WHY: THE HOST SUPPLIES THE ASYNC RUNTIME
+
+The published wasm is not self-contained. It imports symbols from `moonbitlang/async` -- the
+file IO, the process calls, the event loop -- and the HOST has to supply every one of them
+when the module is instantiated. `moonx` supplies them from the async package BUNDLED WITH
+THE USER'S TOOLCHAIN, not from the version this package pins in its own `moon.mod`.
+
+That is a fact about the PUBLISHED BYTES, and nothing in this repository could see it: every
+gate here runs the analyzer FROM SOURCE. The published artifact was never linked against a
+host, so its host requirements were a fact with no gate attached to it.
+
+The 0.4.38 increment had bumped `moonbitlang/async` 0.22.5 -> 0.22.6, because the house rule
+is that the dependency goes to the latest before the gate runs. And async 0.22.6 changed how
+the console jobs are exposed to wasm:
+
+    async 0.22.5   internal/event_loop/thread_pool.wasm.mbt
+                   fn Job::write_console(...)          -- an ordinary function, inside the package
+
+    async 0.22.6   internal/event_loop/thread_pool.wasm.mbt
+                   fn JobHandle::write_console(...) =
+                       "moonbitlang/async" "thread_pool/make_write_console_job"   -- a HOST extern
+
+The difference between those two shapes is the whole incident: a function inside the async
+package is linked into the artifact, and an extern is something the HOST has to supply. A
+dependency bump turned three internals into three demands on the user's toolchain.
+
+### THE MEASUREMENT
+
+The import surfaces, read straight out of the two published wasm binaries:
+
+| artifact | total imports | from `moonbitlang/async` | the three console symbols |
+|---|---|---|---|
+| 0.4.37 (async 0.22.5) | 104 | 90 | absent |
+| 0.4.38 (async 0.22.6) | 107 | 93 | present |
+
+Exactly three, and they are exactly the three the error names. Neither 0.22.4 nor 0.22.5
+declares any of them, and both declare the other 90 the artifact needs -- 223 externs each.
+
+### THE FIX
+
+`moonbitlang/async` goes back to **0.22.5**: the newest async whose extern set a toolchain
+bundling 0.22.4 or 0.22.5 can satisfy. The rebuilt artifact's import surface is IDENTICAL to
+0.4.37's -- 104 imports, 90 from async, zero added, zero removed -- so it links on the
+toolchain 0.4.37 linked on. And 0.4.37 ran on the machine that reported this, which is the
+control that makes the fix a measurement rather than a hope.
+
+### THE GATE
+
+The host requirements of an artifact are a property of its bytes, so the contract about them
+is a file of bytes too:
+
+- `_verify/host_requirements.txt` -- the 90 symbols the artifact may require, and the
+  `min-host-async` floor (0.22.5).
+- `_verify/check_host_requirements.ps1` -- the gate. It reads the wasm's import section
+  directly (a small wasm reader inside the script: LEB128, the import section, the name
+  strings -- no extra toolchain, because a gate that needs a toolchain is a gate that does
+  not run on the machine that needs it), compares the artifact's `moonbitlang/async` imports
+  against the contract IN BOTH DIRECTIONS, checks that `moon.mod`'s pin and the contracted
+  floor are ONE fact, and checks that the pinned dependency really declares every contracted
+  symbol as a host extern.
+- the same check, against the PUBLISHED asset, in `_verify/selfscan_published.ps1` -- because
+  the local build and the published bytes are two files and only one of them is what the
+  user downloads.
+
+The gate is shown to go red three ways, and the third one is the real one:
+
+    the self-test: a contract that does not allow a symbol the artifact requires   -> added=1
+    the self-test: a contract that lists a symbol the artifact does not require    -> missing=1
+    the actual 0.4.38 artifact against the contract
+        -> FAIL: it requires 3 host symbol(s) the contract does not allow:
+             + thread_pool/get_read_console_result
+             + thread_pool/make_read_console_job
+             + thread_pool/make_write_console_job
+
+The two directions are DIFFERENT reader harms, and the self-test has to cover both: an
+artifact that asks for MORE than the contract allows is the one that drops users, and a
+contract that lists MORE than the artifact requires is a contract that has gone stale.
+
+### AND THE GATE HAD TWO BUGS OF ITS OWN
+
+It is worth writing down, because both were silent.
+
+1. **A TYPED PARAMETER COERCED THE CONTRACT TO A STRING.** The script had a `[string]$Contract`
+   parameter, and a local `$contract` -- and PowerShell variables are case-insensitive, so
+   those are the SAME variable. Assigning the parsed contract (a hashtable) to it coerced it
+   to the text `System.Collections.Hashtable`, silently. The gate read 0 symbols and reported
+   90 "extra" ones, and the pin check compared the floor against an empty string. The
+   function itself was CORRECT: extracted from the file and run alone, it returned 90 symbols.
+   The bug was in the SCOPE, not in the logic.
+2. **A HAND-COUNTED PREFIX LEFT A LEADING SPACE ON EVERY SYMBOL.** `"moonbitlang/async "` is
+   18 characters; the code cut at 17. Every symbol then compared as different from its
+   contract entry, and the gate reported 90 added AND 90 missing at the same time -- a shape
+   no reader would believe, and one that took a probe to see. The fix is to COUNT the
+   prefix, not to type the number.
+
+=> 判据: A DEPENDENCY BUMP CAN CHANGE WHAT A USER'S MACHINE HAS TO PROVIDE. The bump was
+routine, the gate was green, and the artifact stopped running on every toolchain that was
+not the newest one. A version pin is a promise about the BUILD; it is also a promise about
+the HOST, and the second promise is the one a user finds out about.
+=> 判据: THE HOST REQUIREMENTS OF AN ARTIFACT ARE A PROPERTY OF ITS BYTES. Every gate here
+runs the analyzer from source. The published bytes were never linked against a host, so
+their requirements were a fact that no gate could see -- and a fact nobody sees is a fact
+that decides for itself.
+=> 判据: A CONTRACT HAS TO BE A FILE, AND THE FILE HAS TO BE COMPARED IN BOTH DIRECTIONS.
+Widening the artifact's demands is what drops users; a stale contract is what hides that
+the demands narrowed. One list, two comparisons, and a bump that changes either one has to
+say so out loud.
+=> 判据: A GATE THAT REPORTS A HUNDRED DIFFERENCES HAS A BUG IN ITS READER, NOT IN ITS
+SUBJECT. Ninety added and ninety missing at once is not a shape a real mismatch has. When
+the numbers say "everything is different", the first question is whether the comparison is
+comparing the things it thinks it is.
+=> 判据: POWERSHELL VARIABLES ARE CASE-INSENSITIVE, AND A TYPED PARAMETER COERCES. A
+`[string]` parameter and a `$contract` local are one variable, and a hashtable assigned
+into it becomes a string without a word. The function was right; the scope was wrong.

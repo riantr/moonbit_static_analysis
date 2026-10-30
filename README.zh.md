@@ -63,16 +63,48 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.38
+moon add riantr/moonbit_static_analysis@0.4.39
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.38",
+  "riantr/moonbit_static_analysis@0.4.39",
 }
 ```
+
+### 宿主要满足什么
+
+发布出去的 wasm **不是自包含的**。它从 `moonbitlang/async` 导入了 **90 个符号**——文件 IO、
+进程调用、事件循环——实例化模块时**宿主**必须把这些符号全都提供出来。`moonx` 提供的是
+**你的** MoonBit 工具链自带的那个 `moonbitlang/async`，不是这个包自己 `moon.mod` 里钉住的
+那个版本。
+
+所以这个产物有一条**下限**，而下限是发布出去的**字节**的属性：
+
+| 是什么 | 在哪里 |
+|---|---|
+| 产物允许向宿主要的符号 | `_verify/host_requirements.txt` |
+| 把产物按这份清单卡住的门 | `_verify/check_host_requirements.ps1` |
+| 对**发布出去的字节**做同一件事 | `_verify/selfscan_published.ps1` |
+
+清单里写着 90 个符号，以及能覆盖它们全部的最新 `moonbitlang/async`：**0.22.5**。0.22.4
+声明的是同样的 223 个 extern，也一样能覆盖，所以这个产物在自带 0.22.4 或 0.22.5 的工具链
+上都能链接起来。
+
+**0.4.38 是按比多数人更新的宿主构建的，然后被一个用户撞出来了。** 它的 `moonbitlang/async`
+被升到了 0.22.6，而 0.22.6 多声明了三个必须由宿主提供的符号——`thread_pool/make_write_console_job`、
+`thread_pool/make_read_console_job` 和 `thread_pool/get_read_console_result`。自带 0.22.5 的
+工具链提供不出它们，于是分析器一行都还没跑，错误就先到了：
+
+```
+LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
+```
+
+0.4.39 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
+工具链上能链接起来的那一个。如果你是在 0.4.38 上撞到了这个错误：今天先用 **0.4.37**，或者升级
+你的 MoonBit 工具链，等 0.4.39 发布后再换过去。
 
 ## 快速上手
 
@@ -223,7 +255,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.38_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.39_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
@@ -612,7 +644,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 ```
 
 `_verify/release.ps1` 依次跑：门禁自身的自测；`moon fmt --check`；`moon check --deny-warn`；
-三个测试 target；`moon build --target wasm`；语法探针自己的判定；自身源码自扫；**这份
+三个测试 target；`moon build --target wasm`；**产物的宿主契约——用户的工具链必须提供的那些符号，
+发布出去的字节和本地构建都要查**；语法探针自己的判定；自身源码自扫；**这份
 README 自己的链接、锚点、版本与计数**；**变异门名册，以及一个证明它会变红的自测**；**注册表
 到底会收到什么，以及一道保证碎屑不会混进去的检查**；**通知的标签，以及一道保证范围限制不会被
 当成错误的检查**；**帧审计，以及一道保证一个区域只让「它可能读到过」的绑定闭嘴的检查**；已发布包

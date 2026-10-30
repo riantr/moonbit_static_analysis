@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.4.38"
+version = "0.4.39"
 
 readme = "README.md"
 
@@ -37,6 +37,24 @@ preferred_target = "wasm"
 
 warnings = "-0079"
 
+// The async pin is also a promise about the HOST, and that is the promise that
+// was broken once.
+//
+// The published wasm imports 90 symbols from `moonbitlang/async`, and the host
+// has to supply every one of them when the module is instantiated -- `moonx`
+// supplies them from the async bundled with the USER's toolchain, not from the
+// version pinned here. async 0.22.6 turned three of the console jobs into host
+// externs, so a build against 0.22.6 needs a toolchain bundling 0.22.6 or
+// later; 0.4.38 shipped that and a user on an older toolchain could not
+// instantiate it.
+//
+// 0.22.5 is the newest async whose host requirements a toolchain bundling
+// 0.22.4 or 0.22.5 can satisfy, and it is what the artifact is built against.
+// The contract that says so is `_verify/host_requirements.txt`, and
+// `_verify/check_host_requirements.ps1` holds the artifact to it: a dependency
+// bump that widens the host requirements fails that gate instead of quietly
+// dropping users. Raising the floor is allowed -- it is a decision -- but it
+// has to be written down here and in the README.
 import {
-  "moonbitlang/async@0.22.6",
+  "moonbitlang/async@0.22.5",
 }

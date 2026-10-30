@@ -465,6 +465,36 @@ if (-not (Test-Path $wasm)) {
   $failed += 'build:wasm'
 }
 
+# --- 3a  THE HOST CONTRACT OF THE ARTIFACT -----------------------------------
+# 0.4.38 shipped a wasm that a user could not RUN.
+#
+# The published wasm is not self-contained: it imports 90 symbols from
+# `moonbitlang/async`, and the HOST has to supply every one of them when the
+# module is instantiated. `moonx` supplies them from the async package BUNDLED
+# WITH THE USER'S TOOLCHAIN -- not from the version this package pins. The
+# `moonbitlang/async` 0.22.5 -> 0.22.6 bump added three of them
+# (`thread_pool/make_write_console_job`, `thread_pool/make_read_console_job`,
+# `thread_pool/get_read_console_result`), and 0.22.6 declares those three as
+# externs the host must provide. A user on a toolchain bundling 0.22.5 got:
+#
+#     LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async"
+#     "thread_pool/make_write_console_job": function import requires a callable
+#
+# Nothing here saw it, because every gate in this repo runs the analyzer FROM
+# SOURCE. The published BYTES were never linked against a host, so the artifact's
+# host requirements were a fact no gate could see.
+#
+# So the RELEASE build is built here and audited against the pinned contract in
+# `_verify\host_requirements.txt`. The debug build is audited too: both are
+# audited, and the contract covers both.
+Stage 'moon build --release --target wasm' { Run-Moon @('build','--release','--target','wasm') }
+if (-not $script:lastOk) { $failed += 'build:wasm:release' }
+
+Stage 'the host contract of the artifact (what a user''s toolchain must supply)' {
+  Run-Gate (Join-Path $root '_verify\check_host_requirements.ps1')
+}
+if (-not $script:lastOk) { $failed += 'host-requirements' }
+
 # --- 3b  the grammar probe's own verdicts can go red ---------------------------
 # Placed after the wasm build because the control reads the scanner through it,
 # and before the mutation gates because a probe that reports "no gaps" when it

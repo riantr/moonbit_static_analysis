@@ -1,0 +1,135 @@
+# THE HOST CONTRACT OF THE SHIPPED ARTIFACT.
+#
+# WHAT THIS FILE IS. The published wasm is not self-contained: it imports 90
+# symbols from `moonbitlang/async`, and the HOST has to provide every one of
+# them when the module is instantiated. `moonx` provides them from the async
+# package BUNDLED WITH THE USER'S MOONBIT TOOLCHAIN -- not from the version
+# this package pins in `moon.mod`. So the artifact's host requirements are a
+# property of the PUBLISHED BYTES, and nothing in the source tree can see them.
+#
+# WHY IT IS PINNED. On 2026-10-30 the `moonbitlang/async` 0.22.5 -> 0.22.6 bump
+# added three host-required symbols to the published wasm:
+#
+#     moonbitlang/async thread_pool/make_write_console_job
+#     moonbitlang/async thread_pool/make_read_console_job
+#     moonbitlang/async thread_pool/get_read_console_result
+#
+# async 0.22.6 declares those three as externs the HOST must supply; 0.22.4
+# and 0.22.5 do not declare them at all. A user whose toolchain bundled
+# 0.22.5 therefore got, from 0.4.38:
+#
+#     LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async"
+#     "thread_pool/make_write_console_job": function import requires a callable
+#
+# The 104-import surface of 0.4.37 links on such a toolchain; the 107-import
+# surface of 0.4.38 does not. No test caught it, because every gate here runs
+# the analyzer from SOURCE -- the published BYTES were never linked against a
+# host.
+#
+# THE RULE. This file IS the contract: the gate compares the artifact's
+# `moonbitlang/async` imports against it, EXACTLY, in both directions. A
+# dependency bump that widens the artifact's host requirements must edit this
+# file -- and the edit is a decision: it raises the minimum MoonBit toolchain
+# a user needs, and that has to be written down in the README and the
+# CHANGELOG. A bump that does NOT edit this file fails the gate instead of
+# silently dropping users.
+#
+# `min-host-async` is the newest async whose extern set covers every symbol
+# below. 0.22.4 and 0.22.5 both declare 223 externs and both cover all 90.
+# It must equal the `moonbitlang/async` pin in `moon.mod`: the floor and the
+# pin are one fact, and two facts that can disagree will.
+
+min-host-async: 0.22.5
+symbols: 90
+
+# --- the symbols the artifact requires from `moonbitlang/async` ---
+c_buffer/free
+c_buffer/is_null
+c_buffer/new
+event_bus/create
+event_bus/destroy
+event_bus/event_bytes_transferred/windows
+event_bus/event_events/unix
+event_bus/event_fd
+event_bus/event_io_result/windows
+event_bus/event_pid
+event_bus/get_event
+event_bus/register_pid
+event_bus/try_register
+event_bus/wait
+fd_util/close_fd
+fd_util/invalid_fd
+fd_util/pipe
+fs/dir_buffer_min_size
+fs/dir_entry_get_file_id
+fs/dir_entry_get_name_len
+fs/dir_entry_get_name_offset
+fs/dir_entry_is_dir
+fs/dir_entry_is_hidden
+fs/dir_entry_length
+io/cancel_io_result/windows
+io/errno_is_read_EOF/windows
+io/free_io_result/windows
+io/io_result_copy_read/windows
+io/io_result_get_event/windows
+io/io_result_get_status/windows
+io/make_file_read_io_result/windows
+io/make_file_write_io_result/windows
+io/make_socket_read_io_result/windows
+io/make_socket_write_io_result/windows
+io/read/unix
+io/read/windows
+io/write/unix
+io/write/windows
+os_error/errno_to_string
+os_error/free_errno_str
+os_error/get_errno
+os_string/decode
+os_string/decode_len
+process/argv_array_add_encoded_entry/unix
+process/argv_array_add_entry/unix
+process/env_add_entry
+process/get_process_result
+process/kill
+process/make_argv_array/unix
+process/make_env
+process/terminate
+runtime/cleanup_WSA
+runtime/exit
+runtime/get_platform
+runtime/init_WSA
+runtime/terminate_process_by_signal
+signal/get_signal_by_index
+signal/set_console_control_handler
+signal/set_global_cancellation_signals
+signal/start_signal_handler
+signal/terminate_signal_handler
+thread_pool/cancel_worker_with_retry
+thread_pool/destroy_thread_pool
+thread_pool/errno_is_cancelled
+thread_pool/fetch_completion/unix
+thread_pool/free_job
+thread_pool/free_worker
+thread_pool/get_read_result
+thread_pool/get_stat_result
+thread_pool/init_thread_pool
+thread_pool/job_get_err
+thread_pool/job_get_ret
+thread_pool/make_fstatx_job
+thread_pool/make_fsync_job
+thread_pool/make_open_stat_job
+thread_pool/make_read_job
+thread_pool/make_readdir_job
+thread_pool/make_statx_job
+thread_pool/make_wait_for_process_job
+thread_pool/make_write_job
+thread_pool/open_job_get_fd
+thread_pool/spawn_job/set_cwd
+thread_pool/spawn_job/set_no_console_window
+thread_pool/spawn_job/unix
+thread_pool/spawn_job/windows
+thread_pool/spawn_job_get_result_handle
+thread_pool/spawn_worker
+thread_pool/wake_worker
+thread_pool/worker_enter_idle
+time/get_ms_since_epoch
