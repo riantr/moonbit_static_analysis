@@ -1127,7 +1127,12 @@ if ($SkipMutations) {
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
     foreach ($ln in ($o -split "`r?`n")) {
-      if ($ln -match '(SUMMARY|SCANNED|Latest version|ABORT|FAIL|actionable)') { Write-Output $ln }
+      # The filter is for READING, not for evidence -- but it must not drop the
+      # evidence either. It kept 4 of the self-scan's 16 lines and threw away
+      # the host-contract verdict, which is the NEW check in that stage: a log
+      # that does not say "the published bytes satisfy the host contract" says
+      # nothing about the thing the stage exists to say.
+      if ($ln -match '(SUMMARY|SCANNED|Latest version|ABORT|FAIL|GATE OK|actionable|contract|parsed \d+/)') { Write-Output $ln }
     }
     if ($code -ne 0) { $script:stageOk = $false }
   }
