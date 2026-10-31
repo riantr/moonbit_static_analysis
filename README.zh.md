@@ -663,7 +663,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 README 自己的链接、锚点、版本与计数**；**变异门名册，以及一个证明它会变红的自测**；**注册表
 到底会收到什么，以及一道保证碎屑不会混进去的检查**；**通知的标签，以及一道保证范围限制不会被
 当成错误的检查**；**帧审计，以及一道保证一个区域只让「它可能读到过」的绑定闭嘴的检查**；已发布包
-自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**87** 个。
+自扫的自测；与固定基线的语料比对；逐函数普查及其对照；**行为透镜自己的那张表，跟今天分析器
+真正产出的数字对账**；然后是**每一个**变异门——**87** 个。
 
 下面是其余各个 stage 的名字，按它们各自打印出来的原样列出——所以一个跑了、却没在这里点名的
 stage，就是读者找不到的 stage：
@@ -694,6 +695,7 @@ stage，就是读者找不到的 stage：
     corpus SUMMARY vs pinned baseline
     per-function census vs pinned baseline
     per-function census control (the files are READ by moon check)
+    the behavior lens: measured against its own header
     the region suppression: what it hides, measured and pinned
     the reach of the `raise?` construct, measured and pinned
     the premises of the 0505 porting plan, measured

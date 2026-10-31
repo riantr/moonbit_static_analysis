@@ -758,7 +758,8 @@ red**; **what the registry will actually receive, and a check that the junk stay
 it**; **the notice labels, and a check that a scope limit is not an error**; **the frame
 audit, and a check that a region silences only the bindings it could have read**; the
 published-package self-scan's own self-test; the corpus comparison against the
-pinned baselines; the per-function census and its control; and then **every mutation
+pinned baselines; the per-function census and its control; **the behavior lens's own
+table, checked against what the analyzer produces today**; and then **every mutation
 gate** — 87 of them.
 
 And these are the other stages, by the exact name each one prints — so a stage that runs
@@ -790,6 +791,7 @@ and is not named here is a stage a reader cannot find:
     corpus SUMMARY vs pinned baseline
     per-function census vs pinned baseline
     per-function census control (the files are READ by moon check)
+    the behavior lens: measured against its own header
     the region suppression: what it hides, measured and pinned
     the reach of the `raise?` construct, measured and pinned
     the premises of the 0505 porting plan, measured

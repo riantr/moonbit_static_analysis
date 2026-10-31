@@ -1344,8 +1344,8 @@ if ($SkipMutations) {
 #   - the SEVEN SUMMARY lines carry only THIN signal about the behavior lens. The six
 #     older corpora carried NONE (no finding on any of them was tagged `behavior`, and
 #     not one of the six contains a `main()`); `moonbit_core`, added at 0494, carries
-#     5 findings tagged `behavior` out of 15758 findings across the seven (measured
-#     2026-10-21). A pin that cannot distinguish two states is not a pin, and 5
+#     5 findings tagged `behavior` out of 18594 findings across the seven (measured
+#     2026-10-31). A pin that cannot distinguish two states is not a pin, and 5
 #     findings is close to that line: see the DIRECTION 2 block in NARRATIVE.md.
 #   - `moonbit_labeler` moved 801 -> 800 at 0470 (the last `actionable` on any corpus) and
 #     800 -> 793 at 0471. `proton` moved at 0471: 122 -> 131 parsed, `unreliable`
@@ -1949,6 +1949,39 @@ if ($failed.Count -eq 0) {
     }
     if (-not $script:lastOk) { $failed += 'perfunction-control' }
   }
+}
+
+# --- 7b  the behavior lens, measured against its OWN header --------------------
+# The DIRECTION 2 block in NARRATIVE.md publishes a table of how many findings on
+# each pinned corpus carry the `behavior` lens, and the table used to be a COMMENT in a
+# script that NOTHING ran. A comment rots in the direction that looks like a pass, and
+# this one rotted twice: it still carried the Oct-17 numbers while the analyzer that
+# produces them had moved on. Nothing caught it because there was no moment at which
+# the claim and the measurement could disagree.
+#
+# Now they can. `_verify/dir2_behavior_reach.ps1` READS ITS OWN HEADER and fails if
+# what it measured differs from what the header claims, and this stage is what makes
+# that run on every release instead of on the day somebody remembers to run it.
+#
+# It costs seven corpus scans, so it sits here -- after the mutation gates, where the
+# tree is restored, and next to the stages that also read the corpora.
+$D2 = Join-Path $root '_verify\dir2_behavior_reach.ps1'
+if (-not (Test-Path $D2)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\dir2_behavior_reach.ps1'
+  $failed += 'dir2-behavior'
+} else {
+  Stage 'the behavior lens: measured against its own header' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $D2 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(GATE OK|GATE FAILED|FAIL:|the header agrees|MEASURED:)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'dir2-behavior' }
 }
 
 # --- 8  what the region suppression hides -------------------------------------

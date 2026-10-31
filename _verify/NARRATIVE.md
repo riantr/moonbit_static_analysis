@@ -1191,21 +1191,24 @@ rows and not that one. It is recorded in place rather than deleted.
 GATE 0469: 4/4 KILLED, no declared survivors, every restore byte-identical.
 
 
-## DIRECTION 2: THE BEHAVIOR LENS IS UNOBSERVABLE ON EVERY PINNED CORPUS
+## DIRECTION 2: THE BEHAVIOR LENS IS UNOBSERVABLE ON THE SIX OLDER CORPORA, AND OBSERVABLE ON CORE
 
 
 This is a VERIFICATION gap, not a correctness gap, and the distinction decides what to do
 about it. Measured by `_verify/dir2_behavior_reach.ps1`, which carries its own POSITIVE
 CONTROL -- a fixture the scanner really does tag `[behavior]` -- so its zeros cannot be an
-artefact of a broken reader:
+artefact of a broken reader. The table gives TWO numbers per corpus, because they are
+different numbers: `printed` is the findings the analyzer prints one per line, and `total`
+is the findings behind them -- the analyzer prints a finding only when it can HIDE another
+finding, and counts the rest BY SHAPE.
 
-  ALL SIX CORPORA      7493 findings      0 carrying the behavior lens
-    moui                4152              0
-    async               1677              0
-    proton               959              0
-    moonbit_labeler      469              0
-    moonbit_image        202              0
-    proton_contract        34              0
+    moui                printed 1126  total 3457   behavior 0
+    moonbit_labeler     printed  142  total  699   behavior 0
+    moonbit_image       printed   93  total  186   behavior 0
+    async               printed  250  total 1654   behavior 0
+    proton              printed  497  total 1799   behavior 0
+    proton_contract     printed    0  total   29   behavior 0
+    moonbit_core        printed 1172  total 10770  behavior 5  only 3
 
 THE MECHANISM, CONFIRMED CAUSALLY RATHER THAN BY CORRELATION. `interp.mbt` executes
 top-level statements and whatever they reach; a function nothing calls is never executed.
@@ -1214,8 +1217,8 @@ Appending ONE top-level call to a copy of proton_contract 0.3.4 -- changing no o
 
     322:18 - error: no method matching application_route() (MethodError) [behavior]
 
-So the lens is neither broken nor silent for want of defects. It has nothing to run: all
-six pinned corpora are libraries, and not one contains a `main()`.
+So the lens is neither broken nor silent for want of defects. On the six older corpora it
+has nothing to run: they are libraries, and not one contains a `main()`.
 
 => WHAT THIS COSTS. Roughly a thousand lines of `interp.mbt` are unexercised by every
 corpus, so the SIX SUMMARY lines this gate pins -- its primary defence -- carry ZERO signal
@@ -1227,28 +1230,56 @@ and `mutate_0469`'s M11 all name interp tests explicitly rather than relying on 
 states is not a pin. Six corpus lines that stay identical whatever `interp.mbt` does are
 the same confident zero as a broken reader, and the only defence against both is a
 control that proves the counter can see a thing it is reporting as absent.
+=> 判据: A TABLE IN A COMMENT IS NOT A MEASUREMENT, AND A MEASUREMENT NOTHING RUNS IS NOT
+A MEASUREMENT. The table above said "7493 findings" while the analyzer that produces
+them had moved on twice, and the script that measures it was invoked by NOTHING -- so
+there was no moment at which the two could disagree. A count that is only written down
+rots in the direction that looks like a pass. Let the measurement READ the claim, and
+let the gate that runs it be the one that fails.
 
-MEASURED 2026-10-21, AFTER `moonbit_core` WAS PINNED (see the 0494 section below). The six
-older corpora carry 7798 findings and NOT ONE is tagged `behavior`; core carries 7960 and
-FIVE are. The seven carry 15758 in all. So the statement above is now true of six corpora
-and no longer true of the pin table as a whole:
+MEASURED 2026-10-21, AFTER `moonbit_core` WAS PINNED (see the 0494 section below), AND
+RE-MEASURED 2026-10-31, when the table above was found to be stale and the script that
+measures it was rewritten to read its own header. The six older corpora carry 7824 findings
+and NOT ONE is tagged `behavior`; core carries 10770 and FIVE are. The seven carry 18594
+in all. So the statement above is now true of six corpora and no longer true of the pin
+table as a whole:
 
-    corpus             findings   behaviour-tagged   files with a `fn main`
-    moui                  4152              0                   0
-    moonbit_labeler        510              0                   1
-    moonbit_image          213              0                   0
-    async                 1827              0                   0
-    proton                1062              0                   1
-    proton_contract         34              0                   0
-    moonbit_core          7960              5                   0
+    corpus             printed   total   behaviour-tagged   files declaring `fn main`
+    moui                 1126    3457              0                   0
+    moonbit_labeler       142     699              0                   0
+    moonbit_image          93     186              0                   0
+    async                 250    1654              0                   0
+    proton                497    1799              0                   0
+    proton_contract         0      29              0                   0
+    moonbit_core         1172   10770              5                   4
 
 The five are all consequences of the reader gaps the new corpus exposes -- three
 `undefined variable 'N'`, one `undefined variable 'declare'`, one
 `F6A8885A308CA8A54` -- and none of them is a behaviour-lens finding about a BEHAVIOUR: the
 lens reports the name it could not resolve. So the honest statement is not "the lens is
 now covered" but "the lens now contributes 5 findings to a pin, and 5 is thin". The
-`fn main` column is the reason the lens is reached at all in core: a library with no
-entry point still has TOP-LEVEL STATEMENTS, and core's bigint package has them.
+`fn main` column is measured by DECLARATION -- a file whose `fn main(` is not inside a
+comment -- and it shows that only core has an entry point at all: the six older corpora
+have NONE, so the lens reaches them by nothing. Core's bigint package has top-level
+statements, and a library with no `main` still has those.
+
+THE NUMBERS ABOVE ARE CHECKED, NOT TYPED. `_verify/dir2_behavior_reach.ps1` reads its own
+header table and fails if what it measured differs from what the header claims, so this
+table cannot go stale against the analyzer. It had already gone stale once: it still
+carried the Oct-17 numbers (7493 in total), and it was counting a DIFFERENT THING. The
+analyzer used to print every finding; it now prints one per line only when the finding can
+hide another, and counts the rest by shape -- so the printed count FELL while the finding
+count ROSE. A table that called the printed count "findings" could not be compared with
+anything, and nothing compared it with anything until the script read its own header.
+
+AND IT IS A STAGE OF THE RELEASE GATE NOW, so the table is re-measured on every release
+instead of on the day somebody remembers to run it. The stage is named `the behavior lens:
+measured against its own header`, and it costs seven corpus scans -- which is why it sits
+after the mutation gates, where the tree is restored, beside the other stages that read
+the corpora. Adding that stage also CHANGED the release gate's own stage count from 32 to
+33, and `_verify/check_readme_links.ps1` went RED until both READMEs named it -- which is
+the mechanism working, and is the reason a stage added to the gate cannot be added
+quietly.
 
 NOT CHANGED HERE. Making the lens analyze every function rather than only main-reachable
 ones is a SEMANTIC change to what the third lens means, and it is a decision rather than
@@ -3108,11 +3139,12 @@ THE LENS NEVER EXECUTED A FUNCTION BODY. `Interp::run_top` SKIPS `SFunc` items:
     }
 
 so a body ran only if something CALLED it from a top-level statement. A library module does not
-call its own functions at top level, so on every pinned corpus the lens executed ZERO bodies:
+call its own functions at top level, so on every pinned corpus the lens executed ZERO bodies.
+MEASURED 2026-10-31, with the table in the DIRECTION 2 block above:
 
-    moui             4152 findings, ALL tagged `structural`
-    proton           1062 findings, ALL tagged `structural`
-    async            1820 findings, ALL tagged `structural`
+    moui             3457 findings, NONE tagged `behavior`
+    proton           1799 findings, NONE tagged `behavior`
+    async            1654 findings, NONE tagged `behavior`
 
 not one tagged `behavior`. MEASURED, the gap was the ENTRY and nothing else -- the same defect, in
 the same body, three ways:
