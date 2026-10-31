@@ -665,6 +665,46 @@ README 自己的链接、锚点、版本与计数**；**变异门名册，以及
 当成错误的检查**；**帧审计，以及一道保证一个区域只让「它可能读到过」的绑定闭嘴的检查**；已发布包
 自扫的自测；与固定基线的语料比对；逐函数普查及其对照；然后是**每一个**变异门——**87** 个。
 
+下面是其余各个 stage 的名字，按它们各自打印出来的原样列出——所以一个跑了、却没在这里点名的
+stage，就是读者找不到的 stage：
+
+    moon fmt --check
+    moon check --deny-warn
+    moon test --target js
+    moon test --target wasm
+    moon test --target wasm-gc
+    moon build --target wasm
+    moon build --release --target wasm
+    the host contract of the artifact (what a user's toolchain must supply)
+    grammar probe control (its verdicts can go red)
+    self-scan (own source)
+    README links, anchors, versions and counts
+    gate roster: self-test (seven injected defects must be caught)
+    gate roster: one harness, one list, and a count that matches
+    the shared harness: the INCONCLUSIVE verdict, shown to go red
+    proof contracts: no false #proof_pure
+    package contents: the junk stays out, the evidence stays in
+    notice labels: a scope limit is a notice, a defect is an error
+    the family roster: one id each, contiguous, and reversible
+    frame audit: a region silences the bindings it could have read, and no others
+    match arms: the arms are read, the findings are true ones, and the fallback is exact
+    published self-scan self-test
+    published package self-scan
+    the notice reconciliation can go red (a real defect is seen)
+    corpus SUMMARY vs pinned baseline
+    per-function census vs pinned baseline
+    per-function census control (the files are READ by moon check)
+    the region suppression: what it hides, measured and pinned
+    the reach of the `raise?` construct, measured and pinned
+    the premises of the 0505 porting plan, measured
+    the notice flood: which notices deserve a line, measured
+    the three bandit transfers: measured, not asserted
+    the confidence demotion: measured, not asserted
+
+这份名单是从 `_verify/release.ps1` **推出来的**，并由 `_verify/check_readme_links.ps1`
+检查：所以一个加了门禁、却没在这里点名的 stage，会让那道门禁变红，而不是悄悄地让门禁做的事
+变宽。
+
 这份名册是**被检查的，不是被断言的**：一个在磁盘上存在、却不在名册里的变异门**永远不会跑**，
 而一个不会跑的变异门和一个跑绿了的变异门长得一模一样。`_verify/check_gate_roster.ps1`
 把两份名册**双向**比对；它的 `-SelfTest` 往 `_verify` 的**副本**里注入七种缺陷——名册没

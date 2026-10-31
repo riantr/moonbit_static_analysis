@@ -761,6 +761,46 @@ published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; and then **every mutation
 gate** — 87 of them.
 
+And these are the other stages, by the exact name each one prints — so a stage that runs
+and is not named here is a stage a reader cannot find:
+
+    moon fmt --check
+    moon check --deny-warn
+    moon test --target js
+    moon test --target wasm
+    moon test --target wasm-gc
+    moon build --target wasm
+    moon build --release --target wasm
+    the host contract of the artifact (what a user's toolchain must supply)
+    grammar probe control (its verdicts can go red)
+    self-scan (own source)
+    README links, anchors, versions and counts
+    gate roster: self-test (seven injected defects must be caught)
+    gate roster: one harness, one list, and a count that matches
+    the shared harness: the INCONCLUSIVE verdict, shown to go red
+    proof contracts: no false #proof_pure
+    package contents: the junk stays out, the evidence stays in
+    notice labels: a scope limit is a notice, a defect is an error
+    the family roster: one id each, contiguous, and reversible
+    frame audit: a region silences the bindings it could have read, and no others
+    match arms: the arms are read, the findings are true ones, and the fallback is exact
+    published self-scan self-test
+    published package self-scan
+    the notice reconciliation can go red (a real defect is seen)
+    corpus SUMMARY vs pinned baseline
+    per-function census vs pinned baseline
+    per-function census control (the files are READ by moon check)
+    the region suppression: what it hides, measured and pinned
+    the reach of the `raise?` construct, measured and pinned
+    the premises of the 0505 porting plan, measured
+    the notice flood: which notices deserve a line, measured
+    the three bandit transfers: measured, not asserted
+    the confidence demotion: measured, not asserted
+
+The list is DERIVED from `_verify/release.ps1` and checked by
+`_verify/check_readme_links.ps1`, so a stage added to the gate and not named here makes
+that gate red rather than quietly widening what the gate does.
+
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
 that passes. `_verify/check_gate_roster.ps1` compares the two rosters in **both**

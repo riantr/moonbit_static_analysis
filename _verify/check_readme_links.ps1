@@ -462,6 +462,59 @@ foreach ($e in $more) {
 }
 
 
+# --- 6  the stages the release gate RUNS, and the README NAMES --------------------
+#
+# The READMEs enumerate what `_verify/release.ps1` runs. That enumeration was kept
+# BY HAND, and it drifted: the stages the 0505-0508 increments added -- the family
+# roster, the three bandit transfers, the confidence demotion -- were never named,
+# so a reader could not find the stage that checks the very thing the READMEs
+# document. A reader who cannot find the gate that proves a claim cannot tell
+# whether the claim is proven.
+#
+# So the list is DERIVED from release.ps1, and the READMEs have to name every one
+# of them. That is what makes it CHECKED rather than ASSERTED: a stage added to
+# the gate and not named in the README makes THIS gate red, instead of quietly
+# widening what the gate does.
+#
+# The derivation is the one the release gate's own summary table is built from,
+# minus the mutation gates (87 of them, counted by check_gate_roster.ps1) and
+# minus the self-test stages, which only run under -SelfTest. It was checked
+# against the gate's own output: the names derived here are the names the gate
+# printed, one for one.
+Write-Output '=== 6. the release gate runs the stages the READMEs name ==='
+$relPath = Join-Path $root '_verify\release.ps1'
+$relTxt = [System.IO.File]::ReadAllText($relPath, [System.Text.Encoding]::UTF8)
+$stageNames = New-Object System.Collections.Generic.List[string]
+foreach ($m in [regex]::Matches($relTxt, "(?m)^[ \t]*Stage[ \t]+'((?:[^']|'')+)'")) {
+  # A doubled quote inside a PowerShell single-quoted string is an escaped quote.
+  $n = $m.Groups[1].Value -replace "''", "'"
+  if ($n -like 'selftest:*') { continue }
+  if ($n -like 'mutation gate *') { continue }
+  $stageNames.Add($n)
+}
+# The three test targets are staged in a loop, and the harness self-test names
+# its stage through a variable. Both are stages the gate runs, so both are
+# stages the README has to name.
+foreach ($t in @('js','wasm','wasm-gc')) { $stageNames.Add("moon test --target " + $t) }
+foreach ($m in [regex]::Matches($relTxt, "(?m)^[ \t]*\$stageName[ \t]*=[ \t]*'((?:[^']|'')+)'")) {
+  $stageNames.Add(($m.Groups[1].Value -replace "''", "'"))
+}
+$stageNames = @($stageNames | Select-Object -Unique)
+Write-Output ('  the release gate runs ' + $stageNames.Count + ' stages besides the mutation gates')
+foreach ($f in @('README.md','README.zh.md')) {
+  $p = Join-Path $root $f
+  $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+  $missing = @()
+  foreach ($n in $stageNames) { if (-not $txt.Contains($n)) { $missing += $n } }
+  if ($missing.Count -eq 0) {
+    Write-Output ("  {0,-14} names all {1} stages  OK" -f $f, $stageNames.Count)
+  } else {
+    Write-Output ("  {0,-14} MISSING {1} stage name(s):" -f $f, $missing.Count)
+    foreach ($n in $missing) { Write-Output ('      ' + $n) }
+    $fail += $missing.Count
+  }
+}
+
 Write-Output ''
 if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections and counts all check out.'; exit 0 }
 Write-Output ("VERIFY FAILED: " + $fail + " problem(s).")

@@ -8765,6 +8765,43 @@ counter: it is a field on `Summary`, a constructor argument at every site that b
 column in the JSON record, and a number the corpus pins would then have to carry. That is a
 release of its own, and it is not the clause the objective quoted.
 
+### AND THE README'S LIST OF WHAT THE GATE RUNS HAD DRIFTED
+
+The READMEs enumerate what `_verify/release.ps1` runs. That enumeration was kept BY HAND,
+and it drifted. Measured against the gate's own output, the release gate runs **32** stages
+besides the 87 mutation gates -- and the READMEs named **4** of those 32 by the exact name
+the stage prints. The prose described the rest, in the reader's words, which is fine for a
+reader who reads it and useless for a reader who goes looking for the stage.
+
+The two that were missing by name are the two this whole section is about:
+
+    the three bandit transfers: measured, not asserted
+    the confidence demotion: measured, not asserted
+
+So a reader could not find the stage that checks the transfers. The other twenty-six
+missing names include the host-contract stage, the family roster, the proof contracts, the
+notice reconciliation, the region suppression, the `raise?` reach, the notice flood, the
+match-arms audit and the release build -- every stage the 0505-0509 increments added.
+
+This is the same defect 0497 declared against -- "a number in a comment is not checked by
+anything" -- in the one place the repo had not yet applied it. And the fix is the same fix:
+the list is DERIVED, and the derivation is checked.
+
+`_verify/check_readme_links.ps1` now reads `_verify/release.ps1`, extracts the stage names
+the way the gate's own summary table is built, and requires both READMEs to name every one
+of them. The extraction was checked against the gate's own output: 32 names derived, 32
+names printed, one for one. The 87 mutation gates stay out of it -- they are counted by
+`_verify/check_gate_roster.ps1` -- and so do the three `selftest:` stages, which only run
+under `-SelfTest`.
+
+And it was shown to go red, in BOTH directions, because a gate that has never been shown to
+go red is a comment:
+
+    CONTROL 1  the README dropped one stage name   -> RED, naming it
+    CONTROL 2  release.ps1 gained a stage           -> RED, naming it
+
+Both restores were proven byte-identical by SHA256.
+
 => 判据: A DEPENDENCY BUMP CAN CHANGE WHAT A USER'S MACHINE HAS TO PROVIDE. The bump was
 routine, the gate was green, and the artifact stopped running on every toolchain that was
 not the newest one. A version pin is a promise about the BUILD; it is also a promise about
@@ -8793,3 +8830,9 @@ the hard way. Measure it, then write it down.
 calls it could not check (`unchecked`) rather than rounding them down to silence -- and the
 findings a `// nosec` removed ARE rounded down to silence. Two halves of the same question,
 answered two different ways, and the reader cannot tell which half is which.
+=> 判据: A LIST OF WHAT THE GATE RUNS IS A LIST KEPT BY HAND, AND IT ROTS THE WAY THE ROSTER
+ROTS. The mutation-gate roster drifted once already and got a gate; the release gate's own
+stage list drifted the same way, in the same place -- a stage added, and the document that
+enumerates the stages not told. A reader who cannot search for the stage that checks a
+claim cannot tell whether the claim is checked. Derive the list from the thing it
+describes, and the check costs one regex.
