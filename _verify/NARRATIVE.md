@@ -9083,6 +9083,59 @@ So the verdict cannot be left in a log, and it cannot be left to CI, and it cann
 whoever ran it last -- which is why it is written down HERE, with every number in it tied to a
 gate that re-checks that number.
 
+### WHICH OF THOSE NUMBERS AN OFFLINE READER CAN ACTUALLY RE-MEASURE
+
+This is the question a reader has to ask of every number in a record like this one, and the
+answer differs per number, so it is written down too:
+
+    the 87 and the 33     re-measurable OFFLINE. The roster gate counts the gates on disk and
+                          the README gate derives the stage list from release.ps1 itself.
+                          Neither touches the network, and both are fast.
+
+    the 19636             NOT re-measurable offline. The seven corpora are registry packages
+                          (mooncakes coordinates in release.ps1's $TARGETS), fetched at gate
+                          time into .repos/ -- which is gitignored, so they are not in the
+                          repository and an offline reader has no baseline to compare a scan
+                          against. What an offline reader CAN check is that the pin is
+                          defined, that it is not empty, and that the corpus stage compares
+                          against it.
+
+    the own-source pins   re-measurable OFFLINE, and they are the ones that cover THIS tree.
+    (189 files,           The self-scan stage scans the repository's own source with the
+    125 printed,          printing cap lifted: 189 files, 189 parsed, actionable 0, and the
+    1574 aggregated,      notices reconciling as 1699 = 125 printed + 1574 aggregated over
+    9 notice kinds)      the 9 kinds in the notice table.
+
+So an offline reader is not left with nothing. The pins that cover the tree in front of them
+are the ones they can reproduce, and the pin that needs the registry is named as the one that
+does.
+
+### AND AN AUDIT THAT WAS DONE THE WAY A READER WOULD HAVE TO DO IT
+
+The record above was checked by a reader who did not write any of it, who had no network, and
+who was not allowed to modify the repository. What that reader did, and what it found:
+
+  * it COPIED the repository out of the tree, built it there, and ran the whole suite --
+    1330 tests on wasm, 1204 on js and 1204 on wasm-gc, every one of them passed;
+  * it RAN THE ANALYZER on its own fixtures and read the rendered bracket, which carries the
+    family id and the confidence -- `MSA-008, high` for a finding it stands behind and
+    `MSA-002, low` for one it does not;
+  * it EXERCISED the nosec end to end through the command line: the blanket form, the
+    id-targeted form, a nosec naming an unknown id, and the rule that a blanket `// nosec`
+    cannot silence the warning about its own staleness;
+  * it EXERCISED the profile end to end through the command line: an unknown id warns and the
+    scan still runs, an id in both lists errors and no scan runs;
+  * it RAN the JSON bridge end to end, and the record carries `confidence` and `family_id`;
+  * it RAN both transfer settles and both read-only gates (the roster, the notice labels and
+    the README stage list) and they were green.
+
+Every check that reader ran came back green, and it had confirmed all three transfers by the
+time it was cut short -- so it never wrote its own summary line. That is recorded here as what
+happened rather than as a verdict it did not deliver: a reader who stopped mid-audit has
+confirmed what it confirmed, and the rest is still open. The one limitation it reported on the
+way is the one written down above -- the corpus pins need the registry, and the self-scan pins
+are the ones an offline reader can reproduce.
+
 => 判据: A NUMBER THAT WAS MEASURED ONCE IS NOT A NUMBER, IT IS A MEMORY. The comment said
 "23,331" and the CHANGELOG in the SAME RELEASE said "was 23,331 and is now 19,215". A
 measurement that a later increment retired stayed live in the source for eight days
@@ -9108,3 +9161,7 @@ RUMOUR. The release gate's verdict lives in a log that is not committed and in a
 mutates the tree, so nobody -- neither a reader nor an auditor -- can check it. Record it where
 the reader can find it, tie every number in it to a gate that checks that number, and name the
 commit it belongs to, because a verdict without a commit is a mood.
+=> 判据: A RECORD THAT DOES NOT SAY WHICH OF ITS NUMBERS CAN BE RE-MEASURED LEAVES THE READER
+GUESSING. The corpus pins need the registry and the own-source pins do not, and a reader who
+is not told that cannot tell which of the numbers are theirs to check. Say it per number, and
+point at the ones that cover the tree in front of them.
