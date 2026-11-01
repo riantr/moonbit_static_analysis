@@ -82,14 +82,19 @@ fn lens_tag(lenses : Array[@core.Lens]) -> String {
 /// `err()` on the other -- and only the first kind is the analyzer's own
 /// declared limit.
 ///
-/// MEASURED (2026-10-30), with the per-file printing cap lifted so the count
-/// is the whole finding set and not the first 40 of each file: across the
-/// seven corpora and this repository's own source, 23,331 rendered ParseError
-/// lines, EVERY ONE of them a deliberate exclusion, and not one of the
-/// seventeen genuine-defect producers carrying the marker. On today's corpora
-/// the two predicates therefore agree NUMERICALLY -- which is why this change
-/// moves no count -- but only one of them is right, and the wrong one is the
-/// one that called a scope limit an `error:`.
+/// MEASURED (2026-11-01), AND RE-MEASURED BY A GATE ON EVERY RELEASE. The
+/// release gate scans the seven pinned corpora and this repository's own
+/// source, and on every tree it counts the `ParseError`-family findings that
+/// render as anything other than a notice -- a genuine defect of that family
+/// renders `error:` -- and the count must be ZERO. It is zero on all eight
+/// trees: every `ParseError` finding there is a deliberate exclusion, and no
+/// genuine-defect producer's message carries the marker. The producers are
+/// told apart by MECHANISM and never by their text, and
+/// `_verify/check_notice_labels.ps1` holds that convention in place against
+/// EVERY construction site in `src/`. So on those corpora the two predicates
+/// select the SAME SET -- which is why this change moves no count -- but only
+/// one of them is right, and the wrong one is the one that called a scope
+/// limit an `error:`.
 pub fn Report::is_notice(self : Report) -> Bool {
   self.is_declared_scope_limit() || self.confidence() == @core.Low
 }

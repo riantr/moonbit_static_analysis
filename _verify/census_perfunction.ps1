@@ -121,11 +121,30 @@ foreach ($k in $C.Keys) {
   if (-not (Test-Path -LiteralPath $dir)) { Write-Output ("  " + $k + " MISSING " + $dir); continue }
   $out = Join-Path $env:TEMP ('census_' + [guid]::NewGuid().ToString('N').Substring(0,6) + '.txt')
   $err = Join-Path $env:TEMP ('census_' + [guid]::NewGuid().ToString('N').Substring(0,6) + '.err')
+  # `--no-auto-fetch-deps` IS PASSED HERE, and it is not optional. Without it the
+  # analyzer runs `moon fetch` for every import in a corpus's `moon.mod`, and
+  # `moon fetch` deposits under the process CWD -- and this stage runs with the
+  # repository root as its working directory, so the fetch would write into the
+  # very `.repos/` tree the census below is measured against. A release stage
+  # that can reach the network is a release stage whose result depends on the
+  # network; one that can rewrite the corpus it measures depends on what it
+  # rewrote. `release.ps1` states the rule for its own scan, and this stage
+  # measures the same corpora, so it states it too.
   $p = Start-Process -FilePath $moonrun -ArgumentList @(
-        $wasm, $dir, '--extern-iface-dir', $repos,
+        $wasm, $dir, '--extern-iface-dir', $repos, '--no-auto-fetch-deps',
         '--per-function', '--findings-shown-per-file', '1000000'
       ) -WorkingDirectory $root -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait -PassThru
   $txt = [System.IO.File]::ReadAllText($out, [System.Text.Encoding]::UTF8)
+  # THE SCAN FETCHED NOTHING, and this is the check that says so. The analyzer
+  # prints a `FETCH` line when it goes to the network for a dependency, and
+  # `moon fetch` deposits under the process CWD -- which is the repository
+  # root here, so a fetch would rewrite the very `.repos/` tree this census is
+  # measured against. `--no-auto-fetch-deps` is what stops it; this line is
+  # what notices if it stops being passed.
+  if ($txt -match '(?m)^FETCH') {
+    Write-Output ('  FAIL: the scan FETCHED -- ' + $k + ' would be rewritten by the scan itself.')
+    exit 1
+  }
   $sum = (([regex]::Match($txt, '(?m)^SUMMARY.*$').Value) -replace "`t", ' ') -replace '^SUMMARY\s*', ''
   $sum = $sum -replace '\s*\(actionable.*$', ''
   # The path in the header is absolute; the corpus root is stripped so that the

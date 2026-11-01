@@ -14,12 +14,15 @@
 #   genuine     the lexer's eight malformed-literal reports, `moonfiles`'
 #               eight malformed-interface reports, and the parser's `err()`
 #
-# MEASURED (2026-10-30), with the per-file printing cap lifted so the count is
-# the whole finding set: across the seven corpora and this repository's own
-# source, 23,331 rendered ParseError lines, EVERY ONE of them a deliberate
-# exclusion. So the two predicates agree NUMERICALLY on today's corpora --
-# which is why this increment moves no count -- and the gate below is about
-# the RULE, not about the numbers.
+# MEASURED (2026-11-01), AND RE-MEASURED BY A GATE ON EVERY RELEASE. The
+# release gate scans the seven pinned corpora and this repository's own
+# source, and on every tree it counts the `ParseError`-family findings that
+# render as anything other than a notice -- a genuine defect of that family
+# renders `error:` -- and the count must be ZERO. It is zero on all eight
+# trees: every `ParseError` finding there is a deliberate exclusion. So the
+# two predicates select the SAME SET on today's corpora -- which is why this
+# increment moves no count -- and the gate below is about the RULE, not about
+# the numbers.
 #
 # EVERY MUTATION BELOW NAMES THE TEST THAT MUST GO RED. A mutation that kills
 # some other test is not evidence: the test named here is the one that pins the

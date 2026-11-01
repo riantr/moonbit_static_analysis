@@ -7,13 +7,15 @@
 # SCOPE LIMIT of this analyzer, and a reader who sees `error:` on it has been
 # told their code is wrong when the analyzer is the one that did not read it.
 #
-# MEASURED (2026-10-30), with the per-file printing cap lifted so the count is
-# the whole finding set and not the first 40 of each file: across the seven
-# corpora and this repository's own source, 23,331 rendered ParseError lines,
-# EVERY ONE of them a deliberate exclusion, and not one of the seventeen
-# genuine-defect producers carrying the marker. The tool already had the word
-# for this -- `notice` -- in its own counts, its mermaid legend and its skill
-# file. The rendered line was the only place that did not use it.
+# MEASURED (2026-11-01), AND RE-MEASURED BY A GATE ON EVERY RELEASE. The
+# release gate scans the seven pinned corpora and this repository's own
+# source, and on every tree it counts the `ParseError`-family findings that
+# render as anything other than a notice -- a genuine defect of that family
+# renders `error:` -- and the count must be ZERO. It is zero on all eight
+# trees: every `ParseError` finding there is a deliberate exclusion, and no
+# genuine-defect producer's message carries the marker. The tool already had
+# the word for this -- `notice` -- in its own counts, its mermaid legend and
+# its skill file. The rendered line was the only place that did not use it.
 #
 # WHAT IT CHECKS, and each item is a thing that can be WRONG:
 #
@@ -298,6 +300,12 @@ $nSkipCall = 0
 $nSkipLiteral = 0
 $nDeliberate = 0
 $nGenuine = 0
+$nSites = 0
+$nDynamic = 0
+$dynamicSites = @()
+$nErrCall = 0
+$nErrInterp = 0
+$nErrMarker = 0
 $bad = 0
 
 foreach ($f in $srcFiles) {
@@ -370,6 +378,19 @@ foreach ($f in $srcFiles) {
   # it, and the body of that function is what says whether this site is a
   # skip producer: `subset_exclusion` is the literate frontend's decision, and
   # `Parser::note_skip` is the program frontend's.
+  #
+  # EVERY SITE IS COUNTED, INCLUDING THE ONES WHOSE MESSAGE IS NOT SPELLED
+  # OUT. The first version of this scan ended with
+  # `if ($msg -eq '') { continue }` -- a dynamic message skipped the site --
+  # and that skipped TWO of the nineteen: the parser's `err()` (a genuine read
+  # failure) and the parser's `note_skip()` (a deliberate exclusion). The gate
+  # then printed "genuine producers 16" while the source comment said
+  # "seventeen", and nothing noticed, because a gate that counts a DIFFERENT
+  # population than the claim it checks cannot disagree with it: it is
+  # answering a different question. So a site with a dynamic message is
+  # counted, told apart by its mechanism like any other, and NAMED -- a site
+  # whose message the gate cannot read is a site it has only half checked, and
+  # it says so instead of passing over it in silence.
   $fnStarts = @()
   for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match '^\s*(pub\s*(\(all\)\s*)?)?fn\s') { $fnStarts += $i }
@@ -387,14 +408,13 @@ foreach ($f in $srcFiles) {
         break
       }
     }
-    if ($msg -eq '') { continue }   # a dynamic message: the parser's read failure
     # the enclosing function
     $owner = -1
     foreach ($s in $fnStarts) { if ($s -le $i) { $owner = $s } else { break } }
     $isSkipProducer = $false
     $ownerName = '(none)'
     if ($owner -ge 0) {
-      $ownerName = ($lines[$owner] -replace '^\s*(pub\s*(\(all\)\s*)?)?fn\s+', '')
+      $ownerName = (($lines[$owner] -replace '^\s*(pub\s*(\(all\)\s*)?)?fn\s+', '') -replace '\s*\(.*$', '')
       $indent = ($lines[$owner] -replace '^(\s*).*$', '$1').Length
       $end = $lines.Count
       for ($k = $owner + 1; $k -lt $lines.Count; $k++) {
@@ -405,29 +425,96 @@ foreach ($f in $srcFiles) {
       $body = ($lines[($owner + 1)..([Math]::Max($owner + 1, $end - 1))] -join "`n")
       $isSkipProducer = ($body -match 'subset_exclusion\s*\(') -or ($ownerName -match 'Parser::note_skip')
     }
+    $nSites++
+    if ($msg -eq '') {
+      # A DYNAMIC MESSAGE: counted, told apart by its mechanism like any
+      # other, and NAMED. Section 3d reads the messages of the one genuine
+      # producer that has them.
+      $nDynamic++
+      $kind = $(if ($isSkipProducer) { 'deliberate' } else { 'genuine' })
+      $dynamicSites += ('{0}:{1}  {2}  ({3}, message built at run time)' -f $rel, ($i + 1), $ownerName, $kind)
+    }
     if ($isSkipProducer) {
       $nDeliberate++
-      if (-not $msg.Contains($MARKER)) {
+      if ($msg -ne '' -and -not $msg.Contains($MARKER)) {
         Write-Output ('  FAIL: ' + $rel + ':' + ($i + 1) + ' is a skip producer but its message does not carry the marker.')
         Write-Output ('        ' + $ownerName + ' -- ' + $msg)
         $bad++
       }
     } else {
       $nGenuine++
-      if ($msg.Contains($MARKER)) {
+      if ($msg -ne '' -and $msg.Contains($MARKER)) {
         Write-Output ('  FAIL: ' + $rel + ':' + ($i + 1) + ' carries the marker but is not a skip producer.')
         Write-Output ('        ' + $ownerName + ' -- ' + $msg)
         $bad++
       }
     }
   }
+
+  # --- 3d. the message of the DYNAMIC genuine producer -----------------------
+  # `Parser::err` is the one GENUINE producer whose message is built at run
+  # time -- the parser's read failure -- so the marker cannot be read at the
+  # construction site. It is checked HERE instead, where the messages are
+  # spelled out: no message handed to `err()` may carry the marker, or a
+  # genuine read failure would be rendered `notice:` and counted as a scope
+  # limit instead of a defect.
+  #
+  # The messages that INTERPOLATE a value are counted and reported rather than
+  # passed over, because a value that carried the word would ride in on the
+  # message. (And such a finding would not reach a reader in any case:
+  # `err()` is what sets the parse boundary, so a finding at or after that
+  # line is counted as unreliable and never rendered. MEASURED, not assumed:
+  # a fixture whose duplicate import carries the word is WITHHELD, not
+  # rendered -- see `_verify/NARRATIVE.md`.)
+  $idx = 0
+  while ($true) {
+    $idx = $text.IndexOf('.err(', $idx)
+    if ($idx -lt 0) { break }
+    $orig = $idx
+    $idx = $orig + 5
+    $lineIdx = ($text.Substring(0, $orig) -split "`n").Count - 1
+    if ($lineIdx -ge 0 -and $lineIdx -lt $lines.Count -and
+        $lines[$lineIdx].TrimStart().StartsWith('//')) { continue }
+    $nErrCall++
+    $win = ''
+    for ($k = $lineIdx; $k -lt [Math]::Min($lineIdx + 4, $lines.Count); $k++) { $win = $win + $lines[$k] + "`n" }
+    $em = [regex]::Match($win, '\.err\(\s*"([^"]*)"')
+    if (-not $em.Success) {
+      Write-Output ('  FAIL: ' + $rel + ':' + ($lineIdx + 1) + ' -- an err() call carries no message literal, so the gate cannot read it.')
+      $bad++
+      continue
+    }
+    $lit = $em.Groups[1].Value
+    if ($lit.Contains('\{')) { $nErrInterp++ }
+    if ($lit.Contains($MARKER)) {
+      Write-Output ('  FAIL: ' + $rel + ':' + ($lineIdx + 1) + ' -- an err() message carries the marker: ' + $lit)
+      $nErrMarker++
+      $bad++
+    }
+  }
 }
+Write-Output ('  FParse construction sites            ' + $nSites + ' (' + ($nSites - $nDynamic) + ' with a literal message, ' + $nDynamic + ' built at run time)')
 Write-Output ('  note_skip call sites            ' + $nSkipCall + ' (' + $nSkipLiteral + ' with a literal, the rest via skip_msg)')
 Write-Output ('  deliberate producers (by mechanism)   ' + $nDeliberate)
 Write-Output ('  genuine producers                    ' + $nGenuine)
+Write-Output ('  err() call sites                     ' + $nErrCall + ' (' + $nErrInterp + ' interpolate a value)')
+Write-Output ('  err() messages carrying the marker   ' + $nErrMarker + '   ' + $(if ($nErrMarker -eq 0) { 'OK' } else { 'FAIL' }))
+foreach ($ds in $dynamicSites) { Write-Output ('    a dynamic message: ' + $ds) }
 Write-Output ('  sites where the marker and the mechanism disagree   ' + $bad + $(if ($bad -eq 0) { '   OK' } else { '   FAIL' }))
 if ($nSkipCall -lt 1) {
   Write-Output '  FAIL: no note_skip call site was found. The program frontend''s skip mechanism has moved.'
+  $fail++
+}
+if ($nSites -lt 1) {
+  Write-Output '  FAIL: no FParse construction site was found. The check would pass on nothing.'
+  $fail++
+}
+if ($nDynamic -lt 1) {
+  Write-Output '  FAIL: no dynamic-message FParse site was found. The scan has stopped looking at the sites it cannot read.'
+  $fail++
+}
+if ($nErrCall -lt 1) {
+  Write-Output '  FAIL: no err() call site was found. The parser''s read-failure mechanism has moved.'
   $fail++
 }
 if ($nDeliberate -lt 1) {

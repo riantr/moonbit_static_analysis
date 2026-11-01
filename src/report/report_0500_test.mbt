@@ -17,13 +17,18 @@
 // So "is this a notice?" is not "is this FParse?" -- it is a question about
 // WHICH KIND, and the answer lives in one place: `Report::is_notice`.
 //
-// MEASURED (2026-10-30), with the per-file printing cap lifted so the count is
-// the whole finding set: across the seven corpora and this repository's own
-// source, 23,331 rendered ParseError lines, every one of them a deliberate
-// exclusion, and not one of the seventeen genuine-defect producers carrying
-// the marker. On today's corpora the old predicate and the new one agree
-// NUMERICALLY, which is why the change moves no count -- but only one of them
-// is right.
+// MEASURED (2026-11-01), AND RE-MEASURED BY A GATE ON EVERY RELEASE. The
+// release gate scans the seven pinned corpora and this repository's own
+// source, and on every tree it counts the `ParseError`-family findings that
+// render as anything other than a notice -- a genuine defect of that family
+// renders `error:` -- and the count must be ZERO. It is zero on all eight
+// trees: every `ParseError` finding there is a deliberate exclusion, and no
+// genuine-defect producer's message carries the marker. The producers are
+// told apart by MECHANISM and never by their text, and
+// `_verify/check_notice_labels.ps1` holds that convention in place against
+// EVERY construction site in `src/`. So on those corpora the two predicates
+// select the SAME SET -- which is why the change moves no count -- but only
+// one of them is right.
 //
 // => 判据: a label that is wrong on every line it appears on is not a label, it
 //    is noise with a severity attached. The tool already had the word for this

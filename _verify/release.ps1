@@ -845,13 +845,14 @@ if ($failed.Count -eq 0) {
 # analyzer, and a reader who sees `error:` on it has been told their code is
 # wrong when the analyzer is the one that did not read it.
 #
-# MEASURED 2026-10-30, with the per-file printing cap lifted so the count is
-# the whole finding set: across the seven corpora and this repository's own
-# source, 23,331 rendered ParseError lines, EVERY ONE of them a deliberate
-# exclusion, and not one of the seventeen genuine-defect producers carrying
-# the marker. So the fix moves no count -- and the corpus pins below are
-# unchanged by it, which is the point: a LABEL fix that moved the numbers
-# would be a behaviour change wearing a rendering change's clothes.
+# MEASURED 2026-11-01, AND RE-MEASURED ON EVERY RELEASE BY THE STAGE BELOW. It
+# scans the seven pinned corpora and this repository's own source, and on every
+# tree it counts the `ParseError`-family findings that render as anything other
+# than a notice -- a genuine defect of that family renders `error:` -- and the
+# count must be ZERO. It is zero on all eight trees: every `ParseError` finding
+# there is a deliberate exclusion. So the fix moves no count -- and the corpus
+# pins below are unchanged by it, which is the point: a LABEL fix that moved
+# the numbers would be a behaviour change wearing a rendering change's clothes.
 #
 # The gate checks three things: the rendered output's contract, the four
 # producer paths against the tool's OWN messages, and the source convention
@@ -872,7 +873,7 @@ if ($failed.Count -eq 0) {
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       foreach ($ln in ($o -split "`r?`n")) {
-        if ($ln -match '(OK$|FAIL|NOTICE LABELS|note_skip call sites|deliberate producers|genuine producers)') { Write-Output ('  ' + $ln.Trim()) }
+        if ($ln -match '(OK$|FAIL|NOTICE LABELS|FParse construction sites|note_skip call sites|deliberate producers|genuine producers|err\(\) call sites|err\(\) messages|a dynamic message)') { Write-Output ('  ' + $ln.Trim()) }
       }
       if ($code -ne 0) { $script:stageOk = $false }
     }

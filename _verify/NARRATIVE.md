@@ -6199,6 +6199,19 @@ increment is about.
     total                       23331                  23331              0
 ```
 
+**A NOTE ON THIS TABLE, ADDED 2026-11-01: ITS ROWS DO NOT ADD UP.** The eight rows as
+transcribed above sum to **21,331** -- 1868 + 4225 + 791 + 218 + 1836 + 2131 + 34 + 10228
+-- and the table's own total says 23,331, so ONE row is 2,000 short of the total it is
+summed into. WHICH row cannot be told from the documents: the CHANGELOG for the same
+release carries the total and not the breakdown, and re-measuring the breakdown would mean
+building the tree as it stood on 2026-10-23 and re-scanning the eight trees with it. So the
+number is NOT corrected here -- a corrected guess would be an assertion nobody measured --
+and this table's per-tree numbers are not to be relied on. The quantity itself was
+re-measured at 0506 (19,215) and is measured again today by the release gate -- 19,636
+notices over the same eight trees, of which 19,618 are scope limits and 18 are the
+low-confidence findings the demotion added -- so this table is superseded twice over and is
+kept only as the record of what the increment said.
+
 **23,331 rendered ParseError lines, every one of them a deliberate exclusion, and not one
 of the seventeen genuine-defect producers carrying the marker.** In every corpus the
 rendered ParseError count EQUALS the SUMMARY's `notices` count exactly (1868 = 1868,
@@ -8868,3 +8881,164 @@ stage list drifted the same way, in the same place -- a stage added, and the doc
 enumerates the stages not told. A reader who cannot search for the stage that checks a
 claim cannot tell whether the claim is checked. Derive the list from the thing it
 describes, and the check costs one regex.
+
+## 0510: AN INDEPENDENT AUDIT, A RETIRED NUMBER, A GATE COUNTING A SMALLER SET, AND TWO STAGES THAT COULD REACH THE NETWORK
+
+The three bandit transfers were audited by a verifier that did not write the code and did not
+run the mutation gates. Its verdict was **PASS** -- all three transfers exercised end to end
+through the CLI, the JSON bridge and the corpus, and both of the last two fixes replicated
+and shown to go red in the direction they claim to guard. It raised two findings of medium
+severity and one of low severity. None of them said the transfers were wrong; all three were
+claims and gates AROUND the transfers that had rotted -- the class this repo treats as a
+defect worth an increment of its own. All three were measured here before anything changed,
+and all three are fixed.
+
+### THE RETIRED NUMBER, IN FIVE PLACES
+
+`src/report/report.mbt` carries a doc comment on `Report::is_notice` that said:
+
+    MEASURED (2026-10-30) ... across the seven corpora and this repository's own
+    source, 23,331 rendered ParseError lines, EVERY ONE of them a deliberate exclusion
+
+**23,331 HAD ALREADY BEEN RETIRED, BY THIS REPO, IN THE RELEASE THAT SHIPPED THE CLAIM.**
+The number was measured at the 0500 increment (2026-10-23, commit `65dffd7`) and replaced at
+the 0506 increment, which changed what a scan RENDERS: a notice is printed one per line only
+when it can hide a finding, and the rest are counted by shape, so the rendered lines stopped
+being the finding set. `NARRATIVE.md` records the replacement ("the rendered `ParseError`
+lines 23,331 -> 19,215"), and the CHANGELOG for the SAME release (0.4.34) says the same
+thing in prose. The source comment kept publishing the retired number as a fresh
+measurement, in FIVE places: `src/report/report.mbt`, `src/report/report_0500_test.mbt`,
+`_verify/check_notice_labels.ps1`, `_verify/mutate_0500.ps1` and `_verify/release.ps1`.
+
+Nothing checked it, because it was a comment. That is the whole defect: a number in a
+comment is not a measurement, and a measurement nothing runs is not a measurement.
+
+WHAT THE TOOL PRODUCES TODAY, MEASURED: with `--show-notices` and the per-file printing cap
+lifted, over `src/` and the seven pinned corpora, **19,431** rendered `ParseError`-family
+lines -- every one of them carrying the marker, and not one of them a genuine defect. Over
+the release gate's own eight trees (the repository root and the seven corpora) the gate
+measures **19,636** notices, of which **19,618** are scope limits and **18** are the
+low-confidence findings the demotion added.
+
+THE FIX IS NOT A NEW NUMBER. It is the GATED claim: the release gate counts, on every tree
+it scans, the `ParseError`-family findings that render as anything other than a notice -- a
+genuine defect of that family renders `error:` -- and the count must be ZERO. It is zero on
+all eight trees. The five comments now say that, and name the gate that checks it, and carry
+NO number of their own, so there is nothing left there to rot. The historical NARRATIVE and
+CHANGELOG entries keep their numbers: they are the record of what was measured then, and the
+CHANGELOG's "was 23,331 and is now 19,215" is the very sentence that proves the source
+comment had been retired.
+
+### THE GATE THAT COUNTED A SMALLER SET THAN THE CLAIM
+
+The same comment said "not one of the **seventeen** genuine-defect producers carrying the
+marker", and `_verify/check_notice_labels.ps1` printed `genuine producers 16`.
+
+**THE GATE WAS WRONG AND THE COMMENT WAS RIGHT, AND NOTHING COULD TELL.** The gate's
+source-convention scan ended with `if ($msg -eq '') { continue }` -- a construction site
+whose message is not spelled out was SKIPPED -- and that skipped TWO of the NINETEEN
+`FParse` construction sites in `src/`: the parser's `err()` (a genuine read failure,
+`src/parser/parser.mbt:368`) and the parser's `note_skip()` (a deliberate exclusion,
+`src/parser/parser.mbt:6699`). Measured over the source, the truth is:
+
+    FParse construction sites    19  (17 with a literal message, 2 built at run time)
+    deliberate producers         2  by mechanism
+    genuine producers           17  by mechanism
+
+Eight in the lexer, nine in `moonfiles`, two in the parser -- seventeen with a literal
+message and two with a message built at run time -- and the two the gate could not read are
+exactly the two it did not count. So the gate was answering a DIFFERENT QUESTION from the
+one its comment claimed to answer, and a gate that checks a different population than the
+claim cannot disagree with it: it just answers something else.
+
+**EVERY SITE IS NOW COUNTED**, told apart by its mechanism like any other, and the two whose
+message is built at run time are NAMED in the gate's own output -- a site the gate cannot
+read the message of is a site it has only half checked, and it says so instead of passing
+over it in silence. The gate now also FAILS if it finds no dynamic site at all, because a
+check that passes on nothing is not a check.
+
+### THE ONE MESSAGE THAT COULD CARRY THE MARKER, AND WHY IT CANNOT REACH A READER
+
+The marker is a loose substring: `is_scope_limit(message)` is `message.contains("subset")`.
+So a genuine producer whose message carried that word would render `notice:` and be counted
+as a scope limit instead of a defect. Sixteen of the seventeen genuine producers say their
+message in a literal, and the gate reads each one. The seventeenth is the parser's `err()`,
+and ITS message is built at run time -- so the gate now reads it where it is spelled out:
+every message handed to `err()`, of which there are 18, of which 4 interpolate a value.
+None of them carries the marker.
+
+But one of those messages carries USER TEXT: `p.err("duplicate import of '\{path}' in this
+script", sp)` echoes the import path verbatim, and an import path is the user's. **MEASURED,
+NOT ASSUMED**: a fixture whose duplicate import carries the word is WITHHELD by the
+analyzer, not rendered --
+
+    NOTPARSE  2 files, 2 finding(s) withheld -- they measure what this analyzer does not
+              understand, not what your code does
+      1x  duplicate import of 'subset/foo' in this script
+      1x  duplicate import of 'plain/foo' in this script
+
+-- and the reason is the analyzer's own trusted-region rule: `err()` is what SETS the parse
+boundary (`first_error_line`), and a finding at or after that line is counted as `unreliable`
+and never rendered (`src/sa/main.mbt`). So the one message that could carry the marker
+cannot reach a reader, and the loose marker is safe -- not by luck, and not by the gate's
+silence, but by a rule that is stated in the source and measured here.
+
+### TWO RELEASE STAGES THAT COULD REACH THE NETWORK
+
+`_verify/dir2_behavior_reach.ps1` and `_verify/census_perfunction.ps1` are release stages,
+and both ran the analyzer WITHOUT `--no-auto-fetch-deps`. The repo states the rule for its
+own scan: "a release gate that can reach the network is a release gate whose result depends
+on the network." The mechanism is worse than a dependency on the network: `moon fetch`
+deposits under the PROCESS CWD, and the release gate's CWD is the repository root -- so a
+fetch would write into the very `.repos/` tree the stage measures.
+
+Both now pass the flag, and BOTH NOW ASSERT THAT THE SCAN FETCHED NOTHING: the analyzer
+prints a `FETCH` line when it goes to the network, and each script fails if it sees one.
+
+### THE README'S CLAIM THAT EVERY CONSUMER GOES THROUGH ONE PREDICATE
+
+`README.md` said the two meanings of `ParseError` "are told apart by one predicate,
+`Report::is_notice`, which **every consumer of the finding** goes through". Since 0508 that
+is false, and the exception is the interesting one: the split that decides which notices get
+a line of the reader's screen asks `Report::is_declared_scope_limit` instead, because a
+scope limit is a SHAPE (it aggregates) and a low-confidence finding is SPECIFIC (it names a
+place, so it keeps its own line). Both READMEs now say so.
+
+### THE THREE CONTROLS, AND WHY A GATE THAT HAS NEVER GONE RED IS A COMMENT
+
+    CONTROL A  a genuine producer's err() message carries the marker
+               -> RED, naming src\parser\parser.mbt:131 and the message
+
+    CONTROL B  the scan goes back to skipping the sites it cannot read
+               -> RED: "17 construction sites, 0 built at run time", "genuine producers
+                  16", and "no dynamic-message FParse site was found"
+
+    CONTROL C  the stage runs without --no-auto-fetch-deps
+               -> RED: "the scan FETCHED -- ...moui\0.1.12 would be rewritten by the scan
+                  itself"
+
+All three restores were proven byte-identical by SHA256, and the gate was green again after
+each one. CONTROL C ran with its working directory in `%TEMP%` on purpose, so the fetch it
+caused landed OUTSIDE the repository: the repository's `.repos` had **0** items changed in
+the 30 minutes around it.
+
+=> 判据: A NUMBER THAT WAS MEASURED ONCE IS NOT A NUMBER, IT IS A MEMORY. The comment said
+"23,331" and the CHANGELOG in the SAME RELEASE said "was 23,331 and is now 19,215". A
+measurement that a later increment retired stayed live in the source for eight days
+because nothing re-measured it -- and the number it quoted was the one the repo had already
+published as superseded.
+=> 判据: A GATE THAT COUNTS A SMALLER SET THAN THE CLAIM CANNOT DISAGREE WITH IT. It just
+answers something else, and prints a number that looks like an answer. The skip was one
+line; the silence it bought was the whole defect.
+=> 判据: A SITE THE GATE CANNOT READ IS A SITE THE GATE HAS ONLY HALF CHECKED, AND SAYING SO
+IS PART OF THE CHECK. Two of the nineteen sites build their message at run time, and the
+gate now counts them, names them, and checks their messages where those messages are
+spelled out.
+=> 判据: A LOOSE MARKER IS SAFE ONLY IF THE PATH THAT COULD CARRY IT IS MEASURED, NOT
+ASSUMED. The marker is the substring "subset", and one genuine producer echoes a user's
+import path into its message. What settles it is not the marker's tightness but the
+analyzer's own boundary rule, which withholds the finding before a reader can see it --
+measured, with a fixture, rather than argued.
+=> 判据: A STAGE THAT MEASURES THE CORPUS MUST NOT BE ABLE TO REWRITE IT. The flag was
+missing in two stages, and the corpus the stage measures is the tree a fetch would rewrite.
+Assert that the scan fetched nothing, and the stage says so itself.

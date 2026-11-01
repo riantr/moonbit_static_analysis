@@ -74,7 +74,26 @@ $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $rx = '\(([A-Za-z]+)\)\s*\[([a-z+\-]+)(, MSA-\d{3}, (high|low|undecided))?\]\s*$'
 
 function Get-Findings([string]$dir) {
-  $out = & 'C:\Users\31379\.moon\bin\moonrun.exe' $wasm $dir --extern-iface-dir $repos --findings-shown-per-file 1000000 2>&1 | Out-String
+  # `--no-auto-fetch-deps` IS PASSED HERE, and it is not optional. Without it the
+  # analyzer runs `moon fetch` for every import in a corpus's `moon.mod`, and
+  # `moon fetch` deposits under the process CWD -- which for this stage is the
+  # repository root, so the fetch would write into the very `.repos/` tree the
+  # numbers below are measured against. A release stage that can reach the
+  # network is a release stage whose result depends on the network, and a
+  # release stage that can rewrite the corpus it measures is a release stage
+  # whose result depends on what it rewrote. `release.ps1` states the rule for
+  # its own scan; this stage is a release stage now, so it states it too.
+  $out = & 'C:\Users\31379\.moon\bin\moonrun.exe' $wasm $dir --extern-iface-dir $repos --no-auto-fetch-deps --findings-shown-per-file 1000000 2>&1 | Out-String
+  # THE SCAN FETCHED NOTHING, and this is the check that says so. The analyzer
+  # prints a `FETCH` line when it goes to the network for a dependency, and
+  # `moon fetch` deposits under the process CWD -- the repository root here --
+  # so a fetch would rewrite the very `.repos/` tree this stage measures.
+  # `--no-auto-fetch-deps` is what stops it; this line is what notices if it
+  # stops being passed.
+  if ($out -match '(?m)^FETCH') {
+    Write-Output ('  FAIL: the scan FETCHED -- ' + $dir + ' would be rewritten by the scan itself.')
+    exit 1
+  }
   $total = 0; $behav = 0; $only = 0
   $summary = 0
   foreach ($ln in ($out -split "`n")) {

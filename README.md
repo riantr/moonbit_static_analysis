@@ -556,8 +556,11 @@ analysed".
 `ParseError` is not one thing. It covers a **declared scope limit** — the analyzer read a
 construct and did not analyse it — and a **genuine defect** in the file: an unterminated
 string literal, a malformed interface line, a duplicate signature. The two arrive from
-different producers and are told apart by one predicate, `Report::is_notice`, which every
-consumer of the finding goes through:
+different producers and are told apart by one predicate, `Report::is_notice`, which the
+renderer, the counts, the mermaid drawing and the JSON bridge go through. **One consumer
+deliberately does not**: the split that decides which notices get a line of the reader's
+screen asks `Report::is_declared_scope_limit` instead, so a demoted finding keeps its own
+line.
 
 | what it is | rendered | counted as |
 |---|---|---|
