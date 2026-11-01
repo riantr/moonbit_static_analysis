@@ -9031,8 +9031,11 @@ evidence a reader CANNOT reconstruct. The mutation gates mutate the tree, so che
 means mutating the tree the reader is reading; the corpus pins are COMPARED, not printed; and
 the log of a full run is not committed.
 
-So it is recorded here, from the log of the run on the tree that became commit `9e40a3f` --
-the tree this increment produced:
+So it is recorded here. THE VERDICT BELOW IS THE VERDICT OF THE FULL RELEASE GATE RUN ON THE
+TREE THAT CARRIES THIS RECORD: the gate was run on exactly the content this file was committed
+with, and the run's own summary table is what the block below quotes. The same gate also ran on
+the tree that became `9e40a3f` -- the tree the 0510 increment produced -- and it passed there
+as well, so the increment and the record of it agree.
 
     RELEASE GATE PASSED.
 
@@ -9064,8 +9067,21 @@ THE 33 BESIDE 0509's 32 IS NOT A ROT. 32 was the count on the 0.4.39 tree, and t
 stage that is added and not counted is a stage a reader cannot find, which is the very defect
 the README gate was added for, and it is why the count is DERIVED rather than typed.
 
-This is a record of a run at a named commit, not an invariant: the next increment changes the
-stage count, and it will record its own.
+This paragraph is true of the tree that carries it and of nothing else: the next increment that
+changes the tree records its own run the same way, and the stage count moves with it.
+
+### AND WHY IT HAS TO BE HERE, BECAUSE CI IS NOT THIS GATE
+
+`.github/workflows/gate.yml` runs `moon check --deny-warn`, `moon fmt --check`, `moon test
+--target js --deny-warn` and `moon build --target wasm`. That is the LIGHT gate: the package
+compiles and its tests pass. It does NOT run the 87 mutation gates and it does NOT compare the
+corpus pins -- the corpora are not in the repository, they are fetched into `.repos/`, so a CI
+runner has no pinned baseline to compare a scan against. A green CI run therefore says nothing
+about the release gate, and the release gate is the thing that measures the three transfers.
+
+So the verdict cannot be left in a log, and it cannot be left to CI, and it cannot be left to
+whoever ran it last -- which is why it is written down HERE, with every number in it tied to a
+gate that re-checks that number.
 
 => 判据: A NUMBER THAT WAS MEASURED ONCE IS NOT A NUMBER, IT IS A MEMORY. The comment said
 "23,331" and the CHANGELOG in the SAME RELEASE said "was 23,331 and is now 19,215". A
