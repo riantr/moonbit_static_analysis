@@ -9022,6 +9022,51 @@ each one. CONTROL C ran with its working directory in `%TEMP%` on purpose, so th
 caused landed OUTSIDE the repository: the repository's `.repos` had **0** items changed in
 the 30 minutes around it.
 
+### THE GATE'S OWN VERDICT, RECORDED WHERE A READER CAN FIND IT
+
+Every other increment in this file records what the release gate said when it ran on that
+increment's tree. 0510 did not, and the omission is not a small one: the three fixes above are
+worth exactly what the gate says about them, and the gate's verdict is the one piece of the
+evidence a reader CANNOT reconstruct. The mutation gates mutate the tree, so checking that claim
+means mutating the tree the reader is reading; the corpus pins are COMPARED, not printed; and
+the log of a full run is not committed.
+
+So it is recorded here, from the log of the run on the tree that became commit `9e40a3f` --
+the tree this increment produced:
+
+    RELEASE GATE PASSED.
+
+The summary table above that line had one row per stage, and every row was True:
+
+    the mutation gates      87   one per roster entry; the roster gate checks the count on
+                                     every run (check_gate_roster.ps1: ROSTER OK: 87 gates,
+                                     one harness, one roster, and a count that matches)
+    the other stages        33   the list is DERIVED from release.ps1 and checked against both
+                                     READMEs by check_readme_links.ps1, which prints "the
+                                     release gate runs 33 stages besides the mutation gates"
+                                     and fails when a stage runs that the READMEs do not name
+    the corpus pins          7   every one of them [MATCH]; with this repository's own source
+                                     that is the gate's eight trees, carrying 19636 notices
+                                     (the pin is release.ps1's NOTICE_TOTAL)
+
+EVERY NUMBER IN THAT BLOCK IS A NUMBER SOMETHING CHECKS. The 87 is the roster's own count,
+the 33 is derived by the README gate from the gate's own source, and 19636 is the pin the
+corpus stage compares against -- so none of the three can drift without a gate going red.
+
+"RELEASE GATE PASSED." IS NOT A CLAIM ABOUT THE EXIT CODE, and that is worth spelling out:
+release.ps1's other branch prints "RELEASE GATE FAILED: <the stages>" and exits 1, and only
+the branch that reached the end prints this line (release.ps1:2230 and :2234). The line in the
+log IS the other branch's line, so the run exited 0.
+
+THE 33 BESIDE 0509's 32 IS NOT A ROT. 32 was the count on the 0.4.39 tree, and the stage
+"the behavior lens: measured against its own header" was added to the gate afterwards, by
+2b033f8 -- the increment that found the behavior lens's table was a comment nothing checked. A
+stage that is added and not counted is a stage a reader cannot find, which is the very defect
+the README gate was added for, and it is why the count is DERIVED rather than typed.
+
+This is a record of a run at a named commit, not an invariant: the next increment changes the
+stage count, and it will record its own.
+
 => 判据: A NUMBER THAT WAS MEASURED ONCE IS NOT A NUMBER, IT IS A MEMORY. The comment said
 "23,331" and the CHANGELOG in the SAME RELEASE said "was 23,331 and is now 19,215". A
 measurement that a later increment retired stayed live in the source for eight days
@@ -9042,3 +9087,8 @@ measured, with a fixture, rather than argued.
 => 判据: A STAGE THAT MEASURES THE CORPUS MUST NOT BE ABLE TO REWRITE IT. The flag was
 missing in two stages, and the corpus the stage measures is the tree a fetch would rewrite.
 Assert that the scan fetched nothing, and the stage says so itself.
+=> 判据: A VERDICT THAT ONLY THE TOOL THAT PRODUCED IT CAN SEE IS NOT A VERDICT, IT IS A
+RUMOUR. The release gate's verdict lives in a log that is not committed and in a process that
+mutates the tree, so nobody -- neither a reader nor an auditor -- can check it. Record it where
+the reader can find it, tie every number in it to a gate that checks that number, and name the
+commit it belongs to, because a verdict without a commit is a mood.
