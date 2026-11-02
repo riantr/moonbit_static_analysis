@@ -154,6 +154,92 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.41 — the requirements document is one directory up, and the repository never named it
+
+**THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the artifact's import surface and the
+meaning of every rule are the ones 0.4.40 shipped. What changed is **the record**: the
+requirements document that asked for the three transfers is now named in the repository, its three
+rows are quoted verbatim, each row is mapped to the place in this tree that implements it, and a
+new gate keeps that map from rotting.
+
+**THE HOLE WAS IN THE RECORD, NOT IN THE CODE.** The three transfers from PyCQA's `bandit` — a
+per-finding **confidence** axis, **stable family ids** with a checked profile, and **`nosec`**
+with a warning when a suppression matched nothing — were implemented, gated, released and
+independently audited. But the document they came from, `bandit_review.md`, lives **one directory
+above this repository**, and nothing in the repository pointed at it. A reader working from a copy
+of this repository, with no network and no parent directory, could see **what was built** and not
+**what was asked for**: the audit was comparing the work against an objective it could not read.
+
+### THE THREE ROWS, AND WHERE EACH ONE LANDED
+
+| row | what it asks for | where it landed |
+|---|---|---|
+| 1 | a per-finding **confidence** axis beside severity | `src/core/core.mbt:478`, `src/report/report.mbt:214`, `src/jsoncli/main.mbt:24` |
+| 2 | **stable family ids** and a checked profile | `src/core/core.mbt:532`, `:583`, `:617`, `src/sa/profile.mbt:64` |
+| 3 | **`nosec`**, including the stale-suppression warning | `src/sa/profile.mbt:224`, `:296`, `:341`, `src/sa/main.mbt:1045` |
+
+Two of the three predictions were **exact, to the line**. The review said row 2 lands in
+"P1 `core.mbt:491`", and measured at the tree the review read (`9763dfd^`), `src/core/core.mbt:491`
+**was** `pub(all) enum Family {`. The enum sits at line 532 now because the `Confidence` enum was
+added above it by that same commit; the `Lens` enum was already there, at line 455.
+
+**Row 3 landed somewhere else**, and the reason is a property of the analyzer rather than a change
+of plan. The review put it in "`parser.mbt`'s skip machinery", and the parser is **not involved**:
+a suppression that matched nothing is a fact about the **final** finding set — after the lenses
+have run and after the profile has removed the families the reader excluded — and a parser-level
+skip runs **before** the lenses that produce that set. The per-family half needs the finding's
+family, and a family is produced by a lens, not by the parser. So the `nosec` is read from the raw
+source line in `src/sa/profile.mbt` and applied where the final set exists.
+
+### THE REVIEW'S OWN PIN FOR ROW 3 WAS INVERTED BY 0507, AND THE SETTLE SAYS SO
+
+The review observed that row 3's state was "pinned by row C3 of
+`_verify/settle_0505_finding_quality.ps1`, which asserts that a `// nosec` comment suppresses
+**nothing**". Measured at `db08dec`, that row read "THERE IS NO USER-FACING SUPPRESSION". It now
+reads "0507 INVERTED THIS ROW'S CLAIM … the DEFAULT is the row", and pins **off by default**
+rather than "there is no suppression".
+
+**The review's status column was true when it was written.** It read the tree on **2026-10-27**;
+the transfers landed in `9763dfd` on **2026-10-28**. Its "planned, not built" was correct that
+day, and its evidence for row 1 — the finding record was still `line, col, severity, message,
+family, lenses, vst`, and `src/` contained no `confidence` at all — is exactly what `9763dfd^`
+holds. A dated reading is not a stale one.
+
+### THE NEW GATE, AND WHAT IT IS NOT
+
+`_verify/check_transfer_scope.ps1` is a release-gate stage. It names the document, quotes the three
+rows verbatim, resolves every mapped `file:line` against this tree — the file exists, and the
+named line still carries the named symbol — checks that the row-3 divergence is **explained**
+rather than merely noted, checks the inverted pin, checks that the two measuring settles are
+release-gate stages, re-hashes the published artifact when the local registry copy is here, and
+checks that both READMEs reach the document and the files. Its `-SelfTest` injects a defect for
+every way it could stop guarding and requires each one to be caught: **nine injected defects, all
+nine caught**, and an unmutated copy still passes.
+
+**The document is not edited.** It is the requirement, and a requirement edited to match the work
+is no longer the requirement. `bandit_review.md`'s rows 4–8 — identity excludes the line,
+`bandit-baseline`, SARIF, the two-axis histogram as the test oracle, skipped files as reported
+facts — are the review's own further ideas, and they are **not built**. They are a list, not a gap.
+
+### THE DEPENDENCY PIN DID NOT MOVE, AND THE REASON IS A MEASUREMENT
+
+`moonbitlang/async`'s newest published version is still **0.22.7**, and it was already measured
+on 2026-11-02: it declares 194 externs and **drops 22** of the 90 the host contract requires, so
+it is not a bigger surface but a **different** one, and a build against it asks the host for
+something a toolchain bundling 0.22.4 or 0.22.5 cannot supply. The pin stays at **0.22.5** — the
+newest MEASURED to have a host surface those toolchains can satisfy — and
+`_verify/host_requirements.txt` still says `min-host-async: 0.22.5`.
+`_verify/check_host_requirements.ps1` holds the artifact to that contract on every release.
+"Latest dependency first" is the rule; "the newest dependency that is a **valid host**" is the
+rule that survives a user whose toolchain cannot instantiate the artifact at all.
+
+### THE GATE
+
+The full release gate on the tree that carries this version: **121 stage rows, every one True,
+zero False**, exit 0, stderr empty. The rows that matter here: the three transfers **19 rows**,
+the confidence demotion **12 rows**, the finding quality **17 rows**, and the new
+transfer-scope stage. CI is not this gate — `gate.yml` compiles and tests; this gate measures.
+
 ## 0.4.40 — the published documents were wrong, and a fix that stays in the repo is not a fix
 
 **THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the artifact's import surface and the

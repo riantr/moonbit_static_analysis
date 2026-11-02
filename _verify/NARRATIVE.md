@@ -9491,9 +9491,11 @@ finding, and a finding's vocabulary lives with the rest of it.
 "P1 `core.mbt:491`", and MEASURED at the tree the review read (`9763dfd^`, the
 commit before the transfers landed) `src/core/core.mbt:491` was
 `pub(all) enum Family {`. The prediction WAS the line. The enum is now at line
-532, because the `Confidence` and `Lens` enums were added above it -- the id
-table `Family::id`, the inverse `family_by_id`, and the checked profile
-`validate_profile` are the other half of that row.
+532, because the `Confidence` enum -- the vocabulary of the new axis -- was
+added above it by that same commit; the `Lens` enum was already there, at line
+455, and moved down with it -- the id table `Family::id`, the inverse
+`family_by_id`, and the checked profile `validate_profile` are the other half of
+that row.
 
 **ROW 3 LANDED SOMEWHERE ELSE, AND HERE IS WHY.**
 
@@ -9594,3 +9596,80 @@ where the reader is.
 The review's status column was true on the day it was written, one day before the
 work landed. Reconciling a dated document means measuring it at its own date, not
 editing it to match today.
+
+## 0515: THE REQUIREMENTS DOCUMENT IS IN THE RECORD NOW, AND 0.4.41 CARRIES IT
+
+0514 closed a hole in the RECORD: the objective was a document OUTSIDE this repository, and
+nothing in the repository named it, so a reader could see what was built and not what was asked
+for. 0514 named it, quoted its three rows verbatim, mapped each row to the place in this tree
+that implements it, and wrote down WHY row 3 landed somewhere else. This is the release record
+for the increment that carries that.
+
+**WHAT CHANGED, EXACTLY.** One new gate (`_verify/check_transfer_scope.ps1`), one new
+release-gate stage that runs it, NARRATIVE 0514, and one subsection in each README. `src/` did
+NOT change: the findings, the artifact's import surface and the meaning of every rule are the
+ones 0.4.40 shipped.
+
+**THE DEPENDENCY, CHECKED FIRST, AS THE POLICY SAYS.** `moonbitlang/async`'s newest published
+version is **0.22.7** -- checked again on 2026-11-03, and it is the same 0.22.7 that was
+measured on 2026-11-02: it declares 194 externs and DROPS 22 of the 90 the host contract
+requires, so it is not a bigger surface but a DIFFERENT one, and a build against it asks the
+host for something a toolchain bundling 0.22.4 or 0.22.5 cannot supply. The pin stays at
+**0.22.5**, which is the newest MEASURED to have a host surface those toolchains can satisfy.
+The contract that says so is `_verify/host_requirements.txt` (`min-host-async: 0.22.5`), and
+`_verify/check_host_requirements.ps1` holds the artifact to it on every release. "Latest
+dependency first" is the rule; "the newest dependency that is a VALID HOST" is the rule that
+survives a user whose toolchain cannot instantiate the artifact at all.
+
+**AND THE CLAIM THAT WAS WRONG IN THIS INCREMENT, CORRECTED BEFORE THE VERSION WAS CUT.**
+The record first said that the `Confidence` AND `Lens` enums were both added above the `Family`
+enum, and that is wrong: the `Lens` enum was ALREADY there, at line 455 of the tree the review
+read, and only `Confidence` was inserted above `Family`. MEASURED, the three revisions say:
+
+    9763dfd^   Family=491   Confidence=--   Lens=455
+    9763dfd    Family=529   Confidence=475  Lens=493
+    HEAD       Family=532   Confidence=478  Lens=496
+
+The correction is in the record, in this repository, before the version was cut -- which is the
+whole point of 0514: a claim that is wrong in the record is a claim that somebody will read back
+later as a fact.
+
+**THE MEASUREMENTS.** The full release gate, on the tree this increment adds to the 0.4.40
+release, BEFORE the version was cut -- which is the order the policy asks for, the gate first and
+the version second:
+
+    RELEASE GATE PASSED.
+    121 stage rows, every one True, zero False
+    exit 0, stderr empty
+
+    the 87    the mutation gates -- the roster's own count, checked by check_gate_roster.ps1
+    the 34    the other stages -- derived by check_readme_links.ps1 from release.ps1 itself
+    the 19636 the notices over the eight trees -- the pin in release.ps1 the corpus stage
+              compares against, and every one of the eight MATCHED
+
+    the own-source    189 files, 189 parsed, actionable 0
+    the notices       1699 = 125 printed + 1574 aggregated
+
+The 34 is one more than 0513's 33, and the one that is more is the new stage. A count that
+moves is a count that is measured, so this one is written down with the reason.
+
+**AND THE NEW STAGE, ON THIS TREE.** It ran as the last stage of that gate, and it said one
+thing:
+
+    SCOPE OK: the requirements document is named, its three rows are quoted, every mapped site
+    resolves, and the divergence is explained.
+
+What each of its eight checks is FOR is in its own header. And its `-SelfTest` was run against
+this tree as well: nine injected defects, nine caught, and an unmutated copy still green -- so
+the guard has been shown to go red, which is the only way to know a guard is a guard.
+
+=> 判据: A REQUIREMENT DOCUMENT THAT THE REPOSITORY NEVER NAMES IS A REQUIREMENT NOBODY CAN CHECK.
+Three transfers were measurable -- the settles measure them -- but a measure that cannot be
+compared against the requirement it answers measures the wrong thing.
+=> 判据: THE DEPENDENCY RULE AND THE HOST RULE ARE NOT THE SAME RULE, AND THE HOST RULE WINS.
+"Latest dependency first" is right until the latest dependency is one a user's toolchain cannot
+instantiate. The pin is 0.22.5 because 0.22.7 drops 22 of the 90 symbols the host has to
+supply, and that is a measurement, not a preference.
+=> 判据: A WRONG CLAIM IN THE RECORD IS CORRECTED IN THE RECORD, NOT IN THE NEXT INCREMENT.
+It was found by measuring three revisions instead of two, and it was fixed while the change was
+still open -- not after it shipped.

@@ -63,14 +63,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.40
+moon add riantr/moonbit_static_analysis@0.4.41
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.40",
+  "riantr/moonbit_static_analysis@0.4.41",
 }
 ```
 
@@ -106,9 +106,9 @@ import {
 LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
 ```
 
-0.4.40 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
+0.4.41 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
 工具链上能链接起来的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.4.40**——导入面和 0.4.37 一样。
+你的 MoonBit 工具链，或者换到 **0.4.41**——导入面和 0.4.37 一样。
 
 ## 快速上手
 
@@ -259,7 +259,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.40_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.41_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
@@ -725,7 +725,7 @@ stage，就是读者找不到的 stage：
 |---|---|---|
 | 1 | 每个发现一条**置信度**轴，与严重度并列 | `src/core/core.mbt`、`src/report/report.mbt`、`src/jsoncli/main.mbt` |
 | 2 | **稳定的家族 id**，以及一个被检查的 profile | `src/core/core.mbt`、`src/sa/profile.mbt` |
-| 3 | **`nosec`**，包括那条“抑制没压住任何东西”的警告 | `src/sa/profile.mbt`、`src/sa/main.mbt` |
+| 3 | **`nosec`**，包括那条「抑制没压住任何东西」的警告 | `src/sa/profile.mbt`、`src/sa/main.mbt` |
 
 第 3 行落在**别的地方**，和评审预测的不一样。评审把它放在 `parser.mbt` 的 skip
 机制里，而 parser 并不参与：一条什么都没压住的抑制，是关于**最终**发现集合的事实，而
@@ -735,7 +735,7 @@ pin（0507 按 settle 自己的话把它反转了），以及那份有日期的�
 
 **这份地图是被检查的，不是被断言的。** `_verify/check_transfer_scope.ps1` 点名那份
 文档、逐字引用那三行，并把 §0514 地图里的每个 `file:line` 对着这棵树解析一遍——文件
-在，而且那一行还带着那个符号。它的 `-SelfTest` 会往一份副本里为“这道门禁可能不再
+在，而且那一行还带着那个符号。它的 `-SelfTest` 会往一份副本里为「这道门禁可能不再
 守住的每一种方式”注入一种缺陷，并要求每一种都被抓到。**全部被抓到**，而且门禁会打印出
 到底有几种。
 
