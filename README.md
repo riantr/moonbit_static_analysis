@@ -806,10 +806,40 @@ and is not named here is a stage a reader cannot find:
     the notice flood: which notices deserve a line, measured
     the three bandit transfers: measured, not asserted
     the confidence demotion: measured, not asserted
+    the transfer scope: the requirements document, the three rows, and where they landed
 
 The list is DERIVED from `_verify/release.ps1` and checked by
 `_verify/check_readme_links.ps1`, so a stage added to the gate and not named here makes
 that gate red rather than quietly widening what the gate does.
+
+### What the three transfers were asked for
+
+The confidence axis, the stable family ids and the `nosec` are not features this
+project invented. They are three rows of a **requirements document that lives one
+directory above this repository** — `bandit_review.md`, a review of PyCQA's
+`bandit`, read at the working tree as of **2026-10-27**. That document is **not**
+edited here: a requirements document edited to match the work is no longer the
+requirement.
+
+| row | what it asks for | the files that implement it |
+|---|---|---|
+| 1 | a per-finding **confidence** axis beside severity | `src/core/core.mbt`, `src/report/report.mbt`, `src/jsoncli/main.mbt` |
+| 2 | **stable family ids** and a checked profile | `src/core/core.mbt`, `src/sa/profile.mbt` |
+| 3 | **`nosec`**, including the stale-suppression warning | `src/sa/profile.mbt`, `src/sa/main.mbt` |
+
+Row 3 landed **somewhere else** than the review predicted. The review put it in
+`parser.mbt`'s skip machinery, and the parser is not involved: a suppression that
+matched nothing is a fact about the **final** finding set, and a parser-level skip
+runs **before** the lenses that produce that set. The reasoning, the review's own
+pin for that row (which 0507 inverted, in the settle's own words), and the dated
+status column are in `_verify/NARRATIVE.md` §0514.
+
+**The map is checked, not asserted.** `_verify/check_transfer_scope.ps1` names the
+document, quotes the three rows verbatim, and resolves every `file:line` of the map
+in §0514 against this tree — the file exists, and the named line still carries the
+named symbol. Its `-SelfTest` injects a defect into a copy of the tree for every way
+this gate could stop guarding, and requires each one to be caught. **All of them
+are**, and the gate prints how many there were.
 
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate

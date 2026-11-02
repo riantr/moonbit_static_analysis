@@ -9410,3 +9410,187 @@ reader who is not told that cannot tell which of the numbers are theirs to check
 => 判据: THE GATE THAT PRODUCES A VERDICT AND THE PIPELINE THAT PUBLISHES ARE DIFFERENT GATES.
 CI compiles and tests; the release gate measures. Saying "CI is green" as if it meant the
 release gate passed would be exactly the kind of substitution this repo keeps writing down.
+
+## 0514: THE REQUIREMENTS DOCUMENT IS OUTSIDE THE REPOSITORY, AND ONE ROW LANDED SOMEWHERE ELSE
+
+THE OBJECTIVE WAS "reference `bandit_review.md` and do what it says". The document is
+`bandit_review.md`, in the directory ABOVE this repository:
+
+    D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\bandit_review.md
+
+It is NOT in this repository, and this repository does NOT edit it. It is the
+requirements document, and a requirements document edited to match the work is no
+longer the requirement. It declares itself a dated reading -- "**Read at:** the
+working tree as of 2026-10-27" -- and the date turns out to matter: the transfers
+landed the NEXT DAY.
+
+### THE HOLE, AND WHO HITS IT
+
+The three transfers were implemented, gated, released and audited. But nothing in
+this repository pointed at the document that asked for them. A reader -- or an
+auditor -- working from a COPY of this repository, with no network and no parent
+directory, could see WHAT was built and not WHAT WAS ASKED FOR. The audit compared
+the work against the objective, and the objective was a file the audit could not
+reach.
+
+That is the hole this increment closes, and it is closed IN THE REPOSITORY rather
+than in the document: the requirements document is named, its three rows are
+quoted, and each row is mapped to the place in this tree that implements it.
+
+### THE THREE ROWS, QUOTED
+
+From the review's section 15, lines 748-752, verbatim -- the requirement text and
+the review's own prediction of where it lands:
+
+    row 1   a per-finding **confidence** axis beside severity
+            where it lands: P2 `report.mbt`, P9 `jsoncli`
+
+    row 2   **stable family ids** and a checked profile
+            where it lands: P1 `core.mbt:491`, P8 `scan()` options
+
+    row 3   **`nosec`**, including the stale-suppression warning
+            where it lands: P3 `parser.mbt`'s skip machinery
+
+The `P` numbers are the ports of `bandit-02-module-mapping.mmd`: P1 is
+`core.mbt:491` -- the Family enum -- P2 is `report.mbt` -- the Report record --
+P3 is `parser.mbt` -- the skip machinery -- P8 is `sa/main.mbt` -- `scan()` options
+-- and P9 is `jsoncli` -- the machine-readable channel.
+
+### WHERE THEY LANDED
+
+Two of the three predictions were EXACT, and one was not. The map below is the one
+the gate reads; `_verify/check_transfer_scope.ps1` resolves every line of it
+against this tree, so it cannot rot without the gate saying so.
+
+    --- TRANSFER MAP ---
+    row 1  src/core/core.mbt:478        enum Confidence
+    row 1  src/report/report.mbt:214    fn Report::confidence
+    row 1  src/jsoncli/main.mbt:24      confidence : String
+    row 2  src/core/core.mbt:532        enum Family
+    row 2  src/core/core.mbt:583        fn Family::id
+    row 2  src/core/core.mbt:617        fn family_by_id
+    row 2  src/sa/profile.mbt:64        fn validate_profile
+    row 3  src/sa/profile.mbt:224       fn parse_nosec
+    row 3  src/sa/profile.mbt:296       fn apply_nosec
+    row 3  src/sa/profile.mbt:341       fn stale_report
+    row 3  src/sa/main.mbt:1045         fn filtered_reports
+    --- END TRANSFER MAP ---
+
+AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
+and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
+`_verify/check_transfer_scope.ps1` is the stage that checks THIS map against the
+tree.
+
+**ROW 1 LANDED WHERE THE REVIEW SAID.** P2 is `report.mbt`, and the axis is
+`Report::confidence` there; P9 is `jsoncli`, and the JSON record carries
+`confidence : String` beside it. The vocabulary itself is in `core.mbt` as
+`Confidence` -- `high`, `low`, `undecided` -- because the axis is a property of a
+finding, and a finding's vocabulary lives with the rest of it.
+
+**ROW 2 LANDED WHERE THE REVIEW SAID, TO THE LINE.** The review predicted
+"P1 `core.mbt:491`", and MEASURED at the tree the review read (`9763dfd^`, the
+commit before the transfers landed) `src/core/core.mbt:491` was
+`pub(all) enum Family {`. The prediction WAS the line. The enum is now at line
+532, because the `Confidence` and `Lens` enums were added above it -- the id
+table `Family::id`, the inverse `family_by_id`, and the checked profile
+`validate_profile` are the other half of that row.
+
+**ROW 3 LANDED SOMEWHERE ELSE, AND HERE IS WHY.**
+
+The review predicted "P3 `parser.mbt`'s skip machinery", and the prediction was
+reasonable: the mapping's own note for P3 is "a second kind of skip, the USER's
+rather than the analyzer's", and the analyzer already had a kind of skip -- the
+declared scope limit, recorded as `skips`, distinct from read failures.
+
+Two halves of row 3 are about READING A COMMENT, and the third half is about
+REPORTING THAT THE COMMENT MATCHED NOTHING. The third half cannot be done where
+the first two are, and the reason is ordering, not taste:
+
+* a `nosec` that suppressed nothing is a fact about the FINAL finding set -- the
+  findings that exist after the lenses have run (structural, type, behaviour) and
+  after the profile has removed the families the reader excluded. A parser-level
+  skip runs BEFORE the lenses, so at parse time that set does not exist. Deciding
+  "this nosec matched nothing" there would mean deciding it before knowing what
+  was going to be found, and every `nosec` in every file would be reported stale.
+* the per-family half needs the finding's FAMILY, and a family is produced by a
+  lens and not by the parser. The enum gives the vocabulary; it does not give the
+  family of the finding on line 41.
+
+So the whole `nosec` machinery reads the raw source line in `src/sa/profile.mbt`
+(`parse_nosec`) and applies itself where the final set exists (`apply_nosec`,
+called from `filtered_reports` in `src/sa/main.mbt`, in the order profile ->
+`nosec` -> stale). The stale suppression is a finding of its own family --
+`StaleNosec`, `MSA-012`, severity `Warning`, confidence `high` -- and it carries
+NO lens, because no lens produced it. The parser is not involved.
+
+**THE REVIEW'S OWN PIN FOR ROW 3 WAS INVERTED BY 0507, AND THE SETTLE SAYS SO.**
+The review observed that row 3's state was "pinned by row C3 of
+`_verify/settle_0505_finding_quality.ps1`, which asserts that a `// nosec`
+comment suppresses **nothing**". MEASURED at `db08dec`, that row read:
+
+    # C3 -- THERE IS NO USER-FACING SUPPRESSION. A defect on a line carrying a
+    # `# nosec` comment is still reported. This is the state transfer 3 would
+    # change, pinned so the change is visible when it happens.
+
+and it now reads:
+
+    # 0507 INVERTED THIS ROW'S CLAIM. It used to assert that there was no
+    # user-facing suppression AT ALL; the suppression is there now, and the
+    # DEFAULT is the row.
+
+    Say-OK 'C3' 'OK' 'a `// nosec` comment suppresses nothing BY DEFAULT: the finding is still reported'
+
+So the row the review quotes was INVERTED, in the settle's own words, by the
+increment that built the transfer. What it pins now is "off by default", not
+"there is no suppression". The review's sentence was true when it was written.
+
+### THE STATUS COLUMN WAS TRUE WHEN IT WAS WRITTEN
+
+The review says all three rows are "planned, **not built**", and gives its
+evidence for row 1: the finding record is still `line, col, severity, message,
+family, lenses, vst` (`src/jsoncli/main.mbt:12-20`), and `src/` contains no
+`confidence` at all.
+
+MEASURED at `9763dfd^` -- the tree the review read -- that is EXACT: the
+`Finding` struct at `src/jsoncli/main.mbt:12-20` had those seven fields and no
+more, and `git grep confidence 9763dfd^ -- src` matched nothing at all.
+
+The transfers landed in `9763dfd`, dated 2026-10-28 -- ONE DAY AFTER the review's
+read date. The review's status column is dated, it says so, and it was TRUE. The
+work was already on its way when the document was written; the document did not
+know it yet.
+
+### ROWS 4-8 ARE THE REVIEW'S OWN FURTHER IDEAS, AND THEY ARE NOT THIS OBJECTIVE
+
+The review's section 15 continues past row 3, under the heading "New, and worth
+adding to the plan": identity excludes the line, `bandit-baseline`, SARIF output,
+the two-axis histogram as the test oracle, and skipped files as reported facts.
+Those are the review's suggestions for LATER, not the rows 1-3 it says the plan
+already speaks for. They are NOT built, and this increment does not pretend
+otherwise. A reader who wants them has the list, and it is a list, not a gap.
+
+### THE PUBLISHED BYTES, BY HASH
+
+The shipped artifact, so that "what was published" is a number rather than a
+claim:
+
+    the published wasm    134767FE5267844934309FEBED49C307B5615CFE8F6B5CA4D4E461EA45DC1838
+    its size              536714 bytes
+    the registry checksum 09e616d21f4a6232dc944dc31717466eff600386e7353660cef7ed634f80e67a
+    created at            2026-11-02T12:40:07.644669+00:00
+
+`_verify/check_transfer_scope.ps1` re-hashes the local registry copy of that asset
+when it is there, and says so plainly when it is not.
+
+=> 判据: A REQUIREMENT DOCUMENT THAT THE REPOSITORY NEVER NAMES IS A REQUIREMENT NOBODY CAN CHECK.
+The three transfers were measurable -- the settles measure them -- but a measure
+that cannot be compared against the requirement it answers measures the wrong
+thing.
+=> 判据: A PREDICTION THAT DID NOT COME TRUE IS A FINDING, NOT A DISCREPANCY.
+The review put row 3 in the parser and the parser is not involved, and the reason
+is a property of the analyzer rather than a change of plan. Say so, in the record,
+where the reader is.
+=> 判据: A DATED READING IS NOT A STALE ONE.
+The review's status column was true on the day it was written, one day before the
+work landed. Reconciling a dated document means measuring it at its own date, not
+editing it to match today.

@@ -2221,6 +2221,48 @@ if (-not (Test-Path -LiteralPath $MDT -PathType Leaf)) {
     $failed += 'confidence-demotion'
   }
 }
+# --- the transfer-scope stage ------------------------------------------------
+# 0514. THE OBJECTIVE WAS A DOCUMENT THAT IS NOT IN THIS REPOSITORY. The three
+# transfers were built, gated and released, and nothing in the tree pointed at
+# the requirements document that asked for them -- so an auditor working from a
+# COPY of this repository, with no network and no parent directory, could see
+# WHAT was built and not WHAT WAS ASKED FOR.
+#
+# This stage checks the SCOPE, and it checks it by RESOLVING it: the document is
+# named, the three rows are quoted verbatim, and every implementation site the
+# record names is checked against THIS tree -- the file exists, and the named
+# line still carries the named symbol. A map of where the author THOUGHT the
+# code was is not a map.
+#
+# It is offline, fast, and it costs nothing: no network, no registry, no
+# compiler, no corpus.
+$TSC = Join-Path $root '_verify\check_transfer_scope.ps1'
+if (-not (Test-Path -LiteralPath $TSC -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_transfer_scope.ps1'
+  $failed += 'transfer-scope'
+} else {
+  Stage 'the transfer scope: the requirements document, the three rows, and where they landed' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $TSC 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|SCOPE OK|SCOPE FAILED|ABORT)') {
+        Write-Output ('  ' + $ln.Trim())
+      }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'transfer-scope' }
+  $stageName = 'the transfer scope: the requirements document, the three rows, and where they landed'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'transfer-scope'
+  }
+}
 # --- verdict -----------------------------------------------------------------
 Write-Output ''
 Write-Output '=== stage summary ==='

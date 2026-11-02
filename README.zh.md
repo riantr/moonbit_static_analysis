@@ -708,10 +708,36 @@ stage，就是读者找不到的 stage：
     the notice flood: which notices deserve a line, measured
     the three bandit transfers: measured, not asserted
     the confidence demotion: measured, not asserted
+    the transfer scope: the requirements document, the three rows, and where they landed
 
 这份名单是从 `_verify/release.ps1` **推出来的**，并由 `_verify/check_readme_links.ps1`
 检查：所以一个加了门禁、却没在这里点名的 stage，会让那道门禁变红，而不是悄悄地让门禁做的事
 变宽。
+
+### 这三项转移是被要求做的什么
+
+置信度轴、稳定的家族 id 和 `nosec` 不是这个项目自己发明的。它们是**一份需求文档里的
+三行要求**——那份文档在本仓库的**上一级目录**：`bandit_review.md`，一份对 PyCQA
+`bandit` 的评审，读于 **2026-10-27** 的工作树。那份文档在这里**不会被改**：一份被改成
+迎合实现的需求文档，就不再是需求了。
+
+| 行 | 它要求什么 | 实现它的文件 |
+|---|---|---|
+| 1 | 每个发现一条**置信度**轴，与严重度并列 | `src/core/core.mbt`、`src/report/report.mbt`、`src/jsoncli/main.mbt` |
+| 2 | **稳定的家族 id**，以及一个被检查的 profile | `src/core/core.mbt`、`src/sa/profile.mbt` |
+| 3 | **`nosec`**，包括那条“抑制没压住任何东西”的警告 | `src/sa/profile.mbt`、`src/sa/main.mbt` |
+
+第 3 行落在**别的地方**，和评审预测的不一样。评审把它放在 `parser.mbt` 的 skip
+机制里，而 parser 并不参与：一条什么都没压住的抑制，是关于**最终**发现集合的事实，而
+parser 层的 skip 跑在产出那个集合的镜头**之前**。推理过程、评审给那一行自己钉的
+pin（0507 按 settle 自己的话把它反转了），以及那份有日期的状态栏，都在
+`_verify/NARRATIVE.md` §0514。
+
+**这份地图是被检查的，不是被断言的。** `_verify/check_transfer_scope.ps1` 点名那份
+文档、逐字引用那三行，并把 §0514 地图里的每个 `file:line` 对着这棵树解析一遍——文件
+在，而且那一行还带着那个符号。它的 `-SelfTest` 会往一份副本里为“这道门禁可能不再
+守住的每一种方式”注入一种缺陷，并要求每一种都被抓到。**全部被抓到**，而且门禁会打印出
+到底有几种。
 
 这份名册是**被检查的，不是被断言的**：一个在磁盘上存在、却不在名册里的变异门**永远不会跑**，
 而一个不会跑的变异门和一个跑绿了的变异门长得一模一样。`_verify/check_gate_roster.ps1`
