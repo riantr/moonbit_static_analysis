@@ -9337,3 +9337,76 @@ turned a panic into a silent truncation. A migration is chosen by reading what t
 => 判据: A RELEASE THAT FAILED BEFORE IT PUBLISHED DID NOT CONSUME ITS VERSION. The publish step
 was skipped, the registry has no such version, and there is no release for it -- so the tag moves
 to the fixed commit instead of leaving a spent number and a red tag behind.
+
+## 0513: THE VERDICT OF THE GATE ON THE TREE THAT CARRIES 0.4.40, AND WHICH OF ITS NUMBERS AN OFFLINE READER CAN RE-MEASURE
+
+0510 recorded the gate's verdict for the 0.4.39 tree, and 0512 recorded the toolchain drift that
+stopped the first attempt at 0.4.40. This records the verdict on the tree that carries the
+0.4.40 tag, and it is the FIRST verdict in this repository that was taken AFTER publication --
+which is the only order in which one stage can pass, because that stage asks the registry for
+the version in `moon.mod`.
+
+MEASURED, the full release gate on the tree the tag names:
+
+    RELEASE GATE PASSED.
+    120 stage rows, every one True, zero False
+    exit 0, stderr empty, 2014 seconds
+
+    the 87    the mutation gates -- the roster's own count, checked by check_gate_roster.ps1
+    the 33    the other stages -- derived by check_readme_links.ps1 from release.ps1 itself
+    the 19636 the notices over the eight trees -- the pin in release.ps1 the corpus stage
+                    compares against
+
+AND THE STAGE THAT ONLY EXISTS AFTER PUBLICATION, which is the reason this run was made last:
+
+    scanned 171 files under .repos/riantr/moonbit_static_analysis/0.4.40
+    ok  the tree scanned is 0.4.40
+    ok  parsed 171/171 files
+    SUMMARY  files=171  parsed=171  actionable=0  notices=1512  total=1512
+    ok  actionable = 0
+    ok  it requires exactly the 90 contracted symbols
+    ok  the published bytes satisfy the host contract
+    GATE OK: the published 0.4.40 scans its own shipped source clean.
+
+That is the only check in this repository that exercises the REAL delivery path: the registry
+compiled the artifact server-side, `moonx` fetched and ran THAT, and the published BYTES -- not
+a local rebuild -- satisfy the host contract of 0512's and 0509's contract file.
+
+WHICH OF THOSE NUMBERS AN OFFLINE READER CAN ACTUALLY RE-MEASURE, one per number, and this is
+the same answer 0510 gave and the same reason:
+
+    the 87 and the 33   YES. The roster gate counts the gates on disk and the README gate
+                        derives the stage list from release.ps1 itself. Neither touches the
+                        network and both are fast.
+    the 19636           NO. The seven corpora are registry packages fetched at gate time into
+                        .repos/ -- gitignored, so not in the repository. An offline reader can
+                        check that the pin is defined, that it is not empty, and that the
+                        corpus stage compares against it; there is no baseline to compare a
+                        scan against.
+    the own-source pins YES, and they are the ones that cover THIS tree: the file count, the
+                        parsed count, actionable 0, and the notices reconciling.
+    the 171 and the     NO, and this is the part a reader must not assume: the published tree
+    the published scan    is the REGISTRY's copy, fetched at gate time, and the scan above ran
+                          the registry's artifact. An offline reader can read the two settles
+                          and the roster, and can see that the stage exists and what it
+                          asserts -- but the published tree itself is not in this repository.
+
+WHAT THE GATE DID NOT COVER, because it is not the gate's job and the reader should not assume
+it was: CI is NOT this gate. The workflow in .github/workflows/gate.yml runs `moon check`,
+`moon fmt --check`, `moon test --target js` and `moon build --target wasm` -- no mutation
+gates, no corpus pins, no own-source reconciliation. The release gate is local. A green CI run
+says the package COMPILES and its tests pass; it says nothing about the corpus baselines or the
+own-source pins. And the toolchain is part of the verdict's scope: this gate ran on moon
+0.1.20261028, while the publishing CI runs on the newest toolchain -- which is exactly the
+difference 0512 is about, and the reason that verdict has to be taken on the tree that the tag
+names rather than on a predecessor.
+
+=> 判据: A VERDICT NAMES THE TREE IT IS ABOUT. The commit is in the record, because a verdict
+that floats free of a commit is a mood. And the tree it names is the one the TAG names, because
+the artifact that was published is the one that tag built.
+=> 判据: A NUMBER THAT CANNOT BE RE-MEASURED MUST SAY SO, PER NUMBER. The corpus pins and the
+published tree both need the registry; the own-source pins and the two settles do not, and a
+reader who is not told that cannot tell which of the numbers are theirs to check.
+=> 判据: THE GATE THAT PRODUCES A VERDICT AND THE PIPELINE THAT PUBLISHES ARE DIFFERENT GATES.
+CI compiles and tests; the release gate measures. Saying "CI is green" as if it meant the
+release gate passed would be exactly the kind of substitution this repo keeps writing down.
