@@ -157,8 +157,18 @@ pub(all) enum FenceMode {
 ///   - `nocheck` opts the block OUT of compilation and testing;
 ///   - a bare `moonbit` fence is display-only, while `mbt` (with or without
 ///     `check`) is compiled.
+/// The two `exact_view` calls are the migration of `String::view`, which the
+/// toolchain deprecated on 2026-10-29 (moon 0.1.20261029) in favour of
+/// `clamped_view` / `exact_view` -- and `moon check --deny-warn` turns that
+/// deprecation into an error. `exact_view` is the faithful one: the old `view`
+/// ABORTED on an invalid range, where `clamped_view` would silently truncate.
+/// The range here is the whole string, and `after_n` slices with the clamping
+/// operator, so the start is never a split surrogate pair and the two cannot
+/// differ.
 pub fn fence_mode(info : String) -> FenceMode? {
-  let words = trim_sp_view(trim_sp_view(after_n(info, 3).view()).view())
+  let words = trim_sp_view(
+    trim_sp_view(after_n(info, 3).exact_view()).exact_view(),
+  )
   // The language word must be a WHOLE word. `mbtcheck` is one token, not `mbt`
   // plus `check`, and the toolchain does not compile it — a bare `has_prefix`
   // would have called it FTest. Whitespace between the words is free-form:
@@ -169,9 +179,9 @@ pub fn fence_mode(info : String) -> FenceMode? {
     ""
   } else if words.has_prefix("moonbit ") {
     // "moonbit" is 7 characters, so the separator puts the rest at index 8
-    trim_sp_view(after_n(words, 8).view())
+    trim_sp_view(after_n(words, 8).exact_view())
   } else if words.has_prefix("mbt ") {
-    trim_sp_view(after_n(words, 4).view())
+    trim_sp_view(after_n(words, 4).exact_view())
   } else {
     return None
   }
@@ -693,11 +703,13 @@ fn bound_params(list : String) -> Array[String] {
 
 ///|
 /// Strip a visibility prefix: `pub(all) `, `pub(open) `, `pub(in "x") `, `pub `.
+///
+/// (`exact_view` here is the non-deprecated `String::view`; see `fence_mode`.)
 fn strip_visibility(t : String) -> String {
   if !t.has_prefix("pub") {
     return t
   }
-  let after = trim_sp_view(after_n(t, 3).view())
+  let after = trim_sp_view(after_n(t, 3).exact_view())
   if !after.has_prefix("(") {
     return after
   }

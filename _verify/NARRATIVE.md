@@ -9238,3 +9238,102 @@ newer versions do -- not just that they are newer.
 => 判据: NEWER IS NOT A SUPERSET. 0.22.6 wants three symbols more than 0.22.5 declares and 0.22.7
 wants 22 fewer, so the two failures are not the same failure. A claim that names one bad version
 teaches the reader the wrong shape.
+
+## 0512: THE LOCAL GATE RAN ON A COMPILER ONE DAY OLDER THAN THE RUNNER, AND THE RUNNER IS THE ONE THAT PUBLISHES
+
+0511 was about the documents. This one is about the toolchain the gates run on, and it was found
+by the part of the release this repository does not control: CI installs the **newest** MoonBit
+toolchain on every run, and the newest one moved.
+
+### THE FAILURE, AND WHAT IT WAS NOT
+
+The publish run for `v0.4.40` failed at its Gate step with five errors, all of them the same
+deprecation:
+
+    Error Warning (deprecated): Use `clamped_view(start~, end~)` or `exact_view(start~, end~)` instead
+
+in `src/moonfiles/moonfiles.mbt` -- a file the release had not touched. The local release gate had
+passed on the same SOURCE: 120 rows, every one True, zero False, exit 0, stderr empty, 2205
+seconds. **Both statements were true, and they were about different compilers.**
+
+MEASURED, the two toolchains:
+
+    local   moon 0.1.20261028 (2026-10-28)   moonc v0.10.18+6c83a7f62   core 0.10.18
+    CI      moon 0.1.20261029 (2026-10-29)   moonc v0.10.19+97801ee1b   the core that ships with it
+
+**One day**, and the CI dates pin the move to a window rather than to a guess. The gate workflow
+installs the NEWEST toolchain on every run, and:
+
+    2026-11-01T17:22:58Z   moon 0.1.20261028   the run on ca53124   GREEN
+    2026-11-02T11:52:18Z   moon 0.1.20261029   the run on ddcfd96   RED
+
+**AND THIS RELEASE'S OWN CHANGES CANNOT HAVE CAUSED IT.** The five errors name
+`src/moonfiles/moonfiles.mbt`, and that file is BYTE-IDENTICAL in the two commits:
+
+    a0d33bc88cbe7b9b446a27eb4ad12c0a298e3399   src/moonfiles/moonfiles.mbt @ ca53124
+    a0d33bc88cbe7b9b446a27eb4ad12c0a298e3399   src/moonfiles/moonfiles.mbt @ ddcfd96
+
+Only documents and `moon.mod` changed between them. So the repository was not broken by this
+release: **any push after the toolchain moved would have failed the same way**, and the last
+green run on this repository was the one that installed 0.1.20261028. A local gate that runs on
+yesterday's compiler cannot see that, and a CI failure that looks like it belongs to the release
+under review belongs to the DATE.
+
+**AND THE ORDERING IS MEASURED, NOT ASSUMED.** The full gate was also run on the tree that
+carried the bumped version, and its verdict was:
+
+    115 stage rows True, 1 False -- and the False one is `published package self-scan`
+
+That stage asks the registry for the version in `moon.mod` -- 0.4.40 -- and the registry does not
+have it yet, so the scan produced no output and the stage aborted. That is the ordering fact
+release.ps1 documents, and the run shows it in its own numbers: the corpus comparison is gated on
+the earlier stages, so it was SKIPPED, which is why that run has 115 rows where the published one
+has 120. A run that aborts there has not found a defect.
+
+The 2026-10-29 core deprecated `String::view`. The 2026-10-28 core still carries it,
+with the comment that explains why it was still there at all:
+
+    // The compiler generates calls to `view` for lexmatch/lexscan. Keep this
+    // method without deprecation until compiler lowering changes.
+
+So the deprecation landed with the compiler lowering change that comment was waiting for. And
+`moon check --deny-warn` is what turned it into a failure: the CI's Gate step runs
+`moon check --deny-warn`, so a deprecation is an ERROR there, and on the local toolchain it was
+nothing at all -- the local gate could not have seen it, because that core did not have it yet.
+
+The fix is the five call sites: `String::view` -> `String::exact_view`.
+
+### WHY THE REPLACEMENT IS `exact_view` AND NOT `clamped_view`
+
+Because the NAMES do not carry the contract. The old `view` ABORTED on an invalid range -- the
+core guards `start_offset >= 0 && start_offset <= end_offset && end_offset <= self.length()` and
+calls `abort` otherwise -- and `exact_view` aborts on the same condition. `clamped_view` pulls the
+offsets to the nearest end instead, which is a DIFFERENT behaviour wearing a new name: a panic
+would have become a silent truncation.
+
+And the two cannot differ at these five sites anyway, so the choice is safe rather than merely
+defensible: every range is the whole string, and `after_n` slices with the **clamping** operator,
+so the result never starts with a split surrogate pair. That is the one thing `exact_view` checks
+that `view` did not, and it cannot fire here.
+
+### NOTHING WAS PUBLISHED, AND THE TAG WAS MOVED
+
+The publish workflow is ordered so that a failure cannot publish: the Gate step runs BEFORE
+`moon publish`, and the publish and release steps were SKIPPED. The registry has no 0.4.40, and
+there is no GitHub Release for it. So the version was never consumed -- and the tag was moved to
+the fixed commit rather than leaving a version number spent on nothing, with a tag pointing at a
+tree whose own CI is red.
+
+=> 判据: A GATE THAT RUNS ON A DIFFERENT COMPILER THAN THE RELEASE IS NOT THE SAME GATE. A green
+local run and a red CI can both be true, and the difference between them is a DATE. What the local
+gate proved was that this source is good on the compiler it had; what CI proved was that it is not
+good on the compiler it will meet.
+=> 判据: A DEPRECATION IS NOT A WARNING, IT IS A DATE. It marks the day the API stopped being the
+right one, and `--deny-warn` makes that day a build failure on the machine that publishes. The
+version that still compiles is the version that will stop compiling.
+=> 判据: THE NAME OF THE REPLACEMENT IS NOT THE CONTRACT. `clamped_view` and `exact_view` differ
+in what they do with an invalid range, and the old `view` aborted -- so choosing by name would have
+turned a panic into a silent truncation. A migration is chosen by reading what the old thing DID.
+=> 判据: A RELEASE THAT FAILED BEFORE IT PUBLISHED DID NOT CONSUME ITS VERSION. The publish step
+was skipped, the registry has no such version, and there is no release for it -- so the tag moves
+to the fixed commit instead of leaving a spent number and a red tag behind.

@@ -156,10 +156,11 @@ half. It went red once the type side was covered too.
 
 ## 0.4.40 — the published documents were wrong, and a fix that stays in the repo is not a fix
 
-**THE ANALYZER DID NOT CHANGE.** The only `src/` difference between 0.4.39 and 0.4.40 is a
-**comment**: the number 23,331 was replaced by a claim that a gate re-measures on every release.
-The artifact's behaviour, its import surface and its findings are the ones 0.4.39 shipped. What
-changed is the **evidence behind the claims**, and the **documents that ship with the package**.
+**THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the artifact's import surface and the
+meaning of every rule are the ones 0.4.39 shipped. Two things did change: the **documents that
+ship with the package**, and **five calls to a core API that the toolchain deprecated**. Apart
+from those, the `src/` difference is a **comment**: the number 23,331 was replaced by a claim that
+a gate re-measures on every release.
 
 ### TWO CLAIMS IN THE SHIPPED README WERE WRONG, AND BOTH COST A READER SOMETHING
 
@@ -191,6 +192,29 @@ needs to know that upgrading this package alone will not fix their toolchain.
 **THE PIN STAYS AT 0.22.5.** `_verify/check_host_requirements.ps1` holds the artifact to the 90
 contracted symbols in **both** directions, so a build against 0.22.7 would import 22 symbols the
 contract does not name, and the gate would reject it.
+
+### AND THE BUILD WAS GREEN HERE AND RED ON THE RUNNER
+
+The release gate is green on the machine that cuts it — on a toolchain. CI installs the **newest**
+MoonBit toolchain on every run, and on 2026-11-02 the newest was **moon 0.1.20261029**, one day
+newer than the toolchain the local gate had just passed on. The new core deprecated
+`String::view`, and `moon check --deny-warn` turns a deprecation into an error:
+
+```
+Error Warning (deprecated): Use `clamped_view(start~, end~)` or `exact_view(start~, end~)` instead
+```
+
+so the publish run failed at its Gate step with **5 errors in `src/moonfiles/moonfiles.mbt`** — on
+code this release never touched — and **nothing was published**. The fix is those five call sites:
+`String::view` → `String::exact_view`.
+
+**WHY `exact_view` AND NOT `clamped_view`.** The old `view` ABORTED on an invalid range — the core
+guards `start_offset >= 0 && start_offset <= end_offset && end_offset <= self.length()` and calls
+`abort` otherwise — and `exact_view` aborts on the same condition, where `clamped_view` would
+silently truncate. Silently truncating is a different behaviour wearing a new name. The two cannot
+differ at these five sites anyway: every range is the whole string, and `after_n` slices with the
+**clamping** operator, so the result never starts with a split surrogate pair — which is the one
+thing `exact_view` checks that `view` did not.
 
 ### AND THE GATE THAT PRODUCED THIS RELEASE GOT STRICTER
 

@@ -130,9 +130,9 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 
 ## 0.4.40 —— 发布出去的文档写错了，而只修在仓库里的修复，谁也收不到
 
-**分析器本身没有变。** 0.4.39 与 0.4.40 之间 `src/` 的唯一差别是**一段注释**：数字 23,331 被换成
-了一句每次发版都会被门禁重新测量的断言。产物的行为、它的导入面、它的发现，都是 0.4.39 发布的那
-一套。变的是**断言背后的证据**，以及**跟包一起发布的那几份文档**。
+**分析器的行为没有变。** 发现、产物的导入面、每一条规则的含义，都是 0.4.39 发布的那一套。变的有
+两处：**跟包一起发布的那几份文档**，以及**五处对工具链已经弃用的核心 API 的调用**。除此之外，
+`src/` 的差别是**一段注释**：数字 23,331 被换成了一句每次发版都会被门禁重新测量的断言。
 
 ### 跟着包发布出去的 README 里有两句话是错的，而两句都要读者付出代价
 
@@ -159,6 +159,27 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 
 **依赖仍然钉在 0.22.5。** `_verify/check_host_requirements.ps1` **双向**把这个产物卡在那 90 个契约
 符号上，所以对着 0.22.7 构建会导入 22 个契约里没有的符号，门禁会直接拒掉。
+
+### 而构建在这里是绿的，在 runner 上是红的
+
+发版门禁在切它的那台机器上是绿的——在某个工具链上。CI 每次运行都装**最新**的 MoonBit 工具链，
+而 2026-11-02 的最新是 **moon 0.1.20261029**，比本地门禁刚跑过的那个工具链新一天。新的 core 弃用了
+`String::view`，而 `moon check --deny-warn` 会把弃用当成错误：
+
+```
+Error Warning (deprecated): Use `clamped_view(start~, end~)` or `exact_view(start~, end~)` instead
+```
+
+于是 publish 在 Gate 这一步挂了，报 `src/moonfiles/moonfiles.mbt` 里的 **5 个错误**——而这次发版
+根本没碰过那个文件——并且**什么都没发布出去**。修复就是那五处调用：`String::view` →
+`String::exact_view`。
+
+**为什么是 `exact_view` 而不是 `clamped_view`。** 旧的 `view` 在区间非法时是**中止**的——core 里
+`guard start_offset >= 0 && start_offset <= end_offset && end_offset <= self.length()` 否则
+`abort`——而 `exact_view` 在同样的条件下也是中止，`clamped_view` 却是静默截断。静默截断是另一种
+行为换了个名字而已。而且这五处根本不可能有差别：每个区间都是整个字符串，而 `after_n` 用的是
+**clamping** 运算符切片，所以结果开头永远不会是一个被劈开的代理对——而 `exact_view` 比 `view` 多查
+的就只有这一条。
 
 ### 而产出这次发版的门禁变严了
 
