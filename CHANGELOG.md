@@ -154,6 +154,56 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.40 — the published documents were wrong, and a fix that stays in the repo is not a fix
+
+**THE ANALYZER DID NOT CHANGE.** The only `src/` difference between 0.4.39 and 0.4.40 is a
+**comment**: the number 23,331 was replaced by a claim that a gate re-measures on every release.
+The artifact's behaviour, its import surface and its findings are the ones 0.4.39 shipped. What
+changed is the **evidence behind the claims**, and the **documents that ship with the package**.
+
+### TWO CLAIMS IN THE SHIPPED README WERE WRONG, AND BOTH COST A READER SOMETHING
+
+**1. THE README TOLD A READER TO WAIT FOR A VERSION THAT WAS ALREADY PUBLISHED.** The paragraph a
+user lands on when the analyzer will not instantiate said: "use 0.4.37, or upgrade your MoonBit
+toolchain, and take 0.4.39 when it is published". 0.4.39 was published on 2026-10-30, so a reader
+already on 0.4.39 could not follow that sentence — the version they had was the one the sentence was
+waiting for. It now says 0.4.39 **is published**.
+
+**2. THE "NEWEST ASYNC" CLAIM WAS ASSERTED, NOT MEASURED, AND IT WAS OVERTAKEN.** Four places said
+0.22.5 was the newest `moonbitlang/async` whose extern set covers the 90 symbols in the host
+contract: `README.md`, `README.zh.md`, the `moon.mod` comment, and the header of
+`_verify/host_requirements.txt`. Measured 2026-11-02, by fetching the package into a scratch
+directory **outside** the repository — the repo's `.repos` is what the corpus stage measures, so it
+must not move:
+
+| `moonbitlang/async` | externs it declares | against the 90 contracted symbols |
+|---|---|---|
+| 0.22.5 | 223 | covers all 90 |
+| 0.22.6 | the 223 **plus three** console jobs | asks the host for **three more** |
+| 0.22.7 | **194** | **drops 22 of the 90** — the `event_bus/*` and `io/*` ones — and adds those same three |
+
+So the two newer versions fail in **different shapes**: 0.22.6 asks the host for three more
+symbols, 0.22.7 asks for a different set. Neither is a superset, so an artifact built against
+either changes what it requires of the host. The four places now say what was measured and **when**,
+and they say that the two newer versions fail and how they differ — a reader on 0.22.6 or 0.22.7
+needs to know that upgrading this package alone will not fix their toolchain.
+
+**THE PIN STAYS AT 0.22.5.** `_verify/check_host_requirements.ps1` holds the artifact to the 90
+contracted symbols in **both** directions, so a build against 0.22.7 would import 22 symbols the
+contract does not name, and the gate would reject it.
+
+### AND THE GATE THAT PRODUCED THIS RELEASE GOT STRICTER
+
+| change | what it stops |
+|---|---|
+| `_verify/check_notice_labels.ps1` now counts **all 19** `FParse` construction sites | a gate that counts a smaller set than the claim cannot disagree with it — it answers something else |
+| `dir2_behavior_reach.ps1` and `census_perfunction.ps1` now pass `--no-auto-fetch-deps` and **assert the scan fetched nothing** | a stage that measures the corpus must not be able to rewrite it |
+| the release gate's own verdict is recorded in `_verify/NARRATIVE.md` §0510, with the commit it belongs to and **which of its numbers an offline reader can re-measure** | a verdict only the tool that produced it can see is a verdict nobody can check |
+| the source no longer quotes `23,331`; it states the **gated** claim — the count must be ZERO | a number measured once is a memory, not a number |
+
+**WHAT A USER SHOULD DO.** On 0.4.40: nothing, unless the toolchain bundles an async older than
+0.22.4. The findings, the artifact's import surface and the analyzer's behaviour are 0.4.39's.
+
 ## 0.4.39 — the published wasm is linked against YOUR toolchain, and a gate now checks it
 
 **0.4.38 SHIPPED AN ARTIFACT THAT A USER COULD NOT RUN.** The report was exact:

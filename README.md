@@ -68,14 +68,14 @@ not resolve — are counted as notices and are not in that 10. On that same tree
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.39
+moon add riantr/moonbit_static_analysis@0.4.40
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.39",
+  "riantr/moonbit_static_analysis@0.4.40",
 }
 ```
 
@@ -114,9 +114,9 @@ the failure arrives before the analyzer runs a single line:
 LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
 ```
 
-0.4.39 is built against async **0.22.5** again, and its import surface is identical to the one
+0.4.40 is built against async **0.22.5** again, and its import surface is identical to the one
 0.4.37 shipped — the surface that links on those toolchains. If you hit that error on 0.4.38:
-use **0.4.37**, or upgrade your MoonBit toolchain, or move to **0.4.39** — which is published.
+use **0.4.37**, or upgrade your MoonBit toolchain, or move to **0.4.40** — the same import surface.
 
 ## Quick start
 
@@ -279,7 +279,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.39_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.40_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```

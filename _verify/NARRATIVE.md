@@ -9165,3 +9165,76 @@ commit it belongs to, because a verdict without a commit is a mood.
 GUESSING. The corpus pins need the registry and the own-source pins do not, and a reader who
 is not told that cannot tell which of the numbers are theirs to check. Say it per number, and
 point at the ones that cover the tree in front of them.
+
+## 0511: A CORRECTION THAT STAYS IN THE REPOSITORY REACHES NOBODY, AND A CLAIM ABOUT THE REGISTRY IS A FACT NOBODY RE-MEASURED
+
+0510 made the release gate's verdict findable. It did not touch the documents a user reads, and
+those were wrong in two ways at once. The first was the kind of rot that shows: a sentence in the
+future tense about a version that had already shipped. The second was the kind that hides, because
+it was a claim ABOUT THE REGISTRY, stated in four places, and nothing in this repository ever
+re-measured it.
+
+### THE FIRST ONE COST A READER THE VERSION THEY ALREADY HAD
+
+`README.md` and `README.zh.md` both told a user who could not instantiate the analyzer to "take
+0.4.39 when it is published" / to wait for 0.4.39 before switching over. 0.4.39 was published on
+2026-10-30, and the package the registry serves carries the sentence that tells a reader to wait
+for it. The reader who was already on 0.4.39 was the one the sentence could not be followed by:
+the version they held was the version it was waiting for.
+
+A version's own README is the document a user reads when the thing does not work. A sentence there
+that points at the reader's CURRENT version and calls it future is worse than no sentence: it reads
+as a prerequisite, so the reader concludes their install is broken.
+
+### THE SECOND ONE WAS ABOUT A FACT NOBODY RE-MEASURED
+
+Four places said 0.22.5 was the NEWEST `moonbitlang/async` whose extern set covers the 90 symbols
+in `_verify/host_requirements.txt`: both READMEs, the `moon.mod` comment, and the contract file's
+own header. The claim was true when it was written. It was also a claim about the state of a
+registry, made in a repository whose gates measure the registry only for the seven corpora and the
+package's own published self-scan. Nothing re-measured the newest async, so nothing noticed that
+it had stopped being the newest.
+
+MEASURED 2026-11-02, by fetching the package into a scratch directory OUTSIDE the repository -- the
+repo's `.repos` is the tree the corpus stage measures, and a `moon add` in the repo would have
+rewritten it:
+
+    0.22.5   223 externs   covers all 90
+    0.22.6   the 223 plus three console-job externs   asks the host for THREE MORE
+    0.22.7   194 externs   DROPS 22 of the 90 -- the event_bus/* and io/* ones -- and adds those
+                          same three
+
+The two newer versions fail in DIFFERENT SHAPES, and that is the part a reader has to be told: 0.22.6
+wants a superset of what 0.22.5 declares, 0.22.7 wants a different set. "Newer is not a superset"
+is the fact; "0.22.6 broke us" is one instance of it, and 0.22.7 breaks it the other way. A reader
+whose toolchain bundles either cannot instantiate this artifact, and upgrading THIS package alone
+will not fix that, because the import surface is a property of the published bytes.
+
+The pin stays at 0.22.5. `_verify/check_host_requirements.ps1` holds the artifact to the 90
+contracted symbols in BOTH directions, so a build against 0.22.7 would import 22 symbols the
+contract does not name, and the gate would reject it. That is the house rule and the host
+requirement arriving together: the dependency pin is also a promise about the HOST, and 0.22.7
+breaks that promise in a direction the artifact cannot absorb.
+
+### WHY THIS NEEDED A VERSION AT ALL
+
+A docs-only change is normally not a release. But the README IS the published package's README --
+the registry serves the file from the release -- so a correction to it that stays in the repository
+corrects nothing for the reader who reads it where they actually get it. The version is what carries
+the document. A fix that needs a version to reach anybody is not a docs-only change; it is a
+release whose payload is the truth.
+
+=> 判据: A DOCUMENT THAT SHIPS WITH THE PACKAGE IS PART OF THE PACKAGE. The registry serves
+README.md from the release, so a correction to it is not a repository chore -- it is a change to
+what the user downloads, and it needs the version to get there.
+=> 判据: A SENTENCE THAT POINTS AT THE READER'S CURRENT VERSION MUST NOT CALL IT FUTURE. A
+prerequisite that is already satisfied reads as a broken install, and the reader pays for it with
+the one thing they cannot check: their own version.
+=> 判据: A CLAIM ABOUT THE STATE OF A REGISTRY IS A FACT, AND A FACT NEEDS A GATE. "The newest
+async" was true when it was written and false later, and nothing noticed, because no gate in this
+repository measures the newest anything. When a document states a fact about the world rather than
+about this tree, the statement has to carry the date it was measured, and it has to say what the
+newer versions do -- not just that they are newer.
+=> 判据: NEWER IS NOT A SUPERSET. 0.22.6 wants three symbols more than 0.22.5 declares and 0.22.7
+wants 22 fewer, so the two failures are not the same failure. A claim that names one bad version
+teaches the reader the wrong shape.

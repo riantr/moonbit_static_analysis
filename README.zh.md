@@ -63,14 +63,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.39
+moon add riantr/moonbit_static_analysis@0.4.40
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.39",
+  "riantr/moonbit_static_analysis@0.4.40",
 }
 ```
 
@@ -106,9 +106,9 @@ import {
 LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
 ```
 
-0.4.39 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
+0.4.40 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
 工具链上能链接起来的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.4.39**——它已经发布了。
+你的 MoonBit 工具链，或者换到 **0.4.40**——导入面和 0.4.37 一样。
 
 ## 快速上手
 
@@ -259,7 +259,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.39_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.40_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
