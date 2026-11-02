@@ -95,9 +95,14 @@ So the artifact has a **floor**, and the floor is a property of the published *b
 | the gate that holds the artifact to them | `_verify/check_host_requirements.ps1` |
 | the same check against the **published** bytes | `_verify/selfscan_published.ps1` |
 
-The contract names 90 symbols and the newest `moonbitlang/async` whose extern set covers all
-of them: **0.22.5**. 0.22.4 declares the same 223 externs and covers them too, so the artifact
-links on any toolchain bundling either.
+The contract names 90 symbols, and **0.22.5** is the newest `moonbitlang/async` MEASURED to have an
+extern set covering all of them: 0.22.4 declares the same 223 externs and covers them too, so the
+artifact links on any toolchain bundling either. **The two newer versions do not, and they fail
+differently.** 0.22.6 adds three console-job externs to the 223 (measured 2026-10-30). 0.22.7
+declares **194** externs: it **drops 22** of the 90 — the `event_bus/*` and `io/*` ones — and adds
+those same three (measured 2026-11-02). A toolchain bundling either cannot instantiate this
+artifact, and upgrading this package alone will not change that: the import surface is a property
+of the published bytes.
 
 **0.4.38 WAS BUILT FOR A NEWER HOST THAN MOST, AND A USER FOUND OUT.** Its
 `moonbitlang/async` had been bumped to 0.22.6, which declares three more host-provided
@@ -111,7 +116,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 
 0.4.39 is built against async **0.22.5** again, and its import surface is identical to the one
 0.4.37 shipped — the surface that links on those toolchains. If you hit that error on 0.4.38:
-use **0.4.37** today, or upgrade your MoonBit toolchain, and take 0.4.39 when it is published.
+use **0.4.37**, or upgrade your MoonBit toolchain, or move to **0.4.39** — which is published.
 
 ## Quick start
 

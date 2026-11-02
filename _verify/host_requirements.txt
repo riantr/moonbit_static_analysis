@@ -34,8 +34,11 @@
 # CHANGELOG. A bump that does NOT edit this file fails the gate instead of
 # silently dropping users.
 #
-# `min-host-async` is the newest async whose extern set covers every symbol
-# below. 0.22.4 and 0.22.5 both declare 223 externs and both cover all 90.
+# `min-host-async` is the newest async MEASURED to have an extern set that
+# covers every symbol below. 0.22.4 and 0.22.5 both declare 223 externs and
+# both cover all 90. Measured 2026-11-02: 0.22.7 does NOT -- it declares 194
+# externs, it DROPS 22 of the 90 (the event_bus and io ones) and adds the
+# three console jobs, so it fails in a different shape than 0.22.6 did.
 # It must equal the `moonbitlang/async` pin in `moon.mod`: the floor and the
 # pin are one fact, and two facts that can disagree will.
 

@@ -48,8 +48,11 @@ warnings = "-0079"
 // later; 0.4.38 shipped that and a user on an older toolchain could not
 // instantiate it.
 //
-// 0.22.5 is the newest async whose host requirements a toolchain bundling
-// 0.22.4 or 0.22.5 can satisfy, and it is what the artifact is built against.
+// 0.22.5 is the newest async MEASURED to have a host surface a toolchain
+// bundling 0.22.4 or 0.22.5 can satisfy, and it is what the artifact is built
+// against. Measured 2026-11-02: async 0.22.7 does NOT -- it declares 194
+// externs and DROPS 22 of the 90 (the event_bus and io ones), so a build
+// against it would ask the host for a different set, not a bigger one.
 // The contract that says so is `_verify/host_requirements.txt`, and
 // `_verify/check_host_requirements.ps1` holds the artifact to it: a dependency
 // bump that widens the host requirements fails that gate instead of quietly
