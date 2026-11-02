@@ -53,9 +53,11 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
-if (-not $AssetPath) {
-  $AssetPath = Join-Path $env:USERPROFILE '.moon\registry\cache\assets\riantr\moonbit_static_analysis\0.4.40\moonbit_static_analysis.wasm'
-}
+# $AssetPath is EMPTY by default, and that is the normal case: each published
+# row names its own version, and the artifact for a version lives at
+# ~/.moon/registry/cache/assets/riantr/moonbit_static_analysis/<version>/. The
+# self-test passes one file explicitly, because its fake asset has to stand in
+# for every row at once.
 
 # THE SENTINELS. The map is parsed out of the NARRATIVE between these two lines,
 # and the NARRATIVE also QUOTES the review's rows -- and those quoted rows begin
@@ -256,30 +258,55 @@ function Test-TransferScope {
 
   Write-Output ''
   Write-Output '=== 7. the published bytes are checkable by hash ==='
-  $hm = [regex]::Match($narr, 'the published wasm\s+([0-9A-Fa-f]{64})')
-  $cm = [regex]::Match($narr, 'the registry checksum\s+([0-9A-Fa-f]{64})')
-  if (-not $hm.Success) {
-    Write-Bad 'the record does not carry the published wasm''s SHA256.'
-  } else {
-    Write-OK ('the record carries the published wasm SHA256 (' + $hm.Groups[1].Value + ')')
-  }
-  if (-not $cm.Success) {
-    Write-Bad 'the record does not carry the registry checksum.'
-  } else {
-    Write-OK ('the record carries the registry checksum (' + $cm.Groups[1].Value + ')')
-  }
-  if ($hm.Success -and (Test-Path -LiteralPath $AssetPath -PathType Leaf)) {
-    $actual = (Get-FileHash -LiteralPath $AssetPath -Algorithm SHA256).Hash
-    if ($actual -eq $hm.Groups[1].Value) {
-      Write-OK ('the local registry copy of the published asset hashes to the recorded value (' + $actual + ')')
-    } else {
-      Write-Bad 'the local registry copy of the published asset does NOT hash to the recorded value.'
-      Write-Output ('        recorded: ' + $hm.Groups[1].Value)
-      Write-Output ('        on disk:  ' + $actual)
+  # ONE ROW PER RELEASE. A published artifact is immutable, so a row is true
+  # forever, and the rows ACCUMULATE rather than being rewritten. That is what
+  # keeps this check from rotting: the next release adds a row instead of
+  # replacing one, and every row that is still on this machine is re-hashed.
+  $rows = @()
+  foreach ($m in [regex]::Matches($narr, '(?m)^\s*published\s+(\d+\.\d+\.\d+)\s+wasm\s+([0-9A-Fa-f]{64})\s+(\d+)\s+bytes\s+checksum\s+([0-9a-f]{64})\s+(\S+)\s*$')) {
+    $rows += [pscustomobject]@{
+      Ver      = $m.Groups[1].Value
+      Hash     = $m.Groups[2].Value
+      Size     = [int]$m.Groups[3].Value
+      Checksum = $m.Groups[4].Value
+      At       = $m.Groups[5].Value
     }
-  } elseif ($hm.Success) {
-    Write-Output ('  the local copy of the published asset is not on this machine (' + $AssetPath + ')')
-    Write-Output '  so the recorded hash could NOT be re-checked here. The record is still there to check.'
+  }
+  if ($rows.Count -eq 0) {
+    Write-Bad 'the record carries no published-bytes row.'
+  } else {
+    Write-OK ('the record carries ' + $rows.Count + ' published-bytes row(s)')
+    # THE VERSION THIS TREE DECLARES MUST HAVE A ROW. Without that, a release
+    # could be cut without saying what its bytes are, and "what was published"
+    # would go back to being a claim.
+    $mm = Get-Text (Join-Path $Root 'moon.mod')
+    $vm = [regex]::Match([string]$mm, '(?m)^version\s*=\s*"([^"]+)"')
+    if (-not $vm.Success) {
+      Write-Bad 'moon.mod does not declare a version, so the record cannot be asked for one.'
+    } elseif (@($rows | Where-Object { $_.Ver -eq $vm.Groups[1].Value }).Count -eq 0) {
+      Write-Bad ('the record has no published-bytes row for ' + $vm.Groups[1].Value + ', the version this tree declares.')
+    } else {
+      Write-OK ('the record has a published-bytes row for ' + $vm.Groups[1].Value + ', the version this tree declares')
+    }
+    foreach ($r in $rows) {
+      $p = $AssetPath
+      if (-not $p) {
+        $p = Join-Path $env:USERPROFILE ('.moon\registry\cache\assets\riantr\moonbit_static_analysis\' + $r.Ver + '\moonbit_static_analysis.wasm')
+      }
+      if (-not (Test-Path -LiteralPath $p -PathType Leaf)) {
+        Write-Output ('  the local copy of the published ' + $r.Ver + ' artifact is not on this machine (' + $p + ')')
+        Write-Output '  so that recorded hash could NOT be re-checked here. The record is still there to check.'
+        continue
+      }
+      $actual = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash
+      if ($actual -eq $r.Hash) {
+        Write-OK ('the local registry copy of the published ' + $r.Ver + ' artifact hashes to the recorded value (' + $actual + ')')
+      } else {
+        Write-Bad ('the local registry copy of the published ' + $r.Ver + ' artifact does NOT hash to the recorded value.')
+        Write-Output ('        recorded: ' + $r.Hash)
+        Write-Output ('        on disk:  ' + $actual)
+      }
+    }
   }
 
   Write-Output ''
@@ -351,6 +378,20 @@ function Remove-MapRows {
   return $true
 }
 
+function Set-RowHashes {
+  # Rewrites EVERY recorded wasm hash to one value, so the self-test's fake
+  # asset can stand in for every row at once. The control then passes for the
+  # RIGHT reason -- the hash agrees -- and not because the check was skipped.
+  param([string]$Path, [string]$Hash)
+  $t = Get-Text $Path
+  if ($null -eq $t) { return $false }
+  $pat = '(?m)^(\s*published\s+\d+\.\d+\.\d+\s+wasm\s+)[0-9A-Fa-f]{64}'
+  if (-not [regex]::IsMatch($t, $pat)) { return $false }
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, [regex]::Replace($t, $pat, '${1}' + $Hash), $enc)
+  return $true
+}
+
 function Copy-ScopeFiles {
   param([string]$Src, [string]$Dst)
   $files = @(
@@ -360,7 +401,8 @@ function Copy-ScopeFiles {
     '_verify\settle_0508_confidence_demotion.ps1',
     '_verify\release.ps1',
     'README.md',
-    'README.zh.md'
+    'README.zh.md',
+    'moon.mod'
   )
   foreach ($f in (Get-MapFiles (Join-Path $Src '_verify\NARRATIVE.md'))) { $files += ($f -replace '/', '\') }
   foreach ($f in ($files | Select-Object -Unique)) {
@@ -393,12 +435,15 @@ $asset = Join-Path $base 'asset.wasm'
 $assetHash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash
 # The copy's record must carry THAT hash, or the control run is not green for
 # the right reason.
-$hm = [regex]::Match((Get-Text (Join-Path $pristine '_verify\NARRATIVE.md')), 'the published wasm\s+([0-9A-Fa-f]{64})')
+$narrPath = Join-Path $pristine '_verify\NARRATIVE.md'
+$hm = [regex]::Match((Get-Text $narrPath), '(?m)^\s*published\s+\d+\.\d+\.\d+\s+wasm\s+([0-9A-Fa-f]{64})')
 if (-not $hm.Success) {
-  Write-Output 'ABORT: the pristine copy does not carry the published wasm hash.'
+  Write-Output 'ABORT: the pristine copy does not carry a published-bytes row.'
   exit 1
 }
-Replace-InFile (Join-Path $pristine '_verify\NARRATIVE.md') $hm.Groups[1].Value $assetHash | Out-Null
+# Every row is checked against the SAME fake asset, so every recorded hash is
+# rewritten to the fake's hash.
+Set-RowHashes -Path $narrPath -Hash $assetHash | Out-Null
 
 $bad = 0
 

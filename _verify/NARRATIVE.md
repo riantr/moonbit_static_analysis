@@ -9573,16 +9573,17 @@ otherwise. A reader who wants them has the list, and it is a list, not a gap.
 
 ### THE PUBLISHED BYTES, BY HASH
 
-The shipped artifact, so that "what was published" is a number rather than a
-claim:
+The shipped artifacts, so that "what was published" is a number rather than a
+claim. One row per release, and a published artifact is IMMUTABLE, so a row is
+true forever -- which is why the rows ACCUMULATE and are never rewritten:
 
-    the published wasm    134767FE5267844934309FEBED49C307B5615CFE8F6B5CA4D4E461EA45DC1838
-    its size              536714 bytes
-    the registry checksum 09e616d21f4a6232dc944dc31717466eff600386e7353660cef7ed634f80e67a
-    created at            2026-11-02T12:40:07.644669+00:00
+    published 0.4.40  wasm 134767FE5267844934309FEBED49C307B5615CFE8F6B5CA4D4E461EA45DC1838  536714 bytes  checksum 09e616d21f4a6232dc944dc31717466eff600386e7353660cef7ed634f80e67a  2026-11-02T12:40:07.644669+00:00
+    published 0.4.41  wasm 2537C9CBA64E42000B7F090D448116BF6BB5A226ACA2B1A2838CE25DEE6EC27E  536714 bytes  checksum beea4bab0cb436201e889d476fe5ea87d35e3a30961cede8cbf1d3661a31385f  2026-11-02T17:06:30.109605+00:00
 
-`_verify/check_transfer_scope.ps1` re-hashes the local registry copy of that asset
-when it is there, and says so plainly when it is not.
+`_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
+it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
+the version this tree declares -- so the release that is being cut cannot ship
+without saying what its bytes are.
 
 => 判据: A REQUIREMENT DOCUMENT THAT THE REPOSITORY NEVER NAMES IS A REQUIREMENT NOBODY CAN CHECK.
 The three transfers were measurable -- the settles measure them -- but a measure
