@@ -534,9 +534,21 @@ $defects = @(
   @{ N = 'a version is TAGGED but the record has no row for it';
      M = {
        param($d)
-       $ok = Replace-InFile (Join-Path $d 'moon.mod') 'version = "0.4.42"' 'version = "0.9.99"'
-       if (-not $ok) { return $false }
-       return (New-TagInCopy -Dir $d -Tag 'v0.9.99')
+       # The version is READ, not hardcoded: a mutation that names a literal
+       # stops applying the moment the tree's version moves, and a mutation
+       # that does not apply has tested nothing.
+       $mmPath = Join-Path $d 'moon.mod'
+       $t = Get-Text $mmPath
+       if ($null -eq $t) { return $false }
+       $vm = [regex]::Match($t, '(?m)^version\s*=\s*"([^"]+)"')
+       if (-not $vm.Success) { return $false }
+       $target = '0.9.99'
+       if ($vm.Groups[1].Value -eq $target) { return $false }
+       $enc = New-Object System.Text.UTF8Encoding($false)
+       [System.IO.File]::WriteAllText($mmPath, $t.Replace('version = "' + $vm.Groups[1].Value + '"', 'version = "' + $target + '"'), $enc)
+       $now = [regex]::Match((Get-Text $mmPath), '(?m)^version\s*=\s*"([^"]+)"')
+       if (-not $now.Success -or $now.Groups[1].Value -ne $target) { return $false }
+       return (New-TagInCopy -Dir $d -Tag ('v' + $target))
      } }
 )
 
