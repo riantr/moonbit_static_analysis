@@ -9674,3 +9674,99 @@ supply, and that is a measurement, not a preference.
 => 判据: A WRONG CLAIM IN THE RECORD IS CORRECTED IN THE RECORD, NOT IN THE NEXT INCREMENT.
 It was found by measuring three revisions instead of two, and it was fixed while the change was
 still open -- not after it shipped.
+
+
+## 0516: TWO THINGS THAT WERE WRONG AFTER 0.4.41, AND ONLY ONE OF THEM COULD BE SHIPPED
+
+0515 cut 0.4.41. This records what measuring that release found, and it records BOTH findings
+even though only one could be fixed here -- because a finding that is not written down is a
+finding the next session re-discovers from scratch.
+
+### 1. THE PUBLISHED RECORD NAMED THE WRONG ARTIFACT. FIXED, IN THIS REPOSITORY.
+
+0514's "the published bytes, by hash" block gave the hash of the artifact of the release that
+was latest WHEN THE RECORD WAS WRITTEN -- 0.4.40 -- under the heading "the shipped artifact".
+In the package that ships 0.4.41 that sentence is false: the artifact 0.4.41 ships is
+`2537C9CB...`, and a reader who installed 0.4.41 and checked the bytes they got would have got
+a mismatch, with nothing in the package to say that the RECORD was the thing at fault.
+
+MEASURED over the whole published 0.4.41 `_verify/NARRATIVE.md`, that block was the ONLY place
+that did not name its release: the same file says "the published 0.4.30 tree", "the published
+0.4.33 tree", "the published 0.4.40 scans its own shipped source clean". MEASURED over the
+published `README.md`, `README.zh.md`, `SKILL.md` and both CHANGELOGs of that same package,
+every own-package version reference was already 0.4.41.
+
+THE FIX, and it is structural rather than an edit: the record now carries ONE ROW PER RELEASE,
+and the rows ACCUMULATE. A published artifact is immutable, so a row that names a release is
+true forever, and the next release ADDS a row instead of rewriting one:
+
+    published 0.4.40  wasm 134767FE...  536714 bytes  checksum 09e616d2...  2026-11-02T12:40:07Z
+    published 0.4.41  wasm 2537C9CB...  536714 bytes  checksum beea4bab...  2026-11-02T17:06:30Z
+
+`_verify/check_transfer_scope.ps1` re-hashes every row it can resolve from the local registry
+cache and prints, for the ones it cannot, that the hash could NOT be re-checked here. On this
+machine both rows re-hash to their recorded values.
+
+**AND THE REQUIREMENT IS KEYED TO THE TAG, NOT TO `moon.mod`.** The first version of that check
+demanded a row for whatever version `moon.mod` declared, which made EVERY release uncuttable: an
+artifact's hash cannot exist before the registry has compiled it, so the row would have to be
+written before the bytes it describes. The honest statement of the property is the ordering, and
+the ordering is in the repository:
+
+    cut the version -> run the gate -> tag -> CI publishes -> add the row
+
+So no tag means "not published yet", which is STATED and not failed; a tag with no row means a
+reader of that release cannot check the bytes they were given, which IS a failure. That branch
+is exercised by the gate's own `-SelfTest`, which builds a throwaway repository in `%TEMP%` with
+one empty commit and one tag so the branch is really tested instead of assumed.
+
+**AND THE GATE WAS WRONG IN THE OTHER DIRECTION FIRST, WHICH IS THE MORE USEFUL PART.** The tag
+test read `git ... 2>&1`, so `fatal: not a git repository` from the self-test's copied tree
+counted as EVIDENCE THAT A TAG EXISTED -- and the control case, an unmutated copy, went RED.
+A derivation that FAILED looked exactly like a positive answer. The fix is that the EXIT CODE is
+the answer and the name has to match exactly; the same fix went into the self-test's own
+tag-maker. => 判据: A DERIVATION THAT FAILED LOOKS EXACTLY LIKE A PASS -- AND SOMETIMES LIKE A
+FAILURE. Either way the status is the answer, never whether output appeared.
+
+### 2. THE LOCAL TOOLCHAIN NOW REJECTS THE SYNTAX THIS REPOSITORY IS WRITTEN IN. NOT FIXED HERE.
+
+MEASURED on this machine, 2026-11-06:
+
+    moon version: moon 0.1.20261104 (940aa18 2026-11-04)
+
+0512 recorded this project running on moon 0.1.20261028. The toolchain has moved four days, and
+it now reports, as an ERROR under `--deny-warn`:
+
+    Error Warning (deprecated_syntax): The syntax `derive(...)` for deriving trait
+    implementations is deprecated. Use `#derive(...)` before the type declaration instead.
+
+MEASURED: `moon check --deny-warn` exits 1 with SEVEN `deprecated_syntax` errors, all in
+`src/core/core.mbt` (the first package to compile; the rest of the tree is not reached). The
+trailing form appears 71 times across 17 hand-written `.mbt` files, test files included.
+
+**WHY THAT IS AN INCREMENT AND NOT A FIND-AND-REPLACE.** This repository is a STATIC ANALYZER of
+MoonBit, and the new spelling is a syntax it does not currently read:
+`src/parser/parser.mbt` has no `#`-attribute handling at all, and the analyzer's own self-scan
+pins a notice kind by that name -- `$SELF_NOTICES` in `_verify/release.ps1` carries
+`derive declaration=54`. Migrating the analyzer's own source to `#derive` therefore changes what
+the analyzer says about ITSELF, so the pinned self-scan numbers move and the parser needs the new
+production. That is a measured change with its own gate, and doing it by hand-sed in the same
+increment as a documentation correction is how a corpus pin gets broken quietly.
+
+**SO 0.4.42 WAS NOT CUT, AND THE VERSION WAS NOT SPENT.** The release gate cannot be green on
+this machine -- `moon check --deny-warn`, `moon test --target js` and the README gate's own
+test-suite check all fail on the same seven errors -- and this repository does not ship on a red
+gate. `moon.mod` says 0.4.41, which matches the registry, and the record fix above stays
+committed and unpublished until a gate can be taken on a tree that compiles. The number was left
+alone rather than reserved, because a skipped number is not consumed.
+
+=> 判据: A FINDING THAT CANNOT BE FIXED STILL GETS WRITTEN DOWN, WITH ITS NUMBERS.
+The derive drift blocks every future release from this machine. Naming it here, with the
+toolchain version and the count, is the difference between the next session starting at the fix
+and starting by re-discovering the failure.
+=> 判据: A RECORD FIX IS NOT A RELEASE, AND THE VERSION IS NOT SPENT ON ONE.
+The correction is real work and it is committed. Tagging it would mean tagging a tree whose own
+gate is red on the toolchain in use.
+=> 判据: A PUBLISHED ARTIFACT IS IMMUTABLE, SO A ROW PER RELEASE IS THE ONLY SHAPE THAT DOES NOT
+ROT. "The shipped artifact" is a different file every release; a row that names one is true
+forever and is added to, never rewritten.

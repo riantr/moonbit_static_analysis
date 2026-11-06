@@ -276,17 +276,50 @@ function Test-TransferScope {
     Write-Bad 'the record carries no published-bytes row.'
   } else {
     Write-OK ('the record carries ' + $rows.Count + ' published-bytes row(s)')
-    # THE VERSION THIS TREE DECLARES MUST HAVE A ROW. Without that, a release
-    # could be cut without saying what its bytes are, and "what was published"
-    # would go back to being a claim.
+    # THE VERSION THIS TREE DECLARES MUST HAVE A ROW ONCE IT IS TAGGED.
+    #
+    # Why the tag and not the version alone: an artifact's hash CANNOT be known
+    # before the registry has compiled it. A rule that demands a row for
+    # whatever `moon.mod` says would make every release uncuttable -- the row
+    # would have to exist before the bytes it describes. The honest statement of
+    # the property is the ordering, and the ordering is in the repository:
+    #
+    #     cut the version -> run the gate -> tag -> CI publishes -> add the row
+    #
+    # So: no tag yet means "not published yet", which is stated and not failed;
+    # a tag with no row means the record is missing the one number a reader of
+    # that release needs, which IS a failure.
     $mm = Get-Text (Join-Path $Root 'moon.mod')
     $vm = [regex]::Match([string]$mm, '(?m)^version\s*=\s*"([^"]+)"')
     if (-not $vm.Success) {
       Write-Bad 'moon.mod does not declare a version, so the record cannot be asked for one.'
-    } elseif (@($rows | Where-Object { $_.Ver -eq $vm.Groups[1].Value }).Count -eq 0) {
-      Write-Bad ('the record has no published-bytes row for ' + $vm.Groups[1].Value + ', the version this tree declares.')
     } else {
-      Write-OK ('the record has a published-bytes row for ' + $vm.Groups[1].Value + ', the version this tree declares')
+      $declared = $vm.Groups[1].Value
+      $hasRow = (@($rows | Where-Object { $_.Ver -eq $declared }).Count -gt 0)
+      # THE STATUS IS THE ANSWER, NOT WHETHER OUTPUT APPEARED. `git` writes
+      # "fatal: not a git repository" to stderr, and a 2>&1 capture would turn
+      # that ERROR into evidence that a tag EXISTS -- which is this gate failing
+      # for the opposite of the right reason. So the exit code is checked, and
+      # the name has to match exactly.
+      $tagName = 'v' + $declared
+      $tagged = $false
+      $prevEap = $ErrorActionPreference
+      $ErrorActionPreference = 'Continue'
+      $tagLines = @(& git -C $Root tag --list $tagName 2>$null)
+      $tagCode = $LASTEXITCODE
+      $ErrorActionPreference = $prevEap
+      if ($tagCode -eq 0) {
+        foreach ($tl in $tagLines) { if (([string]$tl).Trim() -eq $tagName) { $tagged = $true } }
+      }
+      if ($hasRow) {
+        Write-OK ('the record has a published-bytes row for ' + $declared + ', the version this tree declares')
+      } elseif ($tagged) {
+        Write-Bad ('v' + $declared + ' is TAGGED but the record has no published-bytes row for it.')
+        Write-Output '        A reader of that release cannot check the bytes they were given.'
+      } else {
+        Write-Output ('  ' + $declared + ' is not tagged yet, so it is not published and has no bytes to record.')
+        Write-Output '  The row is written AFTER publication, because the hash does not exist before then.'
+      }
     }
     foreach ($r in $rows) {
       $p = $AssetPath
@@ -392,6 +425,25 @@ function Set-RowHashes {
   return $true
 }
 
+function New-TagInCopy {
+  # The tag-gated branch reads `git tag`, so a copy that is not a repository
+  # can never exercise it. This makes the copy a THROWAWAY repository with one
+  # empty commit and one tag, under %TEMP%, so the branch is really tested
+  # rather than assumed.
+  param([string]$Dir, [string]$Tag)
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  & git -C $Dir init -q 2>$null | Out-Null
+  & git -C $Dir -c user.email=t@example.invalid -c user.name=t commit --allow-empty -q -m 'self-test copy' 2>$null | Out-Null
+  & git -C $Dir tag $Tag 2>$null | Out-Null
+  $tagLines = @(& git -C $Dir tag --list $Tag 2>$null)
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  # Again: the exit code and an exact name, never "output appeared".
+  if ($code -ne 0) { return $false }
+  foreach ($tl in $tagLines) { if (([string]$tl).Trim() -eq $Tag) { return $true } }
+  return $false
+}
+
 function Copy-ScopeFiles {
   param([string]$Src, [string]$Dst)
   $files = @(
@@ -478,7 +530,14 @@ $defects = @(
   @{ N = 'the recorded published hash is wrong';
      M = { param($d) Replace-InFile (Join-Path $d '_verify\NARRATIVE.md') $assetHash ('0000000000000000000000000000000000000000000000000000000000000000') } },
   @{ N = 'a README no longer names the requirements document';
-     M = { param($d) Replace-InFile (Join-Path $d 'README.md') 'bandit_review.md' 'the_review.md' } }
+     M = { param($d) Replace-InFile (Join-Path $d 'README.md') 'bandit_review.md' 'the_review.md' } },
+  @{ N = 'a version is TAGGED but the record has no row for it';
+     M = {
+       param($d)
+       $ok = Replace-InFile (Join-Path $d 'moon.mod') 'version = "0.4.42"' 'version = "0.9.99"'
+       if (-not $ok) { return $false }
+       return (New-TagInCopy -Dir $d -Tag 'v0.9.99')
+     } }
 )
 
 foreach ($x in $defects) {
