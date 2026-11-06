@@ -212,9 +212,31 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
     那一行 False 是 `published package self-scan`
 
 那一道 stage 会去注册表取 `moon.mod` 里那个版本并扫描它，所以在版本发布之前它**不可能**通过；
-而它红着的时候，它后面的四行不会跑，这就是为什么这一次是 116 行、发布之后是 121 行。凡是在发布
-之前能过的都过了，包括语料比对：八棵树全部 **MATCH**、共 **19,636** 条 notice——这就是“这次改的是
-**仓库**的拼写、不是分析器的行为”的证据。
+而它红着的时候，它后面的四行不会跑，这就是为什么这一次是 116 行、发布之后是 121 行。
+**语料比对就是那四行之一，所以这一次它对语料一个字都没说**：挡在红灯后面的 stage 不是「通过
+了」，是「没跑」。发布之后那一轮量了它——七个语料全部 **MATCH**，八棵树共 **19,602** 条
+notice、逐行打印与汇总的拆分是 **3,394 / 16,208**——这就是"这次改的是**仓库**的拼写、不是分析器
+的行为"的证据。
+
+### 门禁（发布之后）：121 行，120 行 True，一行 False
+
+    RELEASE GATE FAILED: perfunction-control
+    [MATCH ] the eight trees carry 19602 notices
+    SCOPE OK: the requirements document is named, its three rows are quoted, every mapped site resolves
+    120 stage rows True, one False
+    the False is `per-function census control`
+
+行数正是上面预测的 121。那一行 False 是**工具链**的，不是这一版的：moon 0.1.20261104 开始
+**类型检查接口文件**，而语料里唯一的 `.mbti`（`abort/pkg.mbti`，写于 2026-10-08、之后一字未动）
+写着 `fn[T] abort(String) -> T`，在自举的模块里 `String` 不在作用域内——`Error: [4032] The type
+String is undefined`。`abort` 是基础包，所以这一个错误就让编译器在读任何别的包之前停下：控制脚本的
+十六次探针每次都只带回这一个错误，读到 **0 of 16** 个文件。同一份语料在上一版工具链下它是**通过**
+的（`rel_0412a.txt`，2026-11-03，"read by moon check: 16 of 16"）。
+
+两种修法都试过、都回退了——从副本里删掉接口文件能让基线恢复，但每次探针都返回 `errors=0`；把类型
+限定成 `@builtin.String` 只是把错误挪到第 8 行。这一行**保持红色**、没有吸收掉：跑不起来的控制脚本
+不等于通过的控制脚本。它需要自己的一次增量。
+
 ## 0.4.41 —— 需求文档在上一级目录，而仓库从来没有点名它
 
 **分析器的行为没有变。** 发现、产物的导入面、每一条规则的含义，都是 0.4.40 发布的那一套。变的是

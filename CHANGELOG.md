@@ -253,10 +253,35 @@ newest MEASURED to have a host surface a toolchain bundling 0.22.4 or 0.22.5 can
 
 That one stage fetches the version in `moon.mod` from the registry and scans it, so it cannot pass
 before the version is published — and while it is red the four rows behind it do not run, which is
-why this run reports 116 rows and the post-publish run reports 121. Everything that can pass before
-publication does, including the corpus comparison: all eight trees **MATCH** at **19,636** notices,
-which is the evidence that this release changed the REPOSITORY's spelling and not the analyzer's
+why this run reports 116 rows and the post-publish run reports 121. **The corpus comparison is one
+of those four, so this run says NOTHING about the corpus**: a stage behind a red one has not
+passed, it has not run. The post-publish run measured it — all seven corpora **MATCH**, and the
+eight trees carry **19,602** notices with the printed/aggregated split **3,394 / 16,208** — which
+is the evidence that this release changed the REPOSITORY's spelling and not the analyzer's
 behaviour.
+
+### THE GATE, AFTER PUBLICATION: 121 ROWS, 120 TRUE, ONE FALSE
+
+    RELEASE GATE FAILED: perfunction-control
+    [MATCH ] the eight trees carry 19602 notices
+    SCOPE OK: the requirements document is named, its three rows are quoted, every mapped site resolves
+    120 stage rows True, one False
+    the False is `per-function census control`
+
+The row count is 121, as predicted above. The one False is the toolchain's, not this release's:
+moon 0.1.20261104 began TYPE-CHECKING interface files, and the corpus's only `.mbti`
+(`abort/pkg.mbti`, written 2026-10-08 and untouched since) says `fn[T] abort(String) -> T` where
+`String` is not in scope in a self-hosted module — `Error: [4032] The type String is undefined`.
+`abort` is foundational, so that single error stops the checker before it reads any other package:
+the control's sixteen probes each came back carrying that error alone and it read **0 of 16** files.
+It PASSED on that same corpus under the previous toolchain (`rel_0412a.txt`, 2026-11-03, "read by
+moon check: 16 of 16").
+
+Two repairs were tried and both reverted — dropping the interface from the copy makes the baseline
+right but every probe return `errors=0`, and qualifying the type as `@builtin.String` only moves the
+error to line 8. The row is left RED rather than absorbed: a control that cannot run has not passed.
+It needs its own increment.
+
 ## 0.4.41 — the requirements document is one directory up, and the repository never named it
 
 **THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the artifact's import surface and the

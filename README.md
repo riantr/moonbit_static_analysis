@@ -574,10 +574,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,636** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,602** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
-**16,242** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
+**16,208** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
 the scope limits and the demoted findings together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
 are none.

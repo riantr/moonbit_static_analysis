@@ -9579,6 +9579,7 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
 
     published 0.4.40  wasm 134767FE5267844934309FEBED49C307B5615CFE8F6B5CA4D4E461EA45DC1838  536714 bytes  checksum 09e616d21f4a6232dc944dc31717466eff600386e7353660cef7ed634f80e67a  2026-11-02T12:40:07.644669+00:00
     published 0.4.41  wasm 2537C9CBA64E42000B7F090D448116BF6BB5A226ACA2B1A2838CE25DEE6EC27E  536714 bytes  checksum beea4bab0cb436201e889d476fe5ea87d35e3a30961cede8cbf1d3661a31385f  2026-11-02T17:06:30.109605+00:00
+    published 0.4.42  wasm A190CBAF7378E00431D24D36F319CAE39FB29510C8ABB9B1721AE984A56742E4  536636 bytes  checksum 7b27b36a3a8070448f5a3d4f052a007a47941f7596f51e878414a0b672698f6a  2026-11-06T15:40:34.482028+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -9938,14 +9939,161 @@ The full release gate on the tree that carries this version:
 
 That one stage fetches the version in `moon.mod` from the registry and scans it, so it **cannot**
 pass before the version is published -- and while it is red, the four rows behind it do not run,
-which is why this run reports 116 rows and the post-publish run reports 121. Everything that can
-pass before publication does, including the corpus comparison: all eight trees **MATCH** at
-**19,636** notices, which is the evidence that this migration changed the REPOSITORY's spelling and
-not the analyzer's behaviour.
+which is why this run reports 116 rows and the post-publish run reports 121. **The corpus
+comparison is one of those four, so this run says NOTHING about the corpus** -- a stage gated
+behind a red one has not passed, it has not run. Measured after publication (0518): all seven
+corpora **MATCH**, and the eight trees carry **19,602** notices, split **3,394** printed and
+**16,208** aggregated, which is the evidence that this migration changed the REPOSITORY's spelling
+and not the analyzer's behaviour.
 
-The post-publish run -- all 121 rows True -- is recorded in 0518, because a verdict that names a
-tree has to name the tree it was taken on.
+The post-publication run is recorded in 0518, because a verdict that names a tree has to name the
+tree it was taken on -- and it did NOT come back all-True: it is 121 rows, 120 True, and the one
+False is the per-function census control, which the new toolchain broke.
 
 => 判据: A STAGE THAT CANNOT PASS BEFORE PUBLICATION IS NOT A RED GATE, BUT IT MUST BE NAMED.
 Saying "the gate is green" when one stage is red for an ordering reason is exactly how a real red
 gets waved through. The statement is: 116 True, one False, and here is which one and why.
+
+## 0518: THE RELEASE SHIPPED, AND THE POST-PUBLICATION RUN FOUND THREE THINGS THE RECORD HAD WRONG
+
+0.4.42 is tagged at `15b93c3` on both remotes, CI's `gate` and `publish` are green on that commit,
+and the registry serves it from `2026-11-06T15:40:34Z`. The artifact's bytes are 0514's third row:
+
+    published 0.4.42  wasm A190CBAF...  536636 bytes  checksum 7b27b36a...  2026-11-06T15:40:34.482028+00:00
+
+That is 78 bytes SMALLER than 0.4.41's 536714, which is the direction the migration predicts: 34
+trailing `} derive(...)` sites became `#derive(...)` above the declaration, so the source is shorter
+and the artifact follows it.
+
+**THE ANALYZER DID NOT CHANGE, AND THE SHIPPED BYTES SAY SO.** The published package scans its own
+shipped source: 171 files, 171 parsed, **actionable 0**, 1478 notices, and it requires exactly the
+90 contracted symbols. The 1478 is the number 0517 predicted for a clean checkout; the 1665 in the
+pin is the WORKING TREE, which carries untracked scratch. Both numbers are now measured rather than
+predicted, on the same day, from the same tree.
+
+### THE PRE-PUBLICATION VERDICT, RE-RUN ON THE COMMITTED TREE
+
+0517's verdict was 116 stage rows True and one False. The documentation was written AFTER that run,
+and several gates read `NARRATIVE.md`, so it was re-run on `15b93c3` itself. It is identical:
+
+    RELEASE GATE FAILED: selfscan-published
+    116 stage rows True, one False
+    the False is `published package self-scan`
+
+### THE FOUR ROWS BEHIND IT HAD NEVER RUN, AND ALL THREE OF THE RECORD'S ERRORS WERE THERE
+
+`selfscan-published` is red before publication, and the corpus comparison, the transfer scope and
+two more stages sit behind it. The post-publication run is the first one where they execute. It
+came back **117 True and TWO False**, and both Falses were the RECORD's fault, not the code's.
+
+**1. THE PIN COUNTED THIS REPOSITORY'S OWN NOTICES, AND THE MIGRATION MOVED THEM.** `$NOTICE_TOTAL`
+is not the seven corpora. The corpus stage starts `$parseErr = $script:selfNotices`, so the number
+is SEVEN CORPORA PLUS THIS REPOSITORY. The migration dropped this repository's own notices
+1699 -> 1665; `$SELF_NOTICES` was updated and `$NOTICE_TOTAL` was not:
+
+    17,937 (seven corpora) + 1,665 (own source) = 19,602
+    the old pin, 19,636      = 17,937 + 1,699
+
+The pin is now 19,602, and the stage reports `[MATCH ] the eight trees carry 19602 notices`.
+**A TOTAL THAT IS THE SUM OF TWO THINGS MOVES WHEN EITHER MOVES** -- and the migration's whole point
+was moving one of them.
+
+**2. A SENTENCE CLAIMED A MEASUREMENT THAT HAD NOT RUN.** 0517 said, and both CHANGELOGs repeated,
+that "everything that can pass before publication does, including the corpus comparison: all eight
+trees MATCH". **The corpus stage did not run in either pre-publication run** -- the stage header is
+absent from both logs, because the red self-scan gates it off. A stage behind a red one has not
+passed; it has not run. All three texts now say that, and the corpus claim is attributed to the
+post-publication run that actually measured it.
+
+**3. THE PUBLISHED SPLIT IS CHECKED FOR ONE HALF ONLY, AND THE OTHER HALF HAD MOVED.** The README
+publishes `**19,602**` notices as `**3,394**` printed and `**16,208**` aggregated.
+`check_readme_links.ps1` derives ONLY the total from the pin (`$more.Add` with `$peTotal`); the
+printed/aggregated pair in that paragraph is unchecked prose, and `16,242` had gone stale. So the
+seven corpora were re-scanned and the split re-MEASURED rather than derived:
+
+| tree | files | notices | printed | aggregated |
+|---|---|---|---|---|
+| moui | 608 | 3,457 | 1,126 | 2,331 |
+| moonbit_labeler | 37 | 698 | 141 | 557 |
+| moonbit_image | 18 | 186 | 93 | 93 |
+| async | 419 | 1,654 | 250 | 1,404 |
+| proton | 137 | 1,799 | 497 | 1,302 |
+| proton_contract | 4 | 29 | 0 | 29 |
+| moonbit_core | 1,029 | 10,114 | 1,162 | 8,952 |
+| **seven corpora** | | **17,937** | **3,269** | **14,668** |
+| own source | 189 | 1,665 | 125 | 1,540 |
+| **eight trees** | | **19,602** | **3,394** | **16,208** |
+
+**THE CROSS-CHECK IS THE POINT.** 3,269 + 125 = **3,394**, which is exactly the printed figure the
+README already published and which no gate was checking. The chain that produced it also reproduces
+the pinned total to the notice, so the two halves are measured by the same instrument that the gate
+pins. The aggregated half moves 16,242 -> 16,208.
+
+One process note, because it nearly became a false number: the first attempt measured all seven
+trees inside ONE PowerShell process and returned **identical** `27,740 / 4,921 / 22,819` for four
+different trees. Identical numbers for different inputs are not a measurement, they are a bug; the
+result was discarded and each tree was then scanned in its OWN process, with a guard that the
+scan's `SCANNED` line names the path that was asked for. The table above comes from the guarded
+form. Deriving `moonbit_core`'s printed count from the behavior-lens table would have given 1,172;
+measuring it gives **1,162**.
+
+### THE GATE, AFTER PUBLICATION: 121 ROWS, 120 TRUE, ONE FALSE
+
+    RELEASE GATE FAILED: perfunction-control
+    [MATCH ] the eight trees carry 19602 notices
+    SCOPE OK: the requirements document is named, its three rows are quoted, ...
+    120 stage rows True, one False
+    the False is `per-function census control`
+
+The row count is now **121**, which is the number 0517 predicted for a post-publication run. The
+remaining False is NOT the migration's and NOT the record's:
+
+    BASELINE FAILED: the corpus has errors beyond the one this control knows: abort/pkg.mbti:4
+    moon check -> Error: [4032]  The type String is undefined.  abort/pkg.mbti:4:13
+
+### WHY THAT ROW IS RED, AND WHY IT WAS LEFT RED INSTEAD OF ABSORBED
+
+**THE TOOLCHAIN MOVED, NOT THE CORPUS.** `abort/pkg.mbti` was written 2026-10-08 and its
+`LastWriteTime` still equals its `CreationTime`. The same control PASSED on that same file under
+moon 0.1.20261028 -- `rel_0412a.txt`, 2026-11-03, `read by moon check: 16 of 16`, 137s. Under moon
+0.1.20261104 the same corpus reports `Error: [4032]` at `abort/pkg.mbti:4:13`: the compiler now
+TYPE-CHECKS interface files, and `moonbitlang/core` is self-hosted, so `String` in that `.mbti` is
+not in scope.
+
+**AND `abort` IS FOUNDATIONAL, SO THE ERROR STOPS THE WHOLE CHECK.** With the error present, every
+one of the control's sixteen probes came back `errors=1 abort/pkg.mbti:4` and the control read
+**0 of 16** files: the checker bails before it type-checks any other package. The control's entire
+technique -- append a deliberate type error, require it back -- depends on the checker proceeding.
+
+**TWO REPAIRS WERE TRIED AND BOTH WERE REJECTED, with the measurements:**
+
+  * DROP `abort/pkg.mbti` FROM THE COPY. The baseline returns to exactly the one known error, which
+    looks like a fix -- but every probe then returns `errors=0` and the control reports **0 of 16**.
+    That is worse than a red row: it would print a green-looking "read 0 files" or a red with no
+    diagnosis, and the claim under test is precisely that the files ARE read.
+  * QUALIFY THE TYPE as `@builtin.String` with the `moonbitlang/core/builtin` import -- the spelling
+    fifteen other corpus files use. The error does not go away; it moves to `abort/pkg.mbti:8`.
+
+Both were reverted and `control_perfunction_census.ps1` is byte-identical to `15b93c3`. The row is
+left RED, because the honest state is "this control could not establish its claim under this
+toolchain", not "the claim is fine". The claim itself is not in doubt -- the sixteen
+finding-carrying files were re-derived independently and match `CONTROL_N` exactly, and
+`abort/pkg.mbti` is not one of them -- but a control that cannot run is not a control that passed.
+
+=> 判据: A STAGE GATED BEHIND A RED ONE HAS NOT PASSED. It has not run. The sentence "everything that
+can pass does" is a claim about the stages that executed, and it is false the moment it covers one
+that did not.
+
+=> 判据: WHEN A PIN IS THE SUM OF TWO THINGS, A CHANGE TO EITHER IS A CHANGE TO THE PIN. Read what
+the total is made of before concluding the corpus drifted.
+
+=> 判据: A PUBLISHED NUMBER THAT NO GATE DERIVES IS A NUMBER NOBODY RE-MEASURED. The total was
+checked and its two halves were not, so half of it was wrong for a whole release.
+
+=> 判据: A REPAIR THAT MAKES A CONTROL QUIETER IS NOT A REPAIR. Both candidate fixes turned a red
+row into a smaller number with no diagnosis; both were reverted. A red row that names its cause
+beats a green row that measured nothing.
+
+=> 判据: WHEN A TOOLCHAIN UPGRADE BREAKS A CONTROL, THE CONTROL IS THE THING THAT NEEDS THE
+INCREMENT -- not the corpus, which has not moved, and not the pin, which is doing its job by
+refusing to absorb the change.

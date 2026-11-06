@@ -364,7 +364,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19636'
+$NOTICE_TOTAL = '19602'
 $SELF_FILES = '189'
 $SELF_NOTICES = 'test declaration=1427|if expression=104|struct declaration=62|derive declaration=20|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
 $SELF_PRINTED = '125'
