@@ -154,6 +154,109 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.42 — the compiler deprecated the syntax this tree is written in, and CI was red on master
+
+**THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the rules and the artifact's import
+surface are the ones 0.4.41 shipped. What changed is the SPELLING of every trait derivation in the
+source, and the two record corrections that had been sitting on `master` unreleased.
+
+### THE TOOLCHAIN MOVED, AND THE TREE STOPPED COMPILING
+
+MEASURED 2026-11-06: the toolchain is `moon 0.1.20261104 (940aa18)`, four days newer than the
+`0.1.20261028` that 0.4.40 and 0.4.41 were verified on. It reports the trailing derivation form as
+an error under `--deny-warn`:
+
+    deprecated_syntax: The syntax `derive(...)` is deprecated.
+    Use `#derive(...)` before the type declaration instead.
+
+That made `moon check --deny-warn` exit 1 with **seven** errors in `src/core/core.mbt` — the first
+package to compile; the rest of the tree was never reached. **And it was not a local problem: CI
+was RED on `master`.** `gate` failed on `08815e3` and on `3757077` with the same
+`deprecated_syntax` error, while `813c0de` (2026-11-02) was green. Every push since the toolchain
+moved has been failing.
+
+**THE MIGRATION IS 34 SITES IN 8 FILES**, not a find-and-replace across the tree: `ast` 12, `core`
+7, `jsoncli` 5, `types` 3, `walk` 3, `interp` 2, `lexer` 1, `moonfiles` 1. An earlier count of 71
+was wrong — it included the generated `.mbti` files and `derive(...)` occurrences inside strings
+and comments, which are not declarations.
+
+**THE MIGRATOR IS `moon fmt`.** Run on a tree that was already `fmt --check` clean, it produced
+exactly the eight-file diff and nothing else: `#derive(Eq)` inserted above each declaration, the
+trailing `} derive(Eq)` removed, doc comments left where they were. The toolchain's own formatter
+knows the new syntax, so no hand-rolled rewriter was needed — and none was written.
+
+MEASURED after the migration:
+
+    moon check --deny-warn                     exit 0  (was exit 1 with 7 errors)
+    moon fmt --check                           exit 0
+    moon test --target wasm                    1330/1330
+    moon test --target js                      1204/1204
+    moon test --target wasm-gc                 1204/1204
+    moon build --target wasm                   exit 0
+
+The three test counts are exactly the numbers the README already published, so no test needed
+changing and no test moved.
+
+**AND THE ANALYZER ALREADY READ THE NEW FORM.** Measured with the published 0.4.41 wasm before
+touching anything: `#derive(Eq)` above a declaration parses with **zero** defects and produces
+**one** notice (the declaration itself), while the trailing form produces **two** (the declaration
+plus a separate `derive declaration` notice). So the parser needed no new production, and the
+migration only REMOVES notices.
+
+### THE OWN-SOURCE NUMBERS MOVED, AND THEY ARE RE-MEASURED RATHER THAN REASONED ABOUT
+
+Migrating 34 sites removes 34 `derive declaration` notices from the tree's own scan:
+
+| | before | after |
+|---|---|---|
+| files scanned / parsed | 189 / 189 | **189 / 189** |
+| actionable | 0 | **0** |
+| notices | 1699 | **1665** |
+| — `derive` declaration | 54 | **20** |
+| — printed / aggregated | 125 / 1574 | **125 / 1540** |
+
+The `derive` count does not reach zero, and the reason is worth stating: **twenty of those notices
+are in untracked `_verify/_work_*.mbt` scratch copies** of older source files. The scanner walks
+the working tree, not the index, so it sees them; on a clean checkout that row would read 0. The
+pin describes the tree the gate actually runs on, which is the same convention the file count has
+always used.
+
+### THE TWO RECORD CORRECTIONS THAT RIDE ALONG
+
+Both were committed to `master` but never released, so 0.4.42 is where a reader first gets them:
+
+1. **The published record named the wrong artifact.** 0.4.41's narrative gave 0.4.40's artifact
+   hash under the heading "the shipped artifact", so a reader who installed 0.4.41 and checked the
+   bytes they got would get a mismatch. The record now carries **one row per release**, and the
+   rows accumulate — a published artifact is immutable, so a row that names one is true forever.
+   `_verify/check_transfer_scope.ps1` re-hashes every row it can resolve.
+2. **That gate's row requirement is keyed to the release tag**, not to `moon.mod`. An artifact's
+   hash cannot exist before the registry compiles it, so demanding a row for whatever version the
+   tree declares would make every release uncuttable. A tag with no row is still a failure. Two
+   further bugs were found and fixed while testing it: a failed `git` call was being read as
+   evidence that a tag existed (the exit code is the answer, not whether output appeared), and the
+   self-test's mutation hardcoded a version, so it stopped applying the moment the version moved.
+
+### THE DEPENDENCY PIN DID NOT MOVE
+
+`moonbitlang/async`'s newest published version is still **0.22.7** — re-checked 2026-11-06 — and it
+was already measured on 2026-11-02: 194 externs, and it **drops 22** of the 90 the host contract
+requires, so it is a different surface rather than a bigger one. The pin stays at **0.22.5**, the
+newest MEASURED to have a host surface a toolchain bundling 0.22.4 or 0.22.5 can satisfy, and
+`_verify/check_host_requirements.ps1` holds the artifact to it.
+
+### THE GATE, BEFORE PUBLICATION
+
+    RELEASE GATE FAILED: selfscan-published
+    116 stage rows True, one False
+    the False is `published package self-scan`
+
+That one stage fetches the version in `moon.mod` from the registry and scans it, so it cannot pass
+before the version is published — and while it is red the four rows behind it do not run, which is
+why this run reports 116 rows and the post-publish run reports 121. Everything that can pass before
+publication does, including the corpus comparison: all eight trees **MATCH** at **19,636** notices,
+which is the evidence that this release changed the REPOSITORY's spelling and not the analyzer's
+behaviour.
 ## 0.4.41 — the requirements document is one directory up, and the repository never named it
 
 **THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the artifact's import surface and the

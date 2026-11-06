@@ -4,16 +4,18 @@
 // detections of the same defect into one report instead of three echoes.
 
 ///|
+#derive(Eq)
 pub(all) struct Pos {
   line : Int32
   col : Int32
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct Span {
   start : Pos
   end : Pos
-} derive(Eq)
+}
 
 ///|
 #proof_pure
@@ -103,7 +105,7 @@ pub struct IfaceSymTab {
   /// A hit returns `TUnknownFn` (we know it is a value; we do not model its
   /// signature, so no arity or argument check may run against it). The `.mbti`
   /// DOES declare the parameter list -- `iface_signature` parses it
-  /// (`src/moonfiles/moonfiles.mbt:917-931`) -- and this table is what drops
+  /// (`src/moonfiles/moonfiles.mbt:918-932`) -- and this table is what drops
   /// it: there is no slot here for a signature. So an arity invented from the
   /// name alone would still be a guess the checks would report as fact, but the
   /// guess is OURS and not the format's. Measured 2026-10-28; see the 0508
@@ -446,11 +448,12 @@ pub fn IfaceSymTab::n_values(self : IfaceSymTab) -> Int32 {
 }
 
 ///|
+#derive(Eq)
 pub(all) enum Severity {
   Error
   Warning
   Hint
-} derive(Eq)
+}
 
 ///|
 /// The confidence axis: how much did the lens CHECK when it produced this
@@ -475,11 +478,12 @@ pub(all) enum Severity {
 /// A finding is NOT dropped for being uncertain. It is REPORTED at a lower
 /// confidence -- and that is the whole difference between a silence that reads
 /// as "nothing to report" and a statement about how much was checked.
+#derive(Eq)
 pub(all) enum Confidence {
   High
   Low
   Undecided
-} derive(Eq)
+}
 
 ///|
 pub fn Confidence::name(self : Confidence) -> String {
@@ -493,11 +497,12 @@ pub fn Confidence::name(self : Confidence) -> String {
 ///|
 /// The three analysis lenses, in pipeline order. Ranks order merged lens
 /// lists and pick the representative (most specific) message.
+#derive(Eq)
 pub(all) enum Lens {
   LStructural
   LType
   LBehavior
-} derive(Eq)
+}
 
 ///|
 pub fn Lens::name(self : Lens) -> String {
@@ -529,6 +534,7 @@ pub fn Lens::lower(self : Lens, other : Lens) -> Bool {
 /// as the same defect when they fire at the same span: an undefined name
 /// seen by all three lenses is one finding with the union of lenses;
 /// an argument mismatch and a method error likewise.
+#derive(Eq)
 pub(all) enum Family {
   FParse
   FUndefinedName
@@ -542,7 +548,7 @@ pub(all) enum Family {
   FCondBool
   FUnreachable
   FStaleNosec
-} derive(Eq)
+}
 
 ///|
 pub fn Family::name(self : Family) -> String {
@@ -658,11 +664,12 @@ pub fn Family::merge_group(self : Family) -> String {
 ///|
 /// One virtual-stack frame: enclosing function + source location
 /// (entry frame and error point, unified).
+#derive(Eq)
 pub(all) struct Frame {
   func : String
   file : String
   line : Int32
-} derive(Eq)
+}
 
 ///|
 /// Reports must own their virtual stack: lenses keep mutating their live

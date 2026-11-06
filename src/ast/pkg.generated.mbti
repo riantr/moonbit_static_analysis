@@ -10,6 +10,7 @@ import {
 // Errors
 
 // Types and methods
+#derive(Eq)
 pub(all) enum BOp {
   OpAdd
   OpSub
@@ -31,15 +32,17 @@ pub(all) enum BOp {
   OpShr
   OpPipe
   OpMatch
-} derive(Eq)
+}
 pub fn BOp::symbol(Self) -> String
 
+#derive(Eq)
 pub(all) struct CatchArm {
   span : @core.Span
   bindings : Array[String]
   body : Array[Stmt]
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) enum EKind {
   EInt(Int32)
   EBigInt
@@ -68,52 +71,59 @@ pub(all) enum EKind {
   ECatch(Expr, Array[CatchArm])
   ENoRaise(Expr, Array[CatchArm])
   EMatch(Expr, Array[MatchArm])
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct ElseIf {
   cond : Expr
   body : Array[Stmt]
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct Expr {
   span : @core.Span
   kind : EKind
-} derive(Eq)
+}
 pub fn Expr::assigned_base(Self) -> String?
 pub fn Expr::is_qualifier(Self) -> Bool
 pub fn Expr::is_valid_target(Self) -> Bool
 
+#derive(Eq)
 pub(all) enum ImportSpec {
   IImport(String)
   IAliased(String, String)
   IStar(String)
   IAliasedStar(String, String)
-} derive(Eq)
+}
 pub fn ImportSpec::alias_name(Self) -> String
 pub fn ImportSpec::is_star(Self) -> Bool
 pub fn ImportSpec::path(Self) -> String
 pub fn ImportSpec::render(Self) -> String
 
+#derive(Eq)
 pub(all) struct MatchArm {
   span : @core.Span
   bindings : Array[String]
   cond : Expr?
   reads : Array[String]
   body : Array[Stmt]
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct Module {
   body : Array[Stmt]
   imports : Array[ImportSpec]
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct Param {
   name : String
   tyann : String
   omittable : Bool
   span : @core.Span
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) enum SKind {
   SExpr(Expr)
   SLet(String, String, Expr)
@@ -132,17 +142,19 @@ pub(all) enum SKind {
   SLetDestruct(Array[String], Expr)
   SLocalFunc(String, Array[Param], String, Array[Stmt], @core.Span)
   SBlock(Array[Stmt])
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct Stmt {
   span : @core.Span
   kind : SKind
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) enum UOp {
   UNeg
   UNot
-} derive(Eq)
+}
 
 // Type aliases
 

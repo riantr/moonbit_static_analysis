@@ -10,21 +10,23 @@
 ///|
 /// One declared binding: from `let`, from a bare assignment, from a `for`
 /// variable, or from a parameter (param = true).
+#derive(Eq)
 pub(all) struct Binding {
   name : String
   tyann : String
   param : Bool
   decl_span : @core.Span
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct FnInfo {
   name : String
   params : Array[@ast.Param]
   retann : String
   body : Array[@ast.Stmt]
   span : @core.Span
-} derive(Eq)
+}
 
 ///|
 pub(all) struct WalkResult {
@@ -76,10 +78,11 @@ pub(all) struct WalkResult {
 
 ///|
 /// Constants representable by the folder: the foldFuns subset.
+#derive(Eq)
 pub(all) enum Const {
   CInt(Int32)
   CBool(Bool)
-} derive(Eq)
+}
 
 ///|
 /// Constant folding. Not an

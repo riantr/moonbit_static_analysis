@@ -10,6 +10,7 @@
 
 ///|
 /// The abstract value lattice: Bottom < Const < Type < Union < Any.
+#derive(Eq, Debug)
 pub(all) enum AbsVal {
   ABottom
   AInt(Int32)
@@ -17,7 +18,7 @@ pub(all) enum AbsVal {
   AType(String)
   AUnion(Array[String])
   AAny
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn val_name(v : AbsVal) -> String {
@@ -166,12 +167,13 @@ pub fn vboolean(v : AbsVal) -> Bool {
 }
 
 ///|
+#derive(Eq)
 priv enum Flow {
   FNormal
   FReturn
   FBreak
   FContinue
-} derive(Eq)
+}
 
 ///|
 /// The flow after an `if` whose branches were all explored.

@@ -63,14 +63,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.41
+moon add riantr/moonbit_static_analysis@0.4.42
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.41",
+  "riantr/moonbit_static_analysis@0.4.42",
 }
 ```
 
@@ -106,9 +106,9 @@ import {
 LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
 ```
 
-0.4.41 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
+0.4.42 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
 工具链上能链接起来的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.4.41**——导入面和 0.4.37 一样。
+你的 MoonBit 工具链，或者换到 **0.4.42**——导入面和 0.4.37 一样。
 
 ## 快速上手
 
@@ -259,7 +259,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.41_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.42_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
@@ -474,12 +474,12 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 | `test` 声明 | 1427 | | 匿名函数字面量 | 18 |
 | `if` 表达式 | 104 | | `const` 声明 | 6 |
 | `struct` 声明 | 62 | | 短 lambda | 2 |
-| `derive` 声明 | 54 | | `try` 表达式 | 1 |
+| `derive` 声明 | 20 | | `try` 表达式 | 1 |
 | `enum` 声明 | 25 | | | |
 
 去掉其中任何一行，都需要为那个形式做一个 AST 节点，所以它们是**功能**，不是措辞问题。
 真正要紧的区别不在措辞，而在**位置**：**125** 条落在某个函数体的范围内，会把那个函数体的
-审计整个关掉，所以它们逐行打印；其余 **1574** 条在所有函数体之外，什么也藏不住，于是在
+审计整个关掉，所以它们逐行打印；其余 **1540** 条在所有函数体之外，什么也藏不住，于是在
 扫描结束时按形状汇总成一张表。
 
 **这个划分来自分析器自己的几何，而不是来自措辞。** 落在函数体范围内的区域在那个函数的洞

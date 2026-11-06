@@ -10,15 +10,20 @@ import {
 // Errors
 
 // Types and methods
-type Finding derive(ToJson)
+#derive(@json.ToJson)
+type Finding
 
-type FrameRep derive(ToJson)
+#derive(@json.ToJson)
+type FrameRep
 
-type Reply derive(ToJson)
+#derive(@json.ToJson)
+type Reply
 
-type Request derive(@json.FromJson)
+#derive(@json.FromJson)
+type Request
 
-type SpecReq derive(@json.FromJson)
+#derive(@json.FromJson)
+type SpecReq
 
 // Type aliases
 

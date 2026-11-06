@@ -233,7 +233,7 @@ if ($r.Findings.Count -ge 1 -and $unknown.Count -eq 0) {
 # because building the js bridge is not part of this settle, and because the
 # source is the thing that publishes the shape.
 $jTxt = [System.IO.File]::ReadAllText((Join-Path $root 'src\jsoncli\main.mbt'), [System.Text.Encoding]::UTF8)
-$fM = [regex]::Match($jTxt, '(?s)struct Finding \{(.*?)\}\s*derive\(ToJson\)')
+$fM = [regex]::Match($jTxt, '(?s)struct Finding \{(.*?)\n\}')
 if (-not $fM.Success) {
   Say-Bad 'T6' 'the Finding record' 'not found' 'the source changed shape'
 } else {

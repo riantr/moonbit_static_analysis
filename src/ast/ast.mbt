@@ -7,6 +7,7 @@
 // (the type/behavior seam).
 
 ///|
+#derive(Eq)
 pub(all) enum BOp {
   OpAdd
   OpSub
@@ -59,7 +60,7 @@ pub(all) enum BOp {
   /// is the same trade the PIPE makes one level down, for the same reason: a
   /// claim the model cannot support is worse than an answer it can.
   OpMatch
-} derive(Eq)
+}
 
 ///|
 pub fn BOp::symbol(self : BOp) -> String {
@@ -88,12 +89,14 @@ pub fn BOp::symbol(self : BOp) -> String {
 }
 
 ///|
+#derive(Eq)
 pub(all) enum UOp {
   UNeg
   UNot
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) enum EKind {
   EInt(Int32)
   /// An integer literal with NO value attached: it exceeded the analyzer's
@@ -430,15 +433,17 @@ pub(all) enum EKind {
   /// frontend's statement grammar does not have. A `match` with no arms is not
   /// MoonBit, so the two readings cannot be confused.
   EMatch(Expr, Array[MatchArm])
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct Expr {
   span : @core.Span
   kind : EKind
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct Param {
   name : String
   tyann : String
@@ -472,13 +477,14 @@ pub(all) struct Param {
   /// as `no method matching wire_string(Any)`.
   omittable : Bool
   span : @core.Span
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct ElseIf {
   cond : Expr
   body : Array[Stmt]
-} derive(Eq)
+}
 
 ///|
 /// One `catch` handler arm: `pattern => body`.
@@ -497,11 +503,12 @@ pub(all) struct ElseIf {
 /// census says the single-statement form is the COMMON one — 45 of 54 handler
 /// sites in moui, 273 of 323 in proton (`_verify/census_catch.ps1`). A
 /// block-only representation would have modelled the rare form.
+#derive(Eq)
 pub(all) struct CatchArm {
   span : @core.Span
   bindings : Array[String]
   body : Array[Stmt]
-} derive(Eq)
+}
 
 ///|
 /// A `match` arm: `pattern => body`.
@@ -541,6 +548,7 @@ pub(all) struct CatchArm {
 /// one: it is an EXPRESSION whose value decides whether the arm matches, and
 /// it runs before the body. Keeping it in the body would have made it a
 /// statement of the enclosing function.
+#derive(Eq)
 pub(all) struct MatchArm {
   span : @core.Span
   bindings : Array[String]
@@ -562,9 +570,10 @@ pub(all) struct MatchArm {
   /// (which carries TWO constraints in one `with`).
   reads : Array[String]
   body : Array[Stmt]
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) enum SKind {
   SExpr(Expr)
   /// let name (: T)? = init — tyann "" means unannotated
@@ -723,13 +732,14 @@ pub(all) enum SKind {
   /// lenses treat it exactly like an `if` body (no new scope), because
   /// the binding analysis is not flow-scoped anywhere else either.
   SBlock(Array[Stmt])
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct Stmt {
   span : @core.Span
   kind : SKind
-} derive(Eq)
+}
 
 ///|
 /// One `.mbtx` script import entry. The official entry grammar (script-mode
@@ -737,6 +747,7 @@ pub(all) struct Stmt {
 /// modifiers, in that order. The docs also state the alias stays available
 /// alongside import-all (both `Queue` and `@q.Queue` resolve), so alias+star is
 /// its own shape rather than "an alias then a star".
+#derive(Eq)
 pub(all) enum ImportSpec {
   /// "moonbitlang/core/list"
   IImport(String)
@@ -746,7 +757,7 @@ pub(all) enum ImportSpec {
   IStar(String)
   /// "moonbitlang/core/queue" @q *
   IAliasedStar(String, String)
-} derive(Eq)
+}
 
 ///|
 /// The quoted package path, whichever modifiers follow it.
@@ -790,13 +801,14 @@ pub fn ImportSpec::render(self : ImportSpec) -> String {
 }
 
 ///|
+#derive(Eq)
 pub(all) struct Module {
   body : Array[Stmt]
   /// `.mbtx` script imports from the leading `import { ... }` block(s),
   /// recorded but NOT resolved — the subset analyzes one self-contained file
   /// at a time. Empty for package sources (`.mbt`).
   imports : Array[ImportSpec]
-} derive(Eq)
+}
 
 ///|
 /// The base symbol of an assignment target:

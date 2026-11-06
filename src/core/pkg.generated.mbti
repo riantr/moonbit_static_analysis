@@ -28,13 +28,15 @@ pub(all) struct Advice {
   how : String
 }
 
+#derive(Eq)
 pub(all) enum Confidence {
   High
   Low
   Undecided
-} derive(Eq)
+}
 pub fn Confidence::name(Self) -> String
 
+#derive(Eq)
 pub(all) enum Family {
   FParse
   FUndefinedName
@@ -48,18 +50,19 @@ pub(all) enum Family {
   FCondBool
   FUnreachable
   FStaleNosec
-} derive(Eq)
+}
 pub fn Family::advice(Self) -> Advice
 pub fn Family::id(Self) -> String
 pub fn Family::merge_group(Self) -> String
 pub fn Family::name(Self) -> String
 pub fn Family::severity(Self) -> Severity
 
+#derive(Eq)
 pub(all) struct Frame {
   func : String
   file : String
   line : Int32
-} derive(Eq)
+}
 
 pub struct IfaceSymTab {
   types : Map[String, Bool]
@@ -77,30 +80,34 @@ pub fn IfaceSymTab::n_types(Self) -> Int32
 pub fn IfaceSymTab::n_values(Self) -> Int32
 pub fn IfaceSymTab::union(Self, Self) -> Self
 
+#derive(Eq)
 pub(all) enum Lens {
   LStructural
   LType
   LBehavior
-} derive(Eq)
+}
 pub fn Lens::lower(Self, Self) -> Bool
 pub fn Lens::name(Self) -> String
 pub fn Lens::rank(Self) -> Int32
 
+#derive(Eq)
 pub(all) struct Pos {
   line : Int32
   col : Int32
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) enum Severity {
   Error
   Warning
   Hint
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct Span {
   start : Pos
   end : Pos
-} derive(Eq)
+}
 
 // Type aliases
 

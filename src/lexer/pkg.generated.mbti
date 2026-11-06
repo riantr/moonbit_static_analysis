@@ -14,6 +14,7 @@ pub fn lex(String) -> (Array[Tok], Array[@core.Span], Array[@report.Report])
 // Errors
 
 // Types and methods
+#derive(Eq)
 pub(all) enum Tok {
   TInt(Int32)
   TBigInt
@@ -68,7 +69,7 @@ pub(all) enum Tok {
   TSemi
   TNewline
   TEOF
-} derive(Eq)
+}
 
 // Type aliases
 

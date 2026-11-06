@@ -366,9 +366,9 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    expressions the proxy called expression-level.
 $NOTICE_TOTAL = '19636'
 $SELF_FILES = '189'
-$SELF_NOTICES = 'test declaration=1427|if expression=104|struct declaration=62|derive declaration=54|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
+$SELF_NOTICES = 'test declaration=1427|if expression=104|struct declaration=62|derive declaration=20|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1'
 $SELF_PRINTED = '125'
-$SELF_AGGREGATED = '1574'
+$SELF_AGGREGATED = '1540'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.

@@ -28,6 +28,7 @@ pub fn ty_union(Array[Ty]) -> Ty
 // Errors
 
 // Types and methods
+#derive(Eq)
 pub(all) struct Sig {
   name : String
   param_names : Array[String]
@@ -35,8 +36,9 @@ pub(all) struct Sig {
   ret : Ty
   declared_ret : Ty
   line : Int32
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) enum Ty {
   TUnknown
   TNone
@@ -48,7 +50,7 @@ pub(all) enum Ty {
   TFunc(String, Array[String], Array[Ty], Ty)
   TUnknownFn(String)
   TUnion(Array[Ty])
-} derive(Eq)
+}
 
 pub(all) struct TypeResult {
   syms : Array[TypedSym]
@@ -57,13 +59,14 @@ pub(all) struct TypeResult {
   n_unchecked : Int32
 }
 
+#derive(Eq)
 pub(all) struct TypedSym {
   name : String
   ty : Ty
   annotated : Bool
   fn_scope : String
   decl_span : @core.Span
-} derive(Eq)
+}
 
 // Type aliases
 

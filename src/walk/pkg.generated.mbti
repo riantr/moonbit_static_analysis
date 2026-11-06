@@ -19,25 +19,28 @@ pub fn walk_module(@ast.Module, String, @core.IfaceSymTab, Int32, Array[String],
 // Errors
 
 // Types and methods
+#derive(Eq)
 pub(all) struct Binding {
   name : String
   tyann : String
   param : Bool
   decl_span : @core.Span
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) enum Const {
   CInt(Int32)
   CBool(Bool)
-} derive(Eq)
+}
 
+#derive(Eq)
 pub(all) struct FnInfo {
   name : String
   params : Array[@ast.Param]
   retann : String
   body : Array[@ast.Stmt]
   span : @core.Span
-} derive(Eq)
+}
 
 pub(all) struct WalkResult {
   fns : Array[FnInfo]

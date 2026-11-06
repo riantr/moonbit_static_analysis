@@ -28,11 +28,12 @@ pub fn render_reports(Array[@report.Report]) -> String
 // Errors
 
 // Types and methods
+#derive(Eq, @debug.Debug)
 pub(all) enum FenceMode {
   FTest
   FNoCheck
   FDisplay
-} derive(Eq, @debug.Debug)
+}
 
 // Type aliases
 

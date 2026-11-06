@@ -140,6 +140,7 @@ fn contains_bang(code : String) -> Bool {
 /// Earlier versions of this file claimed the toolchain compiled bare `mbt`. It
 /// does not; that claim came from the doc wording, not from a measurement, and
 /// analysing those blocks produced findings on code the toolchain never builds.
+#derive(Eq, Debug)
 pub(all) enum FenceMode {
   /// ` ```mbt check ` / ` ```mbt test ` (and the `moonbit` spellings) — live
   /// code: compiled, and reachable as a test
@@ -148,7 +149,7 @@ pub(all) enum FenceMode {
   FNoCheck
   /// ` ```mbt ` / ` ```moonbit ` — a display fence for MoonBit source
   FDisplay
-} derive(Eq, Debug)
+}
 
 ///|
 /// Classify a fence info string. Returns None for a non-MoonBit fence.

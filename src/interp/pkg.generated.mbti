@@ -30,6 +30,7 @@ pub fn widen(AbsVal) -> AbsVal
 // Errors
 
 // Types and methods
+#derive(Eq, @debug.Debug)
 pub(all) enum AbsVal {
   ABottom
   AInt(Int32)
@@ -37,7 +38,7 @@ pub(all) enum AbsVal {
   AType(String)
   AUnion(Array[String])
   AAny
-} derive(Eq, @debug.Debug)
+}
 
 // Type aliases
 

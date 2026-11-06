@@ -3,6 +3,7 @@
 // span lines; otherwise a newline terminates the statement.
 
 ///|
+#derive(Eq)
 pub(all) enum Tok {
   TInt(Int32)
   /// An integer literal this analyzer gives no value to: it did not fit the
@@ -184,7 +185,7 @@ pub(all) enum Tok {
   TSemi
   TNewline
   TEOF
-} derive(Eq)
+}
 
 ///|
 priv struct Lexer {

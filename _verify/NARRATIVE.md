@@ -9463,12 +9463,12 @@ the gate reads; `_verify/check_transfer_scope.ps1` resolves every line of it
 against this tree, so it cannot rot without the gate saying so.
 
     --- TRANSFER MAP ---
-    row 1  src/core/core.mbt:478        enum Confidence
+    row 1  src/core/core.mbt:482        enum Confidence
     row 1  src/report/report.mbt:214    fn Report::confidence
-    row 1  src/jsoncli/main.mbt:24      confidence : String
-    row 2  src/core/core.mbt:532        enum Family
-    row 2  src/core/core.mbt:583        fn Family::id
-    row 2  src/core/core.mbt:617        fn family_by_id
+    row 1  src/jsoncli/main.mbt:25      confidence : String
+    row 2  src/core/core.mbt:538        enum Family
+    row 2  src/core/core.mbt:589        fn Family::id
+    row 2  src/core/core.mbt:623        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
@@ -9491,7 +9491,7 @@ finding, and a finding's vocabulary lives with the rest of it.
 "P1 `core.mbt:491`", and MEASURED at the tree the review read (`9763dfd^`, the
 commit before the transfers landed) `src/core/core.mbt:491` was
 `pub(all) enum Family {`. The prediction WAS the line. The enum is now at line
-532, because the `Confidence` enum -- the vocabulary of the new axis -- was
+538, because the `Confidence` enum -- the vocabulary of the new axis -- was
 added above it by that same commit; the `Lens` enum was already there, at line
 455, and moved down with it -- the id table `Family::id`, the inverse
 `family_by_id`, and the checked profile `validate_profile` are the other half of
@@ -9770,3 +9770,182 @@ gate is red on the toolchain in use.
 => 判据: A PUBLISHED ARTIFACT IS IMMUTABLE, SO A ROW PER RELEASE IS THE ONLY SHAPE THAT DOES NOT
 ROT. "The shipped artifact" is a different file every release; a row that names one is true
 forever and is added to, never rewritten.
+
+
+## 0517: 0516 NAMED A BLOCKER; THIS IS THE INCREMENT THAT REMOVES IT
+
+0516 recorded two things: the published record named the wrong artifact (fixed, committed), and the
+local toolchain had started rejecting the syntax this repository is written in (not fixed, and the
+reason 0.4.42 was not cut). This is the second one, done.
+
+### THE BLOCKER WAS WORSE THAN 0516 KNEW: CI WAS RED ON MASTER
+
+0516 measured `moon check --deny-warn` locally and said the release gate could not be green on this
+machine. It did not check whether CI -- which installs the newest toolchain on every run -- was
+still green. MEASURED: it was not.
+
+    gate  completed  failure  08815e3  2026-11-06T12:31:15Z
+    gate  completed  failure  3757077  2026-11-06T12:28:16Z
+    gate  completed  success  813c0de  2026-11-02T17:06:07Z
+
+The failed logs carry the same error the local toolchain prints:
+
+    Error Warning (deprecated_syntax): The syntax `derive(...)` for deriving trait
+    implementations is deprecated. Use `#derive(...)` before the type declaration instead.
+
+So the state 0516 left behind was not "a release is blocked here". It was **`master` does not
+compile for anyone**, since the toolchain moved. That changes the priority of this increment from
+tidy-up to repair, and it is worth naming because it is a class of error this repository keeps
+making: a fact measured on ONE machine was reported as a fact about the release.
+
+=> 判据: A LOCAL MEASUREMENT IS NOT A STATEMENT ABOUT CI. When a dependency that CI installs
+itself (a toolchain) moves, the question "did CI go red" is answered by the CI's own runs, not by
+the local gate.
+
+### THE SCOPE WAS MEASURED, AND THE FIRST MEASUREMENT WAS WRONG
+
+0516 said "71 times across 17 hand-written `.mbt` files". That count came from `grep derive(` and
+it was wrong: it counted the generated `.mbti` files, and occurrences inside string literals and
+comments. The declarations that the compiler actually rejects are:
+
+    src/ast/ast.mbt             12
+    src/core/core.mbt            7
+    src/jsoncli/main.mbt         5
+    src/types/types.mbt          3
+    src/walk/walk.mbt            3
+    src/interp/interp.mbt        2
+    src/lexer/lexer.mbt          1
+    src/moonfiles/moonfiles.mbt  1
+    ---------------------------------
+    34 sites in 8 files
+
+The seven errors `moon check` reported in `src/core/core.mbt` match that file's seven sites
+exactly, which is a useful cross-check: the compiler stops at the first package, so the local
+error count is a PER-PACKAGE number and never the tree's.
+
+=> 判据: THE COUNT AN ERROR REPORT GIVES IS THE COUNT FOR THE FIRST THING THAT FAILED. Seven
+errors in one file is not seven sites in the tree.
+
+### THE MIGRATOR WAS THE TOOLCHAIN'S OWN FORMATTER
+
+`moon fmt`, run on a tree that was already `fmt --check` clean, produced exactly the eight-file
+diff and nothing else: `#derive(Eq)` above each declaration, the trailing `} derive(Eq)` removed,
+doc comments left in place. So no rewriter was hand-rolled. This is the difference between a
+migration and a sed command: the formatter knows the language, and its output is by construction
+the shape `fmt --check` accepts.
+
+MEASURED after the migration:
+
+    moon check --deny-warn     exit 0   (was exit 1, 7 errors)
+    moon fmt --check           exit 0
+    moon test --target wasm    1330/1330
+    moon test --target js      1204/1204
+    moon test --target wasm-gc 1204/1204
+    moon build --target wasm   exit 0
+
+The three test counts are the numbers the README already published. Nothing moved, which is the
+point: the migration is a spelling change.
+
+### THE PARSER ALREADY READ THE NEW FORM, AND THAT WAS MEASURED BEFORE THE MIGRATION
+
+The worry 0516 recorded was that this analyzer -- which parses MoonBit -- would not understand the
+syntax its own source was about to use, and that the pinned self-scan numbers would move in a way
+nobody could predict. So it was probed with the PUBLISHED 0.4.41 wasm first, on two files that
+differ only in the spelling:
+
+    #derive(Eq) above the declaration   1/1 parsed   0 defects   2 notices   (one per declaration)
+    } derive(Eq) on the closing line    1/1 parsed   0 defects   4 notices   (declaration + derive)
+
+So: the parser accepts both, and the new form produces FEWER notices -- the `derive declaration`
+notice simply disappears. That predicted the direction of the pin change before anything was
+edited, and the prediction was then measured rather than assumed.
+
+### THE PINS, RE-MEASURED
+
+| | before | after |
+|---|---|---|
+| files / parsed | 189 / 189 | 189 / 189 |
+| actionable | 0 | 0 |
+| notices | 1699 | **1665** |
+| `derive` declaration | 54 | **20** |
+| printed / aggregated | 125 / 1574 | 125 / **1540** |
+
+`$SELF_NOTICES` and `$SELF_AGGREGATED` in `_verify/release.ps1` carry the new values, and both
+READMEs' notice table carries them too (`derive` 54 -> 20, aggregated 1574 -> 1540). The gate
+derives its kind table from the aggregated rows AND the rendered notice lines, so the numbers were
+recomputed with that same rule rather than read off one half: 1427+104+62+20+25+18+6+2+1 = 1665,
+which is the SUMMARY's own notice count.
+
+**THE `derive` ROW DOES NOT REACH ZERO, AND THAT IS NOT A LEFT-OVER MIGRATION.** All twenty
+remaining notices are in untracked `_verify/_work_*.mbt` scratch copies of older source. Scanning
+`$root` with `--exclude src` shows the twenty come from exactly those files. The scanner walks the
+working tree, not the index, so it sees them; a clean checkout would report 0 for that row and
+1478 in total. The pin describes the tree the gate runs on -- the same convention the 189-file
+count has always used, and the reason those scratch files have been left alone across many
+increments.
+
+=> 判据: A MIGRATION IS MEASURED IN BOTH DIRECTIONS. What the compiler now accepts AND what the
+analyzer now says about the source it just migrated. A spelling change that moves a published
+number is not a spelling change.
+
+### WHAT DID NOT CHANGE, AND WHY THAT IS THE EVIDENCE
+
+The corpus pins are **19,636** notices over eight trees, and the corpora are published
+old-syntax packages, so they must not move -- the migration touched this repository's spelling and
+not the analyzer's behaviour. The gate's corpus stage is the check that this is true rather than
+claimed, and so is the identical test count on three targets.
+
+### AND THE 0.4.41 RECORD, WHICH 0516 COULD NOT SHIP
+
+0516 fixed the published-bytes block to one row per release and hardened
+`check_transfer_scope.ps1` twice, and could not ship any of it because the tree did not compile.
+Those commits have been sitting on `master` since; 0.4.42 is the version that carries them to a
+reader, together with this migration.
+
+
+### THE FIRST GATE RUN FOUND THREE GATES THAT READ THE SOURCE'S SHAPE
+
+The migration is a spelling change, so it should move no behaviour -- and the first full gate run
+was the check on that claim rather than a formality. It came back with three red stages, and only
+one of them was expected:
+
+    published package self-scan          EXPECTED -- the stage fetches the version in moon.mod
+                                          from the registry, and 0.4.42 is not published yet
+    the premises of the 0505 plan        rows B1 and B4: "the source changed shape"
+    the three bandit transfers           row T6: "the source changed shape"
+
+B1, B4 and T6 all read a DECLARATION out of the source and assert what it contains, and all three
+matched it with a regex that ended `... \}\s*derive`. With the derivation moved above the
+declaration there is no `derive` after the closing brace, so the capture failed and each row
+reported, correctly, that the source no longer had the shape it expected. `check_family_roster.ps1`
+had the same bug in two places. Four regexes, all with one cause.
+
+None of them was papered over: the terminator is now the closing brace on its own line, the
+captures were re-run, and the two settles came back at **17 rows** and **19 rows** green.
+
+=> 判据: A SPELLING CHANGE IS ONLY HARMLESS IF EVERY READER OF THAT SPELLING IS UPDATED.
+The compiler was the loud one. The four gates that lex the same declaration themselves were the
+quiet ones, and they were found by running the gate, not by reasoning about which files could
+care.
+
+### THE GATE, BEFORE PUBLICATION
+
+The full release gate on the tree that carries this version:
+
+    RELEASE GATE FAILED: selfscan-published
+    116 stage rows True, one False
+    the False is `published package self-scan`
+
+That one stage fetches the version in `moon.mod` from the registry and scans it, so it **cannot**
+pass before the version is published -- and while it is red, the four rows behind it do not run,
+which is why this run reports 116 rows and the post-publish run reports 121. Everything that can
+pass before publication does, including the corpus comparison: all eight trees **MATCH** at
+**19,636** notices, which is the evidence that this migration changed the REPOSITORY's spelling and
+not the analyzer's behaviour.
+
+The post-publish run -- all 121 rows True -- is recorded in 0518, because a verdict that names a
+tree has to name the tree it was taken on.
+
+=> 判据: A STAGE THAT CANNOT PASS BEFORE PUBLICATION IS NOT A RED GATE, BUT IT MUST BE NAMED.
+Saying "the gate is green" when one stage is red for an ordering reason is exactly how a real red
+gets waved through. The statement is: 116 True, one False, and here is which one and why.

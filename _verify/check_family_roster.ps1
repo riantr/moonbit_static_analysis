@@ -59,7 +59,7 @@ $src = [System.IO.File]::ReadAllText($core, [System.Text.Encoding]::UTF8)
 
 # ------------------------------------------------------------------ 1. the enum ---
 Write-Output '=== 1. the Family enum ==='
-$enumM = [regex]::Match($src, '(?s)pub\(all\) enum Family \{(.*?)\}\s*derive')
+$enumM = [regex]::Match($src, '(?s)pub\(all\) enum Family \{(.*?)\n\}')
 if (-not $enumM.Success) {
   Write-Output '  MISSING: the Family enum was not found in src/core/core.mbt.'
   Write-Output '          The source changed shape, and this gate cannot read it.'
@@ -168,7 +168,7 @@ if (-not $invM.Success) {
 # ------------------------------------------- 4. the confidence vocabulary -------
 Write-Output ''
 Write-Output '=== 4. the confidence vocabulary ==='
-$confM = [regex]::Match($src, '(?s)pub\(all\) enum Confidence \{(.*?)\}\s*derive')
+$confM = [regex]::Match($src, '(?s)pub\(all\) enum Confidence \{(.*?)\n\}')
 if (-not $confM.Success) {
   Write-Output '  MISSING: the Confidence enum was not found.'
   $fail++

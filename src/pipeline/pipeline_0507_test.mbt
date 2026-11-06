@@ -32,7 +32,7 @@ test "the type lens discloses a method call it could not check" {
 ///|
 /// A call to a name known only by NAME. The `.mbti` of another package declares
 /// the name AND its parameters -- the parser reads the parameter list
-/// (`src/moonfiles/moonfiles.mbt:917-931`) and the cross-file symbol table is
+/// (`src/moonfiles/moonfiles.mbt:918-932`) and the cross-file symbol table is
 /// what drops it -- so the analyzer resolves the name, types the result as
 /// unknown, and checks neither the arity nor the argument types -- deliberately,
 /// because asserting something about a signature it never read is the one claim

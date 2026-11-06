@@ -68,14 +68,14 @@ not resolve — are counted as notices and are not in that 10. On that same tree
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.41
+moon add riantr/moonbit_static_analysis@0.4.42
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.41",
+  "riantr/moonbit_static_analysis@0.4.42",
 }
 ```
 
@@ -114,9 +114,9 @@ the failure arrives before the analyzer runs a single line:
 LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
 ```
 
-0.4.41 is built against async **0.22.5** again, and its import surface is identical to the one
+0.4.42 is built against async **0.22.5** again, and its import surface is identical to the one
 0.4.37 shipped — the surface that links on those toolchains. If you hit that error on 0.4.38:
-use **0.4.37**, or upgrade your MoonBit toolchain, or move to **0.4.41** — the same import surface.
+use **0.4.37**, or upgrade your MoonBit toolchain, or move to **0.4.42** — the same import surface.
 
 ## Quick start
 
@@ -279,7 +279,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.41_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.42_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -535,13 +535,13 @@ whole finding set:
 | `test` declaration | 1427 | | `anonymous function literal` | 18 |
 | `if` expression | 104 | | `const` declaration | 6 |
 | `struct` declaration | 62 | | `short lambda` | 2 |
-| `derive` declaration | 54 | | `try` expression | 1 |
+| `derive` declaration | 20 | | `try` expression | 1 |
 | `enum` declaration | 25 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **125** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1574** sit outside every function's
+audit off, so they are printed one per line; the other **1540** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**

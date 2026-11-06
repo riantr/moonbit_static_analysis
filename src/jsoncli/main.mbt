@@ -17,6 +17,7 @@
 ///   * `family_id` -- the family's STABLE id. `family` is the public NAME, and
 ///     a name is a second vocabulary that can be renamed without anybody
 ///     noticing; the id cannot be renumbered, so a consumer can pin it.
+#derive(ToJson)
 struct Finding {
   line : Int32
   col : Int32
@@ -27,29 +28,32 @@ struct Finding {
   family_id : String
   lenses : Array[String]
   vst : Array[FrameRep]
-} derive(ToJson)
+}
 
 ///|
 /// one virtual-stack frame
+#derive(ToJson)
 struct FrameRep {
   func : String
   file : String
   line : Int32
-} derive(ToJson)
+}
 
 ///|
 /// the reply envelope
+#derive(ToJson)
 struct Reply {
   ok : Bool
   error : String?
   count : Int32
   findings : Array[Finding]
   rendered : String
-} derive(ToJson)
+}
 
 ///|
 /// machine tables, mirroring @statecheck.MachineSpec in wire form; every
 /// field is optional and defaulted at conversion
+#derive(FromJson)
 struct SpecReq {
   name : String?
   states : Array[String]?
@@ -60,15 +64,16 @@ struct SpecReq {
   slot_names : Array[String]?
   blocks : Array[(String, String, String)]?
   course : Array[String]?
-} derive(FromJson)
+}
 
 ///|
+#derive(FromJson)
 struct Request {
   kind : String?
   source : String?
   filename : String?
   spec : SpecReq?
-} derive(FromJson)
+}
 
 ///|
 fn to_finding(rep : @report.Report) -> Finding {

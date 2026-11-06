@@ -437,7 +437,7 @@ Write-Output ''
 Write-Output '--- 2. THE PUBLIC VOCABULARY IS A NAME, NOT AN ID ---'
 $coreMbt = Join-Path $root 'src\core\core.mbt'
 $coreTxt = [System.IO.File]::ReadAllText($coreMbt, [System.Text.Encoding]::UTF8)
-$enumM = [regex]::Match($coreTxt, '(?s)pub\(all\)\s+enum\s+Family\s*\{(.*?)\}\s*derive')
+$enumM = [regex]::Match($coreTxt, '(?s)pub\(all\)\s+enum\s+Family\s*\{(.*?)\n\}')
 $nameM = [regex]::Match($coreTxt, '(?s)pub fn Family::name\(self : Family\) -> String \{(.*?)\n\}')
 if (-not $enumM.Success -or -not $nameM.Success) {
   Say-Bad 'B1' 'the Family enum and its name()' 'not found' 'the source changed shape'
@@ -513,7 +513,7 @@ if ($r.Findings.Count -eq 1) {
 #
 # 0507 ADDED `confidence` AND `family_id` to it, so this row was INVERTED too.
 $jTxt = [System.IO.File]::ReadAllText((Join-Path $root 'src\jsoncli\main.mbt'), [System.Text.Encoding]::UTF8)
-$fM = [regex]::Match($jTxt, '(?s)struct Finding \{(.*?)\}\s*derive\(ToJson\)')
+$fM = [regex]::Match($jTxt, '(?s)struct Finding \{(.*?)\n\}')
 if (-not $fM.Success) {
   Say-Bad 'B4' 'the Finding record' 'not found' 'the source changed shape'
 } else {

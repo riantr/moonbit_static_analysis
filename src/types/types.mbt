@@ -7,6 +7,7 @@
 // where an annotation exists, forward otherwise; unions come from merges.
 
 ///|
+#derive(Eq)
 pub(all) enum Ty {
   TUnknown
   TNone
@@ -36,7 +37,7 @@ pub(all) enum Ty {
   /// `IfaceSymTab::has_value` for the measured false positives this avoids.
   TUnknownFn(String)
   TUnion(Array[Ty])
-} derive(Eq)
+}
 
 ///|
 /// union constructor: flatten, dedupe, absorb Unknown
@@ -343,18 +344,20 @@ pub fn binop_result(op : @ast.BOp, l : Ty, r : Ty) -> Ty? {
 
 ///|
 /// A symbol with an inferred type: the annotated binding table.
+#derive(Eq)
 pub(all) struct TypedSym {
   name : String
   ty : Ty
   annotated : Bool
   fn_scope : String
   decl_span : @core.Span
-} derive(Eq)
+}
 
 ///|
 /// The signature table: one entry per analyzed function. This is what the
 /// behavior lens consumes as its method table (assembly point 2) —
 /// "methods are tables" with types the type lens already proved.
+#derive(Eq)
 pub(all) struct Sig {
   name : String
   /// Parameter names, parallel to `param_tys`. See `TFunc` for why the
@@ -364,7 +367,7 @@ pub(all) struct Sig {
   ret : Ty
   declared_ret : Ty
   line : Int32
-} derive(Eq)
+}
 
 ///|
 pub(all) struct TypeResult {
