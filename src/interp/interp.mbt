@@ -292,21 +292,24 @@ priv struct Interp {
   // 0537. THE CALLER-BOUND NAMES OF THE FRAME BEING EXECUTED. When a function is
   // analysed FROM A CALL SITE its parameters are bound to the CALLER'S argument
   // values, so a branch inside it can be committed by a value this analysis
-  // chose rather than one the program fixes. These two fields are the
-  // discriminator 0524 said was needed and 0535 failed to find:
+  // chose rather than one the program fixes. This is the discriminator 0524
+  // said was needed and 0535 failed to find:
   //
   //   caller_names      the callee's parameter names, set at the call site and
   //                     restored on the way out (empty for a top-level frame,
   //                     whose parameters come from DECLARED TYPES)
-  //   fold_used_caller  set when a CONDITION that mentions one of those names is
-  //                     what committed the frame to a branch
   //
-  // `MSA-011` reads the second: a frame whose branch was committed by a
-  // caller-derived value must not conclude that the other side is unreachable.
-  // A literal IN THE SOURCE is not in `caller_names`, which is what keeps the
-  // 0425 true positives reporting.
+  // `MSA-011` consults it at the BRANCH rather than at the report: a condition
+  // that names one of these is replaced by `AAny` and routed to the
+  // unknown-condition arm, which explores both sides and joins their flows. A
+  // literal IN THE SOURCE is not in `caller_names`, so the 0425 true positives
+  // keep folding and keep reporting.
+  //
+  // 0535 KEPT A SECOND FIELD HERE, `fold_used_caller` -- set by the branch and
+  // read by the report. It suppressed the true positives along with the false
+  // one, so it went out with that design; a field that is written and never read
+  // is exactly the kind of thing this tree deletes rather than explains.
   mut caller_names : Array[String]
-  mut fold_used_caller : Bool
   methods : Map[String, MethodDef]
   /// Names that exist but whose body is not analysed — the cross-file symbol
   /// table. A call to one of these is dispatched as an unknown-returning call
@@ -435,7 +438,6 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
   }
   Interp::{
     caller_names: [],
-    fold_used_caller: false,
     methods: Map([]),
     extern_iface,
     ambient,
@@ -2571,17 +2573,14 @@ fn Interp::call(
       // mentions those names can be committed by a value this analysis chose --
       // which is what `MSA-011` must not read as reachability. Saved and
       // restored, because the callee may call further functions: everything
-      // under it is caller-bound to ITS OWN parameters, and this frame's sets go
+      // under it is caller-bound to ITS OWN parameters, and this frame's set goes
       // back on the way out.
       let saved_caller_names = self.caller_names
-      let saved_fold_used_caller = self.fold_used_caller
       self.caller_names = def.pnames
-      self.fold_used_caller = false
       // The value `analyze_fn` returns IS this call's result, so it is carried
-      // out through the restores rather than dropped.
+      // out through the restore rather than dropped.
       let callee_value = self.analyze_fn(def, ordered)
       self.caller_names = saved_caller_names
-      self.fold_used_caller = saved_fold_used_caller
       callee_value
     }
     None => {
