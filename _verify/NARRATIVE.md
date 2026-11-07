@@ -11699,3 +11699,46 @@ six call sites, and the guard already written once and reverted. The part that
 made the first attempt wrong was the DISCRIMINATOR, and that is now measured; the
 part that remains is mechanical, which is a different risk profile from a design
 that is still unknown.
+## 0536: THE "SIX FOLD SITES" IN 0535's ADDENDUM ARE NOT FOLD SITES
+
+Written to correct the sentence immediately before it, because that sentence is
+what the next cycle would act on.
+
+0535's addendum said "there are SIX fold sites, not one" and listed
+`interp.mbt:971, 1029, 1079, 1361, 1390` plus the `while` handling near 1821.
+That list came from grepping `!vboolean(cv)` and ASSUMING the pattern was the
+branch decision. It is not. Those lines are the `FCondBool` check:
+
+    cv => {
+      if !vboolean(cv) {
+        self.report(@core.FCondBool, "condition must be bool, got '\{val_name(cv)}'", ...)
+      }
+
+-- a TYPE complaint about a condition whose value is not a boolean. Editing a
+caller-bound-name check into those six places would change nothing about
+reachability and would leave the 0524 false positive exactly where it is.
+
+THE BRANCH IS DECIDED ONE ARM ABOVE, BY A MATCH ON THE CONDITION VALUE:
+
+    ABool(true)  => self.exec_block(then, env)
+    ABool(false) => self.flow = self.exec_alt(elseifs, els, env, 0)
+    ABottom      => ()
+
+So the place the discriminator has to live is the `ABool(true)`/`ABool(false)`
+arms -- the points where a definite boolean condition COMMITS the frame to one
+side. A definite boolean is exactly what a parameter bound to a caller's literal
+produces, which is the mechanism 0524 measured.
+
+AND THE SHAPE OF THE FIX IS SMALLER THAN 0535 DREW IT, not larger: one flag set
+just before those arms commit (when the condition's names intersect the
+caller-bound set), and the report guard already written once and reverted. The
+`note_fold_source` helper and the six call sites 0535's addendum invented are not
+needed -- there is one decision point per branch construct, not six per file.
+
+=> 判据: A GREP IS NOT A MEASUREMENT OF WHAT A LINE DOES. `!vboolean(cv)` looked
+like "the branch turns on this value" and is in fact "this value is not a bool".
+The two are one line apart and only reading the arm above tells them apart.
+
+=> 判据: A CORRECTION THAT NAMES ITS OWN PREDECESSOR IS WORTH MORE THAN A CLEAN
+FILE. 0535's addendum is left in place on purpose: it is the mistake, and the
+next reader needs to see which list not to edit.
