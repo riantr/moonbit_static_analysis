@@ -11605,3 +11605,70 @@ what is worth building next.
 => 判据: AN INHERITED SENTENCE ABOUT COST IS STILL A CLAIM ABOUT THE WORLD. "It
 moves findings on every corpus" was true of the fix in the abstract and is false
 of this tree's corpora, measurably, at zero.
+## 0535: THE MSA-011 FIX WAS ATTEMPTED, MEASURED, AND REVERTED -- AND THE HYPOTHESIS WAS WRONG
+
+0534 cleared the blast-radius objection (MSA-011 fires zero times on the eight
+trees, so no baseline moves), which left the fix bounded: one flag at one of the
+two `analyze_fn` call sites, plus a guard at the single report. It was attempted.
+It compiled. FOURTEEN TESTS WENT RED, and the reason is a correction.
+
+### WHAT WAS BUILT
+
+    priv struct Interp { mut caller_bound : Bool }   -- set true around the
+                                                         call-site analyze_fn,
+                                                         saved/restored across
+                                                         recursion
+    the report at exec_block                          -- `if !self.caller_bound`
+
+The claim being relied on was: the 0425 true positives ("code after an `if` whose
+EVERY branch terminates is still dead", "an else-if chain where every branch
+terminates", "a chain that reaches exec_alt and returns everywhere", "a false
+condition whose else returns leaves the rest dead", "a folded condition makes the
+untaken branch's continuation dead") are analysed as ENTRY frames, so their
+parameters come from declared types and the flag would not touch them.
+
+### THE HYPOTHESIS WAS FALSE
+
+They went red, all of them, plus `pipeline_0524`'s "a statement after an
+unconditional return is unreachable", `pipeline_0495` J control,
+`pipeline_0489`'s module-entry row, and `pipeline_test`'s virtual-stack row.
+
+Those fixtures reach the report through the CALL path, not the entry path. So a
+flag on "did this frame come from a call" suppresses the true positives and the
+false positive together, and it is not the discriminator 0524 said was needed.
+
+### THE DISCRIMINATOR THAT REMAINS, NOW SHARPER THAN 0524 LEFT IT
+
+The distinction is not WHERE the frame came from and not WHETHER the callee has
+parameters. It is whether THE CONDITION THAT FOLDED MENTIONED A CALLER-BOUND NAME:
+
+    fn f(c : Bool) { if c { return 1 } ; return 2 }   c came from the caller  ->  do not report
+    fn f(c : Bool) { if true { return 1 } ; ... }     the literal decided it   ->  report
+
+Both have a parameter and both are analysed from a call site, so neither the
+frame flag nor a parameter-presence test separates them. What separates them is
+the NAME SET of the folded condition against the set of names bound from the
+caller's arguments. That is a real mechanism -- a caller-bound name set carried
+in the frame, consulted at the fold -- and it is why the increment is not a
+one-line guard.
+
+REVERTED, byte-identical to `HEAD` (verified: `git status` shows the file clean,
+not remembered), and the tree re-measured green: `fmt --check` 0,
+`check --deny-warn` 0, wasm 1400/1400.
+
+### THE COST OF THIS ATTEMPT WAS FOURTEEN RED TESTS AND NOTHING ELSE
+
+No commit, no pin moved, no baseline touched -- because the revert was driven by
+the suite rather than by confidence. That is the whole argument for building a
+framed change before believing a sentence about it: 0534's reasoning was right
+that the corpora would not move, and still wrong about which frames the fix would
+silence.
+
+=> 判据: "NO BASELINE MOVES" IS NOT "NO TEST MOVES". 0534 measured the CORPUS
+blast radius at zero and the fixture blast radius turned out to be fourteen rows.
+The two are different measurement surfaces and only one of them had been checked.
+
+=> 判据: THE DISCRIMINATOR IS IN THE CONDITION, NOT IN THE FRAME. A branch decides
+reachability by folding a condition; whether that fold used a value this analysis
+invented is a property of the condition's names, and no coarser property of the
+frame substitutes for it.
