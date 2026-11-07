@@ -11742,3 +11742,67 @@ The two are one line apart and only reading the arm above tells them apart.
 => 判据: A CORRECTION THAT NAMES ITS OWN PREDECESSOR IS WORTH MORE THAN A CLEAN
 FILE. 0535's addendum is left in place on purpose: it is the mistake, and the
 next reader needs to see which list not to edit.
+## 0538: INCREMENT 5's VOCABULARY IS MECHANICAL TO WIRE AND NOT MECHANICAL TO FILL
+
+0530 said the vocabulary work exists because "silence and soundness read the same
+in a scan's output; only a written contract and a measured corpus count separate
+them". Scoped here so the next cycle does not mistake it for an afternoon of
+filling in a table.
+
+### THE WIRING IS CHEAP, AND MEASURED
+
+The contracts are exhaustive `match` projections over `Family`, so a tenth one
+cannot be added partially -- a missing arm is a compile error, which is the good
+kind of hard. Concretely:
+
+    core.mbt          `pub fn Family::<name>(self : Family) -> String`, 15 arms
+    check_family_roster.ps1:218
+                      `foreach ($part in @('property', 'assumption', 'excluded'))`
+                      -- one name added to that list, and the gate counts arms and
+                      requires each to be non-empty
+    core_0520_test.mbt
+                      the arm-count pins
+
+Three edits and a gate run. The wiring is not the work.
+
+### THE CONTENT IS THE WORK, AND IT NEEDS PER-FAMILY EVIDENCE
+
+§12.3-12.5 ask each family to declare where it stands on soundness and
+completeness. Writing that for fifteen families needs to know, for each one,
+whether a finding is a guarantee or a hint -- and THAT IS MEASURED, NOT READ OFF
+THE CODE. What this session actually established, family by family:
+
+    MSA-011   over-reported on caller-bound conditions; FIXED in 0537, and the
+              contract now says so and why
+    MSA-013   fires on a hand-written contradiction fixture; ZERO findings on all
+    MSA-014   eight trees (measured, 0534); reach on real code unknown beyond that
+    MSA-015   shipped in 0528, and its own source taught two false-positive
+              classes (place-store, break/continue) before a corpus audit found a
+              third (return expressions, 0531); nine findings remain, of which
+              three classes are NAMED and none is fixed (0532)
+    the other eleven
+              no per-family false-positive evidence in this record at all
+
+Filling the fifteen arms from what is known would produce four honest rows and
+eleven plausible-sounding ones. A contract that reads as precise and is not is
+worse than the silence it replaces, because a reader cannot tell which row is
+which -- and that is the same defect the tree rejects everywhere else, in the one
+place where the artefact is a claim ABOUT claims.
+
+### WHAT THE NEXT CYCLE SHOULD DO INSTEAD, IN ORDER
+
+1. For each family, take one corpus finding of its own and audit it, the way
+   0528-0531 audited MSA-015's. That is what produces the row.
+2. Where a family has never fired (nine of fifteen, 0534), the honest row is the
+   one 0530 named: it decides nothing on the pinned corpora, and a scan without
+   its findings is not evidence of cleanliness.
+3. Only then add the tenth projection -- with the rows already earned, the wiring
+   above is an hour.
+
+=> 判据: A MECHANICAL SURFACE IS NOT A MECHANICAL OBLIGATION. The cheapest part of
+this increment is the part that compiles; the part that matters is the part that
+would have been guessed.
+
+=> 判据: FOUR MEASURED ROWS AND ELEVEN INVENTED ONES READ IDENTICALLY. Precision
+that is fabricated is indistinguishable from precision that was earned, which is
+why it is worse than an admitted gap.
