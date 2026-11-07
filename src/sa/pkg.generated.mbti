@@ -25,6 +25,12 @@ pub fn default_profile() -> Profile
 
 pub fn dir_of(String) -> String
 
+pub fn explain_family(@core.Family) -> String
+
+pub fn explain_id_value(String) -> String
+
+pub fn explain_roster() -> String
+
 pub fn family_ids() -> Array[String]
 
 pub fn is_coordinate(String) -> Bool

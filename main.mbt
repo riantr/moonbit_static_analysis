@@ -149,6 +149,13 @@ async fn main {
   let family_include : Array[String] = []
   let family_exclude : Array[String] = []
   let mut honor_nosec = false
+  // 0520. `--explain` and `--explain-all` print a family's CONTRACT and then
+  // STOP: no scan runs. The value is mandatory for `--explain` for the same
+  // reason `--mmd`'s is -- a bare word after it could equally be the value or
+  // the target, and there is no way to tell them apart -- so the roster gets
+  // its own spelling instead of an optional argument.
+  let mut explain_id = ""
+  let mut explain_all = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -228,6 +235,17 @@ async fn main {
       show_notices = true
     } else if a == "--no-auto-fetch-deps" {
       auto_fetch_deps = false
+    } else if a == "--explain" {
+      if i + 1 >= args.length() {
+        println(
+          "ERROR\t--explain needs a family id, e.g. --explain MSA-007; --explain-all lists them",
+        )
+        return
+      }
+      i += 1
+      explain_id = args[i]
+    } else if a == "--explain-all" {
+      explain_all = true
     } else if target == "" {
       target = a
     } else {
@@ -235,6 +253,17 @@ async fn main {
       return
     }
     i += 1
+  }
+  // 0520. A CONTRACT REQUEST IS NOT A SCAN. Both spellings answer and return
+  // before the profile is validated and before any file is read, so `--explain`
+  // needs no target and cannot be broken by the tree it is run in.
+  if explain_all {
+    println(@sa.explain_roster())
+    return
+  }
+  if explain_id != "" {
+    println(@sa.explain_id_value(explain_id))
+    return
   }
   if target == "" {
     target = "."

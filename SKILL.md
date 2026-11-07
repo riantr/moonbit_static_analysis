@@ -175,6 +175,48 @@ unknown-returning call instead of calling it undefined. Names absent from the
 table still report, so the table never invents valid bindings — it only
 suppresses, never the other way around.
 
+## `--explain`: what a family CLAIMS, not just what it is called
+
+A family id is stable precisely so that it can be quoted in a profile or a
+`// nosec`. That makes it good for filtering, and it says nothing about what the
+analyzer has just told you. Every family therefore carries a three-part
+**contract**, and it is shipped data, not prose in a document that can drift
+from the code:
+
+    property    what it asserts, in one line
+    assumption  what must be true of the program, or of the lens, for that
+                assertion to be SOUND
+    excluded    what it deliberately does NOT cover
+
+    --explain MSA-011    one family's three labelled parts
+    --explain-all        the roster: id, name, property for every family
+
+The value is mandatory for `--explain`, and the roster has its own spelling, for
+the same reason `--mmd` requires a path: a bare word after the flag could equally
+be the value or the target, and there is no way to tell them apart. Both
+spellings answer and **return before any scan runs**, so they need no target. An
+id that names no family prints an `ERROR` line rather than an empty page.
+
+| part | the question it answers |
+|---|---|
+| `property` | what did the tool just assert about my code? |
+| `assumption` | when is that assertion sound — what would make it wrong? |
+| `excluded` | what did it not look at, so I do not read silence as proof? |
+
+> **Two frontends share six of these ids.** `src/statecheck` reports the same
+> `FUndefinedName` / `FUnusedLocal` / `FUnreachable` / `FMethodError` /
+> `FArgType` / `FCondBool` families for **state-machine specs**, with different
+> meanings and no source span — an undefined state name, a state outside the
+> reachability closure, a call on a state operation. Each affected contract
+> names both readings in its `excluded` slot. A contract that described only the
+> source frontend would be false for the other one.
+
+`FUnreachable` is the clearest example of why `excluded` matters: its contract
+says flow is decided **syntactically** (after `return` / `break` / `continue`,
+with branches joined rather than proved infeasible) and that path feasibility is
+explicitly not claimed. Deciding feasibility needs semantics and is undecidable
+in general, so the analyzer does not pretend to.
+
 ## `--per-function`: the behavioral lens enters at each FUNCTION
 
 The behavioral lens normally enters at the **module**: a function body is

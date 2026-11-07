@@ -10202,3 +10202,116 @@ IS NOT A REPAIR. The row stays red with its cause on its face.
 
 => 判据: A PARSER THAT RETURNS "EMPTY" FOR BOTH "CLEAN" AND "COULD NOT RUN" HAS TURNED A FAILURE
 INTO A PASS. The two must be different values, and the caller must be forced to say which it got.
+## 0520: A FAMILY IS AN ID AND A SEVERITY, AND THAT IS NOT A SPECIFICATION
+
+The first of five increments taken from an outside V&V lecture deck (static analysis: the
+definition, the technique taxonomy, the limits). Its argument, in one line: verification is
+analytic inference to prove a product consistent with **a specification of its intent**, and a
+specification the reader cannot see is not one.
+
+### WHAT WAS WRONG
+
+A family was an id (`MSA-007`), a public name (`ArgTypeMismatch`), a severity and a confidence.
+That is exactly enough to filter and to suppress, and not enough to know what the tool just told
+you. `--families MSA-007` and `// nosec MSA-007` both work because the id is stable; **nothing
+said what the family asserts, when that assertion is sound, or what it deliberately does not
+cover.** A reader therefore could not tell "this shape was seen" from "this property was
+verified", which is the distinction the deck spends its first five slides on.
+
+### THE THREE PARTS, AS DATA
+
+Every family now carries:
+
+    property    what it asserts, one line
+    assumption  what must be true of the program, or of the lens, for that to be SOUND
+    excluded    what it deliberately does NOT cover
+
+They are three PROJECTIONS (`Family::property` / `assumption` / `excluded`), not one struct, for a
+reason that is mechanical rather than aesthetic: `check_family_roster.ps1` already reads
+`Family::id` as a **forward table** -- one `FTag => "text"` arm per line -- and a projection is the
+same shape, so ONE parser owns all four tables and a family with an empty slot is a gate failure
+instead of a promise to document it later. A struct would have needed a second parser.
+
+The compile-time half is free and stronger than any gate: the `match` is exhaustive, so MoonBit
+refuses to build a family with no arm. What is left for the gate is that the text is REAL.
+
+### THE CONTENTS ARE MEASURED, NOT IMAGINED
+
+Writing twelve honest contracts is twelve chances to write a confident sentence that is false, so
+they were written from a survey of where each family is CONSTRUCTED, with a citation per condition,
+and that survey produced two facts worth stating here:
+
+  * **`src/statecheck` REUSES SIX OF THESE IDS.** A state-machine spec reports
+    `FUndefinedName` for an undefined state name, `FUnreachable` for a state outside the
+    reachability closure, and so on. Same id, different meaning, no source span. Every affected
+    contract says so in its `excluded` slot. Without that sentence the contracts would be false for
+    one of the two frontends -- and a contract that is false for half the product is worse than none.
+  * **`FUnusedParam` and `FParamChanged` are silenced for a WHOLE FUNCTION the moment it contains
+    any unread region** (walk.mbt:658), while `FUnusedLocal` is narrowed instead, by whether an
+    unread region could reach the declaration. That asymmetry was invisible from the outside.
+
+`excluded` for `FUnreachable` states the deck's own limit rather than hiding it: flow is decided
+**syntactically** -- `return`, `break`, `continue`, branches joined rather than proved infeasible --
+so the family is not claiming path feasibility, which the deck calls unsolvable in general and
+intractable in practice. (Increment 0522 is where feasibility starts to be modelled, and this
+sentence is what it will have to keep true.)
+
+### `--explain` AND `--explain-all`
+
+    --explain MSA-011    one family: the three labelled parts
+    --explain-all        the roster: id, name and property for every family
+
+The value is MANDATORY for `--explain`, with the roster on its own spelling, for the reason
+`--mmd`'s path is mandatory: a bare word after the flag could equally be the value or the target and
+there is no way to tell them apart. Both spellings answer and return **before the profile is
+validated and before any file is read**, so a contract request is not a scan and cannot be broken by
+the tree it is run in. An id that names no family is an `ERROR` line, never an empty page.
+
+`all_families()` in `src/core` is the one runtime list, beside the enum, so `--explain-all` cannot
+list a family the analyzer does not have.
+
+### THE GATE, AND THE PROOF THAT IT GOES RED
+
+`check_family_roster.ps1` has a fifth section: for each of the three tables it parses the arms and
+requires one per family, non-empty, and at least 15 characters -- "n/a" and "todo" are rejected,
+because a contract that short is a label.
+
+A gate that has never been seen to go red is a comment, so both failure modes were INJECTED and
+observed:
+
+    FAIL: the property of FParse is empty.
+    FAIL: the property of FUnusedParam is 3 characters: "n/a".
+    ROSTER FAILED: 2 problem(s).
+
+and `src/core/core.mbt` was restored byte-exactly (SHA256 verified after the restore). The parser
+uses `(?s)` and `\s*` on purpose: `moon fmt` decides where an arm breaks, and the gate must not care
+which spelling the formatter picked -- it merged four of these arms onto one line when it ran.
+
+### MEASURED
+
+    moon check --deny-warn          exit 0
+    moon fmt --check                exit 0
+    moon test --target wasm         1336/1336   (1330 before; +3 core, +3 sa)
+    moon test --target js           1207/1207   (1204 before; +3 core -- src/sa is wasm+native)
+    moon test --target wasm-gc      1207/1207   (1204 before; +3 core)
+    check_family_roster.ps1         exit 0, five sections, 12 arms per contract table
+
+Six new tests: every family declares all three parts with real text; `all_families()` is the whole
+enum with no repeat and no dangling id; the three parts of one family are not the same sentence; a
+known id prints its three labelled parts; an unknown id is an `ERROR`; the roster carries every id.
+
+### THE PINS ARE NOT RE-MEASURED YET, AND THAT IS DELIBERATE
+
+This increment adds test declarations, so the own-source notice pins in `_verify/release.ps1` move.
+Four more increments in this series (0521-0524) change output and one of them changes findings, so
+the pins are re-measured ONCE, at the end, against the tree that carries all five -- rather than four
+times against trees that will not ship. Until then the corpus stage and the self-scan stage are
+expected to report drift, and that drift is this paragraph.
+
+=> 判据: A DETECTOR IS NOT A SPECIFICATION. An id you can filter on is not a statement of what was
+verified; the property, the assumption it rests on and what it does not cover are, and they belong in
+the shipped data where `--explain` reads them rather than in a document that can drift from the code.
+
+=> 判据: IF TWO FRONTENDS SHARE AN ID, THE CONTRACT MUST NAME BOTH. Six of these twelve are emitted
+by the source frontend AND by the state-machine frontend with different meanings; a contract that
+says only the first is false for the second.

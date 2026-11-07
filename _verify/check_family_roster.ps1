@@ -201,9 +201,65 @@ if (-not $confM.Success) {
   }
 }
 
+# --------------------------------------------- 5. the family CONTRACTS --------
+#
+# 0520. A family used to be an id, a severity and a confidence: enough to filter
+# and to suppress, and not enough to know what the tool just told you. Each
+# family now carries three parts -- what it ASSERTS, the ASSUMPTION under which
+# that assertion is sound, and what it deliberately does NOT cover -- and this
+# section is what stops "we will document it later" from shipping.
+#
+# THE THREE TABLES ARE READ THE SAME WAY `Family::id` IS, so one parser owns
+# them all and a new projection is one line here. An arm that is empty, or a
+# family with no arm, is a failure; the compile-time match makes a MISSING arm
+# impossible, so what is left to check is that the text is real.
+Write-Output ''
+Write-Output '=== 5. the family contracts (property, assumption, excluded) ==='
+foreach ($part in @('property', 'assumption', 'excluded')) {
+  $cm = [regex]::Match($src, '(?s)pub fn Family::' + $part + '\(self : Family\) -> String \{(.*?)\n\}')
+  if (-not $cm.Success) {
+    Write-Output ('  MISSING: Family::' + $part + ' was not found.')
+    Write-Output '           A family without a contract is a family whose claim the reader cannot check.'
+    $fail++
+    continue
+  }
+  # `(?s)` and `\s*` both matter: `moon fmt` chooses where to break the arm, and
+  # this gate must not care which spelling the formatter picked.
+  $arms = @{}
+  foreach ($m in [regex]::Matches($cm.Groups[1].Value, '(?s)F([A-Za-z]+)\s*=>\s*"((?:[^"\\]|\\.)*)"')) {
+    $arms['F' + $m.Groups[1].Value] = $m.Groups[2].Value
+  }
+  Write-Output ('  ' + $part + ': ' + $arms.Count + ' arm(s)')
+  if ($arms.Count -ne $tags.Count) {
+    Write-Output ('  FAIL: Family::' + $part + ' has ' + $arms.Count + ' arms for ' + $tags.Count + ' families.')
+    $fail++
+  }
+  foreach ($t in $tags) {
+    if (-not $arms.ContainsKey($t)) {
+      Write-Output ('  FAIL: the family ' + $t + ' declares no ' + $part + '.')
+      $fail++
+      continue
+    }
+    $v = $arms[$t].Trim()
+    if ($v -eq '') {
+      Write-Output ('  FAIL: the ' + $part + ' of ' + $t + ' is empty.')
+      $fail++
+      continue
+    }
+    # A contract that is one word is a label, not a contract. The floor is low
+    # on purpose -- it is not a style rule -- but it does reject "n/a" and "todo".
+    if ($v.Length -lt 15) {
+      Write-Output ('  FAIL: the ' + $part + ' of ' + $t + ' is ' + $v.Length + ' characters: "' + $v + '".')
+      Write-Output '        A contract that short is a label; it cannot tell a reader what is claimed.'
+      $fail++
+    }
+  }
+}
+
 Write-Output ''
 if ($fail -eq 0) {
-  Write-Output ('ROSTER OK: ' + $tags.Count + ' families, one id each, contiguous from MSA-001, and the two tables are exact inverses.')
+  Write-Output ('ROSTER OK: ' + $tags.Count + ' families, one id each, contiguous from MSA-001, the two tables are exact inverses,')
+  Write-Output '           and every family declares a non-empty property, assumption and excluded.'
   exit 0
 }
 Write-Output ('ROSTER FAILED: ' + $fail + ' problem(s).')

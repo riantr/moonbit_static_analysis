@@ -639,6 +639,137 @@ pub fn family_by_id(id : String) -> Family? {
 }
 
 ///|
+/// EVERY family, in id order.
+///
+/// 0520. `--explain` has to enumerate the roster, and a list written out at the
+/// call site would be a second, silently-stale copy of the enum. This is ONE
+/// list, it lives beside the enum, and `check_family_roster.ps1` holds it to the
+/// enum's own tag list -- so a family added to the enum and forgotten here is a
+/// gate failure rather than a family that `--explain` does not know about.
+pub fn all_families() -> Array[Family] {
+  [
+    FParse,
+    FUndefinedName,
+    FUnusedLocal,
+    FUnusedParam,
+    FParamChanged,
+    FAssignType,
+    FArgType,
+    FOpMismatch,
+    FMethodError,
+    FCondBool,
+    FUnreachable,
+    FStaleNosec,
+  ]
+}
+
+///|
+/// WHAT THE FAMILY ASSERTS, in one line.
+///
+/// 0520. A family used to be an id, a severity and a confidence: enough to
+/// filter and to suppress, and not enough to know what the tool just told you.
+/// The three parts below are the family's CONTRACT, and they are the difference
+/// between "this shape was seen" and "this property was verified" -- an
+/// assertion is only meaningful relative to a specification, and a
+/// specification the reader cannot see is not one.
+///
+/// Each part is ONE projection rather than a struct field, for the same reason
+/// `Family::id` is: a forward table is a shape `check_family_roster.ps1` can
+/// read and hold to the enum, and a family with an empty slot is a gate
+/// failure instead of a promise to document it later.
+pub fn Family::property(self : Family) -> String {
+  match self {
+    FParse =>
+      "the text could not be read as the analysed subset, or was deliberately not read"
+    FUndefinedName => "a name used here resolves to no visible binding"
+    FUnusedLocal => "a local is assigned but never read in its function"
+    FUnusedParam => "a parameter is never read in its function"
+    FParamChanged => "a parameter is assigned inside its own function"
+    FAssignType => "the assigned value's type is not assignable to the target"
+    FArgType => "an argument's type is not assignable to the callee's parameter"
+    FOpMismatch =>
+      "the operand or result types are outside what the operator is defined for"
+    FMethodError =>
+      "no method matching the operands exists on their concrete types"
+    FCondBool => "a condition's type is not Bool"
+    FUnreachable =>
+      "a statement follows one whose flow has already left the block, in the same block"
+    FStaleNosec => "a nosec comment suppressed nothing"
+  }
+}
+
+///|
+/// THE ASSUMPTION the property is sound under: what must be true of the program,
+/// or of the lens, for the finding to mean what the property says.
+///
+/// This is the part a reader needs in order to argue with the tool. "no visible
+/// binding" and "undefined" are different claims, and which one was made is a
+/// property of the assumption, not of the wording.
+pub fn Family::assumption(self : Family) -> String {
+  match self {
+    FParse =>
+      "the declared subset is exactly what the frontend can read, and everything outside it is reported rather than assumed analysed"
+    FUndefinedName =>
+      "the visible binding set is complete: this file, the extern .mbti tables, the builtins -- confidence is low because the conclusion rests on names, not declarations"
+    FUnusedLocal =>
+      "the frame audit saw every read, and no unread region could reach the declaration"
+    FUnusedParam =>
+      "the function contains no unread region, so no read could have been missed"
+    FParamChanged =>
+      "the assignment was observed directly, which an unread region cannot undo"
+    FAssignType =>
+      "both types are known; an unknown type on either side absorbs the error"
+    FArgType =>
+      "the callee's signature is known: declared in this file, or in the extern .mbti tables"
+    FOpMismatch =>
+      "neither operand is unknown, and both types are within the operator table"
+    FMethodError => "both operands are concrete; an unknown operand absorbs"
+    FCondBool =>
+      "the condition's type is known, and the branch was not constant-folded"
+    FUnreachable =>
+      "flow is decided syntactically -- return, break, continue -- and branches are joined, not proved infeasible"
+    FStaleNosec =>
+      "a suppression matches a report on the same start line whose family it names"
+  }
+}
+
+///|
+/// WHAT THE FAMILY DOES NOT COVER, so that a clean scan is not read as a
+/// stronger claim than it is.
+///
+/// Every entry here was measured in the code rather than assumed: the survey
+/// behind 0520 cites the site for each. The last one for each family is the
+/// one that matters most -- the reason a reader must not treat silence as
+/// proof.
+pub fn Family::excluded(self : Family) -> String {
+  match self {
+    FParse =>
+      "nothing about the skipped construct's meaning: a notice is not a defect, and one notice per construct does not enumerate what is inside it"
+    FUndefinedName =>
+      "names a dependency or a macro could bind; the state-machine frontend reuses this id for an undefined state name"
+    FUnusedLocal =>
+      "reads inside a region the parser cut in half; a write-only binding is still reported"
+    FUnusedParam =>
+      "any read in a function whose text contains an unread region -- the whole function is silenced"
+    FParamChanged =>
+      "the same as UnusedParam: an unread region silences it, even though an observed assignment cannot be un-observed"
+    FAssignType =>
+      "unannotated rebinding, which widens with a join; and field assignment targets, which are unchecked"
+    FArgType =>
+      "calls to a callee with no visible signature -- those are counted unchecked, not reported; and named-call arity"
+    FOpMismatch =>
+      "unknown operand types; the pipe operator and regex-match operands are exempt"
+    FMethodError =>
+      "a call outside the per-file method table; the state-machine frontend reuses this id for a call on a state operation"
+    FCondBool =>
+      "constant-folded conditions and unknown types; the state-machine frontend reuses this id for a non-boolean guard"
+    FUnreachable =>
+      "path feasibility, which needs semantics and is undecidable in general; the state-machine frontend reuses this id for a state outside the reachability closure"
+    FStaleNosec => "whether the suppressed finding was real"
+  }
+}
+
+///|
 #proof_pure
 pub fn Family::severity(self : Family) -> Severity {
   match self {
