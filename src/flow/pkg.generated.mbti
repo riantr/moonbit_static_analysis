@@ -9,6 +9,36 @@ import {
 // Values
 pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
 
+pub fn eval_add(Interval, Interval) -> Interval
+
+pub fn eval_arith(@ast.BOp, Interval, Interval) -> Interval?
+
+pub fn eval_div(Interval, Interval) -> Interval
+
+pub fn eval_mul(Interval, Interval) -> Interval
+
+pub fn eval_sub(Interval, Interval) -> Interval
+
+pub fn interval_at_least(Int32) -> Interval
+
+pub fn interval_at_most(Int32) -> Interval
+
+pub fn interval_bot() -> Interval
+
+pub fn interval_full() -> Interval
+
+pub fn interval_point(Int32) -> Interval
+
+pub fn interval_range(Int32, Int32) -> Interval
+
+pub fn interval_state_bot(Int32) -> Array[Interval]
+
+pub fn interval_state_join(Array[Interval], Array[Interval]) -> Array[Interval]
+
+pub fn interval_state_lattice(Int32) -> Lattice[Array[Interval]]
+
+pub fn interval_state_same(Array[Interval], Array[Interval]) -> Bool
+
 pub fn[T] join_all(Lattice[T], Array[T]) -> T
 
 pub fn[T] join_of_nodes(Lattice[T], Array[T], Array[Int32]) -> T
@@ -27,6 +57,8 @@ pub fn name_set_union(Map[String, Bool], Map[String, Bool]) -> Map[String, Bool]
 
 pub fn names_of_expr(Map[String, Bool], @ast.Expr) -> Unit
 
+pub fn[T] narrow_round(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T, Array[T]) -> Array[T]
+
 pub fn no_span() -> @core.Span
 
 pub fn node_defs(NodeKind) -> Map[String, Bool]
@@ -39,7 +71,11 @@ pub fn[T] solve_propagation(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -
 
 pub fn[T] solve_round_robin(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
 
+pub fn[T] solve_widening(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T, (Int32, T, T) -> T, (Int32) -> Bool, Int32) -> WidenResult[T]
+
 pub fn[T] states_after(Int32, Array[T], (Int32, T) -> T) -> Array[T]
+
+pub fn widen_interval(Interval, Interval, Array[Int32]) -> Interval
 
 // Errors
 
@@ -55,6 +91,22 @@ pub(all) struct Cfg {
 }
 pub fn Cfg::dump(Self) -> String
 pub fn Cfg::kind_label(Self, Int32) -> String
+
+pub(all) struct Interval {
+  has_lo : Bool
+  lo : Int32
+  has_hi : Bool
+  hi : Int32
+}
+pub fn Interval::holds(Self, Int32) -> Bool
+pub fn Interval::is_empty(Self) -> Bool
+pub fn Interval::is_full(Self) -> Bool
+pub fn Interval::join(Self, Self) -> Self
+pub fn Interval::le(Self, Self) -> Bool
+pub fn Interval::meet(Self, Self) -> Self
+pub fn Interval::omega(Self, Array[Int32]) -> Self
+pub fn Interval::same(Self, Self) -> Bool
+pub fn Interval::text(Self) -> String
 
 pub(all) struct Lattice[T] {
   bot : () -> T
@@ -72,6 +124,12 @@ pub(all) enum NodeKind {
   Eval(@ast.Expr)
   Test(@ast.Expr)
   Stop
+}
+
+pub(all) struct WidenResult[T] {
+  states : Array[T]
+  iterations : Int32
+  converged : Bool
 }
 
 // Type aliases

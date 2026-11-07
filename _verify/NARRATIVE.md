@@ -11097,3 +11097,146 @@ nothing, and `unchecked` carries them to the reader.
 => 判据: THE FIRST ACT ON A FINDING IS TO READ IT, NOT TO SUPPRESS IT. The two
 surviving findings were real, so the code changed. A `// nosec` would have
 closed the gate and left the defect.
+## 0529: AN INFINITE-HEIGHT LATTICE, AND TWO EXPECTATIONS THE BOOK REFUTED
+
+Increment 3 of the book plan (§6.1, §6.2). The solvers shipped in 0526 are
+Kleene iteration, and Kleene's theorem needs a lattice of FINITE height (book
+p.47, restated p.82). The interval lattice has infinite height -- the book prints
+the chain `[0,0] ⊑ [0,1] ⊑ [0,2] ⊑ …` (p.80) -- so a solver run on it may never
+stop. Chapter 6's answer is a WIDENING operator to force convergence, and a
+NARROWING step to take back the precision the widening threw away.
+
+`src/flow/interval.mbt` is that domain, and `src/flow/interval_0529_test.mbt`
+pins it against the book's OWN numbers rather than against what the
+implementation happens to produce.
+
+### THE LATTICE, AND THE ONE CHOICE THE BOOK DOES NOT MAKE FOR YOU
+
+    Interval = lift({ [l,h] | l,h ∈ N ∧ l ≤ h })      N = Z ∪ {−∞, +∞}   (p.79)
+
+`⊥` is a member DISTINCT from every interval, and endpoints range over integers
+EXTENDED with the infinities. Both facts live in the fields:
+
+    has_lo / has_hi   is that endpoint FINITE at all
+    lo / hi           meaningful only when its flag is set
+    ⊥                 has_lo && has_hi && lo > hi
+
+A sentinel (`Int32::min_value()` for −∞) would wrap under `eval_sub` and would
+make every emptiness test a question about overflow instead of about the
+program. `guardfacts` made the same call in 0522 for the same reason.
+
+### EVERY OPERATOR BELOW OVER-APPROXIMATES, AND WHERE IT REFUSES TO BE PRECISE IS NAMED
+
+`join` is the CONVEX HULL, so `[0,0] ⊔ [2,2]` is `[0,2]` and contains 1, which
+is in neither input. An interval domain cannot hold a union with a gap.
+
+`eval_mul` on an operand with no finite bound answers `full()`. The exact image
+of `[0,+∞) × [2,2]` is `[0,+∞)`, but every rule that computes it needs the SIGN
+of the unbounded side, and a sign is not in this domain.
+
+`eval_div` with a divisor that MAY be zero answers `full()` and NOT `⊥`. `⊥`
+would say the expression never produces a value, which is strong enough to make a
+later branch look infeasible -- an unsoundness with a plausible-looking message.
+That distinction is a test, not a comment.
+
+`eval_arith` returns `Option`: `None` means "this domain does not model that
+operator" and the caller must read it as `full()`. There is no way to spell
+"not modelled" as an interval, so it is not spelled that way.
+
+### WIDENING, TWICE, BECAUSE THE BOOK OFFERS TWO
+
+`ω'` (p.83) moves EVERY endpoint onto the finite seed set `B`:
+`ω'([3,5])` with `B = {0,1,7}` is `[1,7]`. The infinities are NOT members of
+`B`: a missing endpoint already means an infinity, so a lookup that finds no
+member answers "unbounded". One representation of ∞, not two.
+
+`∇'` (p.93–94) is binary and moves an endpoint ONLY IF IT MOVED:
+`[8,8] ∇' [8,8] = [8,8]`, and `[0,1] ∇' [0,2] = [0,7]`. That single rule is
+the whole difference between the two, and it is why the same program reaches
+`x ↦ [8,8]` with `∇` and `x ↦ [7,∞]` with `ω`.
+
+`solve_widening` is `NaiveFixedPointAlgorithmWithWidening` (p.93):
+
+    x := ⊥ ;  repeat  t := x ;  x := x ∇ f(x)  until  x = t
+
+where `f` is one round-robin sweep of the SAME transfer and the SAME JOIN the
+0526 solver uses -- so widening is a change of ONE operator, which is the book's
+own claim that the other fixed-point algorithms extend "in a similar manner"
+(p.93). `at_node` says where to widen, because widening only at loop heads is a
+real option (Exercise 6.13) and the choice belongs in the signature, not buried
+in the loop.
+
+`WidenResult.converged` IS A FIELD. A correct widening must reach a fixpoint, so
+a run that stopped at the iteration cap did NOT reach one, and a caller must not
+read that array as an answer. The cap exists because this tree would rather
+report its own bound than hang.
+
+### WHAT THE BOOK'S NUMBERS SAID, AND THE TWO THINGS I HAD TO RETRACT
+
+Reproduced exactly, from the pages named:
+
+    [1,10] + [−5,7] = [−4,17]                                  p.80
+    ω'([3,5]) = [1,7]   with B = {0,1,7}                       p.83
+    ω'([8,8]) = [7,+∞]  because no member of B is ≥ 8          p.83
+    naive iteration diverges: y ↦ [0,1], [0,2], [0,3], …        p.84
+    ω at every node → x ↦ [7,+∞], y ↦ [0,+∞]   ("discouraging") p.84
+    … then narrowing → x ↦ [8,8], y ↦ [0,+∞]                   p.84
+    ∇ at the loop head, NO narrowing → x ↦ [8,8], y ↦ [0,+∞]   p.86
+
+**RETRACTION 1: "ONE NARROWING ROUND" IS NOT ONE SWEEP.** I wrote a test
+asserting one `narrow_round` reaches `[8,8]`, and it FAILED with `[7,+∞]`.
+The reason is a real property of the algorithm and not of my code: `f` is a
+function of the WHOLE state vector, while a round-robin sweep visits node
+indices in order, so the loop head is recomputed BEFORE the back edge is. One
+sweep joins an exact fall-through against a STALE widened back edge. Measured:
+two sweeps reach `[8,8]`. Exercise 6.7 asks exactly how many narrowing steps a
+program needs; the answer is a property of the visit ORDER, and the test now
+asserts both the first sweep's `[7,+∞]` and the second's `[8,8]` so the
+order-dependence cannot be quietly lost.
+
+**RETRACTION 2: WIDENING AT THE LOOP HEAD IS NOT MORE PRECISE *HERE*.** I wrote
+a test asserting that head-only widening gives `[8,8]` where widening everywhere
+gives `[7,+∞]`, attributing it to Exercise 6.13. It FAILED: BOTH placements give
+`[8,8]`. The reason is the same rule that separates `∇` from `ω` -- `∇` only
+coarsens an endpoint that MOVED, and `x` never moves, so where the operator is
+applied makes no difference for it. The precision loss on `x` comes from the
+UNARY `ω`, which coarsens every endpoint every iteration. The test now asserts
+what is true (both placements `[8,8]` with `∇`) and the comment says plainly
+that this program does not separate the two placements, which is why the book
+poses Exercise 6.13 with a different program.
+
+    moon fmt --check        exit 0
+    moon check --deny-warn  exit 0
+    moon test --target wasm 1400/1400   (was 1384; +16 for the interval domain)
+    moon test --target js   1264/1264
+
+### WHAT THIS DOES *NOT* DO YET, AND WHY IT IS NOT SLIPPED IN
+
+The plan's phrase was "replacing `guardfacts.walk_loop`'s drop-everything
+behaviour", and THE PREMISE IS WRONG as stated: `walk_loop` does not drop
+everything. It drops the facts of every name ASSIGNED ANYWHERE IN THE BODY, and
+keeps the rest -- `facts_drop` per assigned name, on a clone. What is
+all-or-nothing is the per-name policy: a name the body assigns loses ALL its
+facts even when an interval could show some of them survive (`x > 5` before
+`while (c) { x = x + 1 }` still holds after).
+
+Rewiring that is not a one-line swap, and shipping it inside this commit would
+be the same defect this tree keeps naming. It needs (a) an abstract interpreter
+for loop bodies over the interval domain, answering `⊤` for every construct
+outside it so the result degrades exactly to today's behaviour, and (b) a
+re-measurement of every corpus baseline, because more surviving facts can only
+ADD `InfeasibleBranch`/`RedundantGuard` findings. The payoff is unknown until
+measured, and the measurement is the next step rather than a guess.
+
+=> 判据: A DOMAIN IS VERIFIED BY THE NUMBERS ITS SOURCE PUBLISHED, NOT BY ITS OWN
+OUTPUT. Every assertion in the new test quotes a page; two of them failed on the
+first run and the implementation was right in neither case -- my READING of the
+algorithm was.
+
+=> 判据: "APPLY f ONCE" AND "SWEEP ONCE" ARE DIFFERENT CLAIMS. A vector function
+applied to a state and a loop over node indices visiting each node once agree
+only when the order does not matter, and at a back edge it does.
+
+=> 判据: A RESULT THAT STOPPED AT THE CAP IS NOT A FIXPOINT, AND THAT IS A FIELD
+BEFORE IT IS A COMMENT. `converged` is checked by the divergence test, which is
+the only test in this tree whose PASSING answer is "it did not converge".

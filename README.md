@@ -531,21 +531,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (209 files), with the per-file printing cap lifted so the count is the
+project's own source (211 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1481 | | `anonymous function literal` | 24 |
-| `if` expression | 115 | | `const` declaration | 6 |
-| `struct` declaration | 72 | | `short lambda` | 2 |
+| `test` declaration | 1497 | | `anonymous function literal` | 24 |
+| `if` expression | 130 | | `const` declaration | 6 |
+| `struct` declaration | 74 | | `short lambda` | 5 |
 | `derive` declaration | 20 | | `try` expression | 1 |
 | `enum` declaration | 26 | | `type` declaration | 1 |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **142** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1606** sit outside every function's
+**position**: **160** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1624** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -578,7 +578,7 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,685** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,721** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
 **16,208** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
@@ -737,7 +737,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1384/1384 on wasm; 1248/1248 on js and wasm-gc
+moon test --deny-warn                # 1400/1400 on wasm; 1264/1264 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
