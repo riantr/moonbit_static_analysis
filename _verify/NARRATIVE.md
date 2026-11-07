@@ -10097,3 +10097,108 @@ beats a green row that measured nothing.
 => 判据: WHEN A TOOLCHAIN UPGRADE BREAKS A CONTROL, THE CONTROL IS THE THING THAT NEEDS THE
 INCREMENT -- not the corpus, which has not moved, and not the pin, which is doing its job by
 refusing to absorb the change.
+
+## 0519: THE CENSUS CONTROL CANNOT RUN UNDER THIS TOOLCHAIN, AND FINDING OUT WHY FOUND A DEFECT IN THE CONTROL ITSELF
+
+0518 left one row red: `per-function census control`. This increment is about that row, and it ends
+in a NEGATIVE result -- established by measurement, not by giving up -- plus a real defect fixed in
+the instrument.
+
+### WHAT THE CONTROL NEEDS, AND WHAT THE TOOLCHAIN NOW DOES
+
+The control proves that every file carrying an actionable finding in the pinned core corpus is READ
+by `moon check`: it appends a deliberate type error to each of the 16 files, one at a time, and
+requires the error back for THAT file. It needs the corpus to type-check.
+
+Under moon 0.1.20261104 the corpus does not. The pinned corpus (`moonbitlang/core
+0.1.20260920+7d59c7ec9`) is a month older than the toolchain, and the toolchain began TYPE-CHECKING
+interface files:
+
+    Error: [4032]
+       ╭─[ .../abort/pkg.mbti:4:13 ]
+     4 │ fn[T] abort(String) -> T
+       │             ───┬──
+       │                ╰──── The type String is undefined.
+
+`abort` is the module's ROOT, and the dependency runs from `builtin` TO `abort`
+(`builtin/moon.pkg` imports `moonbitlang/core/abort`). Its virtual declaration file is where the
+module's primitive vocabulary is introduced, and the new checker type-checks that file in an
+environment where those primitives are not in scope.
+
+### SIX REPAIRS, ALL MEASURED, ALL REJECTED
+
+Every one was applied to the COPY only -- the pinned corpus was never edited -- and every one was
+measured with raw `moon check` output rather than through a parser:
+
+| repair | measured result |
+|---|---|
+| drop `abort/pkg.mbti` | `Cannot find pkg.mbti declaration file for virtual package moonbitlang/core/abort` |
+| drop the `virtual` option, keep the file gone | 4 errors in `abort/abort.mbt` -- `The type String is undefined`, `The type Unit is undefined` |
+| **what the CURRENT toolchain's own bundled core does**: `abort` imports `builtin`, no `virtual`, no `.mbti`, and `builtin` stops importing `abort` | **9,009 errors**, starting `builtin/array.mbt:36` -- `The type Error is undefined`, `Some is unbound` |
+| qualify as `@builtin.String`, import inside the `.mbti` | `Error: [4037] Cannot use @builtin: package builtin is not imported` -- an `.mbti` import block is ignored |
+| qualify as `@builtin.String`, import in `abort/moon.pkg` | `Error: failed to run check` -- the `abort` <-> `builtin` cycle is rejected |
+| declare a signature that names no primitive (`pub fn[T, U] abort(U) -> T`) | 8,952 errors in `abort/abort.mbt` |
+
+The third row is the informative one. The toolchain's OWN bundled core has resolved this upstream,
+but copying its shape onto a corpus whose `builtin` still imports `abort` deletes the chain that
+supplies `builtin`'s prelude -- 9,009 errors. The corpus's layout and the toolchain's expectations
+are not reconcilable by editing `abort`'s declaration file: `String` cannot be named there, and the
+package that defines it depends on the package that needs it.
+
+**=> 判据: A REPAIR THAT COMES FROM WHAT UPSTREAM DID IS ONLY A REPAIR IF THE DEPENDENCY GRAPH IS
+ALSO WHAT UPSTREAM HAS.** The spelling was right and the graph was not, and the measurement said so
+in 9,009 errors.
+
+### THE DEFECT THIS FOUND IN THE CONTROL ITSELF
+
+Chasing it exposed a hole that has nothing to do with the toolchain. `Check` parsed only
+`Error: [NNNN]` headers plus their location boxes, and returned the list. `moon check` prints
+`Error: failed to run check for targets [...]` and `Error: failed when checking project` WITHOUT a
+location block, so those lines produced **zero** parsed errors -- the same value a clean tree
+returns. And the baseline test was
+
+    $bad = @($base | Where-Object { $_ -ne $KNOWN_ERROR })
+
+which asks only for errors BEYOND the known one, so **finding nothing passed**. An earlier attempt in
+this session read exactly that output -- "baseline is exactly the one known error" -- as a pass, when
+the check had never run. That is the same failure as 0517's false corpus sentence, one layer down:
+absence of evidence read as evidence.
+
+Both halves are now closed:
+
+  * an unattributed `Error:` line is a separate, loud result, so "the check never ran" and "nothing
+    is wrong" can no longer be the same value;
+  * the baseline must BOTH contain the known error AND contain nothing else. An empty result is
+    named as "silence is not a clean tree", and the two ways to have no baseline are reported
+    separately;
+  * the `did not run` test is `nothing was attributed AND something was reported`, because
+    `moon check` ends EVERY failed check with an unattributed summary line -- treating that line
+    alone as "did not run" would mislabel a check that ran, which is the same mistake in the other
+    direction. MEASURED both ways: the first version reported `did not run` for a baseline that had
+    correctly parsed `abort/pkg.mbti:4`.
+
+The control now fails like this, on the first check, in one second:
+
+    elapsed=1s  exit=1  errors=1
+      ERROR abort/pkg.mbti:4
+    BASELINE FAILED: the corpus has errors beyond the one this control knows: abort/pkg.mbti:4
+        (moon: Error: failed when checking project)
+
+### WHAT IS NOT CLAIMED
+
+**The success path was not exercised.** The finding list is re-derived on every run and still
+matches the pinned 16 files, and every failure path above was measured -- but "16 of 16 READ" has
+not been observed since 2026-11-03, because the corpus does not compile under this toolchain. The
+instrument is repaired; the measurement it makes is still unavailable, and this row stays RED.
+
+**THE NEXT INCREMENT IS A CORPUS PIN, AND IT IS RELEASE-SIZED.** Making this row green requires a
+core corpus that compiles under the current toolchain, which means re-measuring every core pin at
+once: the 10,114 notices, the 984-of-1,029 parsed count, the 10 actionable findings, the 16-file
+list, the behavior-lens row, AND the eight-tree total that 0518 just corrected. That is not a
+`_verify` change and it must not be done quietly.
+
+=> 判据: A CONTROL THAT CANNOT RUN IS NOT A CONTROL THAT PASSED, AND A REPAIR THAT MAKES IT QUIETER
+IS NOT A REPAIR. The row stays red with its cause on its face.
+
+=> 判据: A PARSER THAT RETURNS "EMPTY" FOR BOTH "CLEAN" AND "COULD NOT RUN" HAS TURNED A FAILURE
+INTO A PASS. The two must be different values, and the caller must be forced to say which it got.

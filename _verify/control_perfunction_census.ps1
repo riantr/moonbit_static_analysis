@@ -90,36 +90,80 @@ function Check {
   $t = ''
   if (Test-Path $e) { $t = [System.IO.File]::ReadAllText($e, [System.Text.Encoding]::UTF8) }
   if (Test-Path $o) { $t += [System.IO.File]::ReadAllText($o, [System.Text.Encoding]::UTF8) }
-  $errs = @(); $sev = ''
+  $errs = @(); $sev = ''; $unparsed = @()
   foreach ($l in ($t -split "`r?`n")) {
     if ($l -match '^(Error|Warning):\s*\[(\d+)\]') { $sev = $Matches[1]; continue }
+    # 0519: A DIAGNOSTIC THE TOOLCHAIN DID NOT ATTRIBUTE TO A SOURCE LOCATION.
+    # `moon check` prints these when it could not run at all --
+    #     Error: failed to run check for targets [Wasm, WasmGC, Js, Native]
+    #     Error: failed when checking project
+    # -- and the locator parser below cannot see them. Before this line they
+    # arrived as ZERO errors, which is exactly what a clean tree returns. So
+    # "the check never ran" and "nothing is wrong" were the same value, and the
+    # baseline reported a pass it had not earned. They are now a separate,
+    # loud result that no caller can mistake for silence.
+    if ($l -match '^Error:')      { $unparsed += $l.Trim(); $sev = 'Error';   continue }
+    if ($l -match '^Warning:')    { $sev = 'Warning'; continue }
     $m = [regex]::Match($l, $BOX + '\[\s*(.+):(\d+):(\d+)\s*\]')
     if ($m.Success -and $sev -eq 'Error') {
       $rel = $m.Groups[1].Value -replace ('.*' + [regex]::Escape($scratch) + '[\\/]'), ''
       $errs += (($rel -replace '\\','/') + ':' + $m.Groups[2].Value)
     }
   }
-  return $errs
+  return [pscustomobject]@{ Errors = $errs; Unparsed = $unparsed; Exit = $pp.ExitCode }
 }
 
-# `@()` matters here and is not decoration. PowerShell UNROLLS a one-element
-# array on return, so `Check` hands back a scalar STRING when the corpus has
-# exactly one error, and `$after[0]` on a string is its first CHARACTER, not
-# its first element. The restore check then compares 'j' with the expected
-# path and reports a restore that did not happen.
+# `@()` matters here and is not decoration. `Check` now returns an OBJECT, but
+# its `Errors` member is an array that PowerShell UNROLLS to a scalar STRING
+# when it holds exactly one element -- `$after[0]` on a string is its first
+# CHARACTER, not its first element, so the restore check would compare 'j' with
+# the expected path and report a restore that did not happen. Every read of
+# `.Errors` therefore goes through `@()`.
 
 # --- 3  the baseline: the corpus's own errors ----------------------------------
 Write-Output ''
 Write-Output '=== BASELINE: moon check --target all on an untouched COPY ==='
 $t0 = Get-Date
-$base = @(Check)
-Write-Output ("elapsed=" + [int]((Get-Date) - $t0).TotalSeconds + "s  errors=" + $base.Count)
+$res = Check
+$base = @($res.Errors)
+Write-Output ("elapsed=" + [int]((Get-Date) - $t0).TotalSeconds + "s  exit=" + $res.Exit + "  errors=" + $base.Count)
 foreach ($e in $base) { Write-Output ('  ERROR ' + $e) }
 
+# THE BASELINE MUST BOTH CONTAIN THE KNOWN ERROR AND CONTAIN NOTHING ELSE.
+#
+# 0519. It used to test only for errors BEYOND the known one, so a check that
+# produced NO errors passed this block -- and an unattributed `Error:` line from
+# a check that could not start produced exactly that. The two ways to have no
+# baseline are now named separately, because they mean different things and
+# neither of them is a pass.
+#
+# THE ORDER MATTERS, and it is why the "did not run" test is `nothing was
+# attributed AND something was reported`. `moon check` ends EVERY failed check
+# with an unattributed summary line (`Error: failed when checking project`), so
+# treating an unattributed line on its own as "did not run" would mislabel a
+# check that did run -- which is the same class of mistake in the other
+# direction.
+if (@($res.Errors).Count -eq 0 -and $res.Unparsed.Count -gt 0) {
+  Write-Output 'BASELINE FAILED: `moon check` reported a failure and attributed it to NO source location,'
+  Write-Output '  so the corpus was never type-checked and this control has nothing to stand on:'
+  foreach ($u in $res.Unparsed) { Write-Output ('    ' + $u) }
+  Write-Output '  A corpus that cannot be checked is not a corpus with nothing wrong.'
+  exit 1
+}
+if (@($res.Errors).Count -eq 0) {
+  Write-Output 'BASELINE FAILED: the check produced NO errors at all, and the corpus has one known error.'
+  Write-Output ('  An empty result means the check did not run: silence is not a clean tree.')
+  exit 1
+}
 $bad = @($base | Where-Object { $_ -ne $KNOWN_ERROR })
 if ($bad.Count -gt 0) {
   Write-Output ('BASELINE FAILED: the corpus has errors beyond the one this control knows: ' + ($bad -join ' '))
+  foreach ($u in $res.Unparsed) { Write-Output ('    (moon: ' + $u + ')') }
   Write-Output 'A corpus that grew an error changes the claim, so this control refuses to absorb it.'
+  exit 1
+}
+if ($base.Count -ne 1) {
+  Write-Output ('BASELINE FAILED: expected exactly the one known error, got ' + $base.Count + ': ' + ($base -join ' '))
   exit 1
 }
 Write-Output ('baseline is exactly the one known error (' + $KNOWN_ERROR + '), which is not one of the files that carries a finding.')
@@ -134,14 +178,17 @@ foreach ($f in $files) {
   if (-not (Test-Path -LiteralPath $fp)) { Write-Output ('  MISSING ' + $f); $miss += $f; continue }
   $orig = [System.IO.File]::ReadAllText($fp, [System.Text.Encoding]::UTF8)
   [System.IO.File]::WriteAllText($fp, $orig + $probe, $enc)
-  $r = Check
+  $pres = Check
+  $r = @($pres.Errors)
   [System.IO.File]::WriteAllText($fp, $orig, $enc)   # restore byte-exactly
   if (@($r | Where-Object { $_ -like ($f + ':*') }).Count -ge 1) {
     $ok++
     Write-Output ('  READ     ' + $f)
   } else {
     $miss += $f
-    Write-Output ('  NOT READ ' + $f + '   errors=' + $r.Count + '  ' + ($r -join ' '))
+    $why = ''
+    if (@($r).Count -eq 0 -and $pres.Unparsed.Count -gt 0) { $why = '   the check attributed nothing: ' + $pres.Unparsed[0] }
+    Write-Output ('  NOT READ ' + $f + '   errors=' + $r.Count + '  ' + ($r -join ' ') + $why)
   }
 }
 Write-Output ''
@@ -149,8 +196,13 @@ Write-Output ("read by moon check: " + $ok + " of " + $files.Count)
 if ($miss.Count -gt 0) { Write-Output ('NOT READ: ' + $miss.Count); foreach ($m in $miss) { Write-Output ('  ' + $m) } }
 
 # --- 5  the tree is restored, so the baseline must come back alone -------------
-$after = @(Check)
-Write-Output ("after restore: errors=" + $after.Count + "  " + ($after -join ' '))
+$afterRes = Check
+$after = @($afterRes.Errors)
+Write-Output ("after restore: exit=" + $afterRes.Exit + "  errors=" + $after.Count + "  " + ($after -join ' '))
+if (@($after).Count -eq 0 -and $afterRes.Unparsed.Count -gt 0) {
+  Write-Output ('RESTORE FAILED: the check after the restore attributed nothing: ' + ($afterRes.Unparsed -join ' | '))
+  exit 1
+}
 if ($after.Count -ne 1 -or $after[0] -ne $KNOWN_ERROR) { Write-Output 'RESTORE FAILED: the copy is not back to its baseline state.'; exit 1 }
 
 Write-Output ''
