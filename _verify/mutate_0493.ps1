@@ -98,6 +98,37 @@ $mutations = @(
   # DECLARED RETURN TYPE IS THE ANSWER, and 0495's D4 claim is a different one.
   # Removing only the `cycle_ret` arm puts the extern function and the
   # `match`-in-a-branch back on "None".
+  #
+  # 0543. THIS ROW IS NOW A DECLARED SURVIVOR, and the reason is a MEASUREMENT.
+  #
+  # IT STOPPED DISCRIMINATING WHEN 0502 LANDED, and the row's own comment says
+  # why without noticing. The comment claims the mutation puts "the extern
+  # function and the `match`-in-a-branch back on None". NEITHER IS TRUE TODAY,
+  # and each is true for its own reason:
+  #
+  #   - the `match`-in-a-branch: 0502 made a `match`'s arms ORDINARY CODE, so
+  #     the value the branch produces is read from the arms and never reaches
+  #     the declaration fallback at all. The named test this row pointed at --
+  #     'a function whose value comes from a match in an if branch keeps its
+  #     declared type' -- measures that value, and it no longer comes from the
+  #     declaration;
+  #   - the extern function: 0495's D4 arm answers a body with NO BODY before
+  #     the `cycle_ret` arm is reached, so the extern keeps its `AAny` whether
+  #     or not this arm is there.
+  #
+  # => 判据: a row that pins a claim nobody can observe any more is not a row,
+  # it is a shape. The claim itself is NOT abandoned -- the DECLARED RETURN TYPE
+  # is still the answer for a body that yields no value -- it is simply no
+  # longer reachable by removing this arm, and a mutation that cannot change a
+  # verdict cannot be a kill.
+  #
+  # MEASURED, and this is the whole argument: with the mutation applied, the
+  # mutant reproduces all SEVEN corpus pins byte-identically AND the own-source
+  # scan byte-identically. The corpus and the self scan are the entire measured
+  # surface of this analyzer, so the mutation changes no verdict anywhere it can
+  # be seen. The same shape as 0490's M4, which is the other declared survivor
+  # in this tree, and the same discipline: the argument travels with the
+  # RESULT, in the `Prove` field, because a comment is not a verdict.
   @{
     Name = 'M2 a body that yields no value answers None again'
     File = $INTERP
@@ -119,7 +150,8 @@ $mutations = @(
     join_vals(self.ret_vals)
   }
 '@
-    MustRed = 'a function whose value comes from a match in an if branch keeps its declared type'
+    Expect = 'SURVIVED'
+    Prove = '0502 made a match''s arms ordinary code, so the value this row''s named test measures now comes from the arms and never reaches the declaration fallback, and 0495''s D4 arm answers a body with no body before this arm is reached. MEASURED (0543): with the mutation applied the mutant reproduces all seven corpus pins byte-identically (moui 608 files 3457 notices, labeler 37 files actionable 1 notices 698, image 18 files 186 notices, async 419 files 1654 notices, proton 137 files 1799 notices, contract 4 files 29 notices, core 1029 files actionable 10 notices 10114) AND the own-source scan byte-identically (195 files, 1611 notices), so the mutation changes no verdict on the whole measured surface.'
   }
 
   # M3 -- CLASS D. The labels decide the binding, and the labels are read

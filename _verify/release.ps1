@@ -155,7 +155,7 @@ function Read-TextWhenFree {
 }
 
 function Scan-Tree {
-  param([string]$Wasm, [string]$Path)
+  param([string]$Wasm, [string]$Path, [string]$Exclude = '')
   $dir = Join-Path $env:TEMP ('rel_' + [guid]::NewGuid().ToString('N').Substring(0,8))
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $out = Join-Path $dir 'o.txt'; $err = Join-Path $dir 'o.err'
@@ -169,8 +169,25 @@ function Scan-Tree {
   # `--no-auto-fetch-deps` is added for the same reason the measurement scripts
   # pass it: a release gate that can reach the network is a release gate whose
   # result depends on the network.
+  #
+  # 0542. `--exclude` is a THIRD argument and it exists for the SELF-SCAN only.
+  # The own-source count is PUBLISHED ("Measured on this project's own source
+  # (N files)"), and the working tree carries untracked scratch copies under
+  # `_verify/` -- `_work_*.mbt`, this session's and earlier sessions' -- that
+  # are not the project's source at all. Counting them made the published
+  # number a property of the maintainer's scratch pile: MEASURED, the tree
+  # scanned 212 files with 17 such copies present and 195 without them, while
+  # `_verify/` holds ZERO tracked `.mbt` files (`git ls-files '_verify/*'`), so
+  # excluding it removes nothing of the project.
+  #
+  # The pin was 211 at a time when the tree carried 16 copies, and the tree
+  # carried 17 the next day -- so the number moved without a line of source
+  # changing, which is the failure mode this pin exists to prevent. A published
+  # number has to be reproducible from a CLEAN checkout, and this one now is.
+  $args = @($Wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000')
+  if ($Exclude -ne '') { $args += @('--exclude', $Exclude) }
   Start-Process -FilePath $moonrun `
-    -ArgumentList @($Wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000') `
+    -ArgumentList $args `
     -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait | Out-Null
   return Read-TextWhenFree -Path $out
 }
@@ -364,16 +381,52 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19721'
-$SELF_FILES = '211'
-$SELF_NOTICES = 'test declaration=1497|if expression=130|struct declaration=74|derive declaration=20|enum declaration=26|anonymous function literal=24|const declaration=6|short lambda=5|try expression=1|type declaration=1'
-$SELF_PRINTED = '160'
-$SELF_AGGREGATED = '1624'
+$NOTICE_TOTAL = '19552'
+# 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
+#
+# The count is the number of files the self-scan READS, and the self-scan now
+# excludes `_verify/` -- the directory that holds this gate, the NARRATIVE and
+# the untracked scratch copies of earlier sessions' source. MEASURED: with the
+# copies present the tree scanned 212 files and without them 195, while
+# `_verify/` holds ZERO tracked `.mbt` files, so the exclusion removes nothing
+# of the project.
+#
+# IT WAS NOT A COSMETIC CHANGE. The pinned 211 was the project's 195 plus 16
+# scratch copies, and the next session's tree carried 17 -- so the published
+# "Measured on this project's own source (N files)" moved with the
+# maintainer's scratch pile and with nothing else. A published number has to
+# be reproducible from a clean checkout, and this one now is.
+#
+# The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
+# on purpose: its own header says it is a stub kept so that a file which cannot
+# compile does not sit in the tree, and that it must never be committed.
+$SELF_FILES = '195'
+$SELF_NOTICES = 'test declaration=1417|if expression=94|struct declaration=54|anonymous function literal=21|enum declaration=16|const declaration=6|short lambda=5|type declaration=1|try expression=1'
+$SELF_PRINTED = '121'
+$SELF_AGGREGATED = '1494'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
-$SUPPOFF_LOCAL = '597'
-$SUPPOFF_PARAM = '1139'
+#
+# 0543. BOTH PINS WERE RE-MEASURED, and the old ones were STALE rather than
+# wrong. They were last set at 0.4.34 (2026-10-24), and EVERY increment since
+# then moved them: the interval domain (0529) added a file with 1 UnusedLocal
+# and 6 UnusedParam of its own, and 0541 added a `track` parameter to two
+# functions whose only read sits inside an `if` used as a value -- a region the
+# frontend discards, so with the suppression off the parameter looks unread.
+# MEASURED, the pins said 597 / 1,139 and the measurement said 598 / 1,147.
+#
+# The stage now EXCLUDES `_verify/` from the self scan, for the reason 0542
+# gives for the self-scan pins: the working tree carries untracked scratch
+# copies of earlier sessions' source under `_verify/`, and they are not this
+# repository's source -- `git ls-files '_verify/*'` returns ZERO tracked `.mbt`
+# files. MEASURED, the seventeen copies present contribute 15 UnusedLocal and
+# 1 UnusedParam, so a pin taken without the exclusion is a property of the
+# maintainer's scratch pile. With the exclusion the self scan reads 195 files
+# -- the same number as $SELF_FILES -- and the pair is reproducible from a
+# clean checkout.
+$SUPPOFF_LOCAL = '583'
+$SUPPOFF_PARAM = '1146'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
@@ -523,7 +576,10 @@ if (-not (Test-Path $GP)) {
 # --- 4  self-scan ------------------------------------------------------------
 if ($failed.Count -eq 0) {
   Stage 'self-scan (own source)' {
-    $text = Scan-Tree $wasm $root
+    # 0542. `_verify` is excluded, and the reason is in `Scan-Tree`: the
+    # untracked scratch copies under it are not the project's source, and the
+    # published file count has to be reproducible from a clean checkout.
+    $text = Scan-Tree $wasm $root '_verify'
     $sum = Get-Summary $text
     Write-Output ('  ' + $sum)
     $files  = [int]([regex]::Match($sum, 'files=(\d+)').Groups[1].Value)
@@ -1696,13 +1752,13 @@ if ($SkipMutations) {
 # count would be a transfer that changed the analysis, and that is a different
 # increment with a different justification.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=608 actionable=4 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3461'
-  'moonbit_labeler' = 'files=37 parsed=37 actionable=2 notices=698 unreliable=0 withheld=0 unchecked=1340 total=700'
-  'moonbit_image'   = 'files=18 parsed=18 actionable=1 notices=186 unreliable=0 withheld=0 unchecked=754 total=187'
-  'async'           = 'files=419 parsed=419 actionable=1 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1655'
+  'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3457'
+  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 unchecked=1340 total=699'
+  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 unchecked=754 total=186'
+  'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1654'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2897 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
-  'moonbit_core'    = 'files=1029 parsed=984 actionable=12 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10772'
+  'moonbit_core'    = 'files=1029 parsed=984 actionable=10 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10770'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -1832,15 +1888,19 @@ if ($failed.Count -eq 0) {
 # corpora. The seventh carries more findings than all six put together. A
 # published number that is not gated is a number that can go missing silently.
 $PERFN = [ordered]@{
-  'moui'            = '4'
-  'moonbit_labeler' = '2'
-  'moonbit_image'   = '1'
-  'async'           = '1'
+  'moui'            = '0'
+  'moonbit_labeler' = '1'
+  'moonbit_image'   = '0'
+  'async'           = '0'
   'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '29'
+  'moonbit_core'    = '27'
 }
-$PERFN_TOTAL = '37'
+# 0542. WAS 37, and the nine that left it were the `MSA-015` false positives
+# that 0532 named and did not fix. The census's own last line says it: every
+# actionable finding and every demoted finding now lands in a NAMED family, and
+# the UNCLASSIFIED bucket that held those nine is empty.
+$PERFN_TOTAL = '28'
 # 0508. THE DEMOTED SET, pinned beside the actionable one for the same reason.
 # A finding the analyzer does not stand behind is rendered `notice:` and leaves
 # the actionable count -- and a set of findings that leaves the census is a set

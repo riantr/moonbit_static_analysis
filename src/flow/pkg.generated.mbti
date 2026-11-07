@@ -119,7 +119,7 @@ pub(all) enum NodeKind {
   Exit
   Assign(String, @ast.Expr)
   Store(String, @ast.Expr)
-  PlaceStore(String, @ast.Expr)
+  PlaceStore(@ast.Expr, @ast.Expr)
   AssignMulti(Array[String], @ast.Expr)
   Eval(@ast.Expr)
   Test(@ast.Expr)

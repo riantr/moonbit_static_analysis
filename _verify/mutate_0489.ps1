@@ -56,6 +56,16 @@ Invoke-MutationGate -Name '0489' -Target 'wasm' -Mutations @(
   # reads `for i, f in wr.fns { it.analyze_entry(f, tr, i) }`, and the old anchor
   # was ABSENT. The MUTATION is the same claim as before: both passes stop
   # analysing anything, so the lens is back to entering at the module.
+  # RE-ANCHORED at 0543. The anchor used to be the dry pass, the sink restore
+  # and the report pass, back to back -- and 0541 put FOUR LINES between the
+  # restore and the report pass (the ledger's flag), so the block the anchor
+  # named no longer appears and the gate aborted at pre-flight. The mutation is
+  # the same claim: both passes stop analysing anything, so the lens is back to
+  # entering at the module.
+  #
+  # The 0541 block is KEPT in the replacement. The mutation's claim is about the
+  # two LOOPS and nothing else, and a replacement that also deletes the ledger's
+  # flag would be a second mutation wearing the first one's name.
   @{
     Name = 'M1 the per-function pass analyses no function at all'
     File = $INTERP
@@ -64,12 +74,22 @@ Invoke-MutationGate -Name '0489' -Target 'wasm' -Mutations @(
     it.analyze_entry(f, tr, i)
   }
   it.sink = saved_sink
+  // 0541. The report loop, and only it, feeds the ledger: the loop above is this
+  // entry's dry pass.
+  if track {
+    it.ctx_report_pass = true
+  }
   for i, f in wr.fns {
     it.analyze_entry(f, tr, i)
   }
 '@.Replace("`r`n", "`n")
     Repl = @'
   it.sink = saved_sink
+  // 0541. The report loop, and only it, feeds the ledger: the loop above is this
+  // entry's dry pass.
+  if track {
+    it.ctx_report_pass = true
+  }
 '@.Replace("`r`n", "`n")
     MustRed = 'the per-function entry analyses a body'
   }
@@ -168,14 +188,22 @@ Invoke-MutationGate -Name '0489' -Target 'wasm' -Mutations @(
   # M6 THE FLAG. `run_functions` falls back to the module entry, so the
   # per-function view and the module view are the same view and the flag is
   # decorative.
+  # RE-ANCHORED at 0543. The anchor named `@interp.analyze_functions(`, and
+  # 0541 renamed the call site to `@interp.analyze_functions_ctx(` -- the ledger
+  # is what the `_ctx` variant is for -- so the literal the anchor named was
+  # ABSENT and the gate aborted at pre-flight. The mutation is the same claim:
+  # the per-function view falls back to the module entry, so the two views are
+  # the same view and the flag is decorative. The module entry has the SAME
+  # seven arguments as the per-function one, so the replacement is the module
+  # variant of the same call.
   @{
     Name = 'M6 the per-function view is the module view'
     File = $PIPE
     Find = @'
-    @interp.analyze_functions(
+    @interp.analyze_functions_ctx(
 '@.Replace("`r`n", "`n")
     Repl = @'
-    @interp.analyze_module(
+    @interp.analyze_module_ctx(
 '@.Replace("`r`n", "`n")
     MustRed = 'the per-function entry analyses a body'
   }

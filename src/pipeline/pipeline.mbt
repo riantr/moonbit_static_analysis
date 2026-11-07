@@ -293,7 +293,12 @@ fn run_core(
     // 0528. Dead stores share the `first_error == 0` precondition, and need one
     // more: a graph that lost no statement. `dead_stores` applies that second
     // guard itself, because it is about the graph rather than about the file.
-    for r in dead_stores(parsed.tree.body) {
+    //
+    // 0542. AND they need the UNREAD REGIONS: a function whose extent contains
+    // one of them is not analysed by this family, because a read inside a region
+    // the frontend declined to read is a path the liveness graph never saw.
+    // `unread` is the list computed above, and the geometry is the walk's.
+    for r in dead_stores(parsed.tree.body, unread) {
       all.push(r)
     }
   }

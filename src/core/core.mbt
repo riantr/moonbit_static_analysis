@@ -741,7 +741,7 @@ pub fn Family::reach(self : Family) -> String {
     FRedundantGuard =>
       "has never produced a finding on the pinned corpora or on this tree (measured, 0534); it fires on hand-written implication fixtures, so this is a statement about REACH on real code and not about the emitter"
     FDeadStore =>
-      "29 findings across the corpora before its first audit, of which 20 were ONE defect in the CFG rather than in this family (0531), leaving 9; three false-positive classes among those nine are named and NONE is fixed (0532), so the remaining rate is disclosed rather than assumed to be zero"
+      "29 findings across the corpora before its first audit, of which 20 were ONE defect in the CFG rather than in this family (0531), leaving 9; those nine were then measured one by one (0532) and all nine are gone: eight were a read inside a region the frontend declared outside its subset, and the ninth was the index of a place-store not counted as a read (0542). The family now reports ZERO across the pinned corpora, and a scan without its findings is not evidence that no store is dead"
   }
 }
 
@@ -852,7 +852,7 @@ pub fn Family::excluded(self : Family) -> String {
     FRedundantGuard =>
       "the same fragment; a test whose operand was mutated after the binding carries no fact, so it is undecided rather than reported"
     FDeadStore =>
-      "reads this graph does not model: a break or continue edge is a Stop, a nested function body is its own graph, and a read through a field or index alias is not tracked -- so the store is a candidate rather than a proof of uselessness, and a right-hand side with effects is unaffected by the finding"
+      "reads this graph does not model: a break or continue edge is a Stop, a nested function body is its own graph, and a read through a field or index alias is not tracked -- so the store is a candidate rather than a proof of uselessness, and a right-hand side with effects is unaffected by the finding. A FUNCTION THAT HOLDS A REGION THE FRONTEND DID NOT READ IS NOT ANALYSED AT ALL: an if used as a value, an anonymous function literal and a try expression each leave a hole in the function that contains them, and a read inside such a hole is a path this graph never saw (0542)"
   }
 }
 

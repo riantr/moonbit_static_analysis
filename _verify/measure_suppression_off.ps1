@@ -134,13 +134,33 @@ try {
     $dir = Join-Path $env:TEMP ('supp_off_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $o = Join-Path $dir 'o.txt'; $e = Join-Path $dir 'o.err'
-    Start-Process -FilePath $moonrun -ArgumentList @($wasm, $tree, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000') -RedirectStandardOutput $o -RedirectStandardError $e -NoNewWindow -Wait | Out-Null
+    $scanArgs = @($wasm, $tree, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000')
+    # 0543. THE SELF SCAN EXCLUDES `_verify/`, and the reason is the SAME one the
+    # release gate's own self-scan gives (0542): the working tree carries
+    # untracked scratch copies of earlier sessions' source under `_verify/`, and
+    # they are not this repository's source -- `git ls-files '_verify/*'` returns
+    # ZERO tracked `.mbt` files. MEASURED, the seventeen copies present in the
+    # tree contribute 15 UnusedLocal and 1 UnusedParam to THIS measurement, so
+    # a pin taken without the exclusion is a property of the maintainer's
+    # scratch pile rather than of the analyzer. The README's claim is about
+    # "the seven pinned corpora and this repository's own source", and this
+    # repository's own source is the tracked tree.
+    if ($k -eq 'self') { $scanArgs += @('--exclude', '_verify') }
+    Start-Process -FilePath $moonrun -ArgumentList $scanArgs -RedirectStandardOutput $o -RedirectStandardError $e -NoNewWindow -Wait | Out-Null
     $all = ([System.IO.File]::ReadAllText($o, [System.Text.Encoding]::UTF8)) -split "`r?`n"
     $ul = @($all | Where-Object { $_ -match "local variable '.*' assigned but may not be used" }).Count
     $up = @($all | Where-Object { $_ -match "parameter '.*' may not be used" }).Count
     $gotLocal += $ul
     $gotParam += $up
-    $lines.Add(("{0,-18} UnusedLocal={1,-5} UnusedParam={2}" -f $k, $ul, $up))
+    # THE FILE COUNT IS PRINTED, because a number that says "across eight trees"
+    # is a claim about a corpus and the corpus is named by how many files it
+    # holds. A tree whose file count moved changes what the number means.
+    $scanned = @($all | Where-Object { $_ -match '^SCANNED\s' } | Select-Object -First 1)
+    $scannedText = ''
+    if ($scanned.Count -gt 0) {
+      $scannedText = ($scanned[0] -replace '^SCANNED\s+', '' -replace '\s+under\s+.*$', '')
+    }
+    $lines.Add(("{0,-18} UnusedLocal={1,-5} UnusedParam={2,-5} files={3}" -f $k, $ul, $up, $scannedText))
   }
 }
 finally {

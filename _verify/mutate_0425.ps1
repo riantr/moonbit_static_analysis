@@ -102,6 +102,14 @@ $muts = @(
   # branches did -- and it is now expressed against the join's CALL SITE, which
   # is where the decision is made. `join_flow` itself is covered by
   # `mutate_0495.ps1` M3.
+  # RE-ANCHORED at 0543. The anchor used to be the join and the two closing
+  # braces after it, and it was ABSENT: the `SIf` arm of `exec_stmt` gained a
+  # THIRD closing brace, so the block the anchor named no longer appears. The
+  # mutation is the same claim -- the join always terminates instead of falling
+  # through when any branch does -- and the anchor now names the block as the
+  # source spells it. The extra brace is part of the anchor, not a concession:
+  # an anchor that names fewer lines than the code has is an anchor that stops
+  # matching the next time the shape changes.
   @{
     Name = 'M2 the join always terminates'
     File = $F
@@ -109,12 +117,14 @@ $muts = @(
           self.flow = join_flow(flows)
         }
       }
+    }
     SWhile(cond, body) => {
 '@
     Repl = @'
           self.flow = FReturn
         }
       }
+    }
     SWhile(cond, body) => {
 '@
   }
@@ -128,6 +138,9 @@ $muts = @(
   # RE-ANCHORED at 0495, on the same call site as M2. The two mutations differ
   # by ONE line and are the two directions of the same decision, which is why
   # they share an anchor.
+  #
+  # RE-ANCHORED AGAIN at 0543, for the reason M2's comment gives: the `SIf` arm
+  # gained a third closing brace, so the shared anchor now includes it.
   @{
     Name = 'M3 the join always falls through'
     File = $F
@@ -135,12 +148,14 @@ $muts = @(
           self.flow = join_flow(flows)
         }
       }
+    }
     SWhile(cond, body) => {
 '@
     Repl = @'
           self.flow = FNormal
         }
       }
+    }
     SWhile(cond, body) => {
 '@
   }

@@ -266,8 +266,16 @@ pub fn node_uses(kind : NodeKind) -> Map[String, Bool] {
     // A write THROUGH a place reads its base: you need `x` to store into `x.f`,
     // and the base is not redefined by it. It also reads whatever the right-hand
     // side mentions.
-    PlaceStore(x, e) => {
-      out.set(x, true)
+    //
+    // AND IT READS THE INDEX. `out[bi] = e` evaluates `bi` to know which
+    // element it writes, so `bi` is read by the statement -- and a use set that
+    // omitted it made the store to `bi` on the line above look dead. MEASURED,
+    // moonbit_labeler 0.2.13 `component_blackbox_test.mbt:721`.
+    //
+    // The TARGET EXPRESSION carries the base AND the index, so reading the
+    // target's names covers both and cannot forget the second one.
+    PlaceStore(target, e) => {
+      names_of_expr(out, target)
       names_of_expr(out, e)
     }
     Entry | Exit | Stop => ()

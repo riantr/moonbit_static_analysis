@@ -56,8 +56,22 @@ pub(all) enum NodeKind {
   /// two families or to choose between them in prose, and prose is where that
   /// distinction would be lost.
   Store(String, @ast.Expr)
-  /// `x.f = e` / `xs[i] = e` -- a store THROUGH a place, whose base name is
-  /// carried so an analysis can see the read it performs.
+  /// `x.f = e` / `xs[i] = e` -- a store THROUGH a place.
+  ///
+  /// THE TARGET IS CARRIED, NOT JUST ITS BASE NAME, and the reason is a
+  /// measured false positive. The node used to carry the base name only, so
+  /// `out[bi] = ...` had a use set of `{out}` -- the INDEX `bi` was nowhere in
+  /// it, and a store to `bi` on the line above looked like a value nobody
+  /// reads. MEASURED, moonbit_labeler 0.2.13 `component_blackbox_test.mbt:721`:
+  ///
+  ///     out[bi] = (a << 2) | (b >> 4)
+  ///     bi = bi + 1
+  ///     out[bi] = ((b & 0xF) << 4) | (c >> 2)
+  ///
+  /// reported `the value stored in 'bi' is read on no path` on a line whose
+  /// value is read on the very next one. The base of a place-store is a use
+  /// (see below), and the INDEX is a use too -- it is an expression that has
+  /// to be evaluated to know which element is written.
   ///
   /// THE BASE OF A PLACE-STORE IS A USE, NOT A DEFINITION, and getting that
   /// backwards is not a small error. `assigned_base()` reports the same name for
@@ -67,7 +81,7 @@ pub(all) enum NodeKind {
   /// source were `self`, every one of them a `self.field = ...` -- a systematic
   /// false positive caused by exactly this conflation, found by aggregating the
   /// findings by name before believing them.
-  PlaceStore(String, @ast.Expr)
+  PlaceStore(@ast.Expr, @ast.Expr)
   /// `let (a, b) = e` -- binds several names at once.
   AssignMulti(Array[String], @ast.Expr)
   /// An expression evaluated for its effect (a call, a `match`, a block).
@@ -240,8 +254,8 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
         }
         _ =>
           match lhs.assigned_base() {
-            Some(x) => {
-              let n = b.add(PlaceStore(x, rhs), s.span)
+            Some(_) => {
+              let n = b.add(PlaceStore(lhs, rhs), s.span)
               b.link(n, [next])
               n
             }
@@ -403,7 +417,13 @@ pub fn Cfg::kind_label(self : Cfg, v : Int32) -> String {
     Exit => "exit"
     Assign(x, _) => "assign \{x}"
     Store(x, _) => "store \{x}"
-    PlaceStore(x, _) => "place-store \{x}"
+    PlaceStore(t, _) =>
+      // The base name, for a readable label. `assigned_base()` is the same
+      // function the builder used to decide there IS a base.
+      match t.assigned_base() {
+        Some(x) => "place-store \{x}"
+        None => "place-store"
+      }
     AssignMulti(names, _) => "assign-multi \{names.length()} names"
     Eval(_) => "eval"
     Test(_) => "test"

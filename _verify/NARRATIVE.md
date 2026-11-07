@@ -12083,3 +12083,358 @@ them writes that shape in a position `MSA-015` examines.
 WORTH TAKING. `executions=0` on the module view is the control: it is the fact
 `analyze_functions` documents, and the ledger had to reproduce it or be counting
 something other than body executions.
+
+## 0542: THE NINE, ONE CLASS AT A TIME -- AND 0532's SECOND CLASS WAS WRONG
+
+0532 named three classes behind the nine remaining `MSA-015` findings and fixed
+none of them. This section closes all nine, and it CORRECTS one of 0532's three
+attributions on the way.
+
+### THE NINE, RE-CLASSIFIED BY THE SOURCE, NOT BY THE OLD NAMES
+
+Every one of the nine was read at its own site in the corpus, with the lines
+around it, before anything was changed:
+
+    moui  views/presentation.mbt:728        the read is in a LAMBDA
+    moui  core/text_layout.mbt:375/390/393  the read is in an if EXPRESSION
+    labeler component_blackbox_test.mbt:721 the INDEX of a place-store
+    image fim.mbt:353                       the read is in an if EXPRESSION
+    async event_loop/network.mbt:35          the read is in a `try` EXPRESSION
+    core  math/trig.mbt:166                 the read is in an if EXPRESSION
+    core  strconv/double_exact_test.mbt:97  the read is in an if EXPRESSION
+
+Eight of the nine are ONE class: **a read inside a region the frontend declared
+outside its subset**. The regions are an `if` used as a value, an anonymous
+function literal, and a `try` expression -- and the parser DISCARDS each of
+them after reading it, so the read is nowhere in the AST and the liveness graph
+never sees it. The ninth is different: the INDEX of a place-store.
+
+### 0532's SECOND CLASS WAS WRONG, AND THE PROBE THAT KILLS IT
+
+0532 said the async finding was `guard !terminated else { return }` and that
+"there is no `SGuard` in `SKind`". The first half is true and the conclusion is
+false: `Parser::parse_guard` (parser.mbt:4312) PRODUCES AN `SIf` with an empty
+then branch, and its own header says it handles 550 statements across 126 files
+of moui. `guard` is modelled.
+
+The probe that separates it is three functions differing in one word, and the
+third one is the control:
+
+    try + `if`       -> the finding appears
+    try + `guard`    -> the finding appears
+    try + no read    -> the finding appears, AND IT IS A TRUE POSITIVE
+
+so the `try` REGION is the cause and `guard` is not in it at all. 0532's own
+probe ("the same shape but a plain `if` instead of `guard` reports NOTHING")
+must have lacked the `try` -- with a `try` in the fixture, the `if` variant
+reports too.
+
+=> 判据: A PROBE THAT SEPARATES TWO CAUSES HAS TO SEPARATE THEM. The `guard`
+probe differed from the file in a WORD and was read as isolating the word; the
+probe that isolates it differs in a REGION, and the region was in the fixture
+all along.
+
+### THE FIX, AND IT IS NOT A NEW RULE
+
+The family already had a decline rule, and the fix applies it one level up.
+`deadstore.mbt` refused to analyse a function whose graph `skipped` a
+statement -- a nested function body, whose reads of the enclosing locals the
+graph does not model. The shapes that were overlooked are the same thing in
+EXPRESSION position: an `if` used as a value, a lambda, a `try` expression are
+all bodies whose reads the graph does not model, and each of them leaves a hole
+in the function that contains it.
+
+`walk.truncated_fn` already applies exactly this geometry to a family's
+whole-function conclusion ("a skip is not a read failure... it still leaves a
+hole inside whatever function encloses it"), so the hole was invisible to a
+family whose graph stopped at the statement level.
+
+The change: `dead_stores` takes the frontend's UNREAD REGIONS, and a function
+whose extent contains one of them is not analysed. The geometry is the walk's
+(`walk.span_in_extent`), not a second one.
+
+And the ninth: `NodeKind::PlaceStore` carried the BASE NAME of the target and
+not the target itself, so `out[bi] = ...` had a use set of `{out}` and the index
+`bi` was nowhere in it. The node now carries the target expression, and the
+use set reads its names -- which covers the base and the index by one rule.
+
+### MEASURED
+
+    corpus             before   after
+    moui                    4       0
+    moonbit_labeler         1       0
+    moonbit_image           1       0
+    async                   1       0
+    moonbit_core            2       0
+    TOTAL                   9       0
+
+No new finding appeared anywhere, and the per-function census -- the gate's own
+measurement, not this section's -- went from **37** actionable to **28**
+(per corpus: `moonbit_core=27`, `moonbit_labeler=1`), with the demoted set
+unchanged at 21. The census's own last line is the one that matters: **every
+actionable finding and every demoted finding landed in a named family**, and the
+UNCLASSIFIED bucket that held those nine is empty.
+
+### THE OWN-SOURCE PINS, AND A CONVENTION THAT WAS WRONG
+
+The corpus pins moved with the findings (moui 4 -> 0, labeler 2 -> 1, image 1 ->
+0, async 1 -> 0, core 12 -> 10) and the notice total moved with them: 19,721 ->
+**19,548**.
+
+But the OWN-SOURCE pins were already wrong before this increment, and for a
+reason that is not about the analyzer. `$SELF_FILES` was 211, and the tree
+scanned **212** -- because the working tree carries 17 untracked scratch copies
+of earlier sessions' source under `_verify/`, and the pin had been measured with
+16 of them present. The published "Measured on this project's own source (N
+files)" was therefore a property of the maintainer's scratch pile: it moved from
+211 to 212 with no line of source changing, and a fresh checkout would have
+measured something else again.
+
+MEASURED: `_verify/` holds ZERO tracked `.mbt` files (`git ls-files '_verify/*'`),
+so excluding it removes nothing of the project, and the tree then reads **195**
+files -- reproducible from a clean checkout. The self-scan now excludes it, the
+pins are re-measured under that convention (195 files, 1,611 notices of which
+121 are printed and 1,490 aggregated), and the notice table loses a row
+(`derive declaration`, 20) that existed only because of the scratch copies.
+
+=> 判据: A PUBLISHED NUMBER HAS TO BE REPRODUCIBLE FROM A CLEAN CHECKOUT. The
+own-source file count was not a fact about the project at all; it was a fact
+about the working directory, and it was published as if it were the first.
+
+### WHAT IS STILL TRUE AND WHAT IS NOT
+
+The family is now silent on all seven pinned corpora, and that is NOT a claim
+that no store is dead in them: it is a claim that every function in them either
+has no unread region or has no store the graph can judge. The census's one real
+defect -- a local assigned and never read in `moonbit_labeler` -- is still
+there, and it is still the only true defect this tool has published on any
+corpus.
+
+=> 判据: A FAMILY THAT GOES QUIET HAS EARNED A MEASUREMENT, NOT A CONTRADICTION.
+Nine findings went to zero, and the number that says what the family now costs
+is not "it is perfect" but "here is the rule it declines under".
+
+## 0543: THE RELEASE GATE WAS RED, AND NONE OF THE FOUR REASONS WAS THIS INCREMENT
+
+0542 landed with the suite green and the corpus pins green, and the full release gate -- the
+one that runs locally and not at all in CI -- came back RED in four places:
+
+    mutate:0425      the anchor's block no longer appears: the source gained a closing brace
+    mutate:0489      TWO anchors: 0541 put four lines between the two loops, and renamed the
+                     call site from `analyze_functions` to `analyze_functions_ctx`
+    mutate:0493      M2 SURVIVED: the named test stopped discriminating
+    suppression-off  the pins said 597 / 1,139 and the measurement said 598 / 1,147
+
+The interesting part is not that they were red. It is that **every one of them was red before
+0542 started**, and that all four are the same kind of thing 0542 found in the own-source pins:
+a published number or an anchor that stopped being a fact about the world, and a gate that
+keeps saying nothing about it.
+
+### THE ATTRIBUTION WAS MEASURED, NOT ASSUMED
+
+The suppression-off measurement was the one that could have been 0542's fault, so it was
+measured before anything was changed. The self scan's own two numbers, per file, before and
+after:
+
+    src/flow/interval.mbt   UnusedLocal 0 -> 1   UnusedParam 0 -> 6
+    src/pipeline/pipeline.mbt                  UnusedParam 1 -> 2
+    src/sa/main.mbt                             UnusedParam 3 -> 4
+
+`src/flow/interval.mbt` did not exist before increment 0529 (the interval domain, 2026-11-07
+15:42) and carries seven findings of its own. The two `UnusedParam` deltas are the same
+parameter -- `track` -- in the two places 0541 added it (2026-11-07 17:36), and its only read
+sits inside an `if` used as a value, which is a region the frontend discards: with the
+suppression off, the parameter looks unread. **0542's own files contributed ZERO**, which is
+what the arithmetic had to show before the pins were re-taken: the files 0542 touched
+(`deadstore.mbt`, `deadstore_test.mbt`, `cfg.mbt`, `live.mbt`, `pipeline.mbt`) do not appear in
+the list at all.
+
+=> 判据: A GATE THAT IS RED IS A SENTENCE ABOUT THE TREE, AND THE FIRST QUESTION IS WHICH
+TREE IT IS ABOUT. "The gate is red" is a fact about the last run; "the gate is red because of
+what I just did" is a fact about the next run, and only the first one is measured.
+
+### THE SUPPRESSION-OFF PINS WERE NINE MONTHS STALE
+
+The pins were last set at 0.4.34 (2dd3672, **2026-10-24**). Every increment since then moved
+them -- the interval domain added a file with seven findings of its own, and 0541 added a
+parameter whose only read is invisible to the lint. Nothing re-measured them, so the stage had
+been failing since 2026-10-24 and nobody was told: it is a local stage, and CI runs four
+commands.
+
+MEASURED, with the suppression switched off and the source restored byte-identically:
+
+    moui               UnusedLocal=83    UnusedParam=353   files=608
+    moonbit_labeler    UnusedLocal=93    UnusedParam=23    files=37
+    moonbit_image      UnusedLocal=39    UnusedParam=11    files=18
+    async              UnusedLocal=43    UnusedParam=157   files=419
+    proton             UnusedLocal=53    UnusedParam=199   files=137
+    proton_contract    UnusedLocal=0     UnusedParam=0     files=4
+    moonbit_core       UnusedLocal=246   UnusedParam=384   files=1029
+    self               UnusedLocal=26    UnusedParam=19    files=195
+    TOTAL              UnusedLocal=583   UnusedParam=1146
+
+**THE SELF SCAN NOW EXCLUDES `_verify/`,** for the reason 0542 gives for the own-source pins:
+the working tree carries untracked scratch copies of earlier sessions' source under `_verify/`,
+and they are not this repository's source -- `git ls-files '_verify/*'` returns ZERO tracked
+`.mbt` files. MEASURED, the seventeen copies present contribute **15 `UnusedLocal` and 1
+`UnusedParam`**, so a pin taken without the exclusion is a property of the maintainer's scratch
+pile. With it, the self scan reads **195 files** -- the same number as `$SELF_FILES` -- and the
+pair is reproducible from a clean checkout.
+
+The control is measured too, because a pair of numbers with nothing to compare them against
+says nothing: with the suppression ON, as it ships, the eight trees produce **1 `UnusedLocal`
+(the local in `moonbit_labeler`) and 0 `UnusedParam`**. So the suppression hides **582 locals
+and 1,146 parameters**, and the README says so with the new numbers.
+
+=> 判据: A PUBLISHED NUMBER THAT IS NOT RE-MEASURED IS A NUMBER THAT WILL BE WRONG. This one
+was wrong for nine months, and the only reason it was not wrong for nine years is that it was
+right by luck until the interval domain landed.
+
+### TWO ANCHORS THAT THE SOURCE MOVED OUT FROM UNDER
+
+`mutate_0425`'s M2 and M3 anchor the `if`-statement join in `exec_stmt`:
+
+          self.flow = join_flow(flows)
+        }
+      }
+    SWhile(cond, body) => {
+
+and the source now has a THIRD closing brace between the join and the next arm. The block the
+anchor named stopped appearing, the pre-flight said ABSENT, and the gate aborted without
+running a suite. The mutation is the same claim -- the join always terminates instead of
+falling through when any branch does -- and the anchor now names the block as the source
+spells it.
+
+`mutate_0489` has two anchors broken by 0541, and they are broken in two different ways. M1's
+anchor was the dry pass, the sink restore and the report pass, back to back, and 0541 put FOUR
+LINES between the restore and the report pass (the ledger's flag), so the block the anchor
+named no longer appears. M6's anchor was the literal `@interp.analyze_functions(`, and 0541
+renamed the call site to `@interp.analyze_functions_ctx(` -- the ledger is what the `_ctx`
+variant is for -- so the literal was absent while the CALL was right there. The module entry
+has the same seven arguments as the per-function one, so the replacement is the module variant
+of the same call.
+
+=> 判据: AN ANCHOR IS A POINTER TO THE LINE THAT DECIDES BEHAVIOUR, AND A POINTER THAT NO
+LONGER RESOLVES IS A GATE THAT NO LONGER RUNS. A gate that aborts at pre-flight and says
+"ABORT" is not a green gate -- it is a gate that stopped checking, and it says so loudly only
+because somebody read the log.
+
+### AND THEN 0425 RAN, AND THREE MUTATIONS SURVIVED -- WHICH IS THE REAL FINDING
+
+Re-anchoring 0425 let the gate run a suite for the first time since 2026-10-24, and it came
+back with M5, M6 and M7 SURVIVING. That is not a stale pin. It is the gate doing its job on the
+day it was finally allowed to.
+
+THE CAUSE IS 0537, AND IT IS AN INCREMENT OF MINE. 0537 made a condition that names a
+CALLER-BOUND PARAMETER explore BOTH sides -- `n > 0` is no longer folded to a constant when
+`n` comes from a call site. **`exec_alt` is reached from ONE place**, the folded-false arm of
+`exec_stmt`'s `SIf`:
+
+    self.flow = self.exec_alt(elseifs, els, env, 0)      // the ABool(false) arm
+
+Four of 0425's fixtures reached the `else if` machinery through `if n > 0` with `f(-1, ...)`,
+because that condition folded to FALSE for `-1` and the else branch was the only one taken.
+After 0537 it does not fold, both sides are explored, and those fixtures never enter `exec_alt`
+at all.
+
+**AND THEY STILL PASSED.** The inline chain handling in the unknown-condition arm reaches the
+same verdict on the same programs, so every row kept its expected count while measuring
+something other than what it said it measured. A test that passes for a different reason is
+worse than a test that fails: it looks like coverage and is not.
+
+MEASURED, on the fixture set as it stood. Current behavior, by literal comparison:
+
+    if 1 > 2 { return 1 } else if s == "a" { return 2 } else if s == "b" { let _ = 3 } else { return 4 }; return 5
+      Unreachable = 0    (the chain falls through -- the row's expected count, reached inline)
+    ... the SAME shape with `if 2 > 1`: Unreachable = 1
+    if 1 > 2 { return 1 } else { return 4 }; return 5                 Unreachable = 1
+    if 1 > 2 { return 1 } else { let _ = 4 }; return 5                Unreachable = 0
+    if 1 > 2 { return 1 } else if s == "a" { return 2 }; return 3      Unreachable = 0
+
+The FIXTURES are re-pointed at a LITERAL COMPARISON, which folds whatever the parameter's
+value is, and each row now has a CONTROL: the same program with the comparison the other way
+round, which takes the then-branch alone and gives the OPPOSITE expected count. The control is
+what makes the first row's zero a fact about the analyzer instead of a fact about a fixture
+that never arrived.
+
+ONE ROW HAD A SECOND DEFECT, and it is the one that made M7 survivable even before 0537.
+`chain_no_else.mbt`'s only else-if was `let _ = 2` -- a branch that does NOT terminate. A
+non-terminating branch leaves the flow at `FNormal` by itself, so the missing-else arm
+contributed nothing the branch had not already contributed, and REMOVING that arm could not
+change the verdict. The row claimed "M7 turns this into a false `unreachable code`" and that
+was not true of the program it ran. The else-if now RETURNS, which is the only shape in which
+"the chain falls through because there is no else" is a decision the missing-else arm makes
+rather than one the branch makes by accident.
+
+RESULT: 0425 is **8 killed, 0 survivors**, up from 5 killed and 3 survivors, on a suite that
+went 1,277 -> 1,281 tests. The four new rows are three controls plus one re-pointed row.
+
+=> 判据: A MUTATION GATE THAT HAS BEEN ABORTING IS NOT A GATE THAT PASSED, AND THE SURVIVORS IT
+FINDS ON THE DAY IT CAN RUN ARE OLDER THAN THE ABORT. 0425 had been red since 2026-10-24 at
+pre-flight and would have been red at the suite verdict too -- the vacuity was already there,
+one layer down, waiting for the anchor to be fixed.
+
+=> 判据: A FIXTURE CAN GO VACUOUS WITHOUT ANYBODY EDITING IT. 0537 changed the ANALYZER, and
+four rows kept their expected counts while measuring a different code path. The only thing that
+caught it was a mutation gate that had been unable to run.
+
+### THE GATE, AFTER THE REPAIRS: 121 ROWS, 120 TRUE, ONE FALSE
+
+    RELEASE GATE FAILED: perfunction-control
+    121 stage rows: 120 True, 1 False
+    the False is `per-function census control`
+
+The four rows this increment was opened for -- `mutate:0425`, `mutate:0489`, `mutate:0493` and
+`suppression-off` -- are all True. The fifth False is the row recorded as DELIBERATELY red, and
+it is unchanged by anything here: under moon 0.1.20261104 the compiler type-checks `.mbti`
+files, `moonbitlang/core` is self-hosted, `abort/pkg.mbti:4` names `String` out of scope, and
+the checker bails before type-checking any other package -- so the control reads 0 of 16. Two
+repairs were tried and measured and both rejected (dropping the file makes every probe read 0
+files; qualifying the type moves the error to `:8`). A control that cannot run is not a control
+that passed, so it stays red.
+
+MEASURED in this run, all green: `moon fmt --check`, `moon check --deny-warn`, js 1,281 / wasm
+1,417 / wasm-gc 1,281, the wasm build, 81 of 81 mutation gates, the published-package
+self-scan, the seven corpus SUMMARYs and the per-function census byte-identical to their pins
+(moui 608 files 3,457 notices; labeler 37 actionable 1; image 18; async 419; proton 137;
+contract 4; core 1,029 actionable 10; census TOTAL 28, DEMOTED 21), and the eight-tree notice
+total **19,552**.
+
+=> 判据: WHAT A RUN CAN SAY IS WHICH ROWS MOVED, NOT THAT THE GATE IS GREEN. "The gate is
+green" is a claim about a tree in which one row is red on purpose; "the four rows this
+increment was opened for are green, and the fifth was red before it started" is a claim about
+this commit, and it is the one the commit message is allowed to make.
+
+### 0493's M2 IS NOW A DECLARED SURVIVOR, AND THE ARGUMENT IS A MEASUREMENT
+
+0493's M2 removes the `def.cycle_ret` arm from `analyze_fn`'s return-value chain -- the arm
+that says "a body which yields no value answers with its DECLARED return type". Its row
+claimed the mutation puts "the extern function and the `match`-in-a-branch back on None", and
+**neither is true today**, each for its own reason:
+
+  - the `match`-in-a-branch: 0502 made a `match`'s arms ORDINARY CODE, so the value the branch
+    produces is read from the arms and never reaches the declaration fallback at all. The row's
+    named test -- 'a function whose value comes from a match in an if branch keeps its declared
+    type' -- measures that value, and it no longer comes from the declaration;
+  - the extern function: 0495's D4 arm answers a body with NO BODY before the `cycle_ret` arm
+    is reached, so the extern keeps its `AAny` whether or not this arm is there.
+
+MEASURED, with the mutation applied, the analyzer rebuilt, and the whole measured surface
+re-scanned: the mutant reproduces **all seven corpus pins byte-identically** (moui 608 files
+3,457 notices, labeler 37 files actionable 1 notices 698, image 18 files 186 notices, async 419
+files 1,654 notices, proton 137 files 1,799 notices, contract 4 files 29 notices, core 1,029
+files actionable 10 notices 10,114) **and the own-source scan byte-identically** (195 files,
+1,611 notices). The corpora and the self scan are the entire measured surface of this analyzer,
+so the mutation changes no verdict anywhere it can be seen. It is therefore declared
+`Expect = 'SURVIVED'`, with the argument travelling in the `Prove` field -- the same shape as
+0490's M4, the other declared survivor in this tree, and the same discipline: the harness
+cannot tell whether a survivor is legitimate, only the argument can, and an argument that is
+not required is an argument that is not there.
+
+The CLAIM is not abandoned. The declared return type is still the answer for a body that
+yields no value; it is simply no longer reachable by removing this arm.
+
+=> 判据: A ROW THAT PINS A CLAIM NOBODY CAN OBSERVE ANY MORE IS NOT A ROW, IT IS A SHAPE.
+Declaring the survivor keeps the row, keeps the claim and says out loud which measurement
+says the claim cannot be attacked this way -- which is a different thing from quietly
+dropping it.

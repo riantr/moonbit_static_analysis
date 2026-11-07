@@ -15,7 +15,7 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1029 files): **984 parsed, 12 actionable** — and every one
+Measured on `moonbitlang/core` (1029 files): **984 parsed, 10 actionable** — and every one
 of the 10 is a construct this frontend does not read or an operator it does not model, not
 a defect in the analysed code. The 18 findings demoted in 0.4.38 — names the analyzer could
 not resolve — are counted as notices and are not in that 10. On that same tree
@@ -532,21 +532,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (211 files), with the per-file printing cap lifted so the count is the
+project's own source (195 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1497 | | `anonymous function literal` | 24 |
-| `if` expression | 130 | | `const` declaration | 6 |
-| `struct` declaration | 74 | | `short lambda` | 5 |
-| `derive` declaration | 20 | | `try` expression | 1 |
-| `enum` declaration | 26 | | `type` declaration | 1 |
+| `test` declaration | 1417 | | `const` declaration | 6 |
+| `if` expression | 94 | | `short lambda` | 5 |
+| `struct` declaration | 54 | | `type` declaration | 1 |
+| `anonymous function literal` | 21 | | `try` expression | 1 |
+| `enum` declaration | 16 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **160** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1624** sit outside every function's
+**position**: **121** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1494** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -579,7 +579,7 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,721** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,552** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
 **16,208** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
@@ -604,10 +604,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **597** `UnusedLocal` and **1,139** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source. With it on, as it ships, it
+the tool produces **583** `UnusedLocal` and **1,146** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 195 files the notice table
+above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
+reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **596** locals and **1,139** parameters, and the per-binding
+suppression is hiding **582** locals and **1,146** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -641,18 +643,24 @@ numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** It is measured
 > across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and the release
-> gate **pins** the number. Today it reports **37** `actionable` findings, where the module
-> view reports 12. The census classifies them: **27** are constructs this frontend does not
-> read or operators it does not model, **9** are `MSA-015` dead stores the new family reports
-> on other corpora, and one — a local assigned and never read in `moonbit_labeler` — is still
+> gate **pins** the number. Today it reports **28** `actionable` findings — 27 of them on
+> `moonbitlang/core` and one on `moonbit_labeler` — where the module view reports 10 and 1.
+> The census classifies them: **27** are constructs this frontend does not read or operators
+> it does not model, and one — a local assigned and never read in `moonbit_labeler` — is still
 > the first true defect this tool has published on any corpus.
+>
+> **Every one of them is in a NAMED family.** The census keeps a bucket for findings it
+> cannot classify, and that bucket held nine `MSA-015` dead stores until 0.4.44 — a family
+> reporting a store as unread while the read sat inside a region the frontend had declared
+> outside its subset. The rule that fixes them is the one the frame audit already applies:
+> a function with a hole in it is not audited.
 >
 > | family | n | what the lens claimed |
 > |---|---:|---|
 > | C | 6 | `==` between two arrays |
 > | D | 3 | `Int + Char` and `List + List` |
 > | E | 3 | `*` on a struct |
-> | G | 11 | unreachable code — the lens's own claim about the code |
+> | G | 10 | unreachable code — the lens's own claim about the code |
 > | H | 1 | a local assigned and never read — the lens's own claim about the code, and the one finding in the census that is a real defect |
 > | I | 1 | `abs` on a `Double` |
 > | J | 1 | `*` on two function values |
@@ -668,7 +676,7 @@ numbers with and without the flag.
 > analyses — this one takes every function as an entry point, the module view takes the
 > module — so they do not find the same names: in `moonbit_core` this view reports 19 and
 > the module view 18, and only **15** of those are the same site. That is the same difference
-> as the 29 against the 10 above, and the two views stay separate, not additive.
+> as the 27 against the 10 above, and the two views stay separate, not additive.
 >
 > | demoted family | n | what the lens claimed |
 > |---|---:|---|
@@ -739,7 +747,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1409/1409 on wasm; 1273/1273 on js and wasm-gc
+moon test --deny-warn                # 1417/1417 on wasm; 1281/1281 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -928,7 +936,7 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 The gate is not optional decoration: it runs **87 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **504** live mutations, **462** expect a kill; **385** of them also name the test
+Of the **504** live mutations, **461** expect a kill; **384** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing

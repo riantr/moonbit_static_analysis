@@ -7,14 +7,54 @@
 // two claims are different, and a reader who is handed the wrong one is told the
 // binding is useless when only this write was.
 //
-// THE ONE GUARD THAT MATTERS, AND WHY IT IS `skipped`. The CFG counts the
-// statements it did not convert (`Cfg.skipped`): a nested function body, whose
-// reads of the enclosing locals this graph does not model. Liveness decides a
-// store is dead by looking at the paths that leave it, so a read that is not in
-// the graph is a path it did not see -- and reporting on that basis would be a
-// false positive in the family's own terms. So a function that contains a
-// skipped statement is NOT analysed, and the family says so in `excluded`
-// instead of guessing.
+// THE TWO GUARDS THAT MATTER, AND WHY THEY ARE BOTH `skipped`-SHAPED.
+//
+// 1. THE CFG counts the statements it did not convert (`Cfg.skipped`): a nested
+//    function body, whose reads of the enclosing locals this graph does not
+//    model. Liveness decides a store is dead by looking at the paths that leave
+//    it, so a read that is not in the graph is a path it did not see -- and
+//    reporting on that basis would be a false positive in the family's own
+//    terms. So a function that contains a skipped statement is NOT analysed, and
+//    the family says so in `excluded` instead of guessing.
+//
+// 2. A REGION THE FRONTEND DID NOT ANALYSE, inside the function. This is the
+//    same rule as (1) applied to the shapes that were overlooked because they
+//    live in an EXPRESSION rather than in a statement: an `if` used as a value,
+//    an anonymous function literal, a `try` expression. Each of them is a body
+//    whose reads of the enclosing locals this graph does not model, and each of
+//    them leaves a hole in the function that contains it.
+//
+//    MEASURED, the hole cost this family eight findings across the corpora,
+//    and every one of them was a store whose value IS read:
+//
+//      moonbit_image 0.3.7      fim.mbt:353      the read is in `if v < 0.0`
+//      moonbitlang/core          trig.mbt:166     the read is in `if odd {..}`
+//      moonbitlang/core          double_exact_test.mbt:97   the read is in
+//                                                             `if p < -1022`
+//      wzzc-dev/moui 0.1.12      core/text_layout.mbt:375/390/393
+//                                                         the read is in
+//                                                         `if last_soft_break >..`
+//      wzzc-dev/moui 0.1.12      views/presentation.mbt:728
+//                                                         the read is in a lambda
+//      moonbitlang/async 0.22.4  internal/event_loop/network.mbt:35
+//                                                         the read is in a `try`
+//
+//    0532 ATTRIBUTED THE ASYNC ONE TO `guard`, and that was wrong: `guard` IS
+//    modelled -- `Parser::parse_guard` produces an `SIf` with an empty then
+//    branch -- and a probe with a `guard` and no `try` reports NOTHING. The
+//    probe that separates them is three functions differing in one word:
+//
+//      try + `if`      -> the finding appears
+//      try + `guard`   -> the finding appears
+//      try + no read   -> the finding appears (and it is a TRUE positive)
+//
+//    so the `try` region is the cause, and `guard` is not in this at all.
+//
+//    THE RULE IS NOT INVENTED HERE. `walk.truncated_fn` already applies exactly
+//    this geometry to a family's whole-function conclusion -- "a skip is not a
+//    read failure... it still leaves a hole inside whatever function encloses
+//    it" -- and the hole was simply invisible to a family whose graph stopped
+//    at the statement level.
 //
 // Functions declared at module level are analysed one at a time, which is why
 // this is intraprocedural: an interprocedural answer is increment 4's job
@@ -22,16 +62,47 @@
 
 ///|
 /// One report per store whose value no path reads.
-pub fn dead_stores(body : Array[@ast.Stmt]) -> Array[@report.Report] {
+///
+/// `unread` is the frontend's list of regions it chose not to analyse (the
+/// pipeline computes it from the parse notices). A function whose extent
+/// contains one of them is not analysed by this family, for the reason the
+/// header gives.
+pub fn dead_stores(
+  body : Array[@ast.Stmt],
+  unread : Array[@core.Span],
+) -> Array[@report.Report] {
   let out : Array[@report.Report] = []
   for s in body {
     match s.kind {
-      @ast.SFunc(_, params, _, fbody, _) => one_body(params, fbody, out)
-      @ast.SLocalFunc(_, params, _, fbody, _) => one_body(params, fbody, out)
+      @ast.SFunc(_, params, _, fbody, extent) =>
+        if !has_hole(extent, unread) {
+          one_body(params, fbody, out)
+        }
+      @ast.SLocalFunc(_, params, _, fbody, extent) =>
+        if !has_hole(extent, unread) {
+          one_body(params, fbody, out)
+        }
       _ => ()
     }
   }
   out
+}
+
+///|
+/// Does this function's extent contain a region the frontend did not analyse?
+///
+/// THE GEOMETRY IS THE WALK'S, not a second one. `walk.span_in_extent` asks
+/// "is this region inside that function", and the walk already asks it of every
+/// function for `truncated_fn`; a second spelling of the same geometry is how
+/// two parts of the analyzer come to disagree about which regions hide a
+/// finding.
+fn has_hole(extent : @core.Span, unread : Array[@core.Span]) -> Bool {
+  for u in unread {
+    if @walk.span_in_extent(u, extent) {
+      return true
+    }
+  }
+  false
 }
 
 ///|
