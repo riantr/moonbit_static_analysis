@@ -766,7 +766,7 @@ pub fn Family::assumption(self : Family) -> String {
     FCondBool =>
       "the condition's type is known, and the branch was not constant-folded"
     FUnreachable =>
-      "the behavioral lens executes the body and joins branches, so a terminator inside a BRANCH does not by itself kill what follows -- but the join is over ONE execution: when a callee's parameter was bound from the caller's argument, a branch decided by that value can still kill the rest of the body (measured; see the family's `excluded`)"
+      "the behavioral lens executes the body and joins branches, so a terminator inside a BRANCH does not by itself kill what follows -- the join is over ONE execution, EXCEPT that a condition naming a parameter bound from the caller's argument is no longer allowed to commit the frame (0537): both sides are explored and their flows joined, so such a condition cannot kill what follows on its own"
     FStaleNosec =>
       "a suppression matches a report on the same start line whose family it names"
     FInfeasibleBranch =>
@@ -809,7 +809,7 @@ pub fn Family::excluded(self : Family) -> String {
     FCondBool =>
       "constant-folded conditions and unknown types; the state-machine frontend reuses this id for a non-boolean guard"
     FUnreachable =>
-      "DEAD CODE in the deck's sense -- executed but irrelevant, a value overwritten before use -- is reported by NO family, this one included; path feasibility, which needs semantics and is undecidable in general, is reported under MSA-013 only when a BOUNDED constraint model can show the domain empty; and THIS FAMILY OVER-REPORTS when a callee's parameter was bound from the caller's argument, so an `if` whose condition came from outside can kill the rest of the body on one input and be reported for all of them (measured 2026-11-07, pinned by pipeline_0524_test); the state-machine frontend reuses this id for a state outside the reachability closure"
+      "DEAD CODE in the deck's sense -- executed but irrelevant, a value overwritten before use -- is reported by NO family, this one included; path feasibility, which needs semantics and is undecidable in general, is reported under MSA-013 only when a BOUNDED constraint model can show the domain empty; and THIS FAMILY OVER-REPORTED when a callee's parameter was bound from the caller's argument until 0537, which made a condition naming a caller-bound parameter explore both sides and join instead of committing -- that defect is FIXED and its regression row now asserts the absence of the finding (pipeline_0524_test); a condition built from a source literal still folds, so an `if` whose every branch terminates still kills what follows; the state-machine frontend reuses this id for a state outside the reachability closure"
     FStaleNosec => "whether the suppressed finding was real"
     FInfeasibleBranch =>
       "feasibility that needs a call result, an index, an arithmetic identity or an interprocedural fact -- undecidable in general, so a branch this model cannot decide is counted UNDECIDED rather than claimed reachable"
