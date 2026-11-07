@@ -11672,3 +11672,30 @@ The two are different measurement surfaces and only one of them had been checked
 reachability by folding a condition; whether that fold used a value this analysis
 invented is a property of the condition's names, and no coarser property of the
 frame substitutes for it.
+### 0535 ADDENDUM: THE IMPLEMENTATION SURFACE, MEASURED AFTER THE REVERT
+
+Two facts the next cycle would otherwise rediscover. Both checked, neither
+already written down.
+
+**`@flow.names_of_expr` IS REUSABLE, AND THE DEPENDENCY IS ACYCLIC.**
+`src/flow/live.mbt:92` exports `names_of_expr(out : Map[String, Bool], e : @ast.Expr)`.
+`src/interp/moon.pkg` imports `report`, `core`, `ast`, `types`, `walk` -- NOT
+`flow` -- and `flow` imports only `ast` and `core`, so adding it to `interp`
+introduces no cycle. The discriminator 0535 arrived at needs exactly this
+function's answer over the condition, so no new traversal has to be written.
+
+**THERE ARE SIX FOLD SITES, NOT ONE.** `!vboolean(cv)` is evaluated at
+`interp.mbt:971, 1029, 1079, 1361, 1390` and once more in the `while` handling
+around 1821 (whose comment records that `vboolean(AAny)` is true so that a
+`while` still runs once). So "consult the caller-bound name set at the fold" is a
+mechanical change at six places, and the sixth is the one with a KNOWN asymmetry
+-- `AAny` folding to "run once" is not a decision about reachability at all, and
+a caller-bound check there may be redundant rather than wrong.
+
+That is the whole remaining shape of increment 4: two frame fields
+(caller-bound names, and a "this fold used one" flag), a save/set/restore at the
+call-site `analyze_fn`, one `note_fold_source` helper over `@flow.names_of_expr`,
+six call sites, and the guard already written once and reverted. The part that
+made the first attempt wrong was the DISCRIMINATOR, and that is now measured; the
+part that remains is mechanical, which is a different risk profile from a design
+that is still unknown.
