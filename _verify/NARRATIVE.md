@@ -11806,3 +11806,97 @@ would have been guessed.
 => 判据: FOUR MEASURED ROWS AND ELEVEN INVENTED ONES READ IDENTICALLY. Precision
 that is fabricated is indistinguishable from precision that was earned, which is
 why it is worse than an admitted gap.
+
+## 0539: THE TENTH PROJECTION, FILLED THE WAY 0538 SAID IT HAD TO BE
+
+0538 refused to fill fifteen arms from four measured rows. This is what was
+actually done instead, and it is not a compromise: the rows that 0538 said were
+EARNED are the rows that shipped, and the ones that were not say so in the
+projection itself.
+
+`Family::reach` -- the tenth projection, an exhaustive `match` over `Family`.
+
+    nine families   "has never produced a finding on the pinned corpora or on
+                    this tree (measured, 0534); a scan without this family's
+                    findings is NOT evidence of cleanliness"
+                    -- and the two that fire on hand-written fixtures
+                    (`FInfeasibleBranch`, `FRedundantGuard`) say that too, so a
+                    reader cannot mistake reach-on-real-code for a broken emitter
+
+    FUnreachable    records that 0537 removed its one per-function over-report
+                    and that the regression row now asserts the ABSENCE
+
+    FDeadStore      29 -> 9 with the reason (20 were a CFG defect, 0531), and
+                    that three of the remaining nine are named-but-unfixed
+                    classes (0532)
+
+    FParse, FUndefinedName, FUnusedLocal, FArgType, FOpMismatch
+                    the corpus COUNT and, explicitly, that NO false-positive
+                    audit is recorded -- "the number is a count and not a quality
+                    judgement"
+
+THAT LAST GROUP IS THE POINT. A count and a verdict read identically in a scan's
+output, and this is the one artefact whose subject is claims. Writing "no audit
+recorded" costs nothing and is worth more than a sentence that sounds like one.
+
+Wired so it cannot rot: the projection is exhaustive (a missing arm is a compile
+error), `check_family_roster.ps1`'s part list gained `'reach'` beside the other
+three and reports `reach: 15 arm(s)`, and `core_0520_test`'s per-family length
+floor covers it -- an arm that exists but says nothing would otherwise read as a
+statement.
+
+## 0540: THE INTERPRETER IS ALREADY CONTEXT-SENSITIVE IN THE BOOK's §8.2 SENSE
+
+Increment 5's second half is §8.3, call strings. Scoped here by measuring what
+the interpreter does today, because the measurement changes what that increment
+is for.
+
+### WHAT IT ALREADY DOES
+
+    fn sig_key(name : String, args : Array[AbsVal]) -> String
+      name ++ "(" ++ join(", ", val_name(args[i])) ++ ")"
+
+The call cache (`cache`, `partials`, `cycle_ret`) is keyed by THE FUNCTION NAME
+plus THE ABSTRACT VALUES OF ITS ARGUMENTS. That is the book's FUNCTIONAL
+approach -- §8.2 -- in which a callee is analysed once per distinct abstract
+argument tuple. So "this tool has no context sensitivity" is false, and an
+increment that bolted call strings on as if it were replacing nothing would be
+replacing something.
+
+### WHAT §8.3 ADDS, AND WHAT IT WOULD COST HERE
+
+Call strings distinguish contexts by a bounded stack of call sites. In a
+value-based analysis the contexts it separates are the ones that COLLAPSE TO THE
+SAME ABSTRACT ARGUMENTS -- typically `⊤` arguments, where two callers are
+indistinguishable by value alone:
+
+    fn f(x) { ... }
+    main: f(unknown_a)      both give the signature f(Any)
+    g:    f(unknown_b)      -> analysed ONCE today
+
+Separating them could add precision. It would also, in this tool, report the
+same finding ONCE PER CONTEXT unless the reporting layer deduplicates by span --
+and duplicating a finding is worse for a reader than merging two contexts,
+because the SUMMARY count is a number people quote. That is a question about the
+REPORTING model, not a flag on the analysis, and it is why this increment is not
+a mechanical port of §8.3.
+
+### WHAT THE NEXT CYCLE SHOULD MEASURE FIRST
+
+1. How often the same signature is reached from more than one call string on the
+   pinned corpora. If the answer is "rarely", §8.3 buys nothing measurable and
+   the honest outcome is the one 3b got: measured, and declined with the number.
+2. Whether a `⊤` argument is common, because that is the only population call
+   strings separate at all.
+3. If the numbers justify it: how findings deduplicate across contexts BEFORE the
+   contexts are separated -- otherwise the increment ships a count that doubles
+   without a single new defect.
+
+=> 判据: "NOT IMPLEMENTED" AND "IMPLEMENTED UNDER ANOTHER NAME" ARE DIFFERENT
+STARTING POINTS. The interpreter already has §8.2's mechanism, so §8.3 is a
+precision/cost trade in a different dimension -- and the cost lands on the one
+number this tool publishes.
+
+=> 判据: A ROW THAT SAYS "NO AUDIT RECORDED" IS WORTH MORE THAN A ROW THAT SOUNDS
+LIKE ONE. The tenth projection's cheapest entries are its most useful, because
+they are the ones a reader cannot get from the scan.
