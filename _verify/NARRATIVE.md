@@ -9580,6 +9580,7 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
     published 0.4.40  wasm 134767FE5267844934309FEBED49C307B5615CFE8F6B5CA4D4E461EA45DC1838  536714 bytes  checksum 09e616d21f4a6232dc944dc31717466eff600386e7353660cef7ed634f80e67a  2026-11-02T12:40:07.644669+00:00
     published 0.4.41  wasm 2537C9CBA64E42000B7F090D448116BF6BB5A226ACA2B1A2838CE25DEE6EC27E  536714 bytes  checksum beea4bab0cb436201e889d476fe5ea87d35e3a30961cede8cbf1d3661a31385f  2026-11-02T17:06:30.109605+00:00
     published 0.4.42  wasm A190CBAF7378E00431D24D36F319CAE39FB29510C8ABB9B1721AE984A56742E4  536636 bytes  checksum 7b27b36a3a8070448f5a3d4f052a007a47941f7596f51e878414a0b672698f6a  2026-11-06T15:40:34.482028+00:00
+    published 0.4.43  wasm 7665CD576ED23CE612BA9E708E3F361E42EEA99B2A87FA199A33040E652A76EC  567971 bytes  checksum bb9ff103099571a9ade23d4c7fea7e3570a9cb7dd8b158992695562a00b1e8fa  2026-11-07T05:06:05.793040+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -10697,3 +10698,73 @@ second is honest only while the reason is in the shipped data and a test goes re
 => 判据: TWO FAMILIES MAY NOT BORROW EACH OTHER'S WORD. "Unreachable" says no execution arrives;
 "empty domain" says every statement is individually reachable and no input selects the path. A reader
 who is handed the wrong one is told the code was deleted when it was not.
+
+## 0525: 0.4.43 SHIPPED, AND THE RUN AFTER PUBLICATION EXECUTED THE FOUR ROWS THAT HAD NOT RUN
+
+0.4.43 is tagged at `60ce439` (annotated tag `06821d9`) on both remotes, CI's `gate` and `publish`
+are green on that commit, and the registry serves it from `2026-11-07T05:06:05.793040+00:00`. Its row
+is in the published-bytes block: wasm `7665CD57...`, **567,971 bytes**, registry checksum
+`bb9ff103...`. That is **31,335 bytes LARGER** than 0.4.42's 536,636 -- the largest jump among the
+four rows the record carries, and the direction the five increments predict: two new families, a
+guard-facts pass, a predicate table and a metrics block, all of it code the analyzer ships.
+
+### THE PRE-PUBLICATION RUN: 117 ROWS, 116 TRUE, ONE FALSE
+
+    87 mutation gates                 all True (0412 -> 0508)
+    published package self-scan       FALSE, 7s
+    the other 116 rows                True
+
+`mutate 0507` passed this time; its anchor had been moved in `60ce439` because MSA-013/014 were
+appended to the family table, and the gate's own pre-flight confirms all 15 live patterns are present
+and unique. The one False is the stage 0517 already named: it fetches the version in `moon.mod` from
+the registry, and 0.4.43 did not exist yet. Nothing to repair; something to name.
+
+### THE POST-PUBLICATION RUN: 121 ROWS, 119 TRUE, TWO FALSE
+
+The four rows behind that red executed for the first time. Measured, row by row:
+
+    the notice reconciliation can go red (a real defect is seen)   True     NEW
+    corpus SUMMARY vs pinned baseline                              True     NEW
+    per-function census vs pinned baseline                         True     NEW
+    per-function census control (files are READ by moon check)     False    NEW, known (0519)
+
+and two verdicts FLIPPED in opposite directions, which is the whole point of running it:
+
+    published package self-scan    False -> True    the artifact now exists
+    the transfer scope             True  -> False   the TAG now exists, and the record had no row
+
+The corpus is the evidence the increments did not move behaviour: **seven trees MATCH**, and the eight
+trees carry **19,658 notices**. The per-function census matches too -- `TOTAL 29` actionable
+(`moonbit_core=28`, `moonbit_labeler=1`), `DEMOTED 21` (`moonbit_core=19`, `proton=2`). The census
+control is red for the reason 0519 recorded in its own increment: `BASELINE FAILED: the corpus has
+errors beyond the one this control knows: abort/pkg.mbti:4` -- the pinned `moonbitlang/core
+0.1.20260920` does not compile under this toolchain. That red is permanent until the corpus pin is
+upgraded, and it is not this release's to fix.
+
+### THE ROW THAT COULD NOT EXIST BEFORE THE HASH
+
+`the transfer scope` went red on the sentence a reader of that release needs:
+
+    FAIL: v0.4.43 is TAGGED but the record has no published-bytes row for it.
+
+That is 0516's rule working as designed rather than a regression. The hash does not exist until the
+artifact does, so the row cannot be written before publication -- and the moment the tag exists,
+"no number yet" becomes a FAILURE instead of a silence. The row was written from MEASURED values, not
+transcribed ones: the wasm SHA256 re-hashed from the local registry copy (and the gate re-hashes all
+four rows and reports each one), the byte count from that file, and the checksum and timestamp from the
+registry's own module metadata. The stage now reports `SCOPE OK` and all four rows hash to their
+recorded values.
+
+=> 判据: A STAGE THAT COULD NOT RUN IS NOT A STAGE THAT PASSED, AND THE RUN THAT MAKES IT RUN IS THE
+ONE AFTER PUBLICATION. 0517 said this; this release is where the four withheld rows finally executed.
+Reporting the pre-publication verdict as "green with one exception" is honest only if the exception's
+four dependent rows are named as NOT RUN, and then actually run once the artifact exists.
+
+=> 判据: THE TAG AND THE ARTIFACT FLIP DIFFERENT CHECKS IN OPPOSITE DIRECTIONS, AND BOTH FLIPS ARE THE
+CHECK WORKING. The artifact turned the self-scan green; the tag turned the record red. A gate that only
+ever went green under publication would be one that never demanded the bytes be recorded.
+
+=> 判据: A ROW OF NUMBERS MUST BE WRITTEN FROM THE THING ITSELF. The published-bytes row was not
+copied from a release note: the hash was re-computed from the artifact on disk and the gate re-computes
+it again on every run. A record that a reader can check is different from a record a reader must
+believe.
