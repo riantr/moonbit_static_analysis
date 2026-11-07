@@ -31,6 +31,13 @@
 //   nested functions   `SFunc` / `SLocalFunc` are SEPARATE bodies. They are
 //                      counted in `skipped` here and each one gets its own CFG,
 //                      which is what an interprocedural analysis needs anyway.
+//
+// EVERY NODE CARRIES A SOURCE POSITION. That is not decoration: a finding has to
+// name a line and a column, and an analysis that computes "this store is dead"
+// and cannot say WHERE has computed something no reader can act on. It is also
+// what makes `@core` a real dependency of this package rather than a test-only
+// one -- see the note in `flow/moon.pkg` and 0527's account of the constraint
+// that `--deny-warn` puts on test-only imports.
 
 ///|
 /// What a CFG node does. The payload is the source expression, not a copy of it,
@@ -56,10 +63,18 @@ pub(all) enum NodeKind {
 /// NODE INDICES ARE ALLOCATION ORDER, NOT SOURCE ORDER. The builder walks a
 /// statement list back to front because a statement's successor must be known
 /// before the statement can be linked, so `kinds[0]` is usually the exit node.
-/// Nothing depends on the order -- `succ` and `pred` are what carry meaning --
-/// but a reader of a dump should not expect index order to read like the source.
+/// Nothing depends on the order -- `succ`/`pred` carry the structure and `spans`
+/// carries the position -- but a reader of a dump should not expect index order
+/// to read like the source.
 pub(all) struct Cfg {
   kinds : Array[NodeKind]
+  /// The source position of each node, index-parallel with `kinds`.
+  ///
+  /// A synthesis node (the entry, the exit, a `for-update` loop head) has no
+  /// statement of its own, so it carries the position of whatever construct
+  /// created it -- an empty position only for the synthetic entry/exit pair,
+  /// whose line 0 is a sentinel rather than a claim about the source.
+  spans : Array[@core.Span]
   succ : Array[Array[Int32]]
   pred : Array[Array[Int32]]
   entry : Int32
@@ -71,18 +86,26 @@ pub(all) struct Cfg {
 }
 
 ///|
-/// The mutable half of the builder: the two arrays that are filled in as the
+/// The position a synthetic node carries when it has no statement of its own.
+pub fn no_span() -> @core.Span {
+  { start: @core.pos(0, 0), end: @core.pos(0, 0), }
+}
+
+///|
+/// The mutable half of the builder: the arrays that are filled in as the
 /// recursion unwinds. `pred` is derived at the end from `succ`, so it cannot
 /// disagree with it.
 priv struct Builder {
   kinds : Array[NodeKind]
+  spans : Array[@core.Span]
   succ : Array[Array[Int32]]
   mut skipped : Int32
 }
 
 ///|
-fn Builder::add(self : Builder, kind : NodeKind) -> Int32 {
+fn Builder::add(self : Builder, kind : NodeKind, span : @core.Span) -> Int32 {
   self.kinds.push(kind)
+  self.spans.push(span)
   self.succ.push([])
   self.kinds.length() - 1
 }
@@ -95,13 +118,21 @@ fn Builder::link(self : Builder, from : Int32, to : Array[Int32]) -> Unit {
 ///|
 /// Build the CFG of one function body.
 pub fn cfg_of(body : Array[@ast.Stmt]) -> Cfg {
-  let b = { kinds: [], succ: [], skipped: 0, }
-  let exit = b.add(Exit)
+  let b = { kinds: [], spans: [], succ: [], skipped: 0, }
+  let exit = b.add(Exit, no_span())
   let body_entry = build_seq(b, body, exit)
-  let entry = b.add(Entry)
+  let entry = b.add(Entry, no_span())
   b.link(entry, [body_entry])
   let pred = pred_of(b.succ)
-  { kinds: b.kinds, succ: b.succ, pred, entry, exit, skipped: b.skipped, }
+  {
+    kinds: b.kinds,
+    spans: b.spans,
+    succ: b.succ,
+    pred,
+    entry,
+    exit,
+    skipped: b.skipped,
+  }
 }
 
 ///|
@@ -158,22 +189,22 @@ fn build_seq(b : Builder, stmts : Array[@ast.Stmt], next : Int32) -> Int32 {
 fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
   match s.kind {
     @ast.SExpr(e) => {
-      let n = b.add(Eval(e))
+      let n = b.add(Eval(e), s.span)
       b.link(n, [next])
       n
     }
     @ast.STail(e) => {
-      let n = b.add(Eval(e))
+      let n = b.add(Eval(e), s.span)
       b.link(n, [next])
       n
     }
     @ast.SLet(x, _, e) => {
-      let n = b.add(Assign(x, e))
+      let n = b.add(Assign(x, e), s.span)
       b.link(n, [next])
       n
     }
     @ast.SLetDestruct(names, e) => {
-      let n = b.add(AssignMulti(names, e))
+      let n = b.add(AssignMulti(names, e), s.span)
       b.link(n, [next])
       n
     }
@@ -184,37 +215,39 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
       // evaluated for effect instead of being pretended into an assignment.
       match lhs.assigned_base() {
         Some(x) => {
-          let n = b.add(Assign(x, rhs))
+          let n = b.add(Assign(x, rhs), s.span)
           b.link(n, [next])
           n
         }
         None => {
-          let n = b.add(Eval(rhs))
+          let n = b.add(Eval(rhs), s.span)
           b.link(n, [next])
           n
         }
       }
     @ast.SIf(cond, then_body, elifs, else_body) => {
-      let n = b.add(Test(cond))
+      // The branch node's position is the CONDITION's: a reader looking at
+      // "line N" wants the test they wrote, not the `if` keyword's line.
+      let n = b.add(Test(cond), cond.span)
       let then_entry = build_seq(b, then_body, next)
       let else_entry = build_else(b, elifs, 0, else_body, next)
       b.link(n, [then_entry, else_entry])
       n
     }
     @ast.SWhile(cond, body) => {
-      let n = b.add(Test(cond))
+      let n = b.add(Test(cond), cond.span)
       let body_entry = build_seq(b, body, n)
       b.link(n, [body_entry, next])
       n
     }
     @ast.SFor(_, _, cond, body) => {
-      let n = b.add(Test(cond))
+      let n = b.add(Test(cond), cond.span)
       let body_entry = build_seq(b, body, n)
       b.link(n, [body_entry, next])
       n
     }
     @ast.SForUpdate(body) => {
-      let n = b.add(Entry)
+      let n = b.add(Entry, s.span)
       let body_entry = build_seq(b, body, n)
       b.link(n, [body_entry, next])
       n
@@ -225,7 +258,7 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
       build_seq(b, body, after_inner)
     }
     @ast.SReturn(_) | @ast.SRaise(_) | @ast.SBreak(_) | @ast.SContinue(_) => {
-      let n = b.add(Stop)
+      let n = b.add(Stop, s.span)
       b.link(n, [])
       n
     }
@@ -254,7 +287,7 @@ fn build_else(
     }
   } else {
     let clause = elifs[i]
-    let n = b.add(Test(clause.cond))
+    let n = b.add(Test(clause.cond), clause.cond.span)
     let body_entry = build_seq(b, clause.body, next)
     let rest = build_else(b, elifs, i + 1, else_body, next)
     b.link(n, [body_entry, rest])

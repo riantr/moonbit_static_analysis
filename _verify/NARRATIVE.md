@@ -10872,3 +10872,69 @@ built on a graph that silently loses edges reports false confidence.
 => 判据: A TEST-ONLY DEPENDENCY IS A DEPENDENCY THIS TOOLCHAIN REFUSES. Measured,
 not assumed: `--deny-warn` turns `unused_package` into an error, so the test that
 needs the parser lives where the parser already is.
+## 0527: LIVE VARIABLES, AND THE THREE THINGS THE FRAMEWORK NEEDED FIRST
+
+Increment 2 of the book plan (§5.4, §5.8): liveness over the CFG, which is the
+analysis that turns "this local is never read anywhere" into the sharper claim
+"the value this store wrote is read on no path". The sharper claim is the one a
+reviewer can act on, and it is the one this tree could not state before.
+
+### THE ANALYSIS IS A BACKWARD FIXED POINT THAT REUSES THE FORWARD SOLVER
+
+`live_in(v) = ( out(v) \ defs(v) ) ∪ uses(v)`, with `out(v) = ⊔_{s ∈ succ(v)} in(s)`.
+A backward analysis defines its JOIN over SUCCESSORS (§5.8), and
+`solve_round_robin` joins over whatever neighbours it is handed -- so the call
+passes `cfg.succ` where a forward analysis would pass `cfg.pred`, and no second
+solver is needed. That reuse is stated in the code, because a reader who cannot
+see it has to assume a duplicate loop exists somewhere.
+
+THE DISTINCTION THAT MAKES THE FAMILY HONEST is `live_in` vs `live_out`. The
+transfer removes the node's own definitions, so `x` is absent from `live_in` at
+`x = e` BY CONSTRUCTION and proves nothing. Whether the store's value is read is
+`live_out`. A caller that asked the other question would report every assignment
+whose right-hand side mentions its own target -- wrong in the direction that
+looks most convincing. Both are computed, and the test pins the difference rather
+than the values alone.
+
+Over-approximation is deliberate and only in the safe direction: a
+comprehension's own bindings and a match arm's pattern names are counted as
+reads, because dropping a read turns a live variable into a "dead store".
+
+### THREE THINGS HAD TO BE FIXED BEFORE THE ANALYSIS COULD BE TESTED
+
+**1. `guard` IS A RESERVED WORD.** The comprehension's filter binds as `grd`.
+That is the third reserved word to bite this tree (`local`, `unreachable`, now
+`guard`), and the comment records it so the next author does not rediscover it.
+
+**2. `for _, fe in fields` DOES NOT DESTRUCTURE.** Over an `Array[(String, Expr)]`
+it binds the whole pair, and the compiler then wants an `Expr`. `let (_, fe) =
+pair` does what the first form looks like it does.
+
+**3. EVERY NODE NOW CARRIES A SOURCE POSITION.** A finding must name a line and
+a column, so a store the analysis proves dead and cannot locate is a result no
+reader can act on. `Cfg.spans` is index-parallel with `kinds`; a branch node
+takes the CONDITION's position (the test the author wrote, not the `if` keyword's
+line), and only the synthetic entry/exit pair carries the `no_span()` sentinel.
+
+That third change also resolved a CONSTRAINT recorded in 0526: `--deny-warn`
+treats a test-only import as an error, so `flow` could not import `core` merely to
+build spans in tests. Making positions part of the graph makes `core` a real
+dependency, and the liveness tests now build their graphs from hand-built AST --
+no parser, no test-only import.
+
+    moon fmt --check        exit 0
+    moon check --deny-warn  exit 0
+    moon test --target wasm 1380/1380   (was 1375; +5 for liveness)
+    moon test --target js   1244/1244
+
+=> 判据: A FINDING THAT CANNOT NAME ITS LINE IS NOT A FINDING. Positions are part
+of the graph, not a reporting afterthought, and adding them turned a test-only
+dependency into an honest one.
+
+=> 判据: THE SET A QUESTION IS ASKED ABOUT IS PART OF THE QUESTION. `live_in` and
+`live_out` differ by exactly the node's own definitions, and asking the wrong one
+produces answers that look more confident, not less.
+
+=> 判据: A RESERVED WORD IS A NAMING DECISION SOMEBODY ELSE ALREADY MADE. Three
+times now this tree has lost a name to the language; each one is written down
+where it bit.

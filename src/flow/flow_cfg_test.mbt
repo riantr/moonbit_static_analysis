@@ -17,6 +17,7 @@ fn line() -> @flow.Cfg {
   let succ : Array[Array[Int32]] = [[1], [2], []]
   {
     kinds: [@flow.Entry, @flow.Stop, @flow.Exit],
+    spans: [@flow.no_span(), @flow.no_span(), @flow.no_span()],
     succ,
     pred: @flow.pred_of(succ),
     entry: 0,
