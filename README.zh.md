@@ -643,7 +643,7 @@ src/jsoncli   DeepSeek Harness 的 JSON 桥
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 1367/1367；js 与 wasm-gc 1231/1231
+moon test --deny-warn                # wasm 1375/1375；js 与 wasm-gc 1239/1239
 moon run src/cli                     # 程序 demo + 文件种类 demo + 样例机器审计
 ```
 

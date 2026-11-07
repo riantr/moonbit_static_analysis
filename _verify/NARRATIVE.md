@@ -10767,4 +10767,108 @@ ever went green under publication would be one that never demanded the bytes be 
 => 判据: A ROW OF NUMBERS MUST BE WRITTEN FROM THE THING ITSELF. The published-bytes row was not
 copied from a release note: the hash was re-computed from the artifact on disk and the gate re-computes
 it again on every run. A record that a reader can check is different from a record a reader must
-believe.
+believe.## 0526: A CFG AND A FIXED POINT, BECAUSE TWO RECORDED LIMITS WERE THE SAME MISSING OBJECT
+
+The book this increment answers is Moller & Schwartzbach, `Static Program
+Analysis` (Aarhus, October 2026). Chapters 2.5, 4.4, 5.1-5.3 and 5.10 are the
+ones this tree was missing, and the way to see that is to read two comments
+that are already shipped:
+
+  `src/walk/guardfacts.mbt:639`  a fact proved OUTSIDE a loop does not survive
+                                 one iteration, so every fact about a name the
+                                 body assigns is dropped before the body and the
+                                 same removal is returned
+  `_verify/settle_0505...`       a call's signature is checked ONLY when the
+                                 callee is declared in the SAME file
+
+Both sentences describe the same absence: there is no control-flow graph, so
+there is nothing to take a JOIN over, and there is no fixed point, so "the
+answer at this point" cannot be defined in terms of "the answer at its
+predecessors". Every pass in this tree is a recursive function over the AST, and
+that shape cannot express it.
+
+### WHAT WAS BUILT
+
+`src/flow/` -- three files, no dependency beyond `ast`:
+
+    lattice.mbt    Lattice[T] { bot, join, eq } and `join_all` / `join_of_nodes`
+    worklist.mbt   solve_round_robin (§5.3) and solve_propagation (§5.10),
+                   plus `states_after`, which exists only because the two
+                   solvers index the same array with DIFFERENT meanings
+    cfg.mbt        NodeKind / Cfg / cfg_of / dump, over one function body
+
+### FIVE DECISIONS, AND THE MEASUREMENT BEHIND EACH
+
+**1. THE LATTICE IS THREE CLOSURES, NOT A TRAIT.** There is no trait in `src/`
+today; the tree's idiom is plain values and plain functions. Three closures are
+enough to state the fixed-point theorem and they let an analysis be a value
+instead of a type.
+
+**2. BOTH SOLVERS SHIP, BECAUSE THE PROOF IS NOT A TEST.** The book proves
+(Exercise 5.41) that every solver in §5.3 computes the same least fixed point.
+`flow_worklist_test.mbt` runs the two against each other on a graph with a
+diamond and a BACK EDGE, and a disagreement fails. The test also pins the VALUE,
+not only the agreement: both facts have to reach the exit, because two solvers
+that are wrong in the same way agree perfectly.
+
+**3. THE TWO SOLVERS DO NOT INDEX THE SAME WAY, AND THAT IS A TRAP.** As the
+book says on page 77, `solve_round_robin` returns the state AFTER each node
+while `solve_propagation` returns the state BEFORE it. `states_after` is that
+conversion written once, so that "the two agree" is one comparison rather than a
+comment about an indexing convention -- which is the kind of comment that is
+correct until someone edits one of the two loops.
+
+**4. `bot` IS A THUNK, BECAUSE A SHARED ELEMENT IS NOT A BOTTOM ELEMENT.**
+Measured, twice, in one compile:
+
+    let pred = Array::make(n, [])      ->  every slot IS the same array
+                                           merge-node test read [0, 0, 1, 2]
+                                           where it expected [1, 2]
+
+The same call would have been waiting in the solver's initialisation, and would
+have bitten the moment an analysis used a SET-valued lattice -- which is exactly
+what live variables (§5.4) and interval states (§6.1) are. So `bot` is `() -> T`
+and every solver fills one fresh element per node. A bug caught on a graph with
+three nodes is a bug caught before it is a wrong finding.
+
+**5. THE GRAPH NAMES WHAT IT DOES NOT MODEL.** `Cfg.skipped` counts statements
+the builder declined. Two are real and are stated rather than papered over:
+`break` / `continue` become `Stop`, so the edge a `break` should add to the
+loop's exit is NOT added -- an analysis built on this graph must not claim
+precision about breaks until that is fixed -- and `SFunc` / `SLocalFunc` are
+separate bodies, counted here and given their own graph by the interprocedural
+increment.
+
+### AND ONE TOOLCHAIN FACT, MEASURED RATHER THAN ASSUMED
+
+A test-only import is an ERROR under `--deny-warn` in this toolchain:
+
+    Error: [0029] unused_package: Unused package 'src/parser'
+    Failed with 0 warnings, 2 errors.
+
+`test-import` is not a key this moon.pkg lexer accepts either (`Lexing error at
+60..61`). So `flow` imports `ast` and nothing else, and the CFG builder's
+parse-driven tests belong to the package that owns the parse-to-graph path
+(`pipeline`) from the next increment on. `build_one` therefore has NO test in
+this package, and that is written down here instead of being left for a reader to
+discover.
+
+    moon fmt --check        exit 0
+    moon check --deny-warn  exit 0
+    moon test --target wasm 1375/1375   (was 1367; +8 for this package)
+
+=> 判据: A THEOREM ABOUT TWO ALGORITHMS IS A TEST ABOUT TWO ALGORITHMS. The book
+proves the solvers agree; this tree runs them against each other, and it pins the
+VALUE they agree on, because a shared mistake agrees with itself.
+
+=> 判据: A SHARED LATTICE ELEMENT IS NOT A BOTTOM ELEMENT. Every solver seeds one
+slot per node. If the seed is mutable and shared, the first join writes into all
+of them, and the analysis is wrong in a way that looks like a lattice bug.
+
+=> 判据: A GRAPH THAT DROPS EDGES MUST COUNT THEM. `skipped` and the
+break/continue exclusion are part of the CFG's contract, because an analysis
+built on a graph that silently loses edges reports false confidence.
+
+=> 判据: A TEST-ONLY DEPENDENCY IS A DEPENDENCY THIS TOOLCHAIN REFUSES. Measured,
+not assumed: `--deny-warn` turns `unused_package` into an error, so the test that
+needs the parser lives where the parser already is.

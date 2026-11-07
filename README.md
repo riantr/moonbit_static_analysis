@@ -737,7 +737,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1367/1367 on wasm; 1231/1231 on js and wasm-gc
+moon test --deny-warn                # 1375/1375 on wasm; 1239/1239 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
