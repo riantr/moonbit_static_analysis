@@ -548,6 +548,16 @@ pub(all) enum Family {
   FCondBool
   FUnreachable
   FStaleNosec
+  /// 0522. Constraint-level unreachability, as distinct from `FUnreachable`'s
+  /// syntactic one. `FUnreachable` is a statement that follows one whose flow
+  /// has already left the block -- decided by reading flow, with no input
+  /// considered. This one is a branch whose DOMAIN is empty: the guards on the
+  /// way to it contradict it, so no input reaches it even though the flow
+  /// arriving there is well formed.
+  FInfeasibleBranch
+  /// 0522. A test whose outcome the guards before it already force -- it can
+  /// never take the other way, so it decides nothing.
+  FRedundantGuard
 }
 
 ///|
@@ -565,6 +575,8 @@ pub fn Family::name(self : Family) -> String {
     FCondBool => "NonBooleanCond"
     FUnreachable => "Unreachable"
     FStaleNosec => "StaleNosec"
+    FInfeasibleBranch => "InfeasibleBranch"
+    FRedundantGuard => "RedundantGuard"
   }
 }
 
@@ -600,6 +612,8 @@ pub fn Family::id(self : Family) -> String {
     FCondBool => "MSA-010"
     FUnreachable => "MSA-011"
     FStaleNosec => "MSA-012"
+    FInfeasibleBranch => "MSA-013"
+    FRedundantGuard => "MSA-014"
   }
 }
 
@@ -634,6 +648,8 @@ pub fn family_by_id(id : String) -> Family? {
     "MSA-010" => Some(FCondBool)
     "MSA-011" => Some(FUnreachable)
     "MSA-012" => Some(FStaleNosec)
+    "MSA-013" => Some(FInfeasibleBranch)
+    "MSA-014" => Some(FRedundantGuard)
     _ => None
   }
 }
@@ -660,6 +676,8 @@ pub fn all_families() -> Array[Family] {
     FCondBool,
     FUnreachable,
     FStaleNosec,
+    FInfeasibleBranch,
+    FRedundantGuard,
   ]
 }
 
@@ -695,6 +713,10 @@ pub fn Family::property(self : Family) -> String {
     FUnreachable =>
       "a statement follows one whose flow has already left the block, in the same block"
     FStaleNosec => "a nosec comment suppressed nothing"
+    FInfeasibleBranch =>
+      "no input reaches this branch: the guards on the way to it contradict it, so its domain D[P] is empty"
+    FRedundantGuard =>
+      "the guards before this test already force its outcome, so the test cannot decide anything"
   }
 }
 
@@ -730,6 +752,10 @@ pub fn Family::assumption(self : Family) -> String {
       "flow is decided syntactically -- return, break, continue -- and branches are joined, not proved infeasible"
     FStaleNosec =>
       "a suppression matches a report on the same start line whose family it names"
+    FInfeasibleBranch =>
+      "facts come only from a guard comparing an IMMUTABLE local binding against a LITERAL, within one function; a rebound, aliased or non-literal operand carries no fact"
+    FRedundantGuard =>
+      "the same fragment: an immutable binding against a literal, with integer comparisons that do not wrap and no reassignment between the two guards"
   }
 }
 
@@ -764,8 +790,12 @@ pub fn Family::excluded(self : Family) -> String {
     FCondBool =>
       "constant-folded conditions and unknown types; the state-machine frontend reuses this id for a non-boolean guard"
     FUnreachable =>
-      "path feasibility, which needs semantics and is undecidable in general; the state-machine frontend reuses this id for a state outside the reachability closure"
+      "path feasibility, which needs semantics and is undecidable in general -- a branch whose domain a BOUNDED constraint model can show empty is reported under MSA-013 instead, and every branch that model cannot decide stays undecided; the state-machine frontend reuses this id for a state outside the reachability closure"
     FStaleNosec => "whether the suppressed finding was real"
+    FInfeasibleBranch =>
+      "feasibility that needs a call result, an index, an arithmetic identity or an interprocedural fact -- undecidable in general, so a branch this model cannot decide is counted UNDECIDED rather than claimed reachable"
+    FRedundantGuard =>
+      "the same fragment; a test whose operand was mutated after the binding carries no fact, so it is undecided rather than reported"
   }
 }
 
@@ -777,6 +807,8 @@ pub fn Family::severity(self : Family) -> Severity {
     FAssignType | FCondBool | FUnreachable => Warning
     FUnusedLocal | FUnusedParam | FParamChanged => Warning
     FStaleNosec => Warning
+    FInfeasibleBranch => Warning
+    FRedundantGuard => Warning
   }
 }
 

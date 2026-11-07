@@ -256,6 +256,17 @@ fn run_core(
   for r in ir {
     all.push(r)
   }
+  // 0522. BOUNDED SYMBOLIC EXECUTION over guards. It runs only on a file the
+  // frontend read WHOLE: on a file with a parse boundary the tree below the
+  // boundary is already wrong, and a fact read from a broken guard is a fact
+  // about the analyzer's damage rather than about the program -- which is the
+  // same rule every other lens follows for an unparsed file, and the reason the
+  // findings after `first_error` are withheld rather than reported.
+  if parsed.first_error == 0 {
+    for r in @walk.guard_facts(parsed.tree.body) {
+      all.push(r)
+    }
+  }
   let sigs = @interp.analyzed_sigs(
     parsed.tree,
     tr,

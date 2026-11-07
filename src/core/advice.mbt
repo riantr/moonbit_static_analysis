@@ -85,5 +85,15 @@ pub fn Family::advice(self : Family) -> Advice {
         why: "A `// nosec` comment on this line suppressed NOTHING. The comment names a finding family, and no finding of that family was reported here -- so the defect it used to silence is gone, or was never there, or the family id in the comment does not exist. A suppression that suppresses nothing is dead weight in the source, and it is a sign that the code it referred to has changed.",
         how: "Delete the comment. If the comment is still needed, the finding it was meant to silence is not being reported -- check the family id against the roster (`MSA-001` and up) and check that the line is the line the finding is on.",
       }
+    FInfeasibleBranch =>
+      Advice::{
+        why: "The guards on the way to this branch contradict this one, so the conjunction on its path is unsatisfiable and its domain is EMPTY: no value of the bindings involved reaches it. This is the constraint-level counterpart of `Unreachable` -- the flow arriving here is well formed, and it is the VALUES that cannot arrive. The finding quotes the path condition it negated, so the claim can be checked by hand.",
+        how: "Either the more recent guard is wrong (it can never hold, so the branch is dead and should be deleted), or an earlier one is (its bound is too tight for the later test to be reachable). Find the two guards named in the finding and decide which one was meant. Only comparisons of an IMMUTABLE binding against a literal contribute facts, so a contradictory guard over a mutated or computed value is NOT reported here -- it is counted undecided.",
+      }
+    FRedundantGuard =>
+      Advice::{
+        why: "The guards before this test already force its outcome, so it cannot take the other way and decides nothing. Unlike a constant condition, nothing here is literally constant: the test is redundant only in the context of the path that reaches it.",
+        how: "Remove the test, or, if the earlier guard's bound looks wrong, fix that one -- a redundant test is frequently the symptom of a bound that was meant to be tighter. Kept as a finding rather than a notice because a test that cannot fail removes the safety the reader believes it provides.",
+      }
   }
 }

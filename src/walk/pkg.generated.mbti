@@ -10,6 +10,8 @@ import {
 // Values
 pub fn const_eval(@ast.Expr) -> Const?
 
+pub fn guard_facts(Array[@ast.Stmt]) -> Array[@report.Report]
+
 pub fn hiding_spans(Array[FnInfo], Array[@core.Span]) -> Array[@core.Span]
 
 pub fn span_in_extent(@core.Span, @core.Span) -> Bool

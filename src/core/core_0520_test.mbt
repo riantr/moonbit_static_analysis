@@ -16,7 +16,7 @@
 /// floor to the source text.
 test "0520: every family declares a real property, assumption and excluded" {
   let fams = @core.all_families()
-  assert_eq(fams.length(), 12)
+  assert_eq(fams.length(), 14)
   for f in fams {
     assert_true(f.property().length() >= 15)
     assert_true(f.assumption().length() >= 15)

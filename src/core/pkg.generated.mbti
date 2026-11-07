@@ -52,6 +52,8 @@ pub(all) enum Family {
   FCondBool
   FUnreachable
   FStaleNosec
+  FInfeasibleBranch
+  FRedundantGuard
 }
 pub fn Family::advice(Self) -> Advice
 pub fn Family::assumption(Self) -> String
