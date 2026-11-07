@@ -504,7 +504,7 @@ fn enter_guard(ctx : Ctx, facts : Facts, cond : @ast.Expr) -> Facts {
     let path = render_condition(clash, clash_name)
     ctx.report(
       @core.FInfeasibleBranch,
-      "this branch can never run: D[P] = { } because \{path} contradicts \{render_guard(added, clash_name)}",
+      "this branch can never run: '\{clash_name}' has an empty domain, D[P] = { }, because \{path} contradicts \{render_guard(added, clash_name)}",
       cond.span,
     )
   }
@@ -524,7 +524,7 @@ fn enter_guard(ctx : Ctx, facts : Facts, cond : @ast.Expr) -> Facts {
   if implied && clash_name == "" {
     ctx.report(
       @core.FRedundantGuard,
-      "this test decides nothing: D[P] = \{render_guard(added, "")} already holds on the way here, so the other branch has an empty domain",
+      "this test decides nothing: '\{added[0].name}' already satisfies \{render_guard(added, "")} on the way here, so the other branch has an empty domain",
       cond.span,
     )
   }

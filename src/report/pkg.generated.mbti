@@ -11,6 +11,12 @@ pub fn render_reports(Array[Report]) -> String
 // Errors
 
 // Types and methods
+pub(all) struct Predicate {
+  check : String
+  params : Array[(String, String)]
+}
+pub fn Predicate::render(Self) -> String
+
 pub(all) struct Report {
   family : @core.Family
   lenses : Array[@core.Lens]
@@ -21,6 +27,7 @@ pub(all) struct Report {
 pub fn Report::confidence(Self) -> @core.Confidence
 pub fn Report::is_declared_scope_limit(Self) -> Bool
 pub fn Report::is_notice(Self) -> Bool
+pub fn Report::predicate(Self) -> Predicate?
 pub fn Report::render(Self) -> String
 pub fn Report::severity_label(Self) -> String
 

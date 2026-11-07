@@ -8,6 +8,31 @@
 // MoonBit, versioned and gated with the module itself.
 
 ///|
+/// 0523. One argument of a checkable assertion, as a key/value pair so a
+/// consumer reads it BY NAME. Positional arguments would make every check's
+/// arity part of the wire format, and adding one would silently renumber the
+/// rest.
+#derive(ToJson)
+struct ParamRep {
+  k : String
+  v : String
+}
+
+///|
+/// 0523. THE ASSERTION a finding makes, in a form a program can switch on: which
+/// question the analyzer answered (`check`) and about what (`params`).
+///
+/// Absent when the finding makes no machine-checkable claim -- see
+/// `src/report/predicate.mbt`, where each absence is a stated decision. An absent
+/// predicate is honest; a predicate over an empty name is not, so the projection
+/// refuses that case instead of emitting one.
+#derive(ToJson)
+struct PredicateRep {
+  check : String
+  params : Array[ParamRep]
+}
+
+///|
 /// one finding, flattened for JSON
 ///
 /// 0507. Two fields beside `severity`:
@@ -28,6 +53,8 @@ struct Finding {
   family_id : String
   lenses : Array[String]
   vst : Array[FrameRep]
+  /// 0523. `null` when the family makes no machine-checkable claim.
+  predicate : PredicateRep?
 }
 
 ///|
@@ -37,6 +64,23 @@ struct FrameRep {
   func : String
   file : String
   line : Int32
+}
+
+///|
+/// 0523. The report's own projection, converted to wire form. The check and its
+/// arguments come from `Report::predicate` and are NOT re-derived here: a second
+/// derivation would be a second answer to "what was asserted".
+fn to_predicate(rep : @report.Report) -> PredicateRep? {
+  match rep.predicate() {
+    Some(p) => {
+      let ps : Array[ParamRep] = []
+      for pair in p.params {
+        ps.push({ k: pair.0, v: pair.1, })
+      }
+      Some({ check: p.check, params: ps, })
+    }
+    None => None
+  }
 }
 
 ///|
@@ -127,6 +171,7 @@ fn to_finding(rep : @report.Report) -> Finding {
     family_id: rep.family.id(),
     lenses: rep.lenses.map(lens => lens.name()),
     vst,
+    predicate: to_predicate(rep),
   }
 }
 

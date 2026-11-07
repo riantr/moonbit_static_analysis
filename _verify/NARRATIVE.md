@@ -10441,3 +10441,155 @@ flattering reading unless the line refuses it.
 => 判据: "0 OF 0" IS NOT 0%. A tree with no call site has no adequacy figure; printing 0.0% would
 report "checked nothing" about a file with nothing to check. `n/a` is the honest spelling, and it is
 the same reason 0507 printed a zero rather than nothing at all.
+
+## 0522. BOUNDED SYMBOLIC EXECUTION -- TWO FAMILIES THAT NEED VALUES, NOT FLOW
+
+`Unreachable` (MSA-011) decides reachability by reading FLOW: a statement after a `return` cannot
+run. Eleven families and not one of them looked at what the VALUES could be, so a branch that no
+input reaches -- every statement on it individually reachable -- was invisible. That is the deck's
+INFEASIBLE PATH (p.20), and the domain notation is `D[P]` (p.54): the set of inputs for which the
+path runs, empty exactly when the path is infeasible (p.57).
+
+    MSA-013  FInfeasibleBranch   a branch whose D[P] is empty: the guards on the way contradict it
+    MSA-014  FRedundantGuard     a test the guards on the way already force, so it decides nothing
+
+NEW FILE: `src/walk/guardfacts.mbt`, called from `pipeline.run` on a file the frontend read whole.
+
+### THE BOUND IS THE FEATURE, NOT THE SHORTFALL
+
+A fact is recorded only when a guard compares an IMMUTABLE local name against an INTEGER LITERAL --
+`x > 5`, `n == 3`, `7 >= i`. Facts are intervals with explicit absence of each bound (a sentinel
+`Int32` would make the emptiness test a statement about overflow). Three outcomes, two of them
+findings:
+
+    contradictory  the accumulated facts intersect the new guard to the empty interval -> MSA-013
+    implied        the new guard adds nothing for every name it constrains        -> MSA-014
+    undecided      everything else: no fact, no finding, and the family's `excluded` text is where
+                   a reader learns that silence is "not decided", never "reachable"
+
+Measured end to end, one fixture per process:
+
+    3:8 - warning: this branch can never run: 'x' has an empty domain, D[P] = { }, because
+          x > 5 (line 2) contradicts x < 3   (InfeasibleBranch) [structural, MSA-013, high]
+    3:8 - warning: this test decides nothing: 'x' already satisfies x > 5 on the way here, so the
+          other branch has an empty domain   (RedundantGuard) [structural, MSA-014, high]
+    two different names (x > 5 then y < 3)  -> CLEAN, nothing reported
+
+The message QUOTES the path condition with its line numbers, so the claim can be checked by hand.
+A verdict a reader cannot re-derive is the thing this project keeps refusing to ship.
+
+### TWO REAL BUGS, AND THE TESTS FOUND BOTH
+
+  1. the loop arms passed the WHOLE `while` statement into the body walk, which re-entered the same
+     `SWhile` forever: the pipeline test binary CRASHED (`failed to run test ... .wasm`). The
+     compiler's own `unused_value` warning on the discarded `body` was pointing at it.
+  2. `walk_loop` discarded its post-state, so a fact proved BEFORE a loop survived it and a
+     reachable branch was reported contradictory. Measured `1 != 0` by the test
+     `a fact does not survive a loop body that assigns the name`.
+
+Both are fixed and pinned. The soundness rules are implemented, not assumed: a fact dies on
+assignment to its name, a re-declaration drops it, and a loop removes the facts of every name it
+assigns BOTH inside the body and after it (the loop may run zero times).
+
+### THE COMMIT THAT WENT RED, AND WHY
+
+`805751b` passed `moon check --deny-warn` and `moon test` locally and failed in CI on `moon fmt
+--check`. The cause was ordering, not a toolchain difference: `moon fmt` was run and then two edits
+landed in `guardfacts.mbt`, and those edits produced arms the formatter collapses to one line. Fixed
+in `b8c153a`.
+
+    => the LAST gate before a commit is `moon fmt --check`. `--deny-warn` cannot see formatting, so
+       a tree that passes it says nothing about the shape of the source it committed.
+
+(`b8c153a`'s message is headed `0533`, a numbering slip. The series number is 0522, and this
+paragraph is the correction: the record is the NARRATIVE, not a commit title.)
+
+### GATES
+
+    moon fmt --check                exit 0
+    moon check --deny-warn          exit 0
+    moon test --target wasm         1363/1363   (1356 before 0523; 1350 before 0522)
+    roster gate                     ROSTER OK: 14 families, contiguous from MSA-001, 14 arms each
+    end to end                      contradiction, implication and undecided all as above
+
+### NOT DONE, AND IT IS THE LARGER HALF
+
+This increment CHANGES FINDINGS, so every pinned corpus count in the release gate moves. The corpus
+re-measure, the READMEs and the version bump are deliberately ONE operation at the end of the series
+(the 0520 note schedules it), rather than four re-measures against trees that will not ship.
+
+=> 判据: A TOOL THAT ONLY REASONS ABOUT FLOW CANNOT SEE A BRANCH NO VALUE REACHES. Every statement on
+such a path is individually reachable, so a flow-based "unreachable" check is not conservative here,
+it is blind -- and the blindness is invisible because the file looks well formed.
+
+=> 判据: WHEN A DECISION PROCEDURE IS PARTIAL, THE PART IT CANNOT DECIDE MUST BE NAMED IN THE
+CONTRACT. "Undecided" is a third outcome, not a failure: a model that reported only what it proved,
+and did not say so, would make silence read as "reachable".
+
+## 0523. A FINDING AS A MACHINE-CHECKABLE ASSERTION
+
+Until now the evidence inside a finding existed only as PROSE -- a rendered line, or a `message`
+string in the JSON. The only machine-readable parts were the family and the line, so a consumer that
+wanted to act on a claim had to parse English.
+
+    MSA-002 UndefinedName       no_visible_binding           name, line, col
+    MSA-003 UnusedLocal         local_never_read             name, line, col
+    MSA-004 UnusedParam         param_never_read             name, line, col
+    MSA-005 ParamChanged        param_reassigned             name, line, col
+    MSA-011 Unreachable         after_flow_exit              line, col
+    MSA-012 StaleNosec          suppression_matches_no_finding   line
+    MSA-013 InfeasibleBranch    path_domain_empty            name, line, col
+    MSA-014 RedundantGuard      guard_already_forced         name, line, col
+
+And SIX families deliberately carry NO predicate, each for a stated reason rather than an omission:
+`ParseError` is a statement about what the analyzer READ (there is no property of the program to
+restate, and inventing one would turn "I did not look" into "I looked and found nothing"), and the
+five type families (`AssignTypeMismatch`, `ArgTypeMismatch`, `OperatorMismatch`, `MethodError`,
+`NonBooleanCond`) assert a RELATION BETWEEN TYPES that a consumer could check only by reimplementing
+the type model -- a second incomplete type system that disagrees with the first is worse than no
+assertion.
+
+Check ids are ALLOCATED and never renamed, for the same reason family ids are: a consumer switches
+on them. A check with a NAME-shaped claim carries `name`; the two position-shaped claims
+(`after_flow_exit`, `suppression_matches_no_finding`) carry no `name` at all, because `Unreachable`'s
+message quotes a KEYWORD -- `statement after 'return'` -- and a consumer that read `name=return`
+would be reading a keyword as an identifier.
+
+### THE LIABILITY, AND HOW IT IS PAID OFF
+
+The subject is read out of the message by a single-quote scan (`src/report/predicate.mbt`). That
+keeps the projection in ONE place rather than thirty construction sites that could each forget it,
+and it has two guards:
+
+  * a name-shaped family whose message has LOST its quotes yields NO predicate -- never
+    `name: ""`, which is the one value a checker cannot tell from a real name;
+  * `report_0523_test.mbt` pins every check against the REAL message text copied from the
+    construction sites, so renaming a message goes RED in the test rather than QUIET on the wire.
+
+Measured on the wire, `{"kind":"program", ...}`:
+
+    MSA-013 L3 pred={"check":"path_domain_empty","params":[{"k":"name","v":"x"},{"k":"line","v":"3"},
+                          {"k":"col","v":"8"}]}
+    MSA-002 L4 pred={"check":"no_visible_binding","params":[{"k":"name","v":"helper"},
+                          {"k":"line","v":"4"},{"k":"col","v":"13"}]}
+
+### GATES
+
+    moon fmt --check                exit 0
+    moon check --deny-warn          exit 0
+    moon test --target wasm         1363/1363   (1356 before; +7)
+    moon test --target js           1227/1227   (+7)
+    moon test --target wasm-gc      1227/1227   (+7)
+    settle_0508 row D11             both source patterns still present
+
+=> 判据: A CLAIM THAT LIVES ONLY IN PROSE CANNOT BE RE-CHECKED BY THE PROGRAM THAT READS IT. The
+family and the line were the only machine-readable parts of a finding, so the evidence -- which
+name, which position -- was lost exactly where automation needed it.
+
+=> 判据: WHERE A CHECK WOULD REQUIRE A SECOND IMPLEMENTATION OF THE TOOL, EMIT NO PREDICATE. A
+type-relation check would be a second incomplete type system; two oracles that disagree make every
+finding less trustworthy than one oracle that admits its scope.
+
+=> 判据: AN ABSENT PREDICATE AND A PREDICATE OVER AN EMPTY NAME ARE DIFFERENT FACTS. The absence
+says "this kind of claim is not machine-checkable"; the empty name says "check the empty string" and
+is indistinguishable from a real subject. Refuse the second.

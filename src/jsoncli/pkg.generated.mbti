@@ -20,6 +20,12 @@ type FrameRep
 type MetricsRep
 
 #derive(@json.ToJson)
+type ParamRep
+
+#derive(@json.ToJson)
+type PredicateRep
+
+#derive(@json.ToJson)
 type Reply
 
 #derive(@json.FromJson)
