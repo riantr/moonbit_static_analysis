@@ -11240,3 +11240,202 @@ only when the order does not matter, and at a back edge it does.
 => 判据: A RESULT THAT STOPPED AT THE CAP IS NOT A FIXPOINT, AND THAT IS A FIELD
 BEFORE IT IS A COMMENT. `converged` is checked by the divergence test, which is
 the only test in this tree whose PASSING answer is "it did not converge".
+## 0530: THE EXPERIMENT THAT CLOSED INCREMENT 3B -- ZERO HEADROOM, AND A FAMILY THAT HAS NEVER FIRED
+
+0529 corrected the PLAN'S PREMISE for increment 3b ("replacing
+`guardfacts.walk_loop`'s drop-everything behaviour") and left the payoff
+unmeasured. This section is the measurement, and it closes the increment by
+declining it -- not because it is hard, but because there is nothing to recover
+on the populations this repository ships.
+
+### THE EXPERIMENT: TWO ARMS, EIGHT TREES
+
+The question is exactly one thing: how many findings does the fact-drop
+SUPPRESS? Measured by building both answers and comparing them, rather than by
+reasoning about which is more precise.
+
+    ARM A  the shipped analysis: every name assigned anywhere in the loop body
+           loses ALL of its facts, and the reduced set is what the loop returns.
+
+    ARM B  the UPPER BOUND of any interval-based recovery: no drop at all, and
+           the PRE-LOOP fact set returned unchanged. This is deliberately
+           UNSOUND -- it is not a candidate patch and was not committed. It is
+           what a perfect interval analysis over loop bodies could at best
+           recover, plus the precision of a claim nobody can make.
+
+Both arms over the seven pinned corpora and this repository's own source, with
+the release gate's own flags (`--extern-iface-dir .repos --no-auto-fetch-deps
+--findings-shown-per-file 1000000`):
+
+    tree              files   ARM A                      ARM B
+                              actionable  MSA-013  -014   actionable  MSA-013  -014
+    own-source          211          0       0     0            0       0     0
+    moui                608          4       0     0            4       0     0
+    moonbit_labeler      37          2       0     0            2       0     0
+    moonbit_image        18          4       0     0            4       0     0
+    async               419          1       0     0            1       0     0
+    proton              137          0       0     0            0       0     0
+    proton_contract       4          0       0     0            0       0     0
+    moonbit_core       1029         29       0     0           29       0     0
+
+THE TWO ARMS ARE IDENTICAL, INCLUDING EVERY `actionable` COUNT. The drop
+suppresses nothing measurable. An abstract interpreter over loop bodies feeding
+the interval domain would therefore buy exactly nothing on these trees, so
+increment 3b is measured and DECLINED, and the reason is a number rather than an
+opinion about effort.
+
+`walk_loop` was restored byte-identical to `HEAD` afterwards -- verified by
+`git status` showing the file clean, not by memory -- and the full gate re-run:
+`fmt --check` 0, `check --deny-warn` 0, wasm 1400/1400.
+
+### THE SHARPER FINDING: TWO FAMILIES HAVE NEVER FIRED ON ANYTHING
+
+`MSA-013` and `MSA-014` are ZERO ON ALL EIGHT TREES, in both arms -- about 2,500
+files. That is a claim about the FAMILIES, not about the loop drop, and it had
+never been measured.
+
+The machinery is not broken, and "it does not fire" and "it cannot fire" are
+different statements, so both were checked on hand-written fixtures:
+
+    3:8 - warning: this branch can never run: 'x' has an empty domain,
+          D[P] = { }, because x > 5 (line 2) contradicts x < 3
+          (InfeasibleBranch) [structural, MSA-013, high]
+
+    3:8 - warning: this test decides nothing: 'x' already satisfies x > 3 on the
+          way here, so the other branch has an empty domain
+          (RedundantGuard) [structural, MSA-014, high]
+
+So the zero is a statement about the FRAGMENT'S REACH. A fact is recorded only
+when a guard compares an IMMUTABLE local name against an INTEGER LITERAL, and it
+takes TWO such guards on the SAME name to contradict or to imply. Real code
+compares fields, calls, indices and other names -- none of which produce a fact
+-- so the population where these two families can speak is close to empty in
+practice, and on 2,500 files it IS empty.
+
+A READER CANNOT TELL THOSE TWO THINGS APART FROM THE OUTPUT. A family with no
+findings on 2,500 files looks exactly like a family that found nothing wrong,
+and the `excluded` contract is the only place that difference is written down.
+That is what increment 5's vocabulary (§12.3-12.5) is for: a family must state
+what it DECIDES, what it leaves undecided, and -- measurably -- whether it has
+ever decided anything on the corpora this repository pins.
+
+=> 判据: A PRECISION IMPROVEMENT IS JUSTIFIED BY THE FINDINGS IT ADDS, AND THAT
+NUMBER CAN BE MEASURED BEFORE IT IS BUILT. The two arms differ by an entire
+unsound analysis and by zero findings; building the sound version would have
+been work whose reward was already known to be nil.
+
+=> 判据: AN UPPER BOUND IS THE RIGHT ARM FOR A "IS IT WORTH IT" QUESTION. Arm B
+is not a candidate patch -- it is the most any patch could achieve -- so a null
+result on it is a null result for the whole family of designs, not for one
+implementation of it.
+
+=> 判据: A FAMILY THAT HAS NEVER FIRED IS A FACT ABOUT THE TOOL, AND IT BELONGS
+IN THE RECORD BESIDE THE FAMILY. Silence and soundness read the same in a scan's
+output; only a written contract and a measured corpus count separate them.
+## 0531: AUDITING THE NEW FAMILY ON OTHER PEOPLE'S CODE FOUND A CFG DEFECT WORTH 20 OF ITS 29 FINDINGS
+
+0530 left the corpus numbers as an unexamined side effect: adding `MSA-015` moved
+every corpus `actionable` count, and the pins were not updated with it. Auditing
+those findings BEFORE pinning them is what this section is, and the audit did not
+come back clean.
+
+### THE DEFECT: A `return` EXPRESSION WAS NOT A READ
+
+`src/flow/cfg.mbt` converted `SReturn` and `SRaise` with a single wildcard arm:
+
+    @ast.SReturn(_) | @ast.SRaise(_) => { b.add(Stop, s.span) ... }
+
+The expression was DISCARDED. `Stop` carries no expression, `node_uses(Stop)` is
+the empty set, so `return x` contributed NO use of `x` -- and a store whose only
+reader was the return looked dead. `STail` had modelled the same thing correctly
+all along (`Eval(e)` linked to `next`), so the two paths disagreed about what a
+terminator is.
+
+Measured on a two-line fixture, before the fix:
+
+    if flag { x = 7 ; return x }        ->  "the value stored in 'x' is read on
+                                            no path before the name is written
+                                            again"   (FALSE POSITIVE)
+
+WHAT IT COST ON REAL CODE, measured by re-scanning the seven corpora:
+
+    tree                 0530 arm A    after the fix
+    moui                     4              4
+    moonbit_labeler          1              1
+    moonbit_image            4              1     (-3)
+    async                    1              1
+    moonbit_core            19              2     (-17)
+    ------------------------------------------------
+    total                   29              9     (-20)
+
+`moonbit_image/gif.mbt` was the clearest case: `result = ...`, `byte_pos = ...`,
+`bp = ...` on consecutive lines, then `return (byte_pos, bp, result)` -- three
+findings, none of them true.
+
+Twenty of twenty-nine findings were one defect. A 69% false-positive rate on the
+first population outside this repository, found by reading the findings instead
+of counting them.
+
+### THE FIX, AND THE MISTAKE INSIDE THE FIX
+
+`SReturn(Some(e))` now emits `Eval(e)` linked to the `Stop`; `None` still emits
+the `Stop` alone. The `Eval` node is what the arm RETURNS, and that is not a
+detail: the returned node is the ENTRY of the statement, because `build_seq`
+links the previous statement to it. The first version returned the `Stop`, which
+left the new `Eval` with no predecessor -- unreachable, its read invisible -- and
+the finding survived the "fix" byte for byte. That is why the fixture is in the
+loop: a fix that changes nothing looks exactly like a fix that changed the wrong
+node.
+
+Controls, both directions, after the fix:
+
+    if flag { x = 7 ; return x }              ->  0 findings   (the read is seen)
+    y = 5 ; y = 7 ; y                         ->  1 finding    (a real dead store)
+    z = 3 ; z = 4 ; if flag { return z } ; z  ->  1 finding    (real, NEXT TO the
+                                                              return path that
+                                                              is now counted)
+
+### THE PINS MOVED, AND THE PER-FUNCTION CENSUS MOVED WITH THEM
+
+    $PINNED   moui 0->4, labeler 1->2, image 0->1, async 0->1, core 10->12
+              (notices unchanged everywhere; NOTICE_TOTAL stays 19721)
+    $PERFN    29 -> 38 actionable, per corpus: core 30, moui 4, labeler 2,
+              image 1, async 1
+    $PERFN_DEMOTED  21, UNCHANGED (core 19, proton 2)
+
+`$PERFN` is the per-function view, which counts differently from the SUMMARY --
+it is measured by `_verify/census_perfunction.ps1` and re-pinned from its output,
+not derived from the SUMMARY by arithmetic.
+
+### THE NINE THAT REMAIN, AND THE TWO CLASSES I CAN NAME BUT HAVE NOT FIXED
+
+`_verify/census_perfunction.ps1` prints an UNCLASSIFIED section, and it lists
+exactly these nine. Two classes are visible in them and NEITHER IS FIXED, which
+is why they are written here rather than left in a count:
+
+1. `async ...event_loop/network.mbt:35` -- the store sits inside `defer { ... }`.
+   A defer body RUNS AT SCOPE EXIT, and if the CFG places it where it is written
+   instead of where it runs, every store in it can look dead. Not verified.
+2. `moonbit_core math/trig.mbt:166` -- `r = x + s*u + ...` and the next line reads
+   `r` inside `Float::from_double(if odd { -1.0/r } else { r })`. `EKind` has no
+   `if`-expression constructor (`if` is the STATEMENT `SIf`), so a conditional in
+   ARGUMENT position is represented some other way, and that representation's
+   reads are evidently not reaching `names_of_expr`. Not verified.
+
+The other seven are `moui`'s three `last_soft_break` writes, `presentation.mbt`'s
+`content`, `labeler`'s `bi`, `image`'s `v`, and `core`'s `p`. Where the fix cost
+nothing it was taken; where it would need a new analysis of `defer` and of
+argument-position conditionals, the finding is reported and the number is pinned
+WITH its FP rate disclosed.
+
+=> 判据: A NEW FAMILY'S FIRST REAL POPULATION IS OTHER PEOPLE'S CODE, AND THE
+AUDIT IS READING EVERY FINDING. The same family that needed two false-positive
+classes closed on its own source needed a third closed on the corpora, and the
+third was in the CFG rather than in the family.
+
+=> 判据: A TERMINATOR STILL READS ITS EXPRESSION. `return x` reads `x`; a
+control-flow node that ends a path is not a node that ends the dataflow.
+
+=> 判据: A FIX THAT CHANGES NO OUTPUT IS NOT A FIX. The first attempt built the
+right node and returned the wrong one, and the only reason that was caught is
+that the fixture was re-run rather than reasoned about.

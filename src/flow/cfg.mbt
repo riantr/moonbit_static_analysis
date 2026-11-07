@@ -284,11 +284,38 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
       let after_inner = build_one(b, inner, next)
       build_seq(b, body, after_inner)
     }
-    @ast.SReturn(_) | @ast.SRaise(_) => {
-      let n = b.add(Stop, s.span)
-      b.link(n, [])
-      n
-    }
+    @ast.SReturn(e) | @ast.SRaise(e) =>
+      // THE EXPRESSION IS A READ, AND DISCARDING IT WAS A MEASURED FALSE
+      // POSITIVE CLASS. This arm used to be `SReturn(_) | SRaise(_)` producing
+      // one `Stop` node, so `return x` contributed NO use of `x` -- and a store
+      // whose only reader was the return therefore looked dead. Measured in
+      // 0530: `return (byte_pos, bp, result)` in moonbit_image's `gif.mbt` read
+      // as three dead stores on consecutive lines, and `if flag { x = 7;
+      // return x }` read as one on a two-line fixture.
+      //
+      // `STail` above already models the same thing the same way: the
+      // expression becomes an `Eval` node so its names are USES, and then
+      // control stops. A `return` with no expression adds only the `Stop`.
+      match e {
+        Some(x) => {
+          let ev = b.add(Eval(x), s.span)
+          let stop = b.add(Stop, s.span)
+          b.link(ev, [stop])
+          b.link(stop, [])
+          // THE `Eval` NODE IS WHAT THIS ARM RETURNS, not the `Stop`. The value
+          // here is the ENTRY of this statement: `build_seq` links the PREVIOUS
+          // statement to whatever this returns, so returning the `Stop` left the
+          // `Eval` with no predecessor and the read it carries unreachable --
+          // the fix was written that way first and the finding survived,
+          // unchanged, which is how the mistake was found.
+          ev
+        }
+        None => {
+          let stop = b.add(Stop, s.span)
+          b.link(stop, [])
+          stop
+        }
+      }
     // COUNTED AS SKIPPED, and that is not a naming shortcut. `break` and
     // `continue` become `Stop`, which is a node -- but the edge each should add
     // (to the loop's exit, and to its head) is NOT added, so the loop exit is

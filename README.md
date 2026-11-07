@@ -15,7 +15,7 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1029 files): **984 parsed, 10 actionable** — and every one
+Measured on `moonbitlang/core` (1029 files): **984 parsed, 12 actionable** — and every one
 of the 10 is a construct this frontend does not read or an operator it does not model, not
 a defect in the analysed code. The 18 findings demoted in 0.4.38 — names the analyzer could
 not resolve — are counted as notices and are not in that 10. On that same tree
@@ -640,10 +640,11 @@ numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** It is measured
 > across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and the release
-> gate **pins** the number. Today it reports **29** `actionable` findings, where the module
-> view reports 10. **28 of the 29 are constructs this frontend does not read or operators
-> it does not model; the twenty-ninth is a genuine finding** — a local assigned and never read
-> in `moonbit_labeler`, and the first true defect this tool has published on any corpus.
+> gate **pins** the number. Today it reports **38** `actionable` findings, where the module
+> view reports 12. The census classifies them: **28** are constructs this frontend does not
+> read or operators it does not model, **9** are `MSA-015` dead stores the new family reports
+> on other corpora, and one — a local assigned and never read in `moonbit_labeler` — is still
+> the first true defect this tool has published on any corpus.
 >
 > | family | n | what the lens claimed |
 > |---|---:|---|

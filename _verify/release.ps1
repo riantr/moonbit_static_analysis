@@ -1,4 +1,4 @@
-﻿# ONE local release entry point.
+# ONE local release entry point.
 #
 # WHY THIS FILE EXISTS. `.github/workflows/gate.yml` runs four commands -- fmt,
 # check, one test target, one build. That is the floor CI enforces, and it is not
@@ -1696,13 +1696,13 @@ if ($SkipMutations) {
 # count would be a transfer that changed the analysis, and that is a different
 # increment with a different justification.
 $PINNED = [ordered]@{
-  'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3457'
-  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 unchecked=1340 total=699'
-  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 unchecked=754 total=186'
-  'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1654'
+  'moui'            = 'files=608 parsed=608 actionable=4 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3461'
+  'moonbit_labeler' = 'files=37 parsed=37 actionable=2 notices=698 unreliable=0 withheld=0 unchecked=1340 total=700'
+  'moonbit_image'   = 'files=18 parsed=18 actionable=1 notices=186 unreliable=0 withheld=0 unchecked=754 total=187'
+  'async'           = 'files=419 parsed=419 actionable=1 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1655'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2897 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
-  'moonbit_core'    = 'files=1029 parsed=984 actionable=10 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10770'
+  'moonbit_core'    = 'files=1029 parsed=984 actionable=12 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10772'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -1832,15 +1832,15 @@ if ($failed.Count -eq 0) {
 # corpora. The seventh carries more findings than all six put together. A
 # published number that is not gated is a number that can go missing silently.
 $PERFN = [ordered]@{
-  'moui'            = '0'
-  'moonbit_labeler' = '1'
-  'moonbit_image'   = '0'
-  'async'           = '0'
+  'moui'            = '4'
+  'moonbit_labeler' = '2'
+  'moonbit_image'   = '1'
+  'async'           = '1'
   'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '28'
+  'moonbit_core'    = '30'
 }
-$PERFN_TOTAL = '29'
+$PERFN_TOTAL = '38'
 # 0508. THE DEMOTED SET, pinned beside the actionable one for the same reason.
 # A finding the analyzer does not stand behind is rendered `notice:` and leaves
 # the actionable count -- and a set of findings that leaves the census is a set
