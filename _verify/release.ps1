@@ -381,7 +381,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19552'
+$NOTICE_TOTAL = '19570'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -400,10 +400,10 @@ $NOTICE_TOTAL = '19552'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '195'
-$SELF_NOTICES = 'test declaration=1417|if expression=94|struct declaration=54|anonymous function literal=21|enum declaration=16|const declaration=6|short lambda=5|type declaration=1|try expression=1'
-$SELF_PRINTED = '121'
-$SELF_AGGREGATED = '1494'
+$SELF_FILES = '197'
+$SELF_NOTICES = 'test declaration=1426|if expression=94|struct declaration=56|anonymous function literal=28|enum declaration=16|const declaration=6|short lambda=5|type declaration=1|try expression=1'
+$SELF_PRINTED = '128'
+$SELF_AGGREGATED = '1505'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -425,7 +425,15 @@ $SELF_AGGREGATED = '1494'
 # maintainer's scratch pile. With the exclusion the self scan reads 195 files
 # -- the same number as $SELF_FILES -- and the pair is reproducible from a
 # clean checkout.
-$SUPPOFF_LOCAL = '583'
+#
+# 0544 MOVED IT AGAIN, 583 -> 586, and the three are worth naming because they are
+# the mechanism's own shape rather than a defect: src/flow/avail.mbt keeps its
+# universe and its entry node in lets that are read ONLY INSIDE the closures that
+# build the lattice and the transfer function. With the suppression off, the lint
+# cannot see a read inside an anonymous function literal, so all three read as
+# assigned-and-never-read. That is the blindness this stage measures, and the pin
+# follows the measurement.
+$SUPPOFF_LOCAL = '586'
 $SUPPOFF_PARAM = '1146'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by

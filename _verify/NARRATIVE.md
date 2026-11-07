@@ -12405,6 +12405,150 @@ green" is a claim about a tree in which one row is red on purpose; "the four row
 increment was opened for are green, and the fifth was red before it started" is a claim about
 this commit, and it is the one the commit message is allowed to make.
 
+## 0544: THE FRAMEWORK WAS MAY-ONLY, AND THE BOOK'S THIRD APPLICATION IS A MUST ANALYSIS
+
+The reference for this increment is a different document from the one 0526-0543 were built
+against: Yue Li's `Data Flow Analysis -- Applications` (Nanjing University, 2022), whose three
+applications are (I) reaching definitions, (II) live variables, (III) available expressions.
+
+This tree had **one and a half of the three**. Live variables is 0527 and it is a faithful
+may-backward analysis. Reaching definitions is covered in spirit by `MSA-002` (a name with no
+visible binding), which is the reaching-definitions QUESTION asked by a different instrument --
+the structural walk rather than a fixed point -- and the difference is worth stating rather
+than papering over: `MSA-002` answers "is there a declaration at all", reaching definitions
+answers "does the value reaching this point come from a definition or from the dummy at the
+entry". The third had no representation at all.
+
+### THE GAP IS IN THE FRAMEWORK, NOT IN THE LIST OF ANALYSES
+
+`src/flow/lattice.mbt` states the framework's contract as a `Lattice` carrying `bot`, `join`
+and `eq`, and `src/flow/worklist.mbt` states both solvers in terms of it: each node is seeded
+with `bot`, and each step moves a node UP by joining. That is a MAY analysis, and it is the
+ONLY shape the two solvers can express, because the ascending chain from `bot` is what makes
+them terminate.
+
+Available expressions is the other direction:
+
+    IN[B]  = ∩ over P a predecessor of B of OUT[P]      -- the meet is INTERSECTION
+    OUT[B] = gen_B ∪ (IN[B] - kill_B)
+
+and the deck says what that costs (p.12): "may analysis: safe=over, must analysis:
+safe=under". So the tree's third application could not be written at all, and the interesting
+part is that nothing in the tree had noticed: three analyses, all may.
+
+### THE DUALITY IS THE INCREMENT, AND IT NEEDS NO SECOND SOLVER
+
+A must analysis over (⊤, ∩) IS a may analysis over the same carrier ordered the other way.
+Reverse the order and ⊤ becomes the bottom, ∩ becomes the join, and the solver's ascending
+chain becomes the must solution's descending chain. So `avail.mbt` passes `solve_round_robin`
+a lattice whose `bot` is ⊤ -- the whole universe of tracked expressions -- and whose `join` is
+∩, and the solver reaches the GREATEST fixed point of the original order, which is exactly the
+safe must solution.
+
+A SECOND SOLVER WAS THE TEMPTING SHAPE AND IT IS THE WRONG ONE. Two solvers are two places for
+the fixed point to be wrong, and the tree's own note on the two solvers it already has says the
+same thing from the other side: they are run against each other in a test precisely because a
+theorem is not a test. Adding a third would have made the agreement argument bigger without
+making the framework more general. The duality makes the EXISTING solver do both, and that is
+the claim the increment is built on.
+
+### THE TRAPS ARE OPPOSITE AND BOTH ARE SILENT
+
+Three things go wrong in this analysis, and each of them produces a green-looking run:
+
+  * SEEDED WITH ⊥ instead of ⊤, nothing is ever available, because the intersection of empty
+    sets is empty. The analysis finds nothing, which reads exactly like "this code has no
+    redundancy";
+  * WITHOUT the entry special case, the entry node has no predecessors, so its input is the
+    lattice's `bot` -- now ⊤ -- and EVERY expression is "already available" at the first
+    statement that computes it. A claim about a computation that has not happened;
+  * AND A THIRD, which is the same mistake as the first reached through a different door:
+    `join_of_nodes` seeds its accumulator with the lattice's `bot`. Its identity element for
+    ∩ is ⊤, so a join built with an empty `bot` intersects every predecessor with ∅ and answers
+    ∅ for a node that has ONE predecessor. MEASURED: this is how the first version of this file
+    behaved, and the three positive rows of `avail_test.mbt` are what caught it -- the negative
+    rows all passed, which is what a too-conservative analysis looks like from the outside.
+
+The first two are pinned by ONE test row, on purpose. "The first computation is live and the
+second is redundant" goes red on its first assertion under ⊥-seeding and on its second under a
+missing entry special case, so a single program separates the two failure modes. The third is
+pinned by `avail_universe` and by the three positive rows that failed before it existed.
+
+### THE ANALYSIS, AND THE FOUR DIRECTIONS IT MUST NOT GET WRONG
+
+  * THE MEET IS OVER PREDECESSORS, not over the entry path. A diamond where only one side
+    computes `a + 1` leaves the join with nothing available, and its control -- the same diamond
+    with the computation on both sides -- reports the join's copy. One statement apart, opposite
+    answers.
+  * A WRITE TO AN OPERAND KILLS THE EXPRESSION, which is the `(IN - kill)` half. Without it the
+    analysis claims a value is available across a redefinition.
+  * A NODE THAT REDEFINES ITS OWN OPERAND IS NOT REDUNDANT. `x = x + 1` recomputing `x + 1` is
+    the only thing keeping `x` up to date, so `avail_redundant` requires `key ∉ kill(v)` as well
+    as `key ∈ IN[v]`. That is the one place where "available before" and "computed here" are not
+    enough.
+  * AND THE UNIVERSE IS BOUNDED ON PURPOSE, by the deck's own scope note (p.38, "Issues Not
+    Covered": method calls, aliases). The tracked expressions are arithmetic over ATOMS -- a name
+    or an integer/boolean literal -- which is what makes aliasing unable to invalidate a tracked
+    fact, and `EFloat` is excluded for a different reason: rendering `1.0` and `1.00` to one key
+    would claim two different computations are the same one.
+
+THE ASYMMETRY THAT MAKES THE BOUND SAFE is the must direction itself: a MISSED `gen` claims
+fewer available expressions, which under-approximates, and under-approximation is what the deck
+says is safe here. A missed KILL would be unsound, so kills do not come from the syntactic
+descent at all -- they come from `node_defs`, which is a complete answer to "which names does
+this node define".
+
+### WHAT THIS INCREMENT DOES NOT DO, AND WHY THAT IS A MEASUREMENT RATHER THAN AN OMISSION
+
+There is NO finding family for this analysis yet. The application the deck gives it is common
+subexpression elimination -- "this expression is recomputed, its value is already available" --
+and emitting that claim means a new family, which in this tree means: nine arms in `core.mbt`,
+a roster pin, both README family tables, the census script's family list, and a re-pin of all
+SEVEN corpus SUMMARYs and the eight-tree notice total, because a new family that fires moves
+every one of them. That is the SIZE OF THE FAMILY MACHINERY, not the size of the analysis, and
+it is a separate increment with its own audit: the last time a family started speaking on the
+corpora it produced nine findings whose classes had to be read one at a time (0542).
+
+So what is landed is the analysis, its laws and its traps, and what is measured here is the
+negative space: `moon test --target wasm` is **1,426/1,426** with nine new rows, and NOTHING
+ELSE IN THE TREE MOVES -- no corpus SUMMARY, no notice count, no census number, because nothing
+emits. A tree that gains a correct analysis without a single pin moving is the state this
+increment can prove; a tree that gains a family is the next one.
+
+=> 判据: A FRAMEWORK IS ONLY AS GENERAL AS ITS ANALYSES REQUIRE. The `Lattice` in this package
+said `bot`/`join`/`eq` and claimed to be "a complete lattice as the framework actually needs
+it". Three analyses later, all three were may analyses and the claim had never been tested --
+the framework was not general, it was merely unexercised. The dual reading is what makes the
+word "complete" true, and it cost one lattice, no new solver.
+
+=> 判据: THE THIRD FAILURE MODE WAS IN A HELPER, NOT IN THE THEORY. The two seeding traps are
+in the literature and the deck names the may/must direction explicitly. The bug that actually
+happened was `join_of_nodes` starting its fold at `bot`, which is correct for a join and wrong
+for a meet, and it was found by three positive tests going quiet -- not by re-reading the
+theory.
+
+### AND THE SUPPRESSION-OFF STAGE WENT RED, WHICH IS THE STAGE WORKING
+
+The release gate's only other red was `the region suppression: what it hides, measured and
+pinned`: MEASURED, 586 / 1,146 against a pin of 583 / 1,146. Three `UnusedLocal`, exactly, and
+they are worth naming rather than absorbing:
+
+    321:3  local variable 'universe' assigned but may not be used
+    377:3  local variable 'entry'    assigned but may not be used
+    413:3  local variable 'universe' assigned but may not be used
+
+All three are in `src/flow/avail.mbt`, and NOT ONE OF THEM IS A DEFECT. `universe` and `entry`
+are read only INSIDE the closures that build the lattice and the transfer function -- `bot: fn()
+{ ... }` and `transfer: fn(node, input) { ... }` -- and with the region suppression switched off
+the lint cannot see a read inside an anonymous function literal. That is precisely the blindness
+the stage exists to measure, so the count moving is the mechanism reporting on itself.
+
+=> 判据: A PIN THAT MOVES BECAUSE THE TREE GREW CODE THE MECHANISM IS BLIND TO IS A PIN DOING
+ITS JOB. The wrong response is to rewrite the three `let`s so the count stays put; that makes
+the published number describe the author's tidiness instead of the analyzer's blindness. The pin
+moved to 586, the README's "hiding 585 locals" moved with it, and the three shapes are named
+here so that the next reader does not re-derive them.
+
 ### 0493's M2 IS NOW A DECLARED SURVIVOR, AND THE ARGUMENT IS A MEASUREMENT
 
 0493's M2 removes the `def.cycle_ret` arm from `analyze_fn`'s return-value chain -- the arm

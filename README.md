@@ -532,21 +532,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (195 files), with the per-file printing cap lifted so the count is the
+project's own source (197 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1417 | | `const` declaration | 6 |
+| `test` declaration | 1426 | | `const` declaration | 6 |
 | `if` expression | 94 | | `short lambda` | 5 |
-| `struct` declaration | 54 | | `type` declaration | 1 |
-| `anonymous function literal` | 21 | | `try` expression | 1 |
+| `struct` declaration | 56 | | `type` declaration | 1 |
+| `anonymous function literal` | 28 | | `try` expression | 1 |
 | `enum` declaration | 16 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **121** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1494** sit outside every function's
+**position**: **128** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1505** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -579,7 +579,7 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,552** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,570** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
 **16,208** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
@@ -604,12 +604,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **583** `UnusedLocal` and **1,146** `UnusedParam` findings across the
+the tool produces **586** `UnusedLocal` and **1,146** `UnusedParam` findings across the
 seven pinned corpora and this repository's own source — the same 195 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **582** locals and **1,146** parameters, and the per-binding
+suppression is hiding **585** locals and **1,146** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -722,6 +722,10 @@ The full taxonomy is in [EXTENSIONS.md](EXTENSIONS.md).
 ```
 src/core      Span/Severity/Lens/Family(merge_group contract)/Frame + Family::advice
 src/report    Report struct and rendering (union lens tags, vst frames)
+src/flow      data-flow framework: CFG + two solvers (round-robin and work-list, run
+              against each other in tests), live variables (may, backward), the
+              interval domain with widening, and available expressions (must,
+              forward — the dual reading of the same solver)
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
@@ -743,11 +747,24 @@ The root package is a thin forwarder; the implementation is `src/sa`, a **librar
 subprocesses come from `moonbitlang/async` and only some backends have a working async
 runtime; the other backends SKIP those two packages instead of failing.
 
+### The data-flow framework carries both directions
+
+`src/flow` has a `Lattice` of `bot`/`join`/`eq` and two fixed-point solvers, and for three
+increments every analysis built on it was a **may** analysis: live variables is may-and-backward,
+and the interval domain widens up an ascending chain. Available expressions is the other
+direction — `IN[B] = ∩ over P OUT[P]`, a **must** analysis whose safe answer is an
+under-approximation — and it needs no second solver: a must analysis over (⊤, ∩) IS a may
+analysis over the same carrier ordered the other way, so it passes the existing solver a lattice
+whose `bot` is ⊤ and whose `join` is ∩. The entry node is special-cased to ∅ (nothing is
+available before the program starts), and the three ways this goes silently wrong — ⊥ seeding,
+a missing entry case, and a meet whose accumulator identity is ∅ — are each pinned by a test in
+`src/flow/avail_test.mbt`.
+
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1417/1417 on wasm; 1281/1281 on js and wasm-gc
+moon test --deny-warn                # 1426/1426 on wasm; 1290/1290 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

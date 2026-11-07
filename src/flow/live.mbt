@@ -47,6 +47,40 @@ pub fn name_set_empty() -> Map[String, Bool] {
 }
 
 ///|
+/// THE TWO SET OPERATIONS THE MAY LATTICE NEVER NEEDED. `union` is the join of
+/// the order this package was written in, so a must analysis -- which meets by
+/// intersection and kills by subtraction -- had no operation to call. They live
+/// here, beside `name_set_union`, rather than in `avail.mbt`, because the three
+/// are the same three operations over the same carrier and splitting them across
+/// files is how two definitions of "the set of names" start to disagree.
+pub fn name_set_inter(
+  a : Map[String, Bool],
+  b : Map[String, Bool],
+) -> Map[String, Bool] {
+  let out = name_set_empty()
+  for k, _ in a {
+    if b.contains(k) {
+      out.set(k, true)
+    }
+  }
+  out
+}
+
+///|
+pub fn name_set_subtract(
+  a : Map[String, Bool],
+  b : Map[String, Bool],
+) -> Map[String, Bool] {
+  let out = name_set_empty()
+  for k, _ in a {
+    if b.contains(k) == false {
+      out.set(k, true)
+    }
+  }
+  out
+}
+
+///|
 /// The left-biased union; the right side is copied in so the arguments are not
 /// mutated. Callers in the fixed point pass the joined value on, and a join that
 /// wrote into its input would make the solver's `eq` comparison meaningless.

@@ -7,6 +7,18 @@ import {
 }
 
 // Values
+pub fn avail_after(Cfg) -> Array[Map[String, Bool]]
+
+pub fn avail_evals(Cfg, Int32) -> Array[AvailExpr]
+
+pub fn avail_in(Cfg, Array[Map[String, Bool]]) -> Array[Map[String, Bool]]
+
+pub fn avail_key(@ast.Expr) -> String?
+
+pub fn avail_redundant(Cfg) -> Array[Redundant]
+
+pub fn avail_universe(Cfg) -> Map[String, Bool]
+
 pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
 
 pub fn eval_add(Interval, Interval) -> Interval
@@ -51,7 +63,11 @@ pub fn name_set_empty() -> Map[String, Bool]
 
 pub fn name_set_eq(Map[String, Bool], Map[String, Bool]) -> Bool
 
+pub fn name_set_inter(Map[String, Bool], Map[String, Bool]) -> Map[String, Bool]
+
 pub fn name_set_lattice() -> Lattice[Map[String, Bool]]
+
+pub fn name_set_subtract(Map[String, Bool], Map[String, Bool]) -> Map[String, Bool]
 
 pub fn name_set_union(Map[String, Bool], Map[String, Bool]) -> Map[String, Bool]
 
@@ -80,6 +96,11 @@ pub fn widen_interval(Interval, Interval, Array[Int32]) -> Interval
 // Errors
 
 // Types and methods
+pub(all) struct AvailExpr {
+  key : String
+  names : Map[String, Bool]
+}
+
 pub(all) struct Cfg {
   kinds : Array[NodeKind]
   spans : Array[@core.Span]
@@ -124,6 +145,11 @@ pub(all) enum NodeKind {
   Eval(@ast.Expr)
   Test(@ast.Expr)
   Stop
+}
+
+pub(all) struct Redundant {
+  node : Int32
+  key : String
 }
 
 pub(all) struct WidenResult[T] {
