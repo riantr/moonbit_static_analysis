@@ -154,6 +154,86 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.43 — five increments: contracts, adequacy, two constraint families, checkable assertions, and an audit that found a false positive
+
+This release is a series of five, each measured and each with its own section in
+`_verify/NARRATIVE.md` (§0520–§0524).
+
+**1. A family is a contract, not an id (§0520).** Every family now declares three things
+beside its severity: the property it asserts, the assumption that property is sound under,
+and what it does **not** cover. `--explain MSA-011` prints one family's three parts and
+stops; `--explain-all` prints the roster. No scan runs either way. `check_family_roster.ps1`
+holds the three tables to the enum, one arm per family, so a family added later cannot ship
+with an empty contract.
+
+**2. Adequacy as a number (§0521).** `--metrics` appends a block after the `SUMMARY`:
+files understood, call sites **visited** and **checked** with their share, findings by
+family × severity × confidence, and the declared scope-limit count. `n_unchecked` had been
+printed for eight releases with no denominator, so "340 unchecked" read as reassuring on a
+tree with 20,000 call sites and as damning on one with 400. Two things were measured while
+building it and are the reason the block says what it says:
+
+* the first version counted **visits**, and a call in a block's **tail** is typed twice —
+  once as a statement, once as the tail carrying the return hint. Measured as exactly +1 per
+  fixture: `{ f() }` gave 2, `{ f(); f() }` gave 3. Counting is now deduplicated by span;
+  the typing is unchanged.
+* `unchecked=` keeps its 0507 meaning (**visits**) because its printed value is pinned by the
+  corpus stages, so on this project's own tree `sites − checked − unchecked` is **−16**. The
+  block therefore computes `not-verified = sites − checked` and says on the line that the two
+  counters are not arithmetically related.
+
+Measured on its own source: **199 files**, `sites=5048`, `checked=415` (**8.2%**). That share
+is an **upper bound** and the line says so: the type lens does not type the arguments of a
+call whose name never resolved, so `ignore(s.length())` is 2 sites and not 3.
+
+**3. Two families about VALUES, not flow (§0522).** `Unreachable` reasoned about flow; nothing
+reasoned about what the values could be, so a branch no input reaches was invisible — the V&V
+deck's **infeasible path**, whose domain is `D[P]` and whose emptiness is the justification.
+
+    MSA-013  InfeasibleBranch   the guards on the way to this branch contradict it: D[P] = { }
+    MSA-014  RedundantGuard     the guards before this test already force its outcome
+
+Bounded on purpose: a fact exists only for an **immutable local compared against an integer
+literal**. Contradictory, implied, and **undecided** are three outcomes; only the first two are
+findings, and the third is named in the family's contract so silence is not read as "reachable".
+Two real bugs were caught by its own tests: the loop arms re-entered the same `SWhile` forever
+(the pipeline test binary crashed), and a fact proved before a loop survived it, so a reachable
+branch was reported contradictory (`1 != 0`).
+
+**4. A finding is a machine-checkable assertion (§0523).** The JSON `Finding` now carries
+`predicate: {check, params}` — a stable check id plus named arguments — for the eight families
+whose claim is a NAME or a POSITION (`no_visible_binding`, `local_never_read`, `param_never_read`,
+`param_reassigned`, `after_flow_exit`, `suppression_matches_no_finding`, `path_domain_empty`,
+`guard_already_forced`). Six families deliberately carry **none**: `ParseError` is a statement
+about what the analyzer read, and the five type families assert a relation a consumer could check
+only by reimplementing the type model. A name-shaped family whose message lost its quotes yields
+no predicate rather than `name: ""`.
+
+**5. The `MSA-011` audit, and the false positive it found (§0524).** The deck separates
+unreachable code, **dead** code ("executed, but irrelevant") and an infeasible path. `MSA-011`
+covers the first; `MSA-013` covers the third; **dead code is covered by no family**, which its
+contract now says. And the audit found this, by measuring:
+
+    fn f(c : Bool) -> Int { if c { return 1 } ; return 2 }   +   let x = f(true)
+    -> 5:3 - warning: unreachable code                          ← WRONG
+
+`f(false)` returns 2. The behavioral lens executed `f` with `c` bound to the **call site's**
+`true`. A guard on "the preceding statement is a source-level terminator" was tried and
+**reverted**: it reddened seven deliberate tests, because code after an `if` whose every branch
+terminates IS dead, and so is code after an `if` whose condition folds to a literal. Separating
+"decided by a literal" from "decided by the argument this execution saw" means binding callee
+parameters abstractly — its own increment. The over-report therefore stands, is named in the
+family's `excluded` contract, and is **pinned by a test that asserts the wrong answer** with
+instructions to delete itself when the fix lands.
+
+**Dependencies are unchanged.** `moonbitlang/async` stays at **0.22.5**, deliberately. The
+registry's latest is 0.22.7, which declares 194 externs and **drops 22 of the 90** the artifact
+imports — building against it would reproduce 0.4.38's uninstantiable wasm on toolchains that
+bundle 0.22.4/0.22.5. `_verify/check_host_requirements.ps1` holds the artifact to that floor.
+
+**Measured on this release:** 14 families, roster contiguous from `MSA-001`; wasm **1367/1367**,
+js and wasm-gc **1231/1231**; own-source self-scan 199 files, 1721 notices, `actionable=0`.
+
 ## 0.4.42 — the compiler deprecated the syntax this tree is written in, and CI was red on master
 
 **THE ANALYZER'S BEHAVIOUR DID NOT CHANGE.** The findings, the rules and the artifact's import

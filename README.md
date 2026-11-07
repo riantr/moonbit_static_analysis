@@ -68,14 +68,14 @@ not resolve — are counted as notices and are not in that 10. On that same tree
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.42
+moon add riantr/moonbit_static_analysis@0.4.43
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.42",
+  "riantr/moonbit_static_analysis@0.4.43",
 }
 ```
 
@@ -279,7 +279,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.42_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.43_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```
@@ -328,6 +328,9 @@ moonx riantr/moonbit_static_analysis@latest <target> [flags]
 | `--mmd <path>` | **also** write the scan as a mermaid `stateDiagram-v2` to `<path>`, and print `MMD<TAB><path>` on the last line. Opt-in on purpose: stdout stays the authoritative text report. |
 | `--mmd-auto` | the same, but pick the name and write it to the **working directory** — never inside the analysed tree. |
 | `--per-function` | enter the behavioral lens at each **function** rather than at the module. |
+| `--explain MSA-011` | print that family's **contract** — what it asserts, the assumption it rests on, and what it does **not** cover — then stop. No scan runs. The value is mandatory, for the same reason `--mmd`'s is: a bare word after the flag could equally be the value or the target. |
+| `--explain-all` | the whole roster, each family's three parts, then stop. No scan runs. |
+| `--metrics` | **after** the `SUMMARY`, print the adequacy block: files understood, call sites visited and checked (with the share), findings by family × severity × confidence, and the declared scope-limit count. Opt-in: the block states how much was **checked**, not what was found, so it changes no count above it. |
 | `--findings-shown-per-file N` | how many findings are **printed** per file (default 40). A printing limit, not an analysis limit: the SUMMARY counts come from every finding, so raising it reveals findings that were already counted and changes no summary number. |
 | `--show-notices` | print **every** notice per line, not only the ones that can hide a finding. By default a notice is printed only when its region lies inside a function's extent -- that is, when a conclusion may have been withheld because of it -- and every other notice is counted by shape in one `NOTICES` table. This flag restores the whole per-line list, which is what the tool printed before 0.4.36, and it changes no count: the SUMMARY's numbers are the same either way. |
 | `--families MSA-007,MSA-002` | report **only** these families, by their **stable id**. The ids are the `MSA-NNN` codes every rendered finding and every JSON record carries; the full roster is in [Confidence, ids, profiles and `nosec`](#confidence-ids-profiles-and-nosec). An id this version does not know is a `WARNING` and the scan still runs -- a family added in a later release must not make an older analyzer's profile unusable, and a typo must be loud rather than fatal. |
@@ -453,6 +456,7 @@ allocated once and **never renumbered**, so it survives a rename:
 | `MSA-004` | `UnusedParam` | `MSA-010` | `NonBooleanCond` |
 | `MSA-005` | `ParamChanged` | `MSA-011` | `Unreachable` |
 | `MSA-006` | `AssignTypeMismatch` | `MSA-012` | `StaleNosec` |
+| `MSA-013` | `InfeasibleBranch` | `MSA-014` | `RedundantGuard` |
 
 The ids are hand-allocated on purpose — deriving one from the enum's position would
 renumber every family after an insertion, which is the one thing an id must never do —
@@ -527,21 +531,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (189 files), with the per-file printing cap lifted so the count is the
+project's own source (199 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1427 | | `anonymous function literal` | 18 |
-| `if` expression | 104 | | `const` declaration | 6 |
-| `struct` declaration | 62 | | `short lambda` | 2 |
+| `test` declaration | 1464 | | `anonymous function literal` | 18 |
+| `if` expression | 115 | | `const` declaration | 6 |
+| `struct` declaration | 69 | | `short lambda` | 2 |
 | `derive` declaration | 20 | | `try` expression | 1 |
-| `enum` declaration | 25 | | | |
+| `enum` declaration | 25 | | `type` declaration | 1 |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **125** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1540** sit outside every function's
+**position**: **136** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1585** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -574,7 +578,7 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,602** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,658** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
 **16,208** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
@@ -599,10 +603,10 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **597** `UnusedLocal` and **1,137** `UnusedParam` findings across the
+the tool produces **597** `UnusedLocal` and **1,139** `UnusedParam` findings across the
 seven pinned corpora and this repository's own source. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **596** locals and **1,137** parameters, and the per-binding
+suppression is hiding **596** locals and **1,139** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -733,7 +737,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1330/1330 on wasm; 1204/1204 on js and wasm-gc
+moon test --deny-warn                # 1367/1367 on wasm; 1231/1231 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

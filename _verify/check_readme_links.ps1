@@ -413,6 +413,10 @@ $noticeLabel = [ordered]@{
   'const declaration'          = @{ en = '`const` declaration';          zh = '`const` 声明' }
   'short lambda'               = @{ en = '`short lambda`';               zh = '短 lambda' }
   'try expression'             = @{ en = '`try` expression';             zh = '`try` 表达式' }
+  # 0522. A `type X = ...` alias is outside the analysed subset, so a file that
+  # carries one gets a notice -- and a notice kind with no label here would make
+  # the README table unable to name it.
+  'type declaration'           = @{ en = '`type` declaration';           zh = '`type` 声明' }
 }
 $more = New-Object System.Collections.Generic.List[object]
 if ($sn -ne '') {

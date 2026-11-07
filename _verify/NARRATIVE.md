@@ -7584,7 +7584,7 @@ spelling is a hand-written `match` (`core.mbt:545-560`). The names and the enum 
 not the same thing:
 
 ```
-    0505 the family roster, families              : 12
+    0505 the family roster, families              : 14
     0505 the family roster, names that differ     : 5
 
 AND WHEN THE ROSTER MOVES, THESE TWO NUMBERS MOVE WITH IT, and the fix is to RE-READ
@@ -8214,8 +8214,8 @@ about one kind of call.
 ### WHAT DID NOT MOVE, AND WHY THAT IS THE POINT
 
 ```
-    0507 the family roster, families   : 12
-    0507 the family roster, ids         : 12
+    0507 the family roster, families   : 14
+    0507 the family roster, ids         : 14
     0507 the confidence axis, values     : 3
 ```
 
@@ -9465,15 +9465,15 @@ against this tree, so it cannot rot without the gate saying so.
     --- TRANSFER MAP ---
     row 1  src/core/core.mbt:482        enum Confidence
     row 1  src/report/report.mbt:214    fn Report::confidence
-    row 1  src/jsoncli/main.mbt:25      confidence : String
+    row 1  src/jsoncli/main.mbt:50      confidence : String
     row 2  src/core/core.mbt:538        enum Family
-    row 2  src/core/core.mbt:589        fn Family::id
-    row 2  src/core/core.mbt:623        fn family_by_id
+    row 2  src/core/core.mbt:601        fn Family::id
+    row 2  src/core/core.mbt:637        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
     row 3  src/sa/profile.mbt:341       fn stale_report
-    row 3  src/sa/main.mbt:1045         fn filtered_reports
+    row 3  src/sa/main.mbt:1231         fn filtered_reports
     --- END TRANSFER MAP ---
 
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
