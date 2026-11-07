@@ -215,7 +215,7 @@ if (-not $confM.Success) {
 # impossible, so what is left to check is that the text is real.
 Write-Output ''
 Write-Output '=== 5. the family contracts (property, assumption, excluded) ==='
-foreach ($part in @('property', 'assumption', 'excluded')) {
+foreach ($part in @('property', 'assumption', 'excluded', 'reach')) {
   $cm = [regex]::Match($src, '(?s)pub fn Family::' + $part + '\(self : Family\) -> String \{(.*?)\n\}')
   if (-not $cm.Success) {
     Write-Output ('  MISSING: Family::' + $part + ' was not found.')

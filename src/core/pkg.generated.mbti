@@ -63,6 +63,7 @@ pub fn Family::id(Self) -> String
 pub fn Family::merge_group(Self) -> String
 pub fn Family::name(Self) -> String
 pub fn Family::property(Self) -> String
+pub fn Family::reach(Self) -> String
 pub fn Family::severity(Self) -> Severity
 
 #derive(Eq)

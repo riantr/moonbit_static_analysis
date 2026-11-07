@@ -21,6 +21,12 @@ test "0520: every family declares a real property, assumption and excluded" {
     assert_true(f.property().length() >= 15)
     assert_true(f.assumption().length() >= 15)
     assert_true(f.excluded().length() >= 15)
+    // 0539. The tenth projection, and it is checked here for the same reason the
+    // other three are: an arm that exists but says nothing is a contract that a
+    // reader will still read as a statement. `reach` carries the MEASURED
+    // corpus standing of each family (0534), which is the one thing a scan's
+    // own output cannot tell a reader.
+    assert_true(f.reach().length() >= 15)
   }
 }
 

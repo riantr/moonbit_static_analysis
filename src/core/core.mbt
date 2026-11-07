@@ -710,6 +710,42 @@ pub fn all_families() -> Array[Family] {
 /// `Family::id` is: a forward table is a shape `check_family_roster.ps1` can
 /// read and hold to the enum, and a family with an empty slot is a gate
 /// failure instead of a promise to document it later.
+pub fn Family::reach(self : Family) -> String {
+  match self {
+    FParse =>
+      "3411 occurrences across the seven pinned corpora and this tree's own source (0534), where almost all of them are rendered NOTICES rather than findings: a scope limit is a statement about the tool, never about the code"
+    FUndefinedName =>
+      "18 findings across the eight trees (0534); NO false-positive audit is recorded for this family, so the number is a count and not a quality judgement"
+    FUnusedLocal =>
+      "1 finding across the eight trees (0534); no false-positive audit recorded"
+    FUnusedParam =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); a scan without this family's findings is therefore NOT evidence of cleanliness"
+    FParamChanged =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); a scan without this family's findings is NOT evidence of cleanliness"
+    FAssignType =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); a scan without this family's findings is NOT evidence of cleanliness"
+    FArgType =>
+      "1 finding across the eight trees (0534); no false-positive audit recorded"
+    FOpMismatch =>
+      "9 findings across the eight trees (0534); no false-positive audit recorded, and the operand-shape rules behind them have been changed often enough that the count should be re-read before it is quoted"
+    FMethodError =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); a scan without this family's findings is NOT evidence of cleanliness"
+    FCondBool =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); a scan without this family's findings is NOT evidence of cleanliness"
+    FUnreachable =>
+      "ZERO module-view findings across the eight trees (0534) and ONE per-function over-report, which 0537 removed by refusing to let a caller-bound condition commit a frame; the regression row now asserts the ABSENCE of that finding, and a scan without this family's findings is still NOT evidence of cleanliness"
+    FStaleNosec =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); a scan without this family's findings is NOT evidence of cleanliness"
+    FInfeasibleBranch =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); it fires on hand-written contradiction fixtures, so this is a statement about REACH on real code and not about the emitter"
+    FRedundantGuard =>
+      "has never produced a finding on the pinned corpora or on this tree (measured, 0534); it fires on hand-written implication fixtures, so this is a statement about REACH on real code and not about the emitter"
+    FDeadStore =>
+      "29 findings across the corpora before its first audit, of which 20 were ONE defect in the CFG rather than in this family (0531), leaving 9; three false-positive classes among those nine are named and NONE is fixed (0532), so the remaining rate is disclosed rather than assumed to be zero"
+  }
+}
+
+///|
 pub fn Family::property(self : Family) -> String {
   match self {
     FParse =>
