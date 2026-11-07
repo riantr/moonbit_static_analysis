@@ -289,6 +289,24 @@ priv struct MethodDef {
 
 ///|
 priv struct Interp {
+  // 0537. THE CALLER-BOUND NAMES OF THE FRAME BEING EXECUTED. When a function is
+  // analysed FROM A CALL SITE its parameters are bound to the CALLER'S argument
+  // values, so a branch inside it can be committed by a value this analysis
+  // chose rather than one the program fixes. These two fields are the
+  // discriminator 0524 said was needed and 0535 failed to find:
+  //
+  //   caller_names      the callee's parameter names, set at the call site and
+  //                     restored on the way out (empty for a top-level frame,
+  //                     whose parameters come from DECLARED TYPES)
+  //   fold_used_caller  set when a CONDITION that mentions one of those names is
+  //                     what committed the frame to a branch
+  //
+  // `MSA-011` reads the second: a frame whose branch was committed by a
+  // caller-derived value must not conclude that the other side is unreachable.
+  // A literal IN THE SOURCE is not in `caller_names`, which is what keeps the
+  // 0425 true positives reporting.
+  mut caller_names : Array[String]
+  mut fold_used_caller : Bool
   methods : Map[String, MethodDef]
   /// Names that exist but whose body is not analysed — the cross-file symbol
   /// table. A call to one of these is dispatched as an unknown-returning call
@@ -416,6 +434,8 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
     ambient.set(n, true)
   }
   Interp::{
+    caller_names: [],
+    fold_used_caller: false,
     methods: Map([]),
     extern_iface,
     ambient,
@@ -873,10 +893,13 @@ fn Interp::exec_block(
           // whose condition FOLDS to a literal. Neither of those depends on a
           // caller. So the guard has to separate "decided by a literal in the
           // source" (sound) from "decided by the argument this execution
-          // happened to see" (needs semantics) -- which means binding a callee's
-          // parameters ABSTRACTLY instead of from the caller, an increment of its
-          // own. Until then the over-report stands and MSA-011's `excluded`
-          // contract names it.
+          // happened to see" (needs semantics).
+          //
+          // 0537: THAT SEPARATION NOW HAPPENS AT THE BRANCH, NOT HERE -- a
+          // condition naming a caller-bound parameter never folds, so this
+          // frame only reaches a terminator through a path every caller takes.
+          // Guarding the report instead was 0535's attempt, and it silenced the
+          // 0425 true positives along with the false one.
           self.report(@core.FUnreachable, "unreachable code", s.span)
           break
         }
@@ -957,9 +980,35 @@ fn Interp::exec_stmt(
         _ => ()
       }
     }
-    SIf(cond, then, elseifs, els) =>
-      // ABool constants prune dead branches (assembly point 3)
-      match self.eval(cond, env) {
+    SIf(cond, then, elseifs, els) => {
+      // 0537. A CONDITION THAT NAMES A CALLER-BOUND PARAMETER MUST NOT COMMIT
+      // THE FRAME TO ONE SIDE. Substituting `AAny` sends the decision into the
+      // unknown-condition arm below, which explores EVERY branch and joins
+      // their flows -- so:
+      //
+      //   fn f(c : Bool) { if c { return 1 } ; return 2 }   called f(true)
+      //     then returns, else falls through -> the join is FNormal
+      //     -> `return 2` is NOT reported            (0524's false positive)
+      //
+      //   fn f(c : Bool) { if c { return 1 } else { return 2 } ; 5 }
+      //     BOTH branches return -> the join is FReturn
+      //     -> `5` IS reported                        (the 0425 true positives)
+      //
+      // That is why the fix is here and not at the report: 0535 guarded the
+      // REPORT on the frame's origin and silenced both cases together. A
+      // condition built from a literal IN THE SOURCE mentions no caller-bound
+      // name and keeps folding exactly as before.
+      let cv = self.eval(cond, env)
+      // A STATEMENT, not `let pruned = if … { AAny } else { cv }`. The
+      // if-EXPRESSION spelling is outside this frontend's analyzed subset --
+      // measured, in this very tree: it added one `if expression is outside the
+      // analyzed subset` notice to the own-source scan and moved three pinned
+      // numbers with it. See 0532, which is where that limit is recorded.
+      let mut pruned = cv
+      if self.cond_mentions_caller_name(cond) {
+        pruned = AAny
+      }
+      match pruned {
         ABool(true) => self.exec_block(then, env)
         ABool(false) =>
           // Same join as the unknown-condition arm below, for the same reason:
@@ -1074,6 +1123,7 @@ fn Interp::exec_stmt(
           self.flow = join_flow(flows)
         }
       }
+    }
     SWhile(cond, body) => {
       let cv = self.eval(cond, env)
       if !vboolean(cv) {
@@ -2516,7 +2566,23 @@ fn Interp::call(
           j5 += 1
         }
       }
-      self.analyze_fn(def, ordered)
+      // 0537. THE CALLEE'S PARAMETERS ARE CALLER-BOUND FOR THE LENGTH OF THIS
+      // FRAME. Its arguments are the caller's values, so a condition that
+      // mentions those names can be committed by a value this analysis chose --
+      // which is what `MSA-011` must not read as reachability. Saved and
+      // restored, because the callee may call further functions: everything
+      // under it is caller-bound to ITS OWN parameters, and this frame's sets go
+      // back on the way out.
+      let saved_caller_names = self.caller_names
+      let saved_fold_used_caller = self.fold_used_caller
+      self.caller_names = def.pnames
+      self.fold_used_caller = false
+      // The value `analyze_fn` returns IS this call's result, so it is carried
+      // out through the restores rather than dropped.
+      let callee_value = self.analyze_fn(def, ordered)
+      self.caller_names = saved_caller_names
+      self.fold_used_caller = saved_fold_used_caller
+      callee_value
     }
     None => {
       // A name the cross-file table knows: the callee exists, in a file this
@@ -2617,6 +2683,35 @@ fn Interp::tail_bound(
   }
   if env.contains(tail) || self.globals.contains(tail) {
     return true
+  }
+  false
+}
+
+///|
+
+///|
+/// Does this condition mention a name bound FROM A CALLER'S ARGUMENT?
+///
+/// 0537. This is the discriminator, and it is a property of the CONDITION rather
+/// than of the frame: `fn f(c : Bool) { if c { return 1 } ; return 2 }` called as
+/// `f(true)` must not conclude that `return 2` is dead, while
+/// `fn f(c : Bool) { if true { return 1 } ; ... }` must -- and both have a
+/// parameter and both are analysed from a call site, so neither "did this frame
+/// come from a call" nor "does the callee take parameters" separates them.
+///
+/// `@flow.names_of_expr` is reused rather than re-implemented: the traversal over
+/// `EKind` already exists there, and `flow` depends only on `ast` and `core`, so
+/// the dependency introduces no cycle.
+fn Interp::cond_mentions_caller_name(self : Interp, cond : @ast.Expr) -> Bool {
+  if self.caller_names.length() == 0 {
+    return false
+  }
+  let names : Map[String, Bool] = Map([])
+  @flow.names_of_expr(names, cond)
+  for n, _ in names {
+    if self.caller_names.contains(n) {
+      return true
+    }
   }
   false
 }

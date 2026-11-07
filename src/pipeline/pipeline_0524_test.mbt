@@ -59,10 +59,18 @@ test "0524: a statement after an unconditional return is unreachable" {
 /// been fixed -- delete this test, update NARRATIVE 0524, and remove the
 /// `excluded` clause that names it. A defect that is only described in prose is
 /// a defect nobody notices being fixed or re-introduced.
-test "0524: a caller's argument can make MSA-011 over-report (KNOWN false positive)" {
+test "0524: a caller's argument no longer makes MSA-011 over-report (FIXED in 0537)" {
+  // THIS ROW USED TO ASSERT THE WRONG ANSWER ON PURPOSE, and its own instruction
+  // was to be deleted when it went red. It went red in 0537. It is kept and
+  // INVERTED rather than deleted, because the defect is exactly the kind that
+  // comes back: a regression here is silent, and a deleted test cannot catch it.
+  //
+  // 0537's rule: a condition naming a name bound FROM THE CALLER'S ARGUMENTS no
+  // longer commits the frame -- both sides are explored and their flows joined.
+  // `f(false)` returns 2, so `return 2` is reachable and neither is it dead code.
   let src = "fn f(c : Bool) -> Int {\n  if c {\n    return 1\n  }\n  return 2\n}\nlet x = f(true)\n"
   let r = @pipeline.run(src, "u.mbt", empty_iface())
-  assert_eq(count0524(r.reports, "MSA-011"), 1)
+  assert_eq(count0524(r.reports, "MSA-011"), 0)
 }
 
 ///|

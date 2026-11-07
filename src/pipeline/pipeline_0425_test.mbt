@@ -241,13 +241,19 @@ test "0425: a false condition with no else at all falls through" {
 /// arm: an earlier version of this file used `f(1)` for BOTH, so its "control"
 /// was re-testing constant folding and looked like it proved something about
 /// `else`.
-test "0425: a folded condition makes the untaken branch's continuation dead" {
+test "0425: a condition decided by the CALLER's argument does not kill the continuation" {
+  // 0537. THIS ROW USED TO EXPECT 1, AND THE EXPECTATION WAS THE 0524 FALSE
+  // POSITIVE WEARING A TRUE POSITIVE'S NAME. `n > 0` folds only because `f` was
+  // called with the literal `1`; `f(-1)` reaches `return 2` on the very next
+  // line. A condition that names a caller-bound parameter now explores both
+  // sides and joins, so nothing after the `if` is claimed dead -- which is what
+  // this row measures now.
   let r = @pipeline.run(
     "fn f(n : Int) -> Int {\n  if n > 0 {\n    return 1\n  }\n  return 2\n}\nlet x = f(1)\n",
     "folded_condition.mbt",
     @core.IfaceSymTab::empty(),
   )
-  assert_eq(count_family(r, "Unreachable"), 1)
+  assert_eq(count_family(r, "Unreachable"), 0)
 }
 
 ///|
