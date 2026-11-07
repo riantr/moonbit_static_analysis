@@ -11553,3 +11553,55 @@ worse than the recorded over-report it would fix.
 SCOPING IS THE DELIVERABLE WHEN THE CYCLE DOES NOT FIT. Two call sites and the
 entry path's existing abstraction turn "needs a new analysis" into "needs a flag
 and a re-pin", and that difference is what the next cycle buys.
+## 0534: SIX OF FIFTEEN FAMILIES HAVE EVER FIRED, AND THAT CORRECTS 0533's BLAST RADIUS
+
+0530 recorded that `MSA-013`/`MSA-014` had never fired on the pinned trees and
+said such a count belongs beside the family. This is that count for ALL FIFTEEN,
+taken from the saved arm-A output of `_verify`'s eight-tree sweep (the seven
+pinned corpora plus this repository's own source, about 2,500 files), by counting
+the family id each rendered finding carries.
+
+### THE CENSUS
+
+    fired at least once          3411  MSA-001   (ParseError -- the declared scope limits)
+                                   29  MSA-015   (FDeadStore; the PRE-fix count, see 0531)
+                                   18  MSA-002
+                                    9  MSA-008
+                                    1  MSA-007
+                                    1  MSA-003
+
+    NEVER fired                       MSA-004  MSA-005  MSA-006  MSA-009  MSA-010
+                                      MSA-011  MSA-012  MSA-013  MSA-014
+
+NINE OF FIFTEEN HAVE NEVER PRODUCED A FINDING on any pinned tree. The three of
+those this session touched by hand (`MSA-013`, `MSA-014`, `MSA-011`) each fire on
+a hand-written fixture, so this is a statement about REACH on real code and not
+about broken emitters -- but a reader of a scan cannot tell the two apart, which
+is precisely what 0530 said the vocabulary work exists for.
+
+### THE CORRECTION: 0533 CALLED THE BLAST RADIUS BIGGER THAN IT IS
+
+0533 (and the 0524 audit it quotes) said fixing the `MSA-011` over-report is a
+call-semantics change that "moves findings on every corpus", and used that as the
+reason the fix needs its own re-pinning cycle and was not applied.
+
+MEASURED: `MSA-011` fires ZERO times on all eight trees. There is no corpus
+finding for the fix to move, so the re-pin that 0533 described as a blocker is,
+on this evidence, a no-op: `$PINNED`, `$PERFN`, `$PERFN_DEMOTED` and
+`$NOTICE_TOTAL` would all come back unchanged. What remains of the work is the
+interpreter change itself plus deleting the KNOWN-FALSE-POSITIVE test at 0524
+(which instructs its own removal when the fix lands) -- a bounded change, not a
+baseline-wide one.
+
+This is the same error shape as 0529's premise and 0531's `defer` guess: a
+recorded sentence inherited from an earlier section, repeated without being
+re-measured. The correction is written here rather than edited into 0533, because
+0533 is what the next cycle would otherwise have read and believed.
+
+=> 判据: A FAMILY THAT HAS NEVER FIRED IS INVISIBLE IN A SCAN AND DECISIVE IN A
+PLAN. Nine of fifteen have never spoken on ~2,500 files, and which nine changes
+what is worth building next.
+
+=> 判据: AN INHERITED SENTENCE ABOUT COST IS STILL A CLAIM ABOUT THE WORLD. "It
+moves findings on every corpus" was true of the fix in the abstract and is false
+of this tree's corpora, measurably, at zero.
