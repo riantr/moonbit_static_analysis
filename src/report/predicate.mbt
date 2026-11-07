@@ -143,6 +143,20 @@ pub fn Report::predicate(self : Report) -> Predicate? {
       } else {
         None
       }
+    // 0527. The claim is about ONE store, not about the binding: the name this
+    // store writes is not live after it, even though the binding may be read
+    // elsewhere. A checker reads the store's position, re-runs the liveness
+    // question and asks whether any path from here reads the name before
+    // writing it -- so both the name and the position are arguments.
+    @core.FDeadStore =>
+      if named {
+        Some({
+          check: "store_value_never_read",
+          params: [("name", subject), ("line", line), ("col", col)],
+        })
+      } else {
+        None
+      }
     // The claim is about POSITION, not about a name: "a statement at this line
     // follows one whose flow had already left the block". A checker reads the
     // line and the control flow above it, so the line is the argument.

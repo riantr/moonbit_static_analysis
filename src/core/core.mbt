@@ -63,7 +63,6 @@ pub fn path_tail(name : String) -> String {
   let n = chars.length()
   while i + 1 < n {
     if chars[i] == ':' && chars[i + 1] == ':' {
-      out = ""
       let mut j = i + 2
       let buf = StringBuilder()
       while j < n {
@@ -558,6 +557,18 @@ pub(all) enum Family {
   /// 0522. A test whose outcome the guards before it already force -- it can
   /// never take the other way, so it decides nothing.
   FRedundantGuard
+  /// 0527. A store whose value is read on NO path before it is overwritten or
+  /// the function exits.
+  ///
+  /// This is NOT `FUnusedLocal`, and the difference is the whole reason the
+  /// family exists. `FUnusedLocal` is syntactic and whole-function: the binding
+  /// is never read anywhere. This one is the LIVENESS answer (book §5.4) over a
+  /// control-flow graph: the binding may be read elsewhere in the function and
+  /// this particular store's value is still dead, because every path from it
+  /// writes the name again before any read. A loop counter assigned twice is the
+  /// smallest example, and it is a real defect: the first store is wasted work,
+  /// and if the right-hand side has effects, wasted effects.
+  FDeadStore
 }
 
 ///|
@@ -577,6 +588,7 @@ pub fn Family::name(self : Family) -> String {
     FStaleNosec => "StaleNosec"
     FInfeasibleBranch => "InfeasibleBranch"
     FRedundantGuard => "RedundantGuard"
+    FDeadStore => "DeadStore"
   }
 }
 
@@ -614,6 +626,7 @@ pub fn Family::id(self : Family) -> String {
     FStaleNosec => "MSA-012"
     FInfeasibleBranch => "MSA-013"
     FRedundantGuard => "MSA-014"
+    FDeadStore => "MSA-015"
   }
 }
 
@@ -650,6 +663,7 @@ pub fn family_by_id(id : String) -> Family? {
     "MSA-012" => Some(FStaleNosec)
     "MSA-013" => Some(FInfeasibleBranch)
     "MSA-014" => Some(FRedundantGuard)
+    "MSA-015" => Some(FDeadStore)
     _ => None
   }
 }
@@ -678,6 +692,7 @@ pub fn all_families() -> Array[Family] {
     FStaleNosec,
     FInfeasibleBranch,
     FRedundantGuard,
+    FDeadStore,
   ]
 }
 
@@ -717,6 +732,8 @@ pub fn Family::property(self : Family) -> String {
       "no input reaches this branch: the guards on the way to it contradict it, so its domain D[P] is empty"
     FRedundantGuard =>
       "the guards before this test already force its outcome, so the test cannot decide anything"
+    FDeadStore =>
+      "the value this store wrote is read on no path before the name is written again or the function exits"
   }
 }
 
@@ -756,6 +773,8 @@ pub fn Family::assumption(self : Family) -> String {
       "facts come only from a guard comparing an IMMUTABLE local binding against a LITERAL, within one function; a rebound, aliased or non-literal operand carries no fact"
     FRedundantGuard =>
       "the same fragment: an immutable binding against a literal, with integer comparisons that do not wrap and no reassignment between the two guards"
+    FDeadStore =>
+      "a BACKWARD MAY analysis over this function body's control-flow graph: not-live is the trustworthy direction, so a read the graph does not model can only make this report wrong, and every such case is named in excluded"
   }
 }
 
@@ -796,6 +815,8 @@ pub fn Family::excluded(self : Family) -> String {
       "feasibility that needs a call result, an index, an arithmetic identity or an interprocedural fact -- undecidable in general, so a branch this model cannot decide is counted UNDECIDED rather than claimed reachable"
     FRedundantGuard =>
       "the same fragment; a test whose operand was mutated after the binding carries no fact, so it is undecided rather than reported"
+    FDeadStore =>
+      "reads this graph does not model: a break or continue edge is a Stop, a nested function body is its own graph, and a read through a field or index alias is not tracked -- so the store is a candidate rather than a proof of uselessness, and a right-hand side with effects is unaffected by the finding"
   }
 }
 
@@ -809,6 +830,7 @@ pub fn Family::severity(self : Family) -> Severity {
     FStaleNosec => Warning
     FInfeasibleBranch => Warning
     FRedundantGuard => Warning
+    FDeadStore => Warning
   }
 }
 

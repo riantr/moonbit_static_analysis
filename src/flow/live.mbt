@@ -226,7 +226,7 @@ fn names_of_stmt(out : Map[String, Bool], s : @ast.Stmt) -> Unit {
 pub fn node_defs(kind : NodeKind) -> Map[String, Bool] {
   let out = name_set_empty()
   match kind {
-    Assign(x, _) => out.set(x, true)
+    Assign(x, _) | Store(x, _) => out.set(x, true)
     AssignMulti(names, _) =>
       for n in names {
         out.set(n, true)
@@ -241,8 +241,15 @@ pub fn node_defs(kind : NodeKind) -> Map[String, Bool] {
 pub fn node_uses(kind : NodeKind) -> Map[String, Bool] {
   let out = name_set_empty()
   match kind {
-    Assign(_, e) | AssignMulti(_, e) | Eval(e) | Test(e) =>
+    Assign(_, e) | Store(_, e) | AssignMulti(_, e) | Eval(e) | Test(e) =>
       names_of_expr(out, e)
+    // A write THROUGH a place reads its base: you need `x` to store into `x.f`,
+    // and the base is not redefined by it. It also reads whatever the right-hand
+    // side mentions.
+    PlaceStore(x, e) => {
+      out.set(x, true)
+      names_of_expr(out, e)
+    }
     Entry | Exit | Stop => ()
   }
   out

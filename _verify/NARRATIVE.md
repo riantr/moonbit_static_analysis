@@ -7584,7 +7584,7 @@ spelling is a hand-written `match` (`core.mbt:545-560`). The names and the enum 
 not the same thing:
 
 ```
-    0505 the family roster, families              : 14
+    0505 the family roster, families              : 15
     0505 the family roster, names that differ     : 5
 
 AND WHEN THE ROSTER MOVES, THESE TWO NUMBERS MOVE WITH IT, and the fix is to RE-READ
@@ -8214,8 +8214,8 @@ about one kind of call.
 ### WHAT DID NOT MOVE, AND WHY THAT IS THE POINT
 
 ```
-    0507 the family roster, families   : 14
-    0507 the family roster, ids         : 14
+    0507 the family roster, families   : 15
+    0507 the family roster, ids         : 15
     0507 the confidence axis, values     : 3
 ```
 
@@ -9463,12 +9463,12 @@ the gate reads; `_verify/check_transfer_scope.ps1` resolves every line of it
 against this tree, so it cannot rot without the gate saying so.
 
     --- TRANSFER MAP ---
-    row 1  src/core/core.mbt:482        enum Confidence
+    row 1  src/core/core.mbt:481        enum Confidence
     row 1  src/report/report.mbt:214    fn Report::confidence
     row 1  src/jsoncli/main.mbt:50      confidence : String
-    row 2  src/core/core.mbt:538        enum Family
-    row 2  src/core/core.mbt:601        fn Family::id
-    row 2  src/core/core.mbt:637        fn family_by_id
+    row 2  src/core/core.mbt:537        enum Family
+    row 2  src/core/core.mbt:613        fn Family::id
+    row 2  src/core/core.mbt:650        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
@@ -10938,3 +10938,162 @@ produces answers that look more confident, not less.
 => 判据: A RESERVED WORD IS A NAMING DECISION SOMEBODY ELSE ALREADY MADE. Three
 times now this tree has lost a name to the language; each one is written down
 where it bit.
+## 0528: A STORE WHOSE VALUE NOBODY READS -- AND THE TWO WAYS THE FIRST VERSION WAS WRONG
+
+Increment 2 of the book plan (§5.4, §5.8) landed the analysis in 0527 and stops
+there: `live_out` exists, it is tested, and NOTHING calls it. This section is the
+family that calls it, and the record of the two false-positive classes that had
+to be closed before the family could be allowed to fire on this tree's own
+source.
+
+### THE CLAIM, AND WHY IT IS NOT FUnusedLocal's CLAIM
+
+`MSA-015 FDeadStore`: a value is stored into a name, and on NO path from that
+store is the name read before it is written again. This is strictly sharper than
+"this local is never read anywhere", which is what `FUnusedLocal` already says.
+The two claims are kept apart by the NODE KIND, not by a filter at the reporting
+end:
+
+    Assign      a `let` / `let mut` -- a declaration. NOT this family's claim:
+                a binding that is never read is FUnusedLocal's, and it is a
+                different statement about the program.
+    Store       `SAssign (EName n)` -- a write to a name already declared.
+    PlaceStore  `SAssign (EField/...)` -- a write THROUGH a name.
+
+The emitter declines rather than guesses, in two situations, and both are stated
+in the code because a decline that is not disclosed is indistinguishable from a
+clean result:
+
+1. the target name is not DECLARED anywhere in the body (parameters plus every
+   `let`/destructuring). `z = x * 2` with no `let z` is `UndefinedName`'s claim,
+   and reporting it here would be this family taking credit for another's
+   defect;
+2. the graph reports `skipped > 0` for the function -- the CFG did not faithfully
+   convert everything in it, so a liveness answer computed on it is not a claim
+   about the program.
+
+### FALSE POSITIVE CLASS 1, MEASURED: A FIELD WRITE IS NOT A REDEFINITION
+
+`assigned_base()` returns the same name for `x = e` and for `x.f = e`. Treating
+the second as a definition of `x` says the REFERENCE was overwritten, which it
+was not -- the reference is READ to find the object to mutate.
+
+    before:  162 findings on this tree
+              of which 56 were `self` -- a field mutation read as a redefinition
+    after:   `NodeKind.PlaceStore` treats the base as a USE and defines NOTHING
+              self 56 -> 0, total 162 -> 106
+
+### FALSE POSITIVE CLASS 2, MEASURED: `break` AND `continue` HAD NO EDGE
+
+Both statements became a `Stop` node, so the edge to the loop's exit was simply
+absent from the graph. A store made before a `break`, whose value IS read after
+the loop, then looks dead -- because the path that reads it is not in the graph
+the analysis reasoned over.
+
+    before:  106 findings
+    after:   both statements are counted into `skipped`, so the emitter DECLINES
+             every function containing one:  106 -> 4
+             (102 of the 106 were this class)
+
+A `Cfg` field would have been the tidier design and was rejected: it would have
+forced edits in three `Cfg` literal sites in the tests, and "not faithfully
+converted" already covers `break`/`continue` honestly -- the answer is not "the
+path is dead", it is "this function was not converted".
+
+### THE FOUR THAT SURVIVED, AND WHAT THEY WERE
+
+The two in this tree's own non-scratch source were audited one at a time and
+BOTH are true positives. Reproduced from `HEAD`'s exact bytes rather than
+remembered (the analyzer was pointed at the pre-fix text in a scratch
+directory):
+
+    66:7  - warning: the value stored in 'out' is read on no path before the name
+            is written again (DeadStore) [structural, MSA-015, high]
+    167:9 - warning: the value stored in 'reason' is read on no path ...
+
+`core.mbt:66`: `path_tail` wrote `out = ""` and then unconditionally wrote
+`out = buf.to_string()` four lines later with no read between. A leftover.
+
+`pipeline.mbt:167`: the parse-reason tally wrote `reason = r.message` while
+counting, and then unconditionally reset `reason = ""` and re-picked the dominant
+reason AFTER the skip subtraction. The code carried a comment explaining the
+redesign -- "Re-pick the dominant reason AFTER the subtraction. Doing it
+incrementally left a file that had both a skip and a real parse failure with no
+reason at all" -- so the incremental write was not a bug being found, it was the
+superseded half of a redesign that had been left in place.
+
+BOTH WERE FIXED AND NOT SUPPRESSED. A family whose first act on its own source
+is to add `// nosec` comments has measured nothing; the code was wrong, and the
+two writes were removed. `reason_n` moved down to the one place it is still
+used, so the block now reads as what it is.
+
+    the tree's own source, under the release gate's flags:
+      files=209 parsed=209 actionable=0 notices=1748 unreliable=0 withheld=0
+      unchecked=4768    (209 files; 191 .mbt + 17 .mbti + 1 .mbtp)
+
+Scratch copies under `_verify/` are read by this scan (a pre-existing inflation
+recorded in 0526), so a clean checkout reads fewer files -- but they no longer
+carry a finding of their own in this family.
+
+### THE PINS HAD TO MOVE, AND THE FILE COUNT SAYS WHY
+
+    SELF_FILES        199 -> 209     199 + flow's 8 + deadstore's 2
+    SELF_NOTICES      the table below; 1721 -> 1748 notices
+    SELF_PRINTED       136 -> 142
+    SELF_AGGREGATED   1585 -> 1606
+    NOTICE_TOTAL     19658 -> 19685   the seven pinned corpora + this tree
+
+The notice table gained exactly what the new source contributes, and nothing
+else moved:
+
+| kind                      | was  | now  |
+|---------------------------|-----:|-----:|
+| `test` declaration        | 1464 | 1481 |
+| `if` expression           |  115 |  115 |
+| `struct` declaration      |   69 |   72 |
+| `derive` declaration      |   20 |   20 |
+| `enum` declaration        |   25 |   26 |
+| `anonymous function lit.` |   18 |   24 |
+| `const` declaration       |    6 |    6 |
+| `short lambda`            |    2 |    2 |
+| `try` expression          |    1 |    1 |
+| `type` declaration        |    1 |    1 |
+
+    1481+115+72+20+26+24+6+2+1+1 = 1748 = printed 142 + aggregated 1606
+
+`NOTICE_TOTAL` is the sum over the seven pinned corpora (17937) and this tree
+(1748). The corpus terms are the pinned values because the corpora are not
+edited by this work; the own-source term is measured.
+
+### THE TRANSFER MAP MOVED TWICE, AND THE GATE CAUGHT IT TWICE
+
+`check_transfer_scope.ps1` resolves every line number in 0525's map against this
+tree. Two separate edits inside `core.mbt` moved it:
+
+    after MSA-015's tables landed above them:  Family::id 601 -> 614
+                                              family_by_id 637 -> 651
+    after one dead store was removed at :66:   enum Confidence 482 -> 481,
+                                              enum Family 538 -> 537,
+                                              Family::id 614 -> 613,
+                                              family_by_id 651 -> 650
+
+Neither drift was noticed by reading; both were noticed by the gate, which is
+the only reason the map is worth having. A map of line numbers with no gate is a
+map that is wrong in silence.
+
+    moon fmt --check        exit 0
+    moon check --deny-warn  exit 0
+    moon test --target wasm 1384/1384   (was 1380; +4 for the new family)
+    moon test --target js   1248/1248
+
+=> 判据: A FAMILY THAT FIRES ON ITS OWN SOURCE HAS NOT BEEN MEASURED UNTIL THE
+FINDINGS HAVE BEEN READ. Both false-positive classes here outnumbered the true
+positives by more than a hundred to one, and neither was visible in a count.
+
+=> 判据: A DECLINE THAT IS NOT DISCLOSED IS INDISTINGUISHABLE FROM A CLEAN
+RESULT. `skipped > 0` and "target not declared" are reported as reasons to say
+nothing, and `unchecked` carries them to the reader.
+
+=> 判据: THE FIRST ACT ON A FINDING IS TO READ IT, NOT TO SUPPRESS IT. The two
+surviving findings were real, so the code changed. A `// nosec` would have
+closed the gate and left the defect.

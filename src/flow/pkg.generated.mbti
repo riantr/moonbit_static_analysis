@@ -1,0 +1,79 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "riantr/moonbit_static_analysis/src/flow"
+
+import {
+  "riantr/moonbit_static_analysis/src/ast",
+  "riantr/moonbit_static_analysis/src/core",
+}
+
+// Values
+pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
+
+pub fn[T] join_all(Lattice[T], Array[T]) -> T
+
+pub fn[T] join_of_nodes(Lattice[T], Array[T], Array[Int32]) -> T
+
+pub fn live_in(Cfg) -> Array[Map[String, Bool]]
+
+pub fn live_out(Cfg, Array[Map[String, Bool]]) -> Array[Map[String, Bool]]
+
+pub fn name_set_empty() -> Map[String, Bool]
+
+pub fn name_set_eq(Map[String, Bool], Map[String, Bool]) -> Bool
+
+pub fn name_set_lattice() -> Lattice[Map[String, Bool]]
+
+pub fn name_set_union(Map[String, Bool], Map[String, Bool]) -> Map[String, Bool]
+
+pub fn names_of_expr(Map[String, Bool], @ast.Expr) -> Unit
+
+pub fn no_span() -> @core.Span
+
+pub fn node_defs(NodeKind) -> Map[String, Bool]
+
+pub fn node_uses(NodeKind) -> Map[String, Bool]
+
+pub fn pred_of(Array[Array[Int32]]) -> Array[Array[Int32]]
+
+pub fn[T] solve_propagation(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
+
+pub fn[T] solve_round_robin(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
+
+pub fn[T] states_after(Int32, Array[T], (Int32, T) -> T) -> Array[T]
+
+// Errors
+
+// Types and methods
+pub(all) struct Cfg {
+  kinds : Array[NodeKind]
+  spans : Array[@core.Span]
+  succ : Array[Array[Int32]]
+  pred : Array[Array[Int32]]
+  entry : Int32
+  exit : Int32
+  skipped : Int32
+}
+pub fn Cfg::dump(Self) -> String
+pub fn Cfg::kind_label(Self, Int32) -> String
+
+pub(all) struct Lattice[T] {
+  bot : () -> T
+  join : (T, T) -> T
+  eq : (T, T) -> Bool
+}
+
+pub(all) enum NodeKind {
+  Entry
+  Exit
+  Assign(String, @ast.Expr)
+  Store(String, @ast.Expr)
+  PlaceStore(String, @ast.Expr)
+  AssignMulti(Array[String], @ast.Expr)
+  Eval(@ast.Expr)
+  Test(@ast.Expr)
+  Stop
+}
+
+// Type aliases
+
+// Traits

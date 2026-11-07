@@ -52,8 +52,8 @@ if (-not (Test-Path -LiteralPath $moonrun)) {
 # THE PINS. One copy, here. The narrative quotes them; the last row checks
 # that it does, so the two can never drift apart without the gate going red.
 # ---------------------------------------------------------------------------
-$WANT_FAMILIES   = 14     # members of the `Family` enum
-$WANT_ROSTER     = 14     # ids in the roster, MSA-001 .. MSA-014
+$WANT_FAMILIES   = 15     # members of the `Family` enum
+$WANT_ROSTER     = 15     # ids in the roster, MSA-001 .. MSA-014
 $WANT_CONFIDENCE = 3      # high / low / undecided
 $WANT_STALE_ID   = 'MSA-012'
 

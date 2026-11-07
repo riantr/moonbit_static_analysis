@@ -99,7 +99,7 @@ $WANT_REACH_UNCHECK = 16250   # of those, the signature is known by NAME only
 $WANT_REACH_FILES   = 657     # files carrying an unchecked call
 $WANT_MBTI_FILES    = 159     # .mbti files in the pinned corpus
 $WANT_MBTI_PUBFN    = 2116    # `pub fn` declarations across them
-$WANT_FAMILIES      = 14      # members of the `Family` enum
+$WANT_FAMILIES      = 15      # members of the `Family` enum
 $WANT_NAME_DIFFERS  = 5       # of them, whose public name is not the tag minus `F`
 
 $fail = 0

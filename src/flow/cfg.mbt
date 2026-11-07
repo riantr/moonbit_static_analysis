@@ -45,8 +45,29 @@
 pub(all) enum NodeKind {
   Entry
   Exit
-  /// `x = e` -- from `SLet` and from `SAssign` whose target has a base name.
+  /// `let x = e` -- a DECLARATION. Its "never read" is `FUnusedLocal`'s claim.
   Assign(String, @ast.Expr)
+  /// `x = e` -- a STORE to a name that already exists.
+  ///
+  /// WHY THIS IS A SEPARATE KIND FROM `Assign`. A dead store is a claim about ONE
+  /// write; a `let` whose value is never read is a different claim about a
+  /// binding, and this tree already has a family for it (`FUnusedLocal`). One
+  /// kind for both would force the liveness pass either to report one line under
+  /// two families or to choose between them in prose, and prose is where that
+  /// distinction would be lost.
+  Store(String, @ast.Expr)
+  /// `x.f = e` / `xs[i] = e` -- a store THROUGH a place, whose base name is
+  /// carried so an analysis can see the read it performs.
+  ///
+  /// THE BASE OF A PLACE-STORE IS A USE, NOT A DEFINITION, and getting that
+  /// backwards is not a small error. `assigned_base()` reports the same name for
+  /// `x = e` and for `x.f = e`, so treating both as a redefinition of `x` says
+  /// the reference `x` was overwritten when only a field of what it points at
+  /// was. Measured: 56 of the 162 dead-store findings on this repository's own
+  /// source were `self`, every one of them a `self.field = ...` -- a systematic
+  /// false positive caused by exactly this conflation, found by aggregating the
+  /// findings by name before believing them.
+  PlaceStore(String, @ast.Expr)
   /// `let (a, b) = e` -- binds several names at once.
   AssignMulti(Array[String], @ast.Expr)
   /// An expression evaluated for its effect (a call, a `match`, a block).
@@ -209,21 +230,27 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
       n
     }
     @ast.SAssign(lhs, rhs) =>
-      // `x.f = e` and `xs[i] = e` are assignments to a PLACE, not to a local;
-      // `assigned_base` names the local they go through, so the graph can say
-      // which name an analysis has to invalidate. A target with no base name is
-      // evaluated for effect instead of being pretended into an assignment.
-      match lhs.assigned_base() {
-        Some(x) => {
-          let n = b.add(Assign(x, rhs), s.span)
+      // A plain `x = e` is a redefinition of the NAME; anything else is a write
+      // THROUGH a place, and `assigned_base()` gives the same name for both.
+      match lhs.kind {
+        @ast.EName(x) => {
+          let n = b.add(Store(x, rhs), s.span)
           b.link(n, [next])
           n
         }
-        None => {
-          let n = b.add(Eval(rhs), s.span)
-          b.link(n, [next])
-          n
-        }
+        _ =>
+          match lhs.assigned_base() {
+            Some(x) => {
+              let n = b.add(PlaceStore(x, rhs), s.span)
+              b.link(n, [next])
+              n
+            }
+            None => {
+              let n = b.add(Eval(rhs), s.span)
+              b.link(n, [next])
+              n
+            }
+          }
       }
     @ast.SIf(cond, then_body, elifs, else_body) => {
       // The branch node's position is the CONDITION's: a reader looking at
@@ -257,7 +284,21 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
       let after_inner = build_one(b, inner, next)
       build_seq(b, body, after_inner)
     }
-    @ast.SReturn(_) | @ast.SRaise(_) | @ast.SBreak(_) | @ast.SContinue(_) => {
+    @ast.SReturn(_) | @ast.SRaise(_) => {
+      let n = b.add(Stop, s.span)
+      b.link(n, [])
+      n
+    }
+    // COUNTED AS SKIPPED, and that is not a naming shortcut. `break` and
+    // `continue` become `Stop`, which is a node -- but the edge each should add
+    // (to the loop's exit, and to its head) is NOT added, so the loop exit is
+    // unreachable FROM the break. A liveness pass reading that graph sees a path
+    // that ends early, and a store before a `break` whose value is read after
+    // the loop then looks dead. Since `skipped` is exactly "the statements this
+    // graph did not faithfully convert", the honest thing is to count them here
+    // and let a claim be declined instead of guessed.
+    @ast.SBreak(_) | @ast.SContinue(_) => {
+      b.skipped = b.skipped + 1
       let n = b.add(Stop, s.span)
       b.link(n, [])
       n
@@ -334,6 +375,8 @@ pub fn Cfg::kind_label(self : Cfg, v : Int32) -> String {
     Entry => "entry"
     Exit => "exit"
     Assign(x, _) => "assign \{x}"
+    Store(x, _) => "store \{x}"
+    PlaceStore(x, _) => "place-store \{x}"
     AssignMulti(names, _) => "assign-multi \{names.length()} names"
     Eval(_) => "eval"
     Test(_) => "test"

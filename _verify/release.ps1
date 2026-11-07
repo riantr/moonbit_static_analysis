@@ -364,11 +364,11 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19658'
-$SELF_FILES = '199'
-$SELF_NOTICES = 'test declaration=1464|if expression=115|struct declaration=69|derive declaration=20|enum declaration=25|anonymous function literal=18|const declaration=6|short lambda=2|try expression=1|type declaration=1'
-$SELF_PRINTED = '136'
-$SELF_AGGREGATED = '1585'
+$NOTICE_TOTAL = '19685'
+$SELF_FILES = '209'
+$SELF_NOTICES = 'test declaration=1481|if expression=115|struct declaration=72|derive declaration=20|enum declaration=26|anonymous function literal=24|const declaration=6|short lambda=2|try expression=1|type declaration=1'
+$SELF_PRINTED = '142'
+$SELF_AGGREGATED = '1606'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.

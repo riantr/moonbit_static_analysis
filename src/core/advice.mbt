@@ -95,5 +95,10 @@ pub fn Family::advice(self : Family) -> Advice {
         why: "The guards before this test already force its outcome, so it cannot take the other way and decides nothing. Unlike a constant condition, nothing here is literally constant: the test is redundant only in the context of the path that reaches it.",
         how: "Remove the test, or, if the earlier guard's bound looks wrong, fix that one -- a redundant test is frequently the symptom of a bound that was meant to be tighter. Kept as a finding rather than a notice because a test that cannot fail removes the safety the reader believes it provides.",
       }
+    FDeadStore =>
+      Advice::{
+        why: "The value this store wrote is read on no path: every way out of here either writes the name again before reading it or leaves the function. The binding itself may be used elsewhere -- this is about ONE store, which is why the finding is a liveness result and not an unused-local one.",
+        how: "Delete the store, or move it to where its value is actually wanted. If the right-hand side has effects you need, keep those and drop only the binding. Reported as a finding because a store nobody reads is dead weight the reader is paying for at runtime and, more importantly, it usually means the value they expected to be there came from somewhere else.",
+      }
   }
 }

@@ -54,6 +54,7 @@ pub(all) enum Family {
   FStaleNosec
   FInfeasibleBranch
   FRedundantGuard
+  FDeadStore
 }
 pub fn Family::advice(Self) -> Advice
 pub fn Family::assumption(Self) -> String

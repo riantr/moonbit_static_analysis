@@ -131,10 +131,10 @@ test "pruning appears twice: structural fold and lattice ABool" {
 ///|
 test "structural-only: unused param/local/changed param invisible to others" {
   let r = @pipeline.run(SAMPLE_STRUCTURE, "s.mbt", empty_iface())
-  // 0502. THREE, not two, and the third one is the finding this increment
-  // produced: `z = x * 2` in SAMPLE_STRUCTURE assigns a name that is declared
-  // NOWHERE, and the collector used to take the assignment target for a
-  // binding of the scope that assigned it.
+  // 0502. The `z` report is the finding that increment produced: `z = x * 2` in
+  // SAMPLE_STRUCTURE assigns a name that is declared NOWHERE, and the collector
+  // used to take the assignment target for a binding of the scope that assigned
+  // it.
   //
   // That was a no-op wherever the name was already declared -- `bind` skips a
   // name the frame already holds -- so it only ever did something in the one
@@ -149,7 +149,15 @@ test "structural-only: unused param/local/changed param invisible to others" {
   // is what it always was -- an undeclared name, and `moon check` rejects this
   // sample for exactly that reason (`z = x * 2` with no `let z`). The
   // analyzer now says so too.
-  assert_eq(r.reports.length(), 3)
+  // 0528. FOUR, not three. The fourth is `y = 3`: `y` is a PARAMETER, so it is a
+  // declared binding, and the function returns `z`, so nothing reads `y` after
+  // the store. That is a genuine dead store, and it was in this fixture from the
+  // start -- the family found it rather than being tuned until it agreed.
+  //
+  // The assignment to `z` is NOT one of them: `z` is declared nowhere, which is
+  // UndefinedName's claim, and the emitter requires a declared binding so that
+  // one line is not reported twice under two families.
+  assert_eq(r.reports.length(), 4)
   for rep in r.reports {
     assert_eq(rep.lenses.length(), 1)
     assert_eq(rep.lenses[0].name(), "structural")

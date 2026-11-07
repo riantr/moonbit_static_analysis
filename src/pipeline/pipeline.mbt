@@ -152,7 +152,6 @@ fn run_core(
   let mut n_parse = 0
   let reasons : Map[String, Int32] = Map([])
   let mut reason = ""
-  let mut reason_n = 0
   for r in parsed.reports {
     all.push(r)
     if r.family == @core.FParse {
@@ -162,10 +161,6 @@ fn run_core(
         None => 1
       }
       reasons.set(r.message, c)
-      if c > reason_n {
-        reason_n = c
-        reason = r.message
-      }
     }
   }
   // Deliberate subset exclusions share the FParse family but are NOT read
@@ -189,7 +184,7 @@ fn run_core(
   // left a file that had both a skip and a real parse failure with no reason at
   // all ("unspecified") when the skip had been the more frequent of the two.
   reason = ""
-  reason_n = 0
+  let mut reason_n = 0
   for m, c in reasons {
     if c > reason_n {
       reason_n = c
@@ -264,6 +259,12 @@ fn run_core(
   // findings after `first_error` are withheld rather than reported.
   if parsed.first_error == 0 {
     for r in @walk.guard_facts(parsed.tree.body) {
+      all.push(r)
+    }
+    // 0528. Dead stores share the `first_error == 0` precondition, and need one
+    // more: a graph that lost no statement. `dead_stores` applies that second
+    // guard itself, because it is about the graph rather than about the file.
+    for r in dead_stores(parsed.tree.body) {
       all.push(r)
     }
   }

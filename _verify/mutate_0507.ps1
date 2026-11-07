@@ -148,11 +148,11 @@ pub fn Report::confidence(self : Report) -> @core.Confidence {
     Name = 'M5 an unknown family id names a family'
     File = $CORE
     Find = @'
-    "MSA-014" => Some(FRedundantGuard)
+    "MSA-015" => Some(FDeadStore)
     _ => None
 '@.Replace("`r`n", "`n")
     Repl = @'
-    "MSA-014" => Some(FRedundantGuard)
+    "MSA-015" => Some(FDeadStore)
     _ => Some(FParse)
 '@.Replace("`r`n", "`n")
     MustRed = 'an unknown family id names no family'

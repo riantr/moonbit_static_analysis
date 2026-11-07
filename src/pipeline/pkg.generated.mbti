@@ -8,6 +8,8 @@ import {
 }
 
 // Values
+pub fn dead_stores(Array[@ast.Stmt]) -> Array[@report.Report]
+
 pub fn merge_findings(Array[@report.Report]) -> Array[@report.Report]
 
 pub fn merge_group(Array[@report.Report]) -> @report.Report
