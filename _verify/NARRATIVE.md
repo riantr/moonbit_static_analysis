@@ -11439,3 +11439,61 @@ control-flow node that ends a path is not a node that ends the dataflow.
 => 判据: A FIX THAT CHANGES NO OUTPUT IS NOT A FIX. The first attempt built the
 right node and returned the wrong one, and the only reason that was caught is
 that the fixture was re-run rather than reasoned about.
+## 0532: THE THREE CLASSES BEHIND THE NINE, EACH WITH A PROBE RATHER THAN A GUESS
+
+0531 pinned nine remaining `MSA-015` findings with their false-positive rate
+DISCLOSED but unexplained. This section replaces the guesses in 0531 with
+measurements. None of the three is fixed; each is a named scope limit with the
+construct that causes it, and the first one is a limit the tool ALREADY DECLARES
+to the reader and the family simply did not read.
+
+### 1. AN `if` EXPRESSION IS NOT IN THE SUBSET -- AND THE NOTICE SAYS SO
+
+Probe: `Float::from_double(if odd { -1.0 / r } else { r })` after `r = 2.0`.
+
+    3:3  - warning: the value stored in 'r' is read on no path ... (DeadStore)
+    4:22 - notice: if expression is outside the analyzed subset; it was read
+           but not analysed (ParseError) [structural, MSA-001, undecided]
+
+The parser is HONEST here: `EKind` has no if-expression constructor, the
+construct is recorded as a declared scope limit, and the notice is rendered.
+What is not honest is the pair of lines together -- the tool says "I did not read
+this region" on one line and "this value is read nowhere" on the next, about the
+same region. **A scope limit inside a function is information the family needs
+and does not receive.** The fix direction is not a new analysis: 0506 already
+decided that a notice whose region lies inside some function's extent "can hide a
+finding", which is precisely why such notices are printed one per line.
+`dead_stores` needs the same fact, and needs it as a reason to DECLINE.
+
+### 2. `guard cond else { ... }` IS NOT MODELLED AT ALL
+
+`moonbitlang/async src/internal/event_loop/network.mbt`: `let mut terminated =
+false` (33), `defer { terminated = true }` (34-36), and the only read at 53:
+
+    guard !terminated else { return }
+
+There is no `SGuard` in `SKind` (`guard` appears in this tree only as a reserved
+word and as a comprehension filter). So the statement that READS `terminated` is
+not in the CFG, the store in the `defer` body has no visible reader, and the
+finding follows. A probe with the same shape but a plain `if terminated` instead
+of `guard` reports NOTHING -- which is what makes this the `guard` statement and
+not the `defer` block, and it retracts 0531's guess that `defer` placement was
+the cause.
+
+### 3. THE `moui` `last_soft_break` TRIO IS UNEXPLAINED AND STAYS THAT WAY
+
+Three writes to one name at 375/390/393 of `core/text_layout.mbt`, with a read at
+382 on the line after the branch. Reading the loop by hand says the read IS
+reachable one iteration later (`line_start == cursor` blocks the read on the
+iteration right after the write, and the following iteration reads). A four-line
+probe of that shape reports nothing. So either the hand-reading is wrong or the
+CFG's loop body is. NOT RESOLVED, and recorded as unresolved rather than
+classified into a class it may not belong to.
+
+=> 判据: A DECLARED SCOPE LIMIT IS AN INPUT TO EVERY ANALYSIS BUILT ON THE SAME
+TREE. The notice and the finding contradicted each other on adjacent lines, and
+neither was individually wrong.
+
+=> 判据: REPRODUCING A FINDING ON A SMALLER PROGRAM IS WHAT SEPARATES A CLASS
+FROM A COINCIDENCE. Two of the three here reproduced; the third did not, and the
+one that did not is written down as unexplained.
