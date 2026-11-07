@@ -413,6 +413,11 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // calls to disclose. Zero is the honest number here, not a default: the
     // type lens is the only thing that counts them.
     n_unchecked: 0,
+    // 0521. Same reason as `n_unchecked`: no type lens ran, so no call was
+    // visited and none was checked. Zero rather than a missing figure -- the
+    // adverse ratio here would be "0 of 0", which is not a regression.
+    n_calls: 0,
+    n_checked: 0,
   }
 }
 

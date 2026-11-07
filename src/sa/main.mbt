@@ -335,6 +335,18 @@ pub(all) struct Verdict {
   /// this analyzer could not check, and before 0507 the two printed the same
   /// word.
   n_unchecked : Int32
+  /// 0521. The DENOMINATOR for `n_unchecked`, and the numerator that makes the
+  /// pair an adequacy figure rather than two loose counts.
+  ///
+  /// `n_unchecked` alone was printed for eight releases with no scale: "340
+  /// calls unchecked" reads as reassuring on a tree with 20,000 calls and as
+  /// damning on one with 400, and the line could not tell the reader which.
+  /// `n_calls` is every distinct call SITE the type lens reached (`f(..)`,
+  /// `x.m(..)`,
+  /// `recv..m(..)`), and `n_checked` is the ones whose signature it read and
+  /// whose arguments it matched against that signature.
+  n_calls : Int32
+  n_checked : Int32
 }
 
 ///|
@@ -371,6 +383,13 @@ pub struct Summary {
   /// difference between "there is nothing wrong here" and "there is nothing
   /// wrong here that I was able to check".
   n_unchecked : Int32
+  /// 0521. Every distinct call SITE the type lens reached, and the ones it
+  /// checked. NOT part
+  /// of the sum, for the same reason `n_unchecked` is not: a call is not a
+  /// finding. They are printed beside it because `n_checked / n_calls` is the
+  /// only honest answer to "how much of this program did the analyzer verify".
+  n_calls : Int32
+  n_checked : Int32
 }
 
 ///|
@@ -389,11 +408,15 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
   let mut withheld = 0
   let mut total = 0
   let mut n_unchecked = 0
+  let mut n_calls = 0
+  let mut n_checked = 0
   for v in verdicts {
     let n = v.findings.length()
     total += v.total
     unreliable += v.unreliable
     n_unchecked += v.n_unchecked
+    n_calls += v.n_calls
+    n_checked += v.n_checked
     // Per-file contribution to the pre-boundary totals. When n == 0 and the
     // file is partial, v.notices is 0 (notices are a count within findings),
     // so the addition below is a no-op and does not skew the totals.
@@ -420,7 +443,153 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
     withheld,
     total,
     n_unchecked,
+    n_calls,
+    n_checked,
   }
+}
+
+///|
+/// The severity of a family, spelled for the METRICS table.
+///
+/// A private spelling rather than a `@core.Severity::name` because this is the
+/// only place that needs the word on its own: `Report::severity_label` answers
+/// a DIFFERENT question (it folds in the notice demotion, so a low-confidence
+/// error prints `notice`), and reusing it here would print every demoted
+/// family as `notice` and none of them as its severity.
+fn sev_name(s : @core.Severity) -> String {
+  match s {
+    @core.Error => "error"
+    @core.Warning => "warning"
+    @core.Hint => "hint"
+  }
+}
+
+///|
+/// 0521. THE ADEQUACY BLOCK: how much of this tree the analyzer actually
+/// CHECKED, as numbers rather than as adjectives.
+///
+/// Three questions, and the block answers each with a number that cannot be
+/// produced by a tool that found nothing:
+///
+///   read      -- how many files the frontend understood. `parsed/files` is the
+///                coverage the NOTPARSE line complements.
+///   calls     -- how many distinct call SITES the type lens reached, and how
+///                many of
+///                them it verified against a signature it had read. This is
+///                the denominator `unchecked=` was printed without for eight
+///                releases: "340 unchecked" meant nothing without it.
+///   findings  -- how many statements the analyzer made, split by the axis
+///                that says how sure it was. The `undecided` column IS the
+///                declared scope limits: the constructs it read and did not
+///                analyse.
+///
+/// EVERY NUMBER HERE IS DERIVED FROM `verdicts` AND `s`. Nothing is
+/// re-measured, so the block cannot disagree with the SUMMARY line above it,
+/// and the identity `high + low + undecided = actionable + notices` holds by
+/// construction (see the test).
+///
+/// AND THE SHARE IS AN UPPER BOUND, WHICH THE LINE HAS TO SAY. The denominator
+/// is the call sites the lens REACHED, not the call sites the source contains,
+/// and the two are not the same set: the type lens does not type the arguments
+/// of a call whose name did not resolve at all. Measured 2026-11-07 on
+/// `fn main() -> Unit { let s = "x"; ignore(s.length()) }`: the JSON reply
+/// reports `calls: 2` -- `ignore(..)` and nothing else -- because `ignore` has
+/// no binding, its arm returns without typing its argument, and `s.length()` is
+/// never seen. So an adequacy figure computed here can only OVERSTATE how much
+/// of a program was verified, never understate it, and a reader is entitled to
+/// know which direction the error runs.
+///
+/// That hole is NOT fixed here. Typing those arguments is a change in what the
+/// analyzer FINDS (a name visible only through an unresolved callee's argument
+/// would become a finding), so it belongs to a release that re-measures the
+/// corpora, not to the increment that added the denominator.
+///
+/// `n_files` is passed rather than taken from `verdicts` so the ratio is
+/// against the tree the scan CLAIMED to walk -- the same basis the PARSED line
+/// uses, so a file that produced no verdict still counts against coverage
+/// instead of silently shrinking the denominator.
+pub fn metrics_lines(
+  verdicts : Array[Verdict],
+  s : Summary,
+  n_files : Int32,
+) -> Array[String] {
+  let out : Array[String] = []
+  let pct = if n_files == 0 { 0 } else { s.parsed_files * 1000 / n_files }
+  out.push(
+    "METRICS\tread\tfiles=\{n_files}\tparsed=\{s.parsed_files}\tpartial=\{s.partial_files}\tunderstood=\{pct / 10}.\{pct % 10}%",
+  )
+  // THE TWO CLASSES THE RATIO LEAVES OUT, named honestly. `n_calls - n_checked`
+  // is the set of sites this lens visited and did not verify, and it splits into
+  // two: a callee that resolved to something NOT CALLABLE (reported as
+  // `FOpMismatch`) and a callee that did not resolve at all (reported as
+  // `FUndefinedName`). Neither is type-lens blindness -- the analyzer made a
+  // statement about both -- so folding them into "unchecked" would charge one
+  // defect twice.
+  //
+  // IT IS NOT `n_calls - n_checked - n_unchecked`, and that is deliberate.
+  // `n_unchecked` counts VISITS (it has since 0507, and its printed value is
+  // pinned by the corpus stages), these two count SITES: a call in a block's
+  // tail is typed twice and is one site. Subtracting a visit count from a site
+  // count is how an instrument produces a number that is off by exactly the
+  // number of tail calls, with nothing in the output to say so.
+  let other = s.n_calls - s.n_checked
+  // "0 of 0" is NOT "0.0%": a tree with no call site has no adequacy figure at
+  // all, and printing zero would read as "checked nothing" on a file that had
+  // nothing to check. `n/a` is the honest spelling, and it is why this is a
+  // string and not a basis-point integer.
+  let share = if s.n_calls == 0 {
+    "n/a (no call site was visited)"
+  } else {
+    let t = s.n_checked * 1000 / s.n_calls
+    "\{t / 10}.\{t % 10}%"
+  }
+  out.push(
+    "METRICS\tcalls\tsites=\{s.n_calls}\tchecked=\{s.n_checked}\tnot-verified=\{other}\tchecked-share=\{share}\t(sites = call sites the lens REACHED, so the share is an UPPER bound; not-verified = callee not callable, or name unresolved; SUMMARY's unchecked= counts VISITS undeduplicated, so the two are not arithmetically related)",
+  )
+  let hi : Map[String, Int32] = Map([])
+  let lo : Map[String, Int32] = Map([])
+  let un : Map[String, Int32] = Map([])
+  let mut n_hi = 0
+  let mut n_lo = 0
+  let mut n_un = 0
+  for v in verdicts {
+    for r in v.findings {
+      let id = r.family.id()
+      match r.confidence() {
+        @core.High => {
+          hi.set(id, bump(hi, id))
+          n_hi += 1
+        }
+        @core.Low => {
+          lo.set(id, bump(lo, id))
+          n_lo += 1
+        }
+        @core.Undecided => {
+          un.set(id, bump(un, id))
+          n_un += 1
+        }
+      }
+    }
+  }
+  out.push(
+    "METRICS\tfindings\ttotal=\{n_hi + n_lo + n_un}\thigh=\{n_hi}\tlow=\{n_lo}\tundecided=\{n_un}\t(undecided = declared scope limits: read, and NOT analysed)",
+  )
+  // One row per family that spoke, in the roster's own order rather than in the
+  // order the scan happened to visit them: two runs over the same tree must not
+  // differ by a hash iteration, and the roster order is the order `--explain`
+  // lists them in.
+  for f in @core.all_families() {
+    let id = f.id()
+    let h = get_or_zero(hi, id)
+    let l = get_or_zero(lo, id)
+    let u = get_or_zero(un, id)
+    if h + l + u > 0 {
+      out.push(
+        "METRICS\tfamily\t\{id}\t\{f.name()}\tseverity=\{sev_name(f.severity())}\thigh=\{h}\tlow=\{l}\tundecided=\{u}\ttotal=\{h + l + u}",
+      )
+    }
+  }
+  out
 }
 
 ///|
@@ -503,6 +672,7 @@ pub async fn scan(
   findings_shown_per_file : Int32,
   show_notices : Bool,
   profile : Profile,
+  metrics : Bool,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -768,6 +938,22 @@ pub async fn scan(
     println(
       "NOTE\tthis tree exceeded the \{max_files}-file cap; the counts above cover only what was walked",
     )
+  }
+  // 0521. THE ADEQUACY BLOCK, opt-in. It prints AFTER the SUMMARY because the
+  // SUMMARY is the "what was found" identity and this is the "how much was
+  // checked" statement that gives the first one a scale -- reading it in the
+  // other order invites the mistake of taking `actionable=0` as a verdict.
+  //
+  // Opt-in rather than always-on for a measured reason: every SUMMARY-pinning
+  // stage of the release gate parses the lines above it, and eight of them
+  // match `^SUMMARY` to the end of the line. A block that always printed would
+  // be eight stages' worth of new output to re-derive, and NONE of it would be
+  // a change in what the analyzer found. `--metrics` is the spelling a reader
+  // uses when they want the number.
+  if metrics {
+    for line in metrics_lines(verdicts, s, files.length()) {
+      println(line)
+    }
   }
   if mmd_out != "" {
     emit_mmd(mmd_out, verdicts, s, target, root, findings_shown_per_file)
@@ -1103,7 +1289,11 @@ async fn analyze(
         region_line: 0,
         unreliable: 0,
         hiding: [],
+        // 0521. No source-level call sites: this frontend is a script's
+        // `import` block or a proof sketch, and neither runs the type lens.
         n_unchecked: 0,
+        n_calls: 0,
+        n_checked: 0,
       }
     }
     ".mbtp" => {
@@ -1119,7 +1309,11 @@ async fn analyze(
         region_line: 0,
         unreliable: 0,
         hiding: [],
+        // 0521. No source-level call sites: this frontend is a script's
+        // `import` block or a proof sketch, and neither runs the type lens.
         n_unchecked: 0,
+        n_calls: 0,
+        n_checked: 0,
       }
     }
     ".mbt.md" => {
@@ -1157,7 +1351,11 @@ async fn analyze(
         region_line: cut,
         unreliable: total - reliable.length(),
         hiding: r.hiding,
+        // 0521. The literate frontend runs no type lens, exactly as the
+        // `.mbtx` arm does not: zero calls visited, zero checked.
         n_unchecked: 0,
+        n_calls: 0,
+        n_checked: 0,
       }
     }
     _ => {
@@ -1208,6 +1406,8 @@ async fn analyze(
         unreliable: total - reliable.length(),
         hiding: r.hiding,
         n_unchecked: r.n_unchecked,
+        n_calls: r.n_calls,
+        n_checked: r.n_checked,
       }
     }
   }

@@ -380,6 +380,8 @@ pub(all) struct TypeResult {
   /// until now that silence was indistinguishable from "there was nothing to
   /// check".
   n_unchecked : Int32
+  n_calls : Int32
+  n_checked : Int32
 }
 
 ///|

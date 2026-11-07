@@ -43,6 +43,8 @@ pub fn mermaid_states(Array[Verdict], Summary, ScanProvenance, Int32, Int32) -> 
 
 pub fn method_segments(@core.IfaceSymTab) -> Array[String]
 
+pub fn metrics_lines(Array[Verdict], Summary, Int32) -> Array[String]
+
 pub fn moon_mod_version(String) -> String
 
 pub fn notice_lines(Int32, Int32, Array[@report.Report], Bool) -> Array[String]
@@ -61,7 +63,7 @@ pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool, Profile) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool, Profile, Bool) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
 
@@ -113,6 +115,8 @@ pub struct Summary {
   withheld : Int32
   total : Int32
   n_unchecked : Int32
+  n_calls : Int32
+  n_checked : Int32
 }
 
 pub(all) struct Verdict {
@@ -127,6 +131,8 @@ pub(all) struct Verdict {
   unreliable : Int32
   hiding : Array[@core.Span]
   n_unchecked : Int32
+  n_calls : Int32
+  n_checked : Int32
 }
 
 // Type aliases

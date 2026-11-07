@@ -258,6 +258,57 @@ the flag.
 > than all six put together. A published number that is not gated is a number
 > that can go missing silently.)
 
+## `--metrics`: adequacy as a number
+
+`SUMMARY actionable=0` is a verdict about a *list*. It is not a statement about
+how much of the tree the analyzer was able to judge, and a reader who takes it
+for one has been told nothing about the scale. `--metrics` appends the block
+that carries the scale:
+
+```
+METRICS	read	files=194	parsed=194	partial=0	understood=100.0%
+METRICS	calls	sites=5048	checked=415	not-verified=4633	checked-share=8.2%	(...)
+METRICS	findings	total=1689	high=0	low=0	undecided=1689	(...)
+METRICS	family	MSA-001	ParseError	severity=error	high=0	low=0	undecided=1689	total=1689
+```
+
+*(those are the analyzer's own tree, scanned by its own build — 194 files, every
+finding a declared scope limit, and a call-argument adequacy of 8.2%.)*
+
+  * **read** — `parsed/files`, the same ratio the `PARSED` line prints. A file
+    the frontend did not understand is measured as blindness, not as a clean
+    result.
+  * **calls** — `checked / sites` is the share of **call sites the lens
+    REACHED** whose signature it read and whose arguments it matched against it.
+    REACHED is the honest denominator and not a synonym for "in the file": the
+    lens does not type the arguments of a call whose name did not resolve at
+    all, so `fn main() -> Unit { let s = "x"; ignore(s.length()) }` reports
+    **2** sites and not 3 (measured). ⇒ the share is an **upper bound** on what
+    was verified; it can overstate and cannot understate.
+    `not-verified` splits into a callee that resolved to something not callable
+    (reported as `FOpMismatch`) and a callee that did not resolve at all
+    (reported as `UndefinedName`): the analyzer *made a statement* about both,
+    so neither is type-lens blindness. `sites` is **site-based**: a call in a
+    block's tail position is typed twice (once as a statement, once as the tail
+    carrying the return hint) and is counted once. The `unchecked=` on the
+    `SUMMARY` and per-file lines counts **visits**, not sites, so the two
+    numbers are deliberately not arithmetically related — on this tree the naive
+    subtraction `sites - checked - unchecked` is **−16**.
+  * **findings / family** — one row per family that spoke, with its stable id
+    and its severity, split by the axis that says how sure the analyzer was.
+    `undecided` **is** the declared-scope-limit count: constructs it read and
+    did not analyse. `high + low + undecided` equals `actionable + notices`,
+    pinned by a test.
+
+`--metrics` is opt-in because every `SUMMARY`-pinning stage of the release gate
+parses the lines around it, and none of what the block says is a change in what
+the analyzer found.
+
+The JSON bridge (the DeepSeek Harness plugin's channel) carries the same figures
+for a `program` request: `metrics: {understood, calls, checked, unchecked,
+checked_share, scope_limits}`, `null` for the request kinds that run no type
+lens.
+
 ## What the numbers mean, and what they do not
 
 `.mbt.md` and `.mbtp` are audited properly: on a real project they report

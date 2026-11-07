@@ -58,6 +58,8 @@ fn mm_verdict(
     unreliable,
     hiding: [],
     n_unchecked: 0,
+    n_calls: 0,
+    n_checked: 0,
   }
 }
 

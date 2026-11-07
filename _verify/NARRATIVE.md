@@ -10315,3 +10315,129 @@ the shipped data where `--explain` reads them rather than in a document that can
 => 判据: IF TWO FRONTENDS SHARE AN ID, THE CONTRACT MUST NAME BOTH. Six of these twelve are emitted
 by the source frontend AND by the state-machine frontend with different meanings; a contract that
 says only the first is false for the second.
+
+## 0521. ADEQUACY AS A NUMBER -- AND THE INSTRUMENT DEFECT THAT ALMOST SHIPPED WITH IT
+
+`n_unchecked` had been printed for eight releases with no scale. "340 calls were not checked" is
+reassuring on a tree with 20,000 call sites and damning on one with 20, and the line could not tell a
+reader which tree they were looking at. This increment adds the denominator (`n_calls`) and the
+numerator (`n_checked`), a `--metrics` block on stdout, and a `metrics` record on the JSON reply.
+
+### WHAT TRAVELS
+
+  src/types        Infer gains `n_calls`, `n_checked`, `seen_sites`; TypeResult carries the pair
+  src/pipeline     PipelineResult carries the pair; moonfiles' literate result reports 0/0
+  src/sa           Verdict and Summary carry the pair; `aggregate` sums it; `metrics_lines` renders it
+  main.mbt         `--metrics`, a MODIFIER on the scan (not a query that replaces one)
+  src/jsoncli      `metrics: {...}` on a `program` request, OMITTED for the kinds that run no type lens
+
+### THE DEFECT: THE FIRST VERSION COUNTED VISITS, AND A TAIL CALL IS TYPED TWICE
+
+The counters went in at the three call arms of `Infer::ty_of` -- `ECall`, `EMethodCall`, `EDotDot` --
+and the obvious reading of "every call the lens visited" is what was written first. Measured
+2026-11-07, one fixture per process, `--metrics` on a fresh wasm:
+
+    fn main() -> Unit { }                               sites 0   visits 0
+    { f() }                                             sites 1   visits 2
+    { f(); f() }                                        sites 2   visits 3
+    { f(); f(); let x = 1; ignore(x) }                   sites 3   visits 4
+
+Every fixture is exactly ONE visit above its site count, and the extra is always the TAIL. A block's
+tail expression is typed twice by construction: the walk types the block's statements with
+`TUnknown`, and `STail` then types the tail WITH THE HINT, which is what reports a mis-typed returned
+value. Both passes go through the same arm, so both counted.
+
+The ratio built on that is not a coverage figure. It would charge the tail twice in the denominator
+and never in the numerator, so a program's reported adequacy would depend on WHERE its calls happen
+to sit in a block rather than on how many of them were verified -- the same source, two answers, and
+nothing in the output to say which one was being printed.
+
+FIXED by gating the counters on `Infer::mark_site`, which recognises the second visit of one node by
+its span (a start line and column identify a node; `Int64` because a line and a column can each be
+five digits). THE TYPING IS UNCHANGED: the tail is still typed twice, only the counting happens once
+per site. After the gate the four fixtures report 0, 1, 2, 3.
+
+### THE SUBTRACTION THAT WOULD HAVE PRINTED A NEGATIVE NUMBER
+
+`n_unchecked` keeps its 0507 meaning -- VISITS, not sites. It is printed on four line shapes and
+pinned by the corpus stages, so re-basing it is its own re-measure. That leaves two units in one
+struct, and the first draft of the block subtracted them:
+
+    other = n_calls - n_checked - n_unchecked        # sites minus sites minus VISITS
+
+Measured on this repository's own tree (194 files, every file parsed): `sites=5048`, `checked=415`,
+`unchecked=4649` -- and the naive subtraction is **-16**. A published adequacy table would have
+carried a negative count of calls that are "neither checked nor unchecked", which is not a small
+error, it is a number that says the instrument is broken. The block computes `other = n_calls -
+n_checked` (both site-based) and says on the line that the two counters are not arithmetically
+related, because a reader who subtracts them will get -16 and deserves to know why.
+
+### THE SHARE IS AN UPPER BOUND, AND THAT IS NOW STATED
+
+Found while verifying the JSON channel, not while writing the arithmetic. This request
+
+    {"kind":"program","source":"fn main() -> Unit {\n  let s = \"x\"\n  ignore(s.length())\n}\n"}
+
+replies `"calls":2, "checked":1, "checked_share":"50.0%"`. Two, not three: `ignore` has NO binding,
+and the `None` arm of `ECall` returns `TUnknown` WITHOUT TYPING ITS ARGUMENTS, so `s.length()` is
+never reached. The denominator is therefore the sites the lens REACHED, not the sites the source
+contains, and an adequacy figure computed from it can only OVERSTATE the verified share. That
+direction is now written on the line, in SKILL.md and here, rather than left for a reader to assume
+the flattering reading.
+
+NOT FIXED, deliberately. Typing those arguments is a change in what the analyzer FINDS -- a name
+visible only through an unresolved callee's argument becomes a finding -- so it belongs to a release
+that re-measures the corpora, not to the increment that added the denominator.
+
+### MEASURED, THIS TREE, THIS BUILD
+
+    SCANNED         194 files
+    PARSED          194/194 files understood (100.0%)
+    SUMMARY         actionable=0  notices=1689  unchecked=4649
+    METRICS read    files=194 parsed=194 partial=0 understood=100.0%
+    METRICS calls   sites=5048 checked=415 not-verified=4633 checked-share=8.2%
+    METRICS find.   total=1689 high=0 low=0 undecided=1689
+    METRICS family  MSA-001 ParseError severity=error high=0 low=0 undecided=1689 total=1689
+
+Every finding on this tree is `FParse` carrying the subset marker, so `actionable=0` and all 1689 are
+declared scope limits -- the identity `high + low + undecided = actionable + notices` is 1689 = 0 +
+1689. The type lens verifies the arguments of 8.2% of the call sites it reaches on this codebase.
+
+### RED PATHS PROVEN
+
+  A. dedupe removed (`Some(_) => false` -> `true` in `mark_site`): 6 of the 7 new pipeline tests go
+     red with exactly the visit-vs-site gap -- `2 != 1`, `3 != 2`, `2 != 1`, `3 != 2`, `3 != 2`,
+     `2 != 1`. The seventh (`a body with no call at all`) passes either way, as it must. Restored and
+     re-run: 1350/1350.
+  B. row guard removed (`h + l + u > 0` -> `>= 0` in `metrics_lines`): `only the families that spoke
+     get a row` goes red with `12 != 1` -- the table would print twelve rows and eleven would say
+     `total=0`. Restored.
+
+### GATES
+
+    moon check --deny-warn          exit 0
+    moon fmt --check                exit 0
+    moon test --target wasm         1350/1350   (1336 before; +7 pipeline, +7 sa)
+    moon test --target js           1214/1214   (1207 before; +7 sa -- src/pipeline is wasm-only)
+    moon test --target wasm-gc      1214/1214   (1207 before; +7 sa)
+    jsoncli program request         metrics={understood,calls,checked,unchecked,checked_share,scope_limits}
+    settle_0508 row D11             both source patterns still present (severity_label / confidence().name())
+
+The own-source notice pins in `_verify/release.ps1` are STILL not re-measured: this increment adds
+two test files' worth of declarations, and the series' last four increments change output and one
+changes findings. Re-measuring once, against the tree that carries all five, remains the plan (§0520).
+
+=> 判据: A DENOMINATOR MUST BE COUNTED IN THE SAME UNIT AS ITS NUMERATOR. Two counters that look
+adjacent in a struct can be in different units -- one per site, one per visit -- and the subtraction
+that "should" recover the remainder then returns a number that is off by exactly the constructs the
+compiler duplicates. Here that number was -16 on the tool's own source, and nothing downstream would
+have flagged it as impossible.
+
+=> 判据: WHEN A LENS CANNOT SEE A CONSTRUCT, THE RATIO OVER WHAT IT SAW IS AN UPPER BOUND. Say which
+direction the error runs, on the line that prints the number. A coverage figure whose denominator is
+"what the tool reached" is not a coverage figure for the program, and a reader will assume the
+flattering reading unless the line refuses it.
+
+=> 判据: "0 OF 0" IS NOT 0%. A tree with no call site has no adequacy figure; printing 0.0% would
+report "checked nothing" about a file with nothing to check. `n/a` is the honest spelling, and it is
+the same reason 0507 printed a zero rather than nothing at all.

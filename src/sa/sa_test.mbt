@@ -35,6 +35,10 @@ fn v_parsed() -> @sa.Verdict {
     unreliable: 0,
     hiding: [],
     n_unchecked: 0,
+    // 0521. No call sites in this fixture: it exists to pin the SUMMARY
+    // identity, not the type lens's coverage.
+    n_calls: 0,
+    n_checked: 0,
   }
 }
 
@@ -58,6 +62,8 @@ fn v_partial_with_findings() -> @sa.Verdict {
     unreliable: 5,
     hiding: [],
     n_unchecked: 0,
+    n_calls: 0,
+    n_checked: 0,
   }
 }
 
@@ -81,6 +87,8 @@ fn v_partial_empty() -> @sa.Verdict {
     unreliable: 4,
     hiding: [],
     n_unchecked: 0,
+    n_calls: 0,
+    n_checked: 0,
   }
 }
 
@@ -403,6 +411,8 @@ fn v_partial_at(path : String, reason : String) -> @sa.Verdict {
     unreliable: 0,
     hiding: [],
     n_unchecked: 0,
+    n_calls: 0,
+    n_checked: 0,
   }
 }
 

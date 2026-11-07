@@ -59,6 +59,26 @@ pub(all) struct PipelineResult {
   /// can disclose it instead of rounding "I could not check this" down to
   /// "nothing to report".
   n_unchecked : Int32
+  /// 0521. The DENOMINATOR `n_unchecked` never had, plus the numerator that
+  /// turns the pair into an adequacy figure.
+  ///
+  /// "12 calls were not checked" is not a statement about anything until it is
+  /// read against how many calls there were. `n_calls` is every call site the
+  /// type lens REACHED -- `f(..)`, `x.m(..)`, `recv..m(..)` -- and `n_checked`
+  /// is the ones whose signature it read and whose arguments it matched
+  /// against that signature. So `n_checked / n_calls` is the share of calls
+  /// this lens actually verified, and the remainder is disclosed rather than
+  /// omitted.
+  ///
+  /// The remainder is NOT `n_unchecked`. That count is VISIT-based (0507's, kept
+  /// for the reason its own doc gives), while these two are SITE-based: a call
+  /// in a block's tail position is typed twice and is one site. So do not
+  /// subtract one from the other -- `n_calls - n_checked` is the two classes
+  /// that are neither checked nor "a call I could not check": a callee that
+  /// resolved to something not callable, and a callee that did not resolve at
+  /// all. Both are claimed by their own families.
+  n_calls : Int32
+  n_checked : Int32
 }
 
 ///|
@@ -266,6 +286,8 @@ fn run_core(
     first_error_line: parsed.first_error,
     hiding: wr.hiding,
     n_unchecked: tr.n_unchecked,
+    n_calls: tr.n_calls,
+    n_checked: tr.n_checked,
   }
 }
 

@@ -40,6 +40,34 @@ struct FrameRep {
 }
 
 ///|
+/// 0521. The ADEQUACY block, as JSON: how much did the analyzer actually
+/// CHECK, beside what it found.
+///
+/// Present only when a type lens ran, and OMITTED (the derive drops a `None`)
+/// for the `machine` and iface/proof request kinds, which have no call sites to
+/// check. An absent record says "this channel has no adequacy statement to
+/// make"; an all-zero record would say "it checked nothing", which is a
+/// different and false claim.
+#derive(ToJson)
+struct MetricsRep {
+  /// Did the frontend understand the whole source? The same question the
+  /// text report's PARSED line answers, so the two channels cannot disagree
+  /// about whether a finding is a statement about the code or about the reader.
+  understood : Bool
+  /// Every distinct call SITE the type lens reached.
+  calls : Int32
+  /// The ones whose signature it read and whose arguments it matched.
+  checked : Int32
+  /// The ones it is a real call but whose signature was never read.
+  unchecked : Int32
+  /// `checked / calls`. "n/a" when no call site was visited: 0 of 0 is not 0%.
+  checked_share : String
+  /// Findings with confidence `undecided` -- the declared scope limits, i.e.
+  /// constructs the analyzer read and did not analyse.
+  scope_limits : Int32
+}
+
+///|
 /// the reply envelope
 #derive(ToJson)
 struct Reply {
@@ -48,6 +76,8 @@ struct Reply {
   count : Int32
   findings : Array[Finding]
   rendered : String
+  /// 0521. `null` unless a type lens ran; see `MetricsRep`.
+  metrics : MetricsRep?
 }
 
 ///|
@@ -101,14 +131,60 @@ fn to_finding(rep : @report.Report) -> Finding {
 }
 
 ///|
-fn ok_reply(findings : Array[@report.Report], rendered : String) -> Reply {
+/// 0521. The same adequacy arithmetic the text report's METRICS block does, on
+/// one source. Computed HERE and nowhere else, from the pipeline's own
+/// counters, so the two channels cannot drift into two definitions of
+/// "checked".
+fn metrics_of(result : @pipeline.PipelineResult) -> MetricsRep {
+  let mut scope_limits = 0
+  for rep in result.reports {
+    if rep.confidence() == @core.Undecided {
+      scope_limits += 1
+    }
+  }
+  let checked_share = if result.n_calls == 0 {
+    "n/a"
+  } else {
+    let t = result.n_checked * 1000 / result.n_calls
+    "\{t / 10}.\{t % 10}%"
+  }
+  {
+    understood: result.first_error_line == 0,
+    calls: result.n_calls,
+    checked: result.n_checked,
+    unchecked: result.n_unchecked,
+    checked_share,
+    scope_limits,
+  }
+}
+
+///|
+fn ok_reply(
+  findings : Array[@report.Report],
+  rendered : String,
+  metrics : MetricsRep?,
+) -> Reply {
   let items = findings.map(to_finding)
-  { ok: true, error: None, count: items.length(), findings: items, rendered, }
+  {
+    ok: true,
+    error: None,
+    count: items.length(),
+    findings: items,
+    rendered,
+    metrics,
+  }
 }
 
 ///|
 fn err_reply(msg : String) -> Reply {
-  { ok: false, error: Some(msg), count: 0, findings: [], rendered: "", }
+  {
+    ok: false,
+    error: Some(msg),
+    count: 0,
+    findings: [],
+    rendered: "",
+    metrics: None,
+  }
 }
 
 ///|
@@ -155,13 +231,19 @@ fn to_spec(req : SpecReq) -> @statecheck.MachineSpec {
 ///|
 fn run_machine(req : SpecReq) -> Reply {
   let spec = to_spec(req)
-  ok_reply(@statecheck.audit(spec), @statecheck.render(spec))
+  ok_reply(@statecheck.audit(spec), @statecheck.render(spec), None)
 }
 
 ///|
 fn run_program(source : String, filename : String) -> Reply {
   let result = @pipeline.run(source, filename, @core.IfaceSymTab::empty())
-  ok_reply(result.reports, @pipeline.render_result(result))
+  // The ONLY request kind that runs a type lens, so the only one that has an
+  // adequacy figure to report.
+  ok_reply(
+    result.reports,
+    @pipeline.render_result(result),
+    Some(metrics_of(result)),
+  )
 }
 
 ///|
@@ -185,7 +267,7 @@ fn dispatch_file(filename : String, source : String) -> Reply {
   match kind {
     "md" => {
       let r = @moonfiles.literate(source, filename)
-      ok_reply(r.reports, @pipeline.render_result(r))
+      ok_reply(r.reports, @pipeline.render_result(r), None)
     }
     "iface" => {
       // one file in, no module context: the empty table is the honest one —
@@ -195,11 +277,11 @@ fn dispatch_file(filename : String, source : String) -> Reply {
         filename,
         @core.IfaceSymTab::empty(),
       )
-      ok_reply(reports, render_reports(reports))
+      ok_reply(reports, render_reports(reports), None)
     }
     "proof" => {
       let reports = @moonfiles.proof(source, filename)
-      ok_reply(reports, render_reports(reports))
+      ok_reply(reports, render_reports(reports), None)
     }
     _ => run_program(source, filename)
   }

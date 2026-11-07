@@ -26,7 +26,63 @@ priv struct Infer {
   /// arguments are unchecked, and today that silence is indistinguishable
   /// from "there was nothing to check". The count is the disclosure that
   /// stops the two from reading the same.
+  ///
+  /// 0521. THIS ONE COUNTS VISITS, NOT SITES, and it keeps doing so on purpose.
+  /// Its printed value (`unchecked=` on the CLEAN/PARTIAL/FOUND and SUMMARY
+  /// lines) has been published for eight releases and is pinned by the corpus
+  /// stages, so re-basing it belongs to its own re-measure, not to a release
+  /// that added a denominator. The two counters beside it ARE site-based, so
+  /// `n_calls - n_checked` and `n_unchecked` are NOT arithmetically related --
+  /// a tail call makes the visit count larger. `metrics_lines` says so on the
+  /// line it prints, rather than leaving a reader to subtract them and conclude
+  /// the analyzer counted wrong.
   mut n_unchecked : Int32
+  /// THE DENOMINATOR, and the outcomes that are not "unchecked".
+  ///
+  /// 0521. `n_unchecked` on its own is a number with no scale: "12 calls were
+  /// not checked" says nothing without how many calls there were. But its
+  /// honest complement is not one more counter either -- a call has FOUR
+  /// outcomes in this lens, and collapsing them would invent a ratio:
+  ///
+  ///   checked       the signature was read and the arguments were matched
+  ///                 against it (`Some(TFunc(..))`)
+  ///   unchecked     the call is real and the signature was never read
+  ///                 (`TUnknownFn`, and every method call)
+  ///   not-callable  the callee resolved to something that is not a function,
+  ///                 and is reported as such
+  ///   unresolved    the name did not resolve at all -- `UndefinedName`
+  ///                 already speaks to that, and it is a different claim
+  ///
+  /// `n_calls` counts every call SITE the lens saw, so
+  /// `n_calls - n_checked` is exactly the last two classes. Adequacy is
+  /// `n_checked / n_calls`: the share of call sites whose arguments this lens
+  /// actually verified.
+  ///
+  /// SITES, NOT VISITS, and that distinction is measured rather than assumed.
+  /// A call in a block's TAIL position is typed twice: once when the walk
+  /// types the block's statements (`self.ty_of(s, TUnknown)`), and once again
+  /// as the block's tail (`STail(t) => tail_ty = self.ty_of(t, hint)`), which
+  /// needs the hint to check the returned value. Probed 2026-11-07 with three
+  /// one-file fixtures:
+  ///
+  ///   `{ f() }`                        sites=1  visits=2
+  ///   `{ f(); f() }`                   sites=2  visits=3
+  ///   `{ f(); f(); let x = 1; ignore(x) }`  sites=3  visits=4
+  ///
+  /// Every fixture is exactly one visit above its site count, and the extra is
+  /// always the tail. A ratio over visits would therefore charge the tail
+  /// twice and report a different adequacy figure for the same source
+  /// depending on where its calls happened to sit -- so the counters below are
+  /// gated on `mark_site`, which recognises the second visit of one node by
+  /// its span. THE TYPING ITSELF IS NOT CHANGED: the tail is still typed twice
+  /// (the hint-driven pass is what reports a wrong returned value), only the
+  /// COUNTING happens once per site.
+  mut n_calls : Int32
+  mut n_checked : Int32
+  /// The call sites already counted, keyed by the node's own start position.
+  /// Two distinct call sites cannot share one: a start line and column
+  /// identify a node in a file, which is what makes the span a safe key.
+  seen_sites : Map[Int64, Bool]
 }
 
 ///|
@@ -61,6 +117,9 @@ fn new_infer(extern_iface : @core.IfaceSymTab, partial : Bool) -> Infer {
     findings: [],
     vst: [],
     n_unchecked: 0,
+    n_calls: 0,
+    n_checked: 0,
+    seen_sites: Map([]),
   }
 }
 
@@ -149,6 +208,30 @@ fn Infer::report(
     span: sp,
     vst: @core.snapshot_vst(self.vst),
   })
+}
+
+///|
+/// Has this call SITE been counted already? Records it on the first visit and
+/// answers false afterwards.
+///
+/// The span is the identity of an AST node, and that is what makes this sound:
+/// two distinct call sites cannot start at the same line and column of one
+/// file. The key packs both into one `Int64` -- `Int32` would overflow, since a
+/// line number and a column can each be five digits.
+///
+/// Used ONLY to gate the counters, never to gate the typing: the second visit
+/// of a tail call passes a different `hint` and is what reports a mismatched
+/// returned value, so it must still run. Counting is the only thing that must
+/// happen once.
+fn Infer::mark_site(self : Infer, sp : @core.Span) -> Bool {
+  let key = (sp.start.line.to_int64() << 32) | sp.start.col.to_int64()
+  match self.seen_sites.get(key) {
+    Some(_) => false
+    None => {
+      self.seen_sites.set(key, true)
+      true
+    }
+  }
 }
 
 ///|
@@ -243,9 +326,19 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         }
       }
     }
-    ECall(name, args, labels) =>
+    ECall(name, args, labels) => {
+      // 0521. Counted once per SITE, not once per visit -- a tail call is typed
+      // twice and `mark_site` recognises the second visit. See the `n_calls`
+      // doc comment for the measured visit/site figures.
+      let first = self.mark_site(e.span)
+      if first {
+        self.n_calls += 1
+      }
       match self.lookup(name) {
         Some(TFunc(fn_name, pnames, params, ret)) => {
+          if first {
+            self.n_checked += 1
+          }
           // argument type check (reportCallIssue / reportArgumentType)
           //
           // An argument's INDEX is not its parameter's index as soon as any
@@ -347,6 +440,7 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
         }
         None => TUnknown
       }
+    }
     // A method call. The receiver and every argument are typed, so a wrong
     // receiver or an undefined name inside an argument is still found. The
     // METHOD itself is not checked at all: this lens has no signature for it,
@@ -357,6 +451,9 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // The result is TUnknown rather than the receiver's type. `x.f()` is not
     // necessarily an `x`.
     EMethodCall(base, _, args, _) => {
+      if self.mark_site(e.span) {
+        self.n_calls += 1
+      }
       if !base.is_qualifier() {
         ignore(self.ty_of(base, TUnknown))
       }
@@ -389,6 +486,9 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // A qualifier receiver (`@pkg..f(..)`) is typed as TUnknown: `@pkg` is a
     // package and not a value, so there is no receiver type to report.
     EDotDot(base, _, args, _) => {
+      if self.mark_site(e.span) {
+        self.n_calls += 1
+      }
       // 0507. The same disclosure as `EMethodCall`: a `..` link's signature is
       // not read either, so the call is counted as UNCHECKED.
       self.n_unchecked += 1
@@ -1118,5 +1218,7 @@ pub fn infer_full(
     sigs: inf.sigs,
     findings: inf.findings,
     n_unchecked: inf.n_unchecked,
+    n_calls: inf.n_calls,
+    n_checked: inf.n_checked,
   }
 }

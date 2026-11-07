@@ -156,6 +156,12 @@ async fn main {
   // its own spelling instead of an optional argument.
   let mut explain_id = ""
   let mut explain_all = false
+  // 0521. `--metrics` asks for the ADEQUACY block: how many files were
+  // understood, how many call sites were visited and checked, and how many
+  // statements the analyzer made split by confidence. It is a MODIFIER on the
+  // scan, not a query that replaces one -- the numbers are a function of the
+  // scan that was run, so there is nothing to print without one.
+  let mut metrics = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -246,6 +252,8 @@ async fn main {
       explain_id = args[i]
     } else if a == "--explain-all" {
       explain_all = true
+    } else if a == "--metrics" {
+      metrics = true
     } else if target == "" {
       target = a
     } else {
@@ -303,5 +311,6 @@ async fn main {
       exclude_ids: family_exclude,
       honor_nosec,
     },
+    metrics,
   )
 }

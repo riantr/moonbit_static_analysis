@@ -57,6 +57,8 @@ pub(all) struct TypeResult {
   sigs : Array[Sig]
   findings : Array[@report.Report]
   n_unchecked : Int32
+  n_calls : Int32
+  n_checked : Int32
 }
 
 #derive(Eq)

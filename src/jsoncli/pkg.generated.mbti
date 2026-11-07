@@ -17,6 +17,9 @@ type Finding
 type FrameRep
 
 #derive(@json.ToJson)
+type MetricsRep
+
+#derive(@json.ToJson)
 type Reply
 
 #derive(@json.FromJson)
