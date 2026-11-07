@@ -79,6 +79,14 @@ pub(all) struct PipelineResult {
   /// all. Both are claimed by their own families.
   n_calls : Int32
   n_checked : Int32
+  /// 0541. What the BEHAVIORAL lens actually executed, in how many contexts
+  /// (§8.3/§8.4). `@core.CtxLedger::zero()` unless the caller asked for it via
+  /// `run_tracked`, and zero for every file kind that runs no interp at all --
+  /// zero rather than a missing figure, for the same reason `n_calls` is.
+  ///
+  /// Like `n_calls`, this is NOT a finding count and NOT part of the SUMMARY
+  /// sum: it describes the analysis, not the program.
+  ctx : @core.CtxLedger
 }
 
 ///|
@@ -108,7 +116,7 @@ pub fn run(
   file : String,
   extern_iface : @core.IfaceSymTab,
 ) -> PipelineResult {
-  run_core(src, file, extern_iface, false)
+  run_core(src, file, extern_iface, false, false)
 }
 
 ///|
@@ -130,7 +138,25 @@ pub fn run_functions(
   file : String,
   extern_iface : @core.IfaceSymTab,
 ) -> PipelineResult {
-  run_core(src, file, extern_iface, true)
+  run_core(src, file, extern_iface, true, false)
+}
+
+///|
+/// 0541. THE MEASURING ENTRY: the same pipeline, with the behavioral lens
+/// keeping a `@core.CtxLedger` of the abstract execution it performs.
+///
+/// OFF by default and off in both entries above, because the ledger builds a
+/// call-string per body execution and a string per signature-context pair. That
+/// is a MEASUREMENT, not a fact about the program: a scan that does not ask for
+/// it must not pay for it, and the pinned SUMMARY numbers must not move because
+/// a diagnostic exists.
+pub fn run_tracked(
+  src : String,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  per_function : Bool,
+) -> PipelineResult {
+  run_core(src, file, extern_iface, per_function, true)
 }
 
 ///|
@@ -141,6 +167,7 @@ fn run_core(
   file : String,
   extern_iface : @core.IfaceSymTab,
   per_function : Bool,
+  track : Bool,
 ) -> PipelineResult {
   let parsed = @parser.parse(src)
   let all : Array[@report.Report] = []
@@ -229,23 +256,25 @@ fn run_core(
   for r in tr.findings {
     all.push(r)
   }
-  let ir = if per_function {
-    @interp.analyze_functions(
+  let (ir, ctx) = if per_function {
+    @interp.analyze_functions_ctx(
       parsed.tree,
       tr,
       wr,
       file,
       extern_iface,
       parsed.enum_ctors,
+      track,
     )
   } else {
-    @interp.analyze_module(
+    @interp.analyze_module_ctx(
       parsed.tree,
       tr,
       wr,
       file,
       extern_iface,
       parsed.enum_ctors,
+      track,
     )
   }
   for r in ir {
@@ -300,6 +329,7 @@ fn run_core(
     n_unchecked: tr.n_unchecked,
     n_calls: tr.n_calls,
     n_checked: tr.n_checked,
+    ctx,
   }
 }
 

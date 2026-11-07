@@ -331,6 +331,7 @@ moonx riantr/moonbit_static_analysis@latest <target> [flags]
 | `--explain MSA-011` | print that family's **contract** — what it asserts, the assumption it rests on, and what it does **not** cover — then stop. No scan runs. The value is mandatory, for the same reason `--mmd`'s is: a bare word after the flag could equally be the value or the target. |
 | `--explain-all` | the whole roster, each family's three parts, then stop. No scan runs. |
 | `--metrics` | **after** the `SUMMARY`, print the adequacy block: files understood, call sites visited and checked (with the share), findings by family × severity × confidence, and the declared scope-limit count. Opt-in: the block states how much was **checked**, not what was found, so it changes no count above it. |
+| `--contexts` | **after** the `SUMMARY`, print one `CONTEXTS` line: how many function bodies the behavioral lens **executed** (`executions`), over how many distinct signatures (function + abstract arguments), reached from how many call strings, how many signatures were reached from more than one string, how many arrivals were recursion cuts, and the deepest call stack. Opt-in for the same reason as `--metrics`, and it answers a different question: not "how much was checked" but "how the analyzer spent its executions" — the code re-executes a body per call site rather than summarizing it (the book's §8.4 functional approach), so the call-string bound of §8.3 is never imposed and the recursion cut is the only context merge. |
 | `--findings-shown-per-file N` | how many findings are **printed** per file (default 40). A printing limit, not an analysis limit: the SUMMARY counts come from every finding, so raising it reveals findings that were already counted and changes no summary number. |
 | `--show-notices` | print **every** notice per line, not only the ones that can hide a finding. By default a notice is printed only when its region lies inside a function's extent -- that is, when a conclusion may have been withheld because of it -- and every other notice is counted by shape in one `NOTICES` table. This flag restores the whole per-line list, which is what the tool printed before 0.4.36, and it changes no count: the SUMMARY's numbers are the same either way. |
 | `--families MSA-007,MSA-002` | report **only** these families, by their **stable id**. The ids are the `MSA-NNN` codes every rendered finding and every JSON record carries; the full roster is in [Confidence, ids, profiles and `nosec`](#confidence-ids-profiles-and-nosec). An id this version does not know is a `WARNING` and the scan still runs -- a family added in a later release must not make an older analyzer's profile unusable, and a typo must be loud rather than fatal. |
@@ -738,7 +739,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1400/1400 on wasm; 1264/1264 on js and wasm-gc
+moon test --deny-warn                # 1409/1409 on wasm; 1273/1273 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

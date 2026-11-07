@@ -153,3 +153,25 @@ test "flow/0527: defs and uses are named per node kind" {
   // A place-store kills only its base name, and an expression node kills nothing.
   assert_false(@flow.node_defs(@flow.Eval(reads("y"))).contains("y"))
 }
+
+///|
+/// A STRING INTERPOLATION READS ITS NAMES.
+///
+/// 0541. `EStr` carries the identifiers written inside `\{...}` -- that is what
+/// its second field is for -- and this function used to drop them (`EStr(_, _) =>
+/// ()`). With the read gone, `let mut s = "a"; if c { s = "b" }; "\{s}"` had no
+/// use of `s` at all, and `MSA-015` reported the initializer as a dead store: a
+/// high-confidence false positive on code that reads the name two lines later.
+///
+/// The read set is where the defect has one definition; the finding downstream
+/// of it is pinned in `pipeline_0541_test.mbt`.
+test "0541: an interpolated name is a use" {
+  let e : @ast.Expr = {
+    span: @flow.no_span(),
+    kind: @ast.EStr("v=\\{s}", ["s"]),
+  }
+  let uses : Map[String, Bool] = Map([])
+  @flow.names_of_expr(uses, e)
+  assert_eq(uses.length(), 1)
+  assert_true(uses.contains("s"))
+}

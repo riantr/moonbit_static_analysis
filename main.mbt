@@ -162,6 +162,12 @@ async fn main {
   // scan, not a query that replaces one -- the numbers are a function of the
   // scan that was run, so there is nothing to print without one.
   let mut metrics = false
+  // 0541. `--contexts` asks the BEHAVIORAL lens to keep a ledger of the abstract
+  // execution it performs (§8.3 call strings vs §8.4's functional approach) and
+  // prints it as one `CONTEXTS` line after the SUMMARY. Opt-in for the same
+  // measured reason `--metrics` is: it builds a string per body execution, and
+  // every SUMMARY-pinning stage of the release gate parses the lines above it.
+  let mut contexts = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -254,6 +260,8 @@ async fn main {
       explain_all = true
     } else if a == "--metrics" {
       metrics = true
+    } else if a == "--contexts" {
+      contexts = true
     } else if target == "" {
       target = a
     } else {
@@ -312,5 +320,6 @@ async fn main {
       honor_nosec,
     },
     metrics,
+    contexts,
   )
 }

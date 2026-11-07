@@ -9473,7 +9473,7 @@ against this tree, so it cannot rot without the gate saying so.
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
     row 3  src/sa/profile.mbt:341       fn stale_report
-    row 3  src/sa/main.mbt:1231         fn filtered_reports
+    row 3  src/sa/main.mbt:1287         fn filtered_reports
     --- END TRANSFER MAP ---
 
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
@@ -11900,3 +11900,186 @@ number this tool publishes.
 => 判据: A ROW THAT SAYS "NO AUDIT RECORDED" IS WORTH MORE THAN A ROW THAT SOUNDS
 LIKE ONE. The tenth projection's cheapest entries are its most useful, because
 they are the ones a reader cannot get from the scan.
+
+## 0541: §8.3 MEASURED AND DECLINED -- AND 0540's PREMISE WAS WRONG
+
+Increment 5b is §8.3, call strings. §0540 scoped it by reading `sig_key` and
+concluded that the interpreter "analyses a callee once per distinct abstract
+argument tuple", which it identified as §8.4's functional approach, and that the
+contexts call strings separate are therefore the ones "analysed ONCE today".
+That conclusion is wrong, and the code says so in one comment.
+
+### 0540's PREMISE
+
+`Interp::analyze_fn` opens with:
+
+    // no cache short-circuit: the dry pass populates the cache for the
+    // summary and converges recursion via partials, but the report pass must
+    // re-execute every body so findings are emitted with full stacks
+
+So the cache is WRITTEN on the way out and READ in exactly two places, neither of
+which propagates a call's result: `analyzed_sigs` (a shape summary for the
+pipeline) and the recursion guard (`in_progress` / `partials` / `cycle_ret`).
+There is no call site that answers a call from `cache`. Every ARRIVAL re-executes
+the body with its own abstract arguments.
+
+=> The interpreter is not a summary pass at all: it is an INLINING pass, with a
+signature-keyed termination device. The contexts §8.3 keeps apart by a bounded
+string are kept apart here by REPLAY, and replay separates strictly more than a
+`k`-bounded string does. §0540's "analysed ONCE today" is false, and its
+"separating them could add precision" consequently has nothing to add.
+
+### THE LEDGER THAT MADE THIS MEASURABLE
+
+A claim about the analysis's shape needs a number, and the tree had none: the
+scan published how many call sites the TYPE lens reached, and nothing about how
+many bodies the BEHAVIORAL lens executed. `@core.CtxLedger` (0541) now counts, in
+the report pass only:
+
+    exec      body executions (the cost of replay)
+    sig       distinct signatures among them (function + abstract arguments)
+    context   distinct (call string, signature) pairs
+    shared    signatures reached from more than one call string (§8.3's question)
+    cuts      arrivals that merged into a signature already in progress
+    depth     deepest call string, in frames
+
+`analyze_module_ctx` / `analyze_functions_ctx` return it beside the reports;
+`@pipeline.run_tracked` carries it; `--contexts` prints it as ONE `CONTEXTS` line
+after the SUMMARY. Off by default, off in both existing entries, and measured to
+change nothing when off: all eight trees' default SUMMARYs are byte-identical
+before and after this increment (moui 4/3457, labeler 2/698, image 1/186, async
+1/1654, proton 0/1799, proton_contract 0/29, core 12/10114/646/65).
+
+THE CALL STRING IS THE VIRTUAL STACK OF FUNCTIONS. `vst` already holds it and a
+second stack would be a second truth -- but §8.3's contexts are call NODES, so
+two call sites inside one caller share a string here. `context` and `shared` are
+therefore LOWER bounds on the number of distinct call sites, and the printed line
+says so rather than leaving a reader to over-read them.
+
+THE SIGNATURE KEY IS TYPE-LEVEL, and that is pinned by a test rather than left
+implicit: `AbsVal` carries constants (`AInt(1)` is not `AInt(2)`), but `sig_key`
+goes through `val_name`, which names the type (`AInt(_)` -> `"int"`). So `f(1)`
+and `f(2)` are ONE signature and TWO executions. That is coarser than §8.4's
+`Context = State`; it costs no precision *because nothing short-circuits on the
+key*, and it only coarsens the recursion guard and the `sigs` summary.
+
+### THE NUMBERS
+
+8 trees, `--per-function --contexts`, 2026-11-07, `--extern-iface-dir .repos
+--no-auto-fetch-deps`:
+
+    tree               files   exec    sig  context  shared  cuts  depth  exec/sig
+    own                  212   2717   1143    1838     211     1      6     2.37
+    wzzc-dev/moui        608   5970   4446    5602     610    29      6     1.34
+    moonbit_labeler       37   1277    434     919     144     6      4     2.94
+    moonbit_image         18    698    278     476      78     0      5     2.51
+    moonbitlang/async    419   2265   1549    1851     169    42      5     1.46
+    proton               137   2472   1782    2308     224    12      4     1.38
+    proton_contract        4     28     25      28       2     0      1     1.12
+    moonbitlang/core    1029   6272   4315    5585     572   221      5     1.45
+    TOTAL               2464  21699  13972   18607    2010   311      6     1.55
+
+    sig/exec       = 64.4%   -> 7,727 of 21,699 executions re-ran a signature
+                               that had already run in the same pass
+    shared/sig     = 14.4%   -> 2,010 signatures reached from >1 call string
+    cuts/exec      =  1.4%   -> 311 arrivals merged instead of replaying
+    context/exec   = 85.8%   -> the rest are literal repeats of one pair
+
+The MODULE-view number is a control worth recording: on this tree `--contexts`
+without `--per-function` reports `executions=0`, because the module entry skips
+`SFunc` and a library's top level calls nothing -- exactly the fact
+`analyze_functions`' doc already states. A ledger that had reported a non-zero
+there would have been counting the dry pass or counting itself.
+
+### WHAT THE NUMBERS DECIDE
+
+1. **§8.3 adds nothing here, and would SUBTRACT.** The contexts a call-string
+   analysis distinguishes are already distinguished -- by replay, at full depth,
+   with no `k`. Imposing `Call<=k` would merge every one of the 2,010 `shared`
+   signatures whose two call strings differ beyond depth `k`. The book's own
+   summary (p.109) is the argument against it on the cost side as well: "in
+   practice, `k = 1` sometimes gives inadequate precision, and `k >= 2` is
+   generally too expensive".
+2. **The only merge is the recursion cut, and it is 1.4% of arrivals** (311 of
+   21,699). That is the entire price of termination, quantified -- and it is not
+   zero, which is why the number is published rather than argued away.
+3. **The 35.6% re-execution is where the precision is bought.** A
+   cache-short-circuited implementation would have run 13,972 bodies; this one
+   ran 21,699 and every one of the extra 7,727 carried its own call stack, which
+   is what lets a finding be attributed to a path (`MSA-011`'s `vst`) instead of
+   to a function.
+4. **The trade is the one §8.4 describes, with one leg missing.** Functional
+   contexts are `State` in the book; here they are the abstract argument TYPES.
+   The gap would matter if the key gated propagation -- it does not -- so the
+   coarseness is confined to the guard, and `cuts/exec = 1.4%` is its size.
+
+### WHAT IT FOUND IN THIS TREE'S OWN CODE
+
+The instrumented scan is what put `--contexts` on this tree's own source, and the
+FIRST thing that scan reported was in the code that had just been written for it:
+
+    src/sa/main.mbt:622  warning: the value stored in 'per_sig' is read on no
+                         path before the name is written again (DeadStore) [high]
+
+`per_sig` is read two lines later, inside the interpolation that ends
+`ctx_line`. The minimal fixture is three lines:
+
+    let mut s = "n/a"
+    if c { s = "si" }
+    "value: \{s}"          <- the only read of `s`
+
+and the same program with a TAIL EXPRESSION instead of an interpolation reports
+nothing, which localized it to one function: `@flow.names_of_expr` answered `()`
+for `EStr`, so the names the PARSER had already collected (the `EStr` second
+field, added for exactly this) never reached the use set. The arm's own doc
+paragraph forbids the shape -- "dropping a read makes a variable look dead and
+turning a live variable into a 'dead store' is a false positive" -- so this was
+an omission against a written rule, not a trade-off.
+
+Fixed in `src/flow/live.mbt`. Regression: `flow_live_test.mbt` pins the read at
+the source, `pipeline_0541_test.mbt` pins the finding AND two controls (a tail
+expression, and a genuinely dead store, which still reports 1).
+
+MEASURED AFTER THE FIX:
+
+    default view, 7 corpora   byte-identical to the pins above (no corpus code
+                              hits the shape; the defect was latent, and it took
+                              this tree's own interpolation to expose it)
+    per-function census       37, per corpus async=1 core=29 image=1 labeler=2
+                              moui=4 -- unchanged, so the fix removed no true
+                              positive either
+    own source, module view   actionable=0, files=212, notices=1794,
+                              unchecked=4845 (was 1784/4825 at 211 files: +7 are
+                              this increment's new test file counting its `test`
+                              declarations, +1 the `CtxLedger` struct declaration,
+                              and the rest is the two-way churn of the arms this
+                              increment rewrote)
+    own source, per-func      actionable=2 with `_verify` excluded, and HEAD's
+                              bytes report the same two (`sa/main.mbt`,
+                              `parser/parser.mbt`) -- pre-existing, line numbers
+                              moved by insertion above them
+
+### WHY NOT A `k`-BOUNDED IMPLEMENTATION "FOR COMPLETENESS"
+
+Because it is strictly weaker than what is already there, on every axis the book
+uses to compare the two: precision (replay is unbounded), reporting (a per-context
+finding would double a count people quote, which §0540 correctly identified as the
+real blocker), and cost (`Context -> State` per node vs one extra map entry per
+arrival). Increment 5b is therefore a MEASUREMENT plus a channel that keeps it
+measurable, which is what 3b was and what the book's own summary recommends.
+
+=> 判据: "IMPLEMENTED UNDER ANOTHER NAME" HAS A THIRD CASE -- IMPLEMENTED MORE
+STRONGLY THAN THE SECTION ASKS FOR. §0540 stopped at "§8.2 is present". The next
+question was not "how do we add §8.3" but "what is the penalty for NOT bounding
+the string", and it is 1.4%.
+
+=> 判据: A DIAGNOSTIC PAYS FOR ITSELF WHEN IT FINDS A DEFECT IN THE CODE THAT
+ADDED IT. The ledger's first output was a high-confidence false positive in
+`ctx_line` -- in a family this session published -- and it was the INTERPOLATION
+arm of the use set, i.e. a hole that the corpora could not reach because none of
+them writes that shape in a position `MSA-015` examines.
+
+=> 判据: A NUMBER THAT WOULD HAVE BEEN ZERO IF THE INSTRUMENT WERE WRONG IS
+WORTH TAKING. `executions=0` on the module view is the control: it is the fact
+`analyze_functions` documents, and the ledger had to reproduce it or be counting
+something other than body executions.

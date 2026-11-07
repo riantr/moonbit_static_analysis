@@ -93,7 +93,27 @@ pub fn names_of_expr(out : Map[String, Bool], e : @ast.Expr) -> Unit {
   match e.kind {
     @ast.EInt(_) | @ast.EFloat(_) | @ast.EBool(_) | @ast.ERegex(_) => ()
     @ast.EBigInt(_) => ()
-    @ast.EStr(_, _) => ()
+    // A STRING INTERPOLATION READS ITS NAMES, and this arm used to answer ().
+    //
+    // The parser already hands the names over: `EStr(_, refs)` carries the
+    // identifiers written inside `\{...}` (see `@ast.EStr`), precisely so a lens
+    // can see a read that the raw payload hides. The structural walk consulted
+    // it; this function dropped it, so `let mut s = "a"; if c { s = "b" };
+    // "\{s}"` had NO read of `s` and `MSA-015` reported the initializer as a
+    // dead store.
+    //
+    // MEASURED, this tree's own `src/sa/main.mbt:622` (`ctx_line`'s `per_sig`):
+    // one high-confidence `DeadStore` on code that reads the variable two lines
+    // later, in the interpolation that ends the function. The minimal fixture is
+    // the three lines above; the same shape with a tail expression instead of an
+    // interpolation reports nothing, which is what localized it.
+    //
+    // It is also the arm the paragraph above forbids: dropping a read makes a
+    // variable look dead, and this is the false positive it predicted.
+    @ast.EStr(_, refs) =>
+      for n in refs {
+        out.set(n, true)
+      }
     @ast.EName(n) => out.set(n, true)
     @ast.EList(xs) | @ast.ETuple(xs) => names_of_exprs(out, xs)
     @ast.EUnary(_, a) | @ast.ECast(a) | @ast.EAsBind(a, _) =>

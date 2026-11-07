@@ -593,6 +593,38 @@ pub fn metrics_lines(
 }
 
 ///|
+/// 0541. THE CALL-CONTEXT LINE (§8.3/§8.4), as a pure function of the tree-wide
+/// ledger. One line, because it is one claim: how the behavioral lens reached
+/// the conclusions it reported.
+///
+/// WHAT IT SAYS, in the book's own terms. A function body in this analyzer is
+/// RE-EXECUTED at every call site rather than summarized, so the report pass is
+/// an inlining pass; §8.4's functional approach is what the signature cache does
+/// at the same time, and §8.3's call strings are the bound this design does not
+/// impose. `executions` is the cost, `signatures` is what a summary-based
+/// design would have run, and `recursion-cuts` is the ONLY arrival that merges
+/// two contexts instead of replaying one.
+///
+/// THE TWO BOUNDS ARE NAMED IN THE LINE ITSELF. `call-strings` counts distinct
+/// FUNCTION chains, which is coarser than §8.3's call-node strings, so it and
+/// `shared-signatures` can only under-count distinct call sites. A reader who
+/// took them as exact would conclude the analysis separates fewer contexts than
+/// it does -- the safe direction, and stated rather than left to be inferred.
+pub fn ctx_line(c : @core.CtxLedger) -> String {
+  // "0 of 0" is not a ratio: a scan that executed no body has no per-execution
+  // figure, and printing `0.0` would read as "the strategy is free" rather than
+  // "this tree never entered a function". Written as a STATEMENT for the reason
+  // `CtxLedger::plus` gives: an `if` used as a value is outside the analysed
+  // subset and would add a notice to this tree's own pinned scan.
+  let mut per_sig = "n/a (no signature was executed)"
+  if c.sig != 0 {
+    let t = c.exec * 100 / c.sig
+    per_sig = "\{t / 100}.\{t % 100 / 10}\{t % 10} executions/signature"
+  }
+  "CONTEXTS\texecutions=\{c.exec}\tsignatures=\{c.sig}\tcall-strings=\{c.context}\tshared-signatures=\{c.shared}\trecursion-cuts=\{c.cuts}\tmax-depth=\{c.depth}\t\{per_sig}\t(report pass only; a signature is a function plus its ABSTRACT arguments, so it is §8.4's context and not the call site's; a call string is the stack of enclosing FUNCTIONS, which under-counts distinct call sites and makes call-strings and shared-signatures LOWER bounds; recursion-cuts are arrivals that merged into a signature already in progress -- the only merge this design performs)"
+}
+
+///|
 /// The NOTPARSE tallies, as a pure function over the verdicts: every partial
 /// file's reason is counted, whatever its pre-boundary findings were, and up
 /// to three example paths are kept per reason. Extracted from the scan loop
@@ -673,6 +705,7 @@ pub async fn scan(
   show_notices : Bool,
   profile : Profile,
   metrics : Bool,
+  contexts : Bool,
 ) -> Unit {
   let root = locate(target)
   if root == "" {
@@ -751,6 +784,12 @@ pub async fn scan(
   // to.
   let aggregated_notices : Array[@report.Report] = []
   let mut printed_notice_count = 0
+  // 0541. The tree-wide call-context ledger. Accumulated here rather than in
+  // `Verdict`/`Summary` because it is a fact about the ANALYSIS and not about
+  // the program: `Summary`'s numbers go onto the SUMMARY line and are pinned by
+  // eight corpus stages, and a diagnostic that rides with them would move every
+  // one of those numbers the day it changed.
+  let mut ctx_total = @core.CtxLedger::zero()
   for f in files {
     // a directory with no `.mbt` of its own — a lone `.mbti`, a script — falls
     // back to the shared table, which is exactly what every file used before
@@ -759,7 +798,8 @@ pub async fn scan(
       Some(t) => t
       None => iface_tab
     }
-    let v = analyze(f, tab, per_function, profile)
+    let (v, file_ctx) = analyze(f, tab, per_function, profile, contexts)
+    ctx_total = ctx_total.plus(file_ctx)
     verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
     let d = v.findings.length() - v.notices
@@ -954,6 +994,22 @@ pub async fn scan(
     for line in metrics_lines(verdicts, s, files.length()) {
       println(line)
     }
+  }
+  // 0541. THE CALL-CONTEXT BLOCK, also opt-in, and its own flag rather than a
+  // line in the block above. Two reasons, and the second is the one that
+  // decided it:
+  //
+  //   * `metrics_lines` is a PURE function of `verdicts` and the `Summary`, and
+  //     that is stated as a property of the code and pinned by its test file
+  //     (`sa_0521_test.mbt`: "every number in `metrics_lines` is derived from
+  //     `verdicts` and the `Summary`, and nothing is re-measured"). This ledger
+  //     is neither, so it cannot live there without making that sentence false.
+  //   * it answers a different question. `--metrics` asks "how much of this
+  //     program did the analyzer check"; this asks "how did the analyzer spend
+  //     its executions doing it" -- §8.3 versus §8.4 is a design decision, not
+  //     an adequacy ratio.
+  if contexts {
+    println(ctx_line(ctx_total))
   }
   if mmd_out != "" {
     emit_mmd(mmd_out, verdicts, s, target, root, findings_shown_per_file)
@@ -1250,12 +1306,20 @@ fn filtered_reports(
 }
 
 ///|
+
+///|
+/// The per-file verdict, AND the behavioral lens's call-context ledger for that
+/// file. The two travel separately on purpose: the ledger belongs to no verdict,
+/// no family, and no SUMMARY number, and putting it in `Verdict` would have made
+/// a diagnostic field part of the record that every other consumer of `Verdict`
+/// reads.
 async fn analyze(
   p : String,
   extern_iface : @core.IfaceSymTab,
   per_function : Bool,
   profile : Profile,
-) -> Verdict {
+  track : Bool,
+) -> (Verdict, @core.CtxLedger) {
   let src = read_or(p)
   let n = base_of(p)
   let k = kind_of(p)
@@ -1278,43 +1342,49 @@ async fn analyze(
         src,
         profile,
       )
-      Verdict::{
-        path: p,
-        kind: k,
-        findings: rs,
-        parsed: true,
-        reason: "",
-        total: rs.length(),
-        notices: 0,
-        region_line: 0,
-        unreliable: 0,
-        hiding: [],
-        // 0521. No source-level call sites: this frontend is a script's
-        // `import` block or a proof sketch, and neither runs the type lens.
-        n_unchecked: 0,
-        n_calls: 0,
-        n_checked: 0,
-      }
+      (
+        Verdict::{
+          path: p,
+          kind: k,
+          findings: rs,
+          parsed: true,
+          reason: "",
+          total: rs.length(),
+          notices: 0,
+          region_line: 0,
+          unreliable: 0,
+          hiding: [],
+          // 0521. No source-level call sites: this frontend is a script's
+          // `import` block or a proof sketch, and neither runs the type lens.
+          n_unchecked: 0,
+          n_calls: 0,
+          n_checked: 0,
+        },
+        @core.CtxLedger::zero(),
+      )
     }
     ".mbtp" => {
       let rs = filtered_reports(@moonfiles.proof(src, n), src, profile)
-      Verdict::{
-        path: p,
-        kind: k,
-        findings: rs,
-        parsed: true,
-        reason: "",
-        total: rs.length(),
-        notices: 0,
-        region_line: 0,
-        unreliable: 0,
-        hiding: [],
-        // 0521. No source-level call sites: this frontend is a script's
-        // `import` block or a proof sketch, and neither runs the type lens.
-        n_unchecked: 0,
-        n_calls: 0,
-        n_checked: 0,
-      }
+      (
+        Verdict::{
+          path: p,
+          kind: k,
+          findings: rs,
+          parsed: true,
+          reason: "",
+          total: rs.length(),
+          notices: 0,
+          region_line: 0,
+          unreliable: 0,
+          hiding: [],
+          // 0521. No source-level call sites: this frontend is a script's
+          // `import` block or a proof sketch, and neither runs the type lens.
+          n_unchecked: 0,
+          n_calls: 0,
+          n_checked: 0,
+        },
+        @core.CtxLedger::zero(),
+      )
     }
     ".mbt.md" => {
       let r = @moonfiles.literate(src, n)
@@ -1336,34 +1406,42 @@ async fn analyze(
       // the line are the same question asked in ONE place. A low-confidence
       // finding is a notice, so it leaves `actionable` and enters `notices`.
       let notices = count_notices(reliable)
-      Verdict::{
-        path: p,
-        kind: k,
-        findings: reliable,
-        parsed: cut == 0,
-        reason: if cut == 0 {
-          ""
-        } else {
-          r.parse_reason
+      (
+        Verdict::{
+          path: p,
+          kind: k,
+          findings: reliable,
+          parsed: cut == 0,
+          reason: if cut == 0 {
+            ""
+          } else {
+            r.parse_reason
+          },
+          total,
+          notices,
+          region_line: cut,
+          unreliable: total - reliable.length(),
+          hiding: r.hiding,
+          // 0521. The literate frontend runs no type lens, exactly as the
+          // `.mbtx` arm does not: zero calls visited, zero checked.
+          n_unchecked: 0,
+          n_calls: 0,
+          n_checked: 0,
         },
-        total,
-        notices,
-        region_line: cut,
-        unreliable: total - reliable.length(),
-        hiding: r.hiding,
-        // 0521. The literate frontend runs no type lens, exactly as the
-        // `.mbtx` arm does not: zero calls visited, zero checked.
-        n_unchecked: 0,
-        n_calls: 0,
-        n_checked: 0,
-      }
+        r.ctx,
+      )
     }
     _ => {
       // The behavioral lens's ENTRY POINT. The module entry executes a
       // function body only if something calls it from a top-level statement,
       // so on a library module it never executes one at all. The per-function
       // entry analyzes every function as if it were the program's entry.
-      let r = if per_function {
+      // 0541. `track` rides the SAME call rather than a second analysis: the
+      // ledger and the findings must come from one execution of the module, or
+      // the figure would describe a run nobody's findings came from.
+      let r = if track {
+        @pipeline.run_tracked(src, n, extern_iface, per_function)
+      } else if per_function {
         @pipeline.run_functions(src, n, extern_iface)
       } else {
         @pipeline.run(src, n, extern_iface)
@@ -1390,25 +1468,28 @@ async fn analyze(
       // the line are the same question asked in ONE place. A low-confidence
       // finding is a notice, so it leaves `actionable` and enters `notices`.
       let notices = count_notices(reliable)
-      Verdict::{
-        path: p,
-        kind: k,
-        findings: reliable,
-        parsed: cut == 0,
-        reason: if cut == 0 {
-          ""
-        } else {
-          r.parse_reason
+      (
+        Verdict::{
+          path: p,
+          kind: k,
+          findings: reliable,
+          parsed: cut == 0,
+          reason: if cut == 0 {
+            ""
+          } else {
+            r.parse_reason
+          },
+          total,
+          notices,
+          region_line: cut,
+          unreliable: total - reliable.length(),
+          hiding: r.hiding,
+          n_unchecked: r.n_unchecked,
+          n_calls: r.n_calls,
+          n_checked: r.n_checked,
         },
-        total,
-        notices,
-        region_line: cut,
-        unreliable: total - reliable.length(),
-        hiding: r.hiding,
-        n_unchecked: r.n_unchecked,
-        n_calls: r.n_calls,
-        n_checked: r.n_checked,
-      }
+        r.ctx,
+      )
     }
   }
 }

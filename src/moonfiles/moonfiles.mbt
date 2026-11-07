@@ -418,6 +418,10 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // adverse ratio here would be "0 of 0", which is not a regression.
     n_calls: 0,
     n_checked: 0,
+    // 0541. Same reason again: a Markdown document runs no behavioral lens, so
+    // it executed no function body in any context. Zero is the measurement, not
+    // a placeholder.
+    ctx: @core.CtxLedger::zero(),
   }
 }
 

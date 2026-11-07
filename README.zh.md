@@ -310,6 +310,7 @@ moonx riantr/moonbit_static_analysis@latest <target> [旗标]
 | `--families MSA-007,MSA-002` | 只报这些家族，按它们的**稳定 id**。id 就是每条渲染出的发现、每条 JSON 记录都带的 `MSA-NNN` 码；完整名单见[置信度、id、profile 与 `nosec`](#置信度idprofile-与-nosec)。这个版本不认识的 id 只是一条 `WARNING`，扫描照跑——后来版本才加的家族不该让老分析器的 profile 用不了，而打错字该吵出来而不是直接崩掉。 |
 | `--exclude-families MSA-007` | 除了这些家族，其余全报。同一套 id 词汇、同一套规则。一个 id **既**被包含**又**被排除是 `ERROR`，扫描根本不跑：这两条规则互相矛盾，谁赢要由扫描器里两个 `if` 的先后决定。 |
 | `--honor-nosec` | 认被分析源码里的 `// nosec` 注释：`// nosec` 压掉那一行上的全部发现，`// nosec MSA-007` 只压掉那一行上的那一个家族。**默认关闭**，而这个默认是一个决定而不是遗漏：一个工具会因为被分析源码里的一句注释就不再报某条发现，那它的输出就得先读一遍源码才敢信。一条**什么都没压掉**的 `// nosec` 会被当成一条自己的发现报出来——过期的抑制是源码的事实，而源码正是这工具分析的东西。 |
+| `--contexts` | 在 `SUMMARY` **之后**打印一行 `CONTEXTS`：行为透镜**执行**了多少个函数体（`executions`）、跨多少个不同签名（函数 + 抽象实参）、从多少条调用串到达、有多少签名被多于一条调用串到达、有多少次到达是递归截断、最深调用栈几层。属于 opt-in，理由与 `--metrics` 相同，但它回答的是**另一个**问题：不是"检查了多少"，而是"分析器把它的执行花在哪里"——本代码在每个调用点**重新执行**被调函数体，而不是把它摘要掉（书里 §8.4 的 functional 方法），因此 §8.3 的调用串上界从未被施加，递归截断是唯一的一处上下文合并。 |
 
 `--mmd` 必须带路径，`--mmd-auto` 是另一个写法，这是刻意的：一个可选的值在这里是有歧义的，
 因为在 `<target> --mmd <path>` 里，`--mmd` 后面那个词既可能是路径，也可能是第二个没预期的
@@ -644,7 +645,7 @@ src/jsoncli   DeepSeek Harness 的 JSON 桥
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 1400/1400；js 与 wasm-gc 1264/1264
+moon test --deny-warn                # wasm 1409/1409；js 与 wasm-gc 1273/1273
 moon run src/cli                     # 程序 demo + 文件种类 demo + 样例机器审计
 ```
 

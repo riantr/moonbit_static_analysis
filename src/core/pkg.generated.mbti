@@ -38,6 +38,17 @@ pub(all) enum Confidence {
 }
 pub fn Confidence::name(Self) -> String
 
+pub(all) struct CtxLedger {
+  exec : Int32
+  sig : Int32
+  context : Int32
+  shared : Int32
+  cuts : Int32
+  depth : Int32
+}
+pub fn CtxLedger::plus(Self, Self) -> Self
+pub fn CtxLedger::zero() -> Self
+
 #derive(Eq)
 pub(all) enum Family {
   FParse

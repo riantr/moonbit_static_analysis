@@ -903,3 +903,89 @@ pub fn snapshot_vst(vst : Array[Frame]) -> Array[Frame] {
   }
   out
 }
+
+///|
+/// THE ANALYSIS-EFFORT LEDGER of the behavioral lens: how much abstract
+/// execution the interprocedural strategy actually performed, and in how many
+/// contexts. §8.3 (call strings) and §8.4 (the functional approach) are two
+/// answers to ONE question -- which calls may be merged -- and until this
+/// struct existed the answer this analyzer gives was invisible: the scan printed
+/// how many call sites its TYPE lens reached and said nothing about how many
+/// function bodies its BEHAVIORAL lens ran.
+///
+/// THE STRATEGY IT DESCRIBES. `Interp::analyze_fn` has no cache short-circuit:
+/// every call site RE-EXECUTES the callee's body with its own abstract
+/// arguments, and `sig_key` is consulted only as a summary (`analyzed_sigs`)
+/// and as the recursion cut. So the contexts are kept apart by REPLAY, not by a
+/// context lattice, and the only place two contexts merge is the cut.
+///
+/// THESE ARE NOT FINDINGS. Same standing as `n_calls`/`n_checked`: no family
+/// owns them, they move no SUMMARY number, and `--contexts` prints them while
+/// nothing else reads them.
+///
+/// EVERY COUNT COMES FROM THE REPORT PASS. The dry pass exists to populate
+/// summaries and to converge recursion before any finding is produced; a figure
+/// mixing the two would double for a reason that has nothing to do with the
+/// program under analysis.
+pub(all) struct CtxLedger {
+  /// Body executions: one per arrival at a function whose body the report pass
+  /// ran. This is the count that makes the strategy's COST visible, because a
+  /// summary-based analysis runs each signature once and this one runs it once
+  /// per context.
+  exec : Int32
+  /// Distinct `sig_key` values among those executions -- function name plus the
+  /// abstract arguments. Two arrivals share a signature exactly when they pass
+  /// the same abstract arguments, which is §8.4's context (the data) and NOT
+  /// §8.3's (the call site).
+  sig : Int32
+  /// Distinct (call string, signature) pairs. The call string here is the
+  /// virtual stack of enclosing FUNCTIONS, which is COARSER than §8.3's
+  /// `Call<=k`: two call sites inside one function share a frame. Every figure
+  /// derived from it is therefore a lower bound on the number of distinct call
+  /// sites, never an upper one.
+  context : Int32
+  /// Signatures reached from more than one call string (§8.3's own trade-off at
+  /// p.109: "k = 1 sometimes gives inadequate precision"). A call-string
+  /// analysis keeps these apart by construction, a functional one merges them on
+  /// the data, and this one re-executes them.
+  shared : Int32
+  /// Recursion cuts: arrivals that found their own signature already in progress
+  /// and returned the partial instead of running the body. THE ONLY PLACE THIS
+  /// ANALYSIS MERGES TWO CONTEXTS, and the number that says what the termination
+  /// device costs in precision.
+  cuts : Int32
+  /// The deepest call string observed, in frames.
+  depth : Int32
+}
+
+///|
+/// The ledger of a scan that measured nothing, and the value a file whose kind
+/// runs no behavioral lens contributes.
+pub fn CtxLedger::zero() -> CtxLedger {
+  { exec: 0, sig: 0, context: 0, shared: 0, cuts: 0, depth: 0, }
+}
+
+///|
+/// Tree-wide accumulation. `sig`/`context`/`shared` are PER FILE facts (each
+/// file is a separate module with its own interpreter), so the sum is a sum of
+/// per-module counts and NOT a set union: one signature name in two files is two
+/// signatures here. `depth` is a maximum, not a sum, for the same reason a
+/// maximum is the only tree-wide question "how deep did it go" can ask.
+pub fn CtxLedger::plus(self : CtxLedger, other : CtxLedger) -> CtxLedger {
+  // WRITTEN AS A STATEMENT, not as an `if` expression. An `if` used as a value
+  // is outside the analysed MoonBit subset, so the release gate's own-source
+  // scan counts a notice for it -- and that notice is a number the pins carry
+  // (0529 hit the same thing with a `let pruned = if ...`).
+  let mut depth = self.depth
+  if other.depth > depth {
+    depth = other.depth
+  }
+  {
+    exec: self.exec + other.exec,
+    sig: self.sig + other.sig,
+    context: self.context + other.context,
+    shared: self.shared + other.shared,
+    cuts: self.cuts + other.cuts,
+    depth,
+  }
+}

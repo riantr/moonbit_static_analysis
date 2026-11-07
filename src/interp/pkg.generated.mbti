@@ -13,7 +13,11 @@ import {
 // Values
 pub fn analyze_functions(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String]) -> Array[@report.Report]
 
+pub fn analyze_functions_ctx(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String], Bool) -> (Array[@report.Report], @core.CtxLedger)
+
 pub fn analyze_module(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String]) -> Array[@report.Report]
+
+pub fn analyze_module_ctx(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String], Bool) -> (Array[@report.Report], @core.CtxLedger)
 
 pub fn analyzed_sigs(@ast.Module, @types.TypeResult, @walk.WalkResult, String, @core.IfaceSymTab, Array[String]) -> Array[String]
 

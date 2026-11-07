@@ -19,6 +19,8 @@ pub fn count_by_shape(Array[@report.Report]) -> Array[(String, Int32)]
 
 pub fn count_notices(Array[@report.Report]) -> Int32
 
+pub fn ctx_line(@core.CtxLedger) -> String
+
 pub let default_findings_shown_per_file : Int32
 
 pub fn default_profile() -> Profile
@@ -63,7 +65,7 @@ pub fn prov_or_unknown(String) -> String
 
 pub async fn provenance_for(String, String) -> ScanProvenance
 
-pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool, Profile, Bool) -> Unit
+pub async fn scan(String, Array[String], Array[String], Bool, String, Bool, Int32, Bool, Profile, Bool, Bool) -> Unit
 
 pub fn scan_artifact_name(ScanProvenance, String) -> String
 

@@ -428,6 +428,41 @@ priv struct Interp {
   /// not mistaken for the outer one's.
   mut broke : Bool
   mut globals : Map[String, AbsVal]
+  // 0541. THE CALL-CONTEXT LEDGER (§8.2-8.4).
+  //
+  // WHAT IT COUNTS, and why each of these is a SEPARATE number rather than one
+  // ratio. `analyze_fn` re-executes the callee's body at every call site -- the
+  // strategy is replay, not summary -- so `ctx_exec` (executions) and `ctx_sig`
+  // (distinct signatures) answer different questions: the first is the cost the
+  // replay pays, the second is the population a summary-based analysis would
+  // have run instead. Their ratio alone cannot say whether a signature was
+  // re-run because TWO CALLERS reached it or because a LOOP re-ran the same
+  // call, which is the question §8.3 actually asks. `ctx_pair` keys the
+  // signature with the call string (the frame stack) so that question has a
+  // number, and `shared` counts the signatures with more than one entry in it.
+  //
+  // THE CALL STRING HERE IS COARSER THAN THE BOOK'S. §8.3's contexts are the
+  // CALL NODES on the stack; this one is the FUNCTIONS, because that is what
+  // `vst` already holds and a second stack would be a second truth. Two call
+  // sites inside one caller therefore share a string, so `context` and `shared`
+  // UNDER-count distinct call strings -- they are lower bounds, and a claim of
+  // precision gained from them could not be made.
+  //
+  // COUNTED IN THE REPORT PASS ONLY (`ctx_report_pass`). The dry pass exists to
+  // populate the cache and to converge recursion; a figure mixing the two would
+  // double for a reason the program has nothing to do with.
+  mut ctx_report_pass : Bool
+  mut ctx_exec : Int32
+  ctx_sig : Map[String, Int32]
+  ctx_pair : Map[String, Bool]
+  /// signature -> up to TWO distinct call strings. Two is the whole question
+  /// ("more than one"), so the array is capped rather than allowed to grow with
+  /// the number of callers: an unbounded per-signature set would make the
+  /// ledger's memory a function of the program's call graph instead of a
+  /// constant per signature.
+  ctx_stacks : Map[String, Array[String]]
+  mut ctx_cuts : Int32
+  mut ctx_depth : Int32
 }
 
 ///|
@@ -454,6 +489,15 @@ fn new_interp(file : String, extern_iface : @core.IfaceSymTab) -> Interp {
     ret_vals: [],
     flow: FNormal,
     broke: false,
+    // 0541. The ledger starts CLOSED: a scan that did not ask for `--contexts`
+    // pays one boolean test per call and allocates no map at all.
+    ctx_report_pass: false,
+    ctx_exec: 0,
+    ctx_sig: Map([]),
+    ctx_pair: Map([]),
+    ctx_stacks: Map([]),
+    ctx_cuts: 0,
+    ctx_depth: 0,
   }
 }
 
@@ -464,6 +508,70 @@ fn sig_key(name : String, args : Array[AbsVal]) -> String {
     parts.push(val_name(v))
   }
   "\{name}(\{parts.join(", ")})"
+}
+
+///|
+/// 0541. Record one body execution that the report pass is about to run: the
+/// signature, the call string it arrived from, and the pair of the two.
+///
+/// THE CALL STRING IS THE FRAMES ALREADY ON THE VIRTUAL STACK. That is the one
+/// that exists -- `analyze_fn` pushes its own frame AFTER this point, so at the
+/// time of the call the stack holds exactly the callers -- and building a second
+/// one would be a second definition of "where this execution came from".
+///
+/// `>` cannot occur inside a MoonBit identifier and `|` cannot either, so the
+/// joined key is unambiguous without escaping the parts.
+fn Interp::note_context(self : Interp, key : String) -> Unit {
+  self.ctx_exec += 1
+  self.ctx_sig.set(
+    key,
+    match self.ctx_sig.get(key) {
+      Some(n) => n + 1
+      None => 1
+    },
+  )
+  let parts : Array[String] = []
+  for fr in self.vst {
+    parts.push(fr.func)
+  }
+  let stack = parts.join(">")
+  self.ctx_pair.set("\{stack}|\{key}", true)
+  match self.ctx_stacks.get(key) {
+    None => self.ctx_stacks.set(key, [stack])
+    Some(seen) =>
+      if seen.length() < 2 && !seen.contains(stack) {
+        seen.push(stack)
+      }
+  }
+  let d = self.vst.length()
+  if d > self.ctx_depth {
+    self.ctx_depth = d
+  }
+}
+
+///|
+/// 0541. The ledger of everything this module executed in its report pass.
+///
+/// `shared` is DERIVED from `ctx_stacks` here rather than incremented at the
+/// call site: an increment would need a "already counted this signature" flag,
+/// and a flag that is set on the second call and read on the third is exactly
+/// the kind of two-field bookkeeping that goes wrong silently. Counting the
+/// arrays of length two at the end has one definition and no state.
+fn Interp::ctx_ledger(self : Interp) -> @core.CtxLedger {
+  let mut shared = 0
+  for _, seen in self.ctx_stacks {
+    if seen.length() >= 2 {
+      shared += 1
+    }
+  }
+  {
+    exec: self.ctx_exec,
+    sig: self.ctx_sig.length(),
+    context: self.ctx_pair.length(),
+    shared,
+    cuts: self.ctx_cuts,
+    depth: self.ctx_depth,
+  }
 }
 
 ///|
@@ -596,12 +704,39 @@ pub fn analyze_module(
   extern_iface : @core.IfaceSymTab,
   enum_ctors : Array[String],
 ) -> Array[@report.Report] {
+  analyze_module_ctx(m, tr, wr, file, extern_iface, enum_ctors, false).0
+}
+
+///|
+/// 0541. `analyze_module` with the call-context ledger turned on.
+///
+/// A SEPARATE ENTRY rather than a flag on the existing one: the ledger builds a
+/// string per body execution, and every scan that does not ask for it should not
+/// pay for it. The pair is returned together because they come from ONE run --
+/// computing the ledger by re-analyzing the module would measure a second
+/// execution and call it the first one's.
+pub fn analyze_module_ctx(
+  m : @ast.Module,
+  tr : @types.TypeResult,
+  wr : @walk.WalkResult,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  enum_ctors : Array[String],
+  track : Bool,
+) -> (Array[@report.Report], @core.CtxLedger) {
   let it = setup_interp(m, tr, wr, file, extern_iface, enum_ctors)
   // phase 2 (dry): populate the cache
   it.run_top(m, true)
-  // phase 3 (report): replay with complete stacks
+  // phase 3 (report): replay with complete stacks. The ledger opens HERE and
+  // not before: the dry pass is the summary/fixpoint pass, and mixing its
+  // executions into the count would double the figure for a reason that has
+  // nothing to do with the program (see `CtxLedger`).
+  if track {
+    it.ctx_report_pass = true
+  }
   it.run_top(m, false)
-  it.sink
+  let reports = it.sink
+  (reports, it.ctx_ledger())
 }
 
 ///|
@@ -640,6 +775,21 @@ pub fn analyze_functions(
   extern_iface : @core.IfaceSymTab,
   enum_ctors : Array[String],
 ) -> Array[@report.Report] {
+  analyze_functions_ctx(m, tr, wr, file, extern_iface, enum_ctors, false).0
+}
+
+///|
+/// 0541. `analyze_functions` with the call-context ledger turned on. Same
+/// contract and same reason as `analyze_module_ctx`.
+pub fn analyze_functions_ctx(
+  m : @ast.Module,
+  tr : @types.TypeResult,
+  wr : @walk.WalkResult,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  enum_ctors : Array[String],
+  track : Bool,
+) -> (Array[@report.Report], @core.CtxLedger) {
   let it = setup_interp(m, tr, wr, file, extern_iface, enum_ctors)
   // The MODULE FRAME. A function body may read a module-level binding, and
   // `analyze_fn` gives it a FRESH environment holding only the parameters --
@@ -655,10 +805,16 @@ pub fn analyze_functions(
     it.analyze_entry(f, tr, i)
   }
   it.sink = saved_sink
+  // 0541. The report loop, and only it, feeds the ledger: the loop above is this
+  // entry's dry pass.
+  if track {
+    it.ctx_report_pass = true
+  }
   for i, f in wr.fns {
     it.analyze_entry(f, tr, i)
   }
-  it.sink
+  let reports = it.sink
+  (reports, it.ctx_ledger())
 }
 
 ///|
@@ -2726,6 +2882,14 @@ fn Interp::analyze_fn(
   // re-execute every body so findings are emitted with full stacks
   let key = sig_key(def.name, vals)
   if self.in_progress.contains(key) {
+    // 0541. THE ONLY MERGE IN THIS ANALYSIS. The body is NOT run: the arrival
+    // returns the partial, so this context's arguments are dissolved into the
+    // one already in progress. Counted rather than assumed rare -- a ledger that
+    // reported the re-executions and hid the cuts would describe a strategy with
+    // no termination device.
+    if self.ctx_report_pass {
+      self.ctx_cuts += 1
+    }
     // recursion: consult the partial (cached partial results);
     // declared return types make the cycle converge
     match self.partials.get(key) {
@@ -2737,6 +2901,9 @@ fn Interp::analyze_fn(
     }
   }
   self.in_progress.set(key, true)
+  if self.ctx_report_pass {
+    self.note_context(key)
+  }
   let env : Map[String, AbsVal] = Map([])
   for i, pt in def.ptypes {
     let name = "arg\{i}"
