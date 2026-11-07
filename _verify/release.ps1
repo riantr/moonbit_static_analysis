@@ -1838,9 +1838,9 @@ $PERFN = [ordered]@{
   'async'           = '1'
   'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '30'
+  'moonbit_core'    = '29'
 }
-$PERFN_TOTAL = '38'
+$PERFN_TOTAL = '37'
 # 0508. THE DEMOTED SET, pinned beside the actionable one for the same reason.
 # A finding the analyzer does not stand behind is rendered `notice:` and leaves
 # the actionable count -- and a set of findings that leaves the census is a set

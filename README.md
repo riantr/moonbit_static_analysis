@@ -640,8 +640,8 @@ numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** It is measured
 > across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and the release
-> gate **pins** the number. Today it reports **38** `actionable` findings, where the module
-> view reports 12. The census classifies them: **28** are constructs this frontend does not
+> gate **pins** the number. Today it reports **37** `actionable` findings, where the module
+> view reports 12. The census classifies them: **27** are constructs this frontend does not
 > read or operators it does not model, **9** are `MSA-015` dead stores the new family reports
 > on other corpora, and one — a local assigned and never read in `moonbit_labeler` — is still
 > the first true defect this tool has published on any corpus.
