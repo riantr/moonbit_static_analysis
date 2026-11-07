@@ -11497,3 +11497,59 @@ neither was individually wrong.
 => 判据: REPRODUCING A FINDING ON A SMALLER PROGRAM IS WHAT SEPARATES A CLASS
 FROM A COINCIDENCE. Two of the three here reproduced; the third did not, and the
 one that did not is written down as unexplained.
+## 0533: INCREMENT 4 SCOPED FROM MEASUREMENT -- AND WHY IT NEEDS ITS OWN CYCLE
+
+Increment 4 of the plan is interprocedural abstract parameter binding (book
+§8.1): a callee's entry state is `⊔_callers ⊥[bᵢ ↦ eval(caller, argᵢ)]`, and a
+function with no callers gets `⊤`. Its target is the `MSA-011` false positive
+0524 measured and pinned. This section records the STRUCTURAL facts the
+implementation depends on, measured rather than assumed, so the next cycle starts
+from evidence.
+
+### THE ENTRY PATH IS ALREADY ABSTRACT, AND THAT IS NOT WHERE THE BUG IS
+
+`Interp::analyze_entry` (interp.mbt:645) binds every parameter from its DECLARED
+TYPE -- `abs_of(t)` over `sig.param_tys`, with `TUnknown` where the type lens
+inferred nothing. So an entry analysis already starts at `⊤`-ish, exactly as
+§8.1 wants for a function nobody called. The 0524 fixture's false positive
+therefore cannot come from this path, and it does not: it comes from the CALL
+path, which analyses the callee AGAIN with the caller's argument values.
+
+### `analyze_fn` HAS EXACTLY TWO CALLERS, WHICH IS WHAT MAKES THE FIX TRACTABLE
+
+    interp.mbt:698    from `analyze_entry`   -- declared-type values
+    interp.mbt:2519   from a CALL site       -- caller-derived values
+
+One call site carries the defect. The `MSA-011` report itself is emitted deep
+inside `exec_block`, at the `_ =>` arm that notices `self.flow` is no longer
+`FNormal` after a terminator.
+
+### THE SHAPE OF THE FIX, AND THE REASON IT IS NOT APPLIED HERE
+
+The book's version needs a PHASE ORDER the current interpreter does not have:
+collect every call site's argument values, JOIN them per parameter, then analyse
+the callee once with the join. The interpreter instead analyses per call
+signature, keyed by `sig_key(name, args)` with a `cache` and `partials` map --
+context-SENSITIVE per distinct argument value, which is the more precise design
+and also the one that lets a single caller decide a branch.
+
+A bounded version follows from the two-call-site fact: a frame analysed FROM A
+CALLER must not conclude `MSA-011`, because whether its `if` was taken depends on
+an argument value the analysis chose. That needs a per-frame flag threaded through
+the call at 2519 and saved/restored across recursion, and it must leave the 0425
+true positives alone -- they include "code after an `if` where EVERY branch
+terminates", which is dead for every caller.
+
+WHY IT IS NOT IN THIS CYCLE, stated as the thing 0524 already recorded: this is a
+change to CALL SEMANTICS, so it "moves findings on every corpus". Shipping it
+requires re-measuring `$PINNED` (7 trees), `$PERFN`/`$PERFN_DEMOTED` via
+`census_perfunction.ps1`, `$NOTICE_TOTAL`, and both READMEs -- the same cycle
+0531 needed for a CFG fix, at larger scale, plus deleting the pinned KNOWN-FALSE-
+POSITIVE test at 0524 which instructs its own removal when the fix lands. A
+half-applied version leaves the release gate red with stale baselines, which is
+worse than the recorded over-report it would fix.
+
+=> 判据: A FIX WHOSE BLAST RADIUS IS EVERY BASELINE NEEDS ITS OWN CYCLE, AND THE
+SCOPING IS THE DELIVERABLE WHEN THE CYCLE DOES NOT FIT. Two call sites and the
+entry path's existing abstraction turn "needs a new analysis" into "needs a flag
+and a re-pin", and that difference is what the next cycle buys.
