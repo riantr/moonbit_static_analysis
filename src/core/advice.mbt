@@ -77,8 +77,8 @@ pub fn Family::advice(self : Family) -> Advice {
       }
     FUnreachable =>
       Advice::{
-        why: "A statement follows a `return`, `break` or `continue` on every path to it, so it can never execute.",
-        how: "Delete it. If it was meant to run, the control flow above it needs to change.",
+        why: "UNREACHABLE CODE: no execution reaches this statement, because the flow arriving at it has already left the block. The behavioral lens decides this while executing the body, and it joins branches -- so a `return` inside an `if` does NOT by itself make what follows dead, and code after an `if` whose EVERY branch terminates does. CAVEAT, measured: when a callee's parameter was bound from the CALLER's argument, a branch decided by that value can kill the rest of the body on one input, and the finding is then WRONG -- `fn f(c : Bool) -> Int { if c { return 1 } return 2 }` called as f(true) reports `return 2`, which f(false) runs. Treat a finding inside a function called with a literal argument as unverified. The three deck situations are separate: this family is unreachable code, DEAD CODE (a value overwritten before use) is reported by NO family, and an INFEASIBLE PATH is MSA-013 and says `D[P]`.",
+        how: "Delete the statement. If it was meant to run, the control flow above it needs to change. When the finding is in a function that receives a literal argument from a call site, first check whether the function is also called with other values: if it is, the statement runs for those and the finding is the over-report described above, not a defect.",
       }
     FStaleNosec =>
       Advice::{

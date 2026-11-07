@@ -711,7 +711,7 @@ pub fn Family::property(self : Family) -> String {
       "no method matching the operands exists on their concrete types"
     FCondBool => "a condition's type is not Bool"
     FUnreachable =>
-      "a statement follows one whose flow has already left the block, in the same block"
+      "UNREACHABLE CODE, in the deck's sense: a statement that no execution reaches, because the flow arriving at it has already left the block"
     FStaleNosec => "a nosec comment suppressed nothing"
     FInfeasibleBranch =>
       "no input reaches this branch: the guards on the way to it contradict it, so its domain D[P] is empty"
@@ -749,7 +749,7 @@ pub fn Family::assumption(self : Family) -> String {
     FCondBool =>
       "the condition's type is known, and the branch was not constant-folded"
     FUnreachable =>
-      "flow is decided syntactically -- return, break, continue -- and branches are joined, not proved infeasible"
+      "the behavioral lens executes the body and joins branches, so a terminator inside a BRANCH does not by itself kill what follows -- but the join is over ONE execution: when a callee's parameter was bound from the caller's argument, a branch decided by that value can still kill the rest of the body (measured; see the family's `excluded`)"
     FStaleNosec =>
       "a suppression matches a report on the same start line whose family it names"
     FInfeasibleBranch =>
@@ -790,7 +790,7 @@ pub fn Family::excluded(self : Family) -> String {
     FCondBool =>
       "constant-folded conditions and unknown types; the state-machine frontend reuses this id for a non-boolean guard"
     FUnreachable =>
-      "path feasibility, which needs semantics and is undecidable in general -- a branch whose domain a BOUNDED constraint model can show empty is reported under MSA-013 instead, and every branch that model cannot decide stays undecided; the state-machine frontend reuses this id for a state outside the reachability closure"
+      "DEAD CODE in the deck's sense -- executed but irrelevant, a value overwritten before use -- is reported by NO family, this one included; path feasibility, which needs semantics and is undecidable in general, is reported under MSA-013 only when a BOUNDED constraint model can show the domain empty; and THIS FAMILY OVER-REPORTS when a callee's parameter was bound from the caller's argument, so an `if` whose condition came from outside can kill the rest of the body on one input and be reported for all of them (measured 2026-11-07, pinned by pipeline_0524_test); the state-machine frontend reuses this id for a state outside the reachability closure"
     FStaleNosec => "whether the suppressed finding was real"
     FInfeasibleBranch =>
       "feasibility that needs a call result, an index, an arithmetic identity or an interprocedural fact -- undecidable in general, so a branch this model cannot decide is counted UNDECIDED rather than claimed reachable"

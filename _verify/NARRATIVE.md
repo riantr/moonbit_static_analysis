@@ -10593,3 +10593,107 @@ finding less trustworthy than one oracle that admits its scope.
 => 判据: AN ABSENT PREDICATE AND A PREDICATE OVER AN EMPTY NAME ARE DIFFERENT FACTS. The absence
 says "this kind of claim is not machine-checkable"; the empty name says "check the empty string" and
 is indistinguishable from a real subject. Refuse the second.
+
+## 0524. THE MSA-011 AUDIT -- THREE SITUATIONS, THREE OWNERS, ONE MEASURED FALSE POSITIVE
+
+The deck separates three things a reader collapses into "dead" (p.22):
+
+    unreachable code  never executed at all            `X := X+1; Goto loop; Y := Y+5`
+    dead code         "executed, but irrelevant"       `X := X+1; X := 7; X := X+Y`
+    infeasible path   D[P] = { }, every statement on it individually reachable (p.20, p.57)
+
+The audit question was which of the three `MSA-011` actually reports. Answer, before this increment:
+the first -- and the family's whole contract was one sentence that did not say so, did not mention
+the second, and did not distinguish the third.
+
+### WHAT THE MECHANISM REALLY IS
+
+`MSA-011` is emitted by the BEHAVIORAL lens (`src/interp/interp.mbt:854`, message `unreachable
+code`), not by the structural walk: `exec_block` walks a body and, when `self.flow` is no longer
+`FNormal`, reports the next statement and stops walking that block. Since the lens EXECUTES, it
+joins branches, and that is why `if c { return }` followed by more code did not report.
+
+### THE FALSE POSITIVE THE AUDIT FOUND (measured, then pinned)
+
+    fn f(c : Bool) -> Int {
+      if c { return 1 }
+      return 2            // 5:3 - warning: unreachable code   ← WRONG
+    }
+    let x = f(true)
+
+`f(false)` returns 2. The lens executed `f` with `c` bound to the CALL SITE's `true`, took the
+then-branch, and found the flow already `FReturn` at `return 2` -- so the statement it called dead is
+the one the next caller runs. The trigger is a callee whose parameter came from the caller's
+argument, which is common: any function with an early `return` inside an `if`, called anywhere with a
+foldable argument.
+
+Whether `return 2` is reachable depends on an ARGUMENT VALUE. That is semantics, and this is exactly
+the case the item asked to move to UNDECIDED.
+
+### THE FIX WAS ATTEMPTED, MEASURED, AND REVERTED
+
+First attempt: report only when the preceding statement is a terminator IN THE SOURCE (`return`,
+`raise`, `break`, `continue` standing alone). Sound for the fixture above -- and it turned SEVEN
+deliberate `0425` tests red:
+
+    code after an `if` where EVERY branch terminates is still dead            (correctly dead)
+    an else-if chain where every branch terminates is still dead              (correctly dead)
+    a chain that reaches exec_alt and returns everywhere is still dead        (correctly dead)
+    a false condition whose else returns leaves the rest dead                 (folded literal)
+    a folded condition makes the un-taken branch's continuation dead          (folded literal)
+
+Those are TRUE positives: they depend on no caller. So the guard has to separate "decided by a
+literal in the source" (sound) from "decided by the argument this execution happened to see" (needs
+semantics) -- which means binding a CALLEE's parameters ABSTRACTLY instead of from the caller. That
+is a change to call semantics, not a patch at the report site, and it moves findings on every corpus.
+
+REVERTED, and the over-report stands for now. What ships instead is a contract that names it, an
+advice entry that tells a reader what to do with such a finding, and a test that pins the WRONG
+answer with an instruction to delete itself when the fix lands:
+
+    test "0524: a caller's argument can make MSA-011 over-report (KNOWN false positive)"
+
+A defect described only in prose is a defect nobody notices being fixed or re-introduced.
+
+### THE SECOND SITUATION HAS NO OWNER, AND NOW SAYS SO
+
+`fn g() -> Int { let mut x = 1; x = 7; x + 1 }` -- the first value of `x` is dead in the deck's
+sense. Measured: the scan reports NOTHING. `UnusedLocal` does not fire (x IS read), `Unreachable`
+does not fire (every statement runs). So DEAD CODE is covered by no family, and `MSA-011`'s
+`excluded` now says so rather than leaving a reader to assume one of the fourteen covers it.
+
+### THE CONTRACT AND THE VOCABULARY
+
+`FUnreachable`'s three parts were rewritten around the deck's words:
+
+    property    "UNREACHABLE CODE, in the deck's sense: a statement that no execution reaches ..."
+    assumption  "the lens executes the body and joins branches ... but the join is over ONE
+                 execution: when a callee's parameter was bound from the caller's argument, a branch
+                 decided by that value can still kill the rest of the body (measured)"
+    excluded    "DEAD CODE ... is reported by NO family, this one included; path feasibility ...
+                 is reported under MSA-013 only when a BOUNDED constraint model can show the domain
+                 empty; and THIS FAMILY OVER-REPORTS when a callee's parameter was bound from the
+                 caller's argument ..."
+
+And the vocabulary is pinned by a test, because three situations sharing one word is how a reader
+ends up believing a statement was REMOVED from the program when the tool only showed that no input
+reaches it: `MSA-011` may not say `dead`, `infeasible` or `D[P]`; `MSA-013` must say `D[P]` and may
+not say `unreachable`.
+
+### GATES
+
+    moon fmt --check                exit 0
+    moon check --deny-warn          exit 0
+    moon test --target wasm         1367/1367   (+4)
+
+=> 判据: AN AUDIT THAT ONLY REWRITES THE CONTRACT IS A WORDING EXERCISE. Ask the code the question the
+contract asks, on a fixture, and read the answer: that is how the caller-argument false positive
+turned up, and it was invisible in every document.
+
+=> 判据: WHEN A FIX NEEDS SEMANTICS THE LENS DOES NOT HAVE, SAY SO IN THE CONTRACT AND PIN THE WRONG
+ANSWER. A suppressed finding and a finding that is wrong for a stated reason are different states; the
+second is honest only while the reason is in the shipped data and a test goes red when it changes.
+
+=> 判据: TWO FAMILIES MAY NOT BORROW EACH OTHER'S WORD. "Unreachable" says no execution arrives;
+"empty domain" says every statement is individually reachable and no input selects the path. A reader
+who is handed the wrong one is told the code was deleted when it was not.

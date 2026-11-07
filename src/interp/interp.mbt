@@ -851,6 +851,32 @@ fn Interp::exec_block(
         _ => {
           // behavior lens's flow insight: statements after a terminator are
           // unreachable (reportUnreachable)
+          //
+          // 0524. THIS IS UNSOUND WHEN THE FLOW WAS DECIDED BY A CALLER'S
+          // ARGUMENT, and that is measured rather than suspected:
+          //
+          //     fn f(c : Bool) -> Int {
+          //       if c { return 1 }
+          //       return 2        // reported "unreachable code" -- WRONG
+          //     }
+          //     let x = f(true)
+          //
+          // `f(false)` returns 2. The lens executed `f` with `c` bound to the
+          // call site's `true`, took the then-branch, and found the flow already
+          // FReturn at `return 2`, so the statement it called dead is the one the
+          // next caller runs.
+          //
+          // A first attempt guarded this on "the preceding statement is a
+          // terminator IN THE SOURCE", which is sound for this fixture and WENT
+          // RED on seven deliberate 0425 tests: code after an `if` whose EVERY
+          // branch terminates is genuinely dead, and so is code after an `if`
+          // whose condition FOLDS to a literal. Neither of those depends on a
+          // caller. So the guard has to separate "decided by a literal in the
+          // source" (sound) from "decided by the argument this execution
+          // happened to see" (needs semantics) -- which means binding a callee's
+          // parameters ABSTRACTLY instead of from the caller, an increment of its
+          // own. Until then the over-report stands and MSA-011's `excluded`
+          // contract names it.
           self.report(@core.FUnreachable, "unreachable code", s.span)
           break
         }
