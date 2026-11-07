@@ -622,15 +622,9 @@ fn walk_stmts(ctx : Ctx, stmts : Array[@ast.Stmt], facts : Facts) -> Unit {
         }
         cur = next
       }
-      @ast.SWhile(_, body) => {
-        cur = walk_loop(ctx, body, cur)
-      }
-      @ast.SFor(_, _, _, body) => {
-        cur = walk_loop(ctx, body, cur)
-      }
-      @ast.SForUpdate(body) => {
-        cur = walk_loop(ctx, body, cur)
-      }
+      @ast.SWhile(_, body) => cur = walk_loop(ctx, body, cur)
+      @ast.SFor(_, _, _, body) => cur = walk_loop(ctx, body, cur)
+      @ast.SForUpdate(body) => cur = walk_loop(ctx, body, cur)
       @ast.SLocalFunc(_, _, _, body, _) =>
         // A local function is analysed as its own program: the facts of the
         // enclosing body are not facts about its parameters.
