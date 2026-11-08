@@ -381,7 +381,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19602'
+$NOTICE_TOTAL = '19616'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -400,10 +400,10 @@ $NOTICE_TOTAL = '19602'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '202'
-$SELF_NOTICES = 'test declaration=1445|if expression=95|struct declaration=60|anonymous function literal=29|enum declaration=18|const declaration=7|short lambda=8|type declaration=2|try expression=1'
+$SELF_FILES = '204'
+$SELF_NOTICES = 'test declaration=1458|if expression=95|struct declaration=60|anonymous function literal=29|enum declaration=18|const declaration=7|short lambda=8|type declaration=3|try expression=1'
 $SELF_PRINTED = '133'
-$SELF_AGGREGATED = '1532'
+$SELF_AGGREGATED = '1546'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.

@@ -12881,3 +12881,165 @@ function literal 26 -> 29, short lambda 5 -> 8), printed 126 -> 133 and aggregat
 is the mechanism rather than a defect -- the new factories read their input only inside the
 closure they return (self 27 -> 29 locals, 24 -> 25 params), and the seven corpora did not
 move at all.
+
+## 0547: THE FOURTH ANALYSIS IS NOT A GRAPH PROBLEM, AND THE DECK IS TWO DECKS
+
+The reference is the next lecture (Tian Tan, `Pointer Analysis`, Nanjing University). The
+attachment is 104 pages and it is TWO DECKS, which matters for what can be claimed about it:
+
+    p.1-92    the 2021 lecture. Its contents (p.3): 1 Motivation, 2 Introduction to Pointer
+              Analysis, 3 Key Factors, 4 Concerned Statements. Section 4 is p.79-91 -- what
+              is analysed (p.80-81), pointers in Java (p.82-87), and the FIVE
+              pointer-affecting statements (p.88).
+    p.93-104  a SECOND deck, `Foundations (I)`, dated 2020 on its own title slide (p.93). Its
+              contents (p.94): 1 Rules, 2 How to Implement Pointer Analysis, 3 Algorithms,
+              4 With Method Calls -- and the FILE CONTAINS ONLY SECTION 1, ending on the
+              summary table at p.104.
+
+So the attachment supports the RULE SYSTEM: the domain and four rules (p.97-98), the
+configuration (p.44/53/70/77), the statement kinds (p.85-91), and two worked programs whose
+answers are printed (p.57-69 and p.28-29). It does not contain the algorithm, and it does not
+contain method calls: p.96 says of the fifth statement kind "will come back to this in pointer
+analysis with method calls", and that section is not in the file. Three of the four sections
+of `Foundations (I)` are absent, so "implement the algorithm next" is not a plan this
+attachment can justify.
+
+### THE MISSING TERM IS THE SOLVER'S ARGUMENT, FOR THE SECOND INCREMENT RUNNING
+
+`worklist.mbt` now has three solvers and every one of them takes a control-flow graph: a node
+index space, a successor relation, and a transfer indexed by node -- 0546 added the per-EDGE
+transfer, which is the same shape with one more term, not a new shape. Pointer analysis has
+neither. Flow-insensitivity (p.55) makes the program "a set of unordered statements", so the
+successor arrays are noise, and what the analysis iterates over is a set of constraints whose
+edges run between POINTERS rather than between program points. The stack of code that exists
+here has no place to put that: a lattice, an index space and a transfer are three things a
+constraint system does not have.
+
+=> 判据: A NEW ANALYSIS IS NOT AUTOMATICALLY A NEW SOLVER. The honest move was to reuse the
+CFGs for the one thing they are good at -- reaching the statements, keeping ONE frontend path
+through this tree -- and then to ignore every edge in them, rather than to bend the three
+existing solvers into a problem with no node transfer at all.
+
+### WHAT WAS BUILT
+
+`src/flow/pta.mbt` holds the domain of p.97 as one map from a pointer key (`x`, or `o1.f`) to
+a set of objects, and p.98's four rules as four arms of `pta_step`. `pta_run` is the
+whole-program fixpoint and hands back ONE MAP PER FUNCTION. `pta_run_ordered` is the
+strong-update reading, restricted to a straight-line body, and it exists so that the deck's
+p.57-69 contrast is a test rather than a sentence. `pta_alias` derives alias information from
+points-to, which is what p.29 says is available, and is why there is no second pass.
+`pta_text` is the dump the rows assert on.
+
+`src/flow/pta_test.mbt` is thirteen rows, and every one of them pins a number the deck prints:
+the four-statement program read two ways (p.68's `s -> {"x","y"}` and p.61-64's
+`s -> {"x"}`), the alias pair that aliases and the pair that does not (p.28-29), `o2` for a
+site on line 2 (p.45-47), `o1`/`o4` for sites on lines 1 and 4 (p.77), and the array whose two
+element writes land in one field (p.86). The graphs come from `cfg_of`, never from a
+hand-built node list, because `cfg_of` allocates nodes back to front and a test that built
+them in source order would never exercise the ordering trap.
+
+### SIX CORRECTIONS, AND THE DECK SETTLED FIVE OF THEM
+
+**1. `fn` IS A MOONBIT KEYWORD.** The first version wrote `fn pta_site_of(sites, fn : Int32, node : Int32)`.
+`fn` is the declaration keyword, so the parser read a parameter name where it expected one and
+produced `Parse error, unexpected token 'fn'` -- and because the function signature is what
+everything downstream is typed against, ONE bad identifier became NINE errors, four of them
+in the body of a function four hundred lines later reporting that a three-argument function
+"requires 2 arguments". The lesson is about the error MULTIPLIER, not about the keyword: a
+signature error is reported once and then repeated as a consequence everywhere.
+
+**2. THE DECK NAMES AN OBJECT AFTER ITS ALLOCATION SITE'S LINE, NOT ITS ORDER OF APPEARANCE.**
+The first version ranked sites `o1, o2, ...` in order of appearance, which is the obvious
+reading of "o_i" and produced the deck's p.57 answer by luck -- that program has one site, on
+line 1. Two other printed tables refute it: p.45-47 prints **o2** for the loop body's
+`a = new A()` on LINE 2, and p.77 prints **o4** for `z = new T()` on LINE 4 in a program whose
+only two sites are on lines 1 and 4. p.98 spells the rule as `i : x = new T()  =>  o_i in pt(x)`, and
+in every example the label `i` IS the line number. So the name is the site's label, and a
+site on line 4 is `o4` whether or not anything allocated before it.
+
+**3. THE INSERTION SORT I WROTE SORTED DESCENDING.** The comparison was spelled
+`cur > prev` inside a loop whose body shifts while the comparison holds, which is the
+condition for "already in the right place" read backwards: it would have ranked any roomier
+program `o4, o3, o2, o1`. NO TEST CAUGHT THIS -- I found it re-reading the file before the
+first successful compile. The fix is structural rather than a corrected operator: the
+comparison became `pta_after(a, b)`, a function whose name states which argument moves, so the
+shifted element is the FIRST argument and the sense cannot be inverted by accident.
+
+**4. ONE SHARED MAP INVENTS ALIASES BETWEEN UNRELATED LOCALS.** The deck says "one map of
+points-to relations for the whole program" (p.55), and `pta_run` was written that way first.
+A pointer's key is a variable NAME, so a single map makes `p` in one function and `p` in
+another the same pointer, and `pta_alias` then reports an alias between two locals that cannot
+alias -- a false positive by construction, manufactured by the data structure rather than by
+the analysis. `pta_run` now returns one map per function, and a row builds two functions that
+both declare `p` and asserts that neither map contains the other's local.
+
+The deck's slide is what makes this a restriction rather than a decision: p.96 introduces the
+rules with "First focus on these statements (suppose the program has just one method)". The
+rule system being implemented is defined for ONE method; the cross-method version is the
+section that is not in the attachment. So one map per function is the deck's map taken once
+per method, not a simplification of the deck's whole-program map.
+
+**5. `Array[String].sort()` IS SHORTLEX, NOT ALPHABETICAL.** Six of the thirteen rows failed
+on nothing but the ORDER of the entries in a dump, having got every points-to set right.
+`Array::sort` uses `Compare for String`, which this toolchain's stdlib defines and documents
+in `core/builtin/string.mbt:408-428` as "shortlex order by their charcodes": LENGTH first,
+code units only as the tie-break. Measured to be sure -- `["aa","b"].sort()` gives `["b","aa"]`,
+and `["ccc","bb","a"]` gives `["a","bb","ccc"]` -- so `c` and `s` print before `o1.f`, which
+sorts between them alphabetically. The expected strings now say that, and `pta_text`'s own
+comment says why rather than leaving the next reader to re-derive it.
+
+=> 判据: WHEN A TEST FAILS ONLY ON ORDER, THE ORDER IS A CLAIM ABOUT SOMETHING YOU DID NOT
+WRITE. The temptation is to re-sort until it matches the slide, which would have hidden a
+stdlib definition behind a private comparator that then disagrees with every other `sort()` in
+the tree.
+
+**6. AND ONE THING THE DECK REQUIRED RATHER THAN CORRECTED.** A STRING LITERAL HAS TO BE AN
+OBJECT. p.59 prints `o1.f -> {"x"}` and p.61 prints `s -> {"x"}`: in the deck's own tables a
+literal sits INSIDE a points-to set. The first version answered "no objects" for every literal,
+which is the sound direction in general and makes the p.57 program unanswerable in particular --
+`s` came out empty. An un-interpolated literal is now a constant abstract object keyed by its
+printed text. Numeric, float and bool literals are deliberately NOT treated the same way: no
+slide puts a number in a points-to set, and a rule added because it looks symmetric with a rule
+that is on the page is a rule with no page behind it.
+
+### THE PUBLISHED SPLIT, RE-MEASURED IN THE INCREMENT THAT MOVED IT
+
+The own-source numbers had to move, and 0546 had already recorded why that is dangerous: the
+total was re-derived every release and the printed/aggregated split was not, so the two halves
+of one paragraph disagreed by 28 for four increments. This time the split was measured rather
+than adjusted. Own source: 1,665 -> **1,679** notices, 133 -> **133** printed and
+1,532 -> **1,546** aggregated; the pin's kind table moves by exactly two rows, `test`
+declaration 1,445 -> **1,458** (thirteen new rows) and `type` declaration 2 -> **3**
+(`pub type Pta`), and nothing else moves at all despite 1,030 new lines.
+
+THE SEVEN CORPORA WERE MEASURED, NOT ASSUMED, because "nothing is wired in" is an argument and
+not a number. Scanned one at a time: 3,457 / 698 / 186 / 1,654 / 1,799 / 29 / 10,114 -- the
+pinned values exactly, so the eight-tree total moves by the own-source 14 and nothing else:
+19,602 -> **19,616**, which is 3,402 printed + 16,214 aggregated, with the rendered `notice:`
+line count equal to `printed` on all eight trees.
+
+ONE GAP NAMED RATHER THAN CLOSED: the own-source split IS gated (`$SELF_PRINTED` /
+`$SELF_AGGREGATED`), but the EIGHT-TREE split is not -- `check_readme_links.ps1` checks the
+total and the own-source pair, and the "3,402 + 16,214" sentence is prose no gate reads. It was
+measured here by a script that mirrors the corpus stage, and that script is in `%TEMP%`, not in
+the repository. The next increment that moves it will have to measure it again.
+
+### WHAT THIS DOES NOT DO
+
+  * NO FINDING FAMILY. Nothing emits, so no corpus SUMMARY moves. Whether "this pointer can
+    only point at one object" should speak is an increment of its own with its own audit; the
+    family mechanism costs nine arms in `core.mbt`, a roster pin, both README family tables,
+    the census list and a re-pin of every corpus.
+  * NO METHOD CALLS. p.90-91's `Call` is the fifth statement kind and p.96 defers it to a
+    section this attachment does not contain. Nothing is passed into or out of a call, and a
+    call's result contributes no objects.
+  * NO ALGORITHM SECTION. The deck lists "How to Implement Pointer Analysis" (p.94) and it is
+    not in the file, so this is a constraint system solved by naive iteration, not the
+    worklist-with-dependency-edges the lecture's own next section is about.
+  * NOT A FLOW-SENSITIVE ANALYSIS. `pta_run` is flow-insensitive because that is the column
+    marked "Chosen in this course" (p.70); `pta_run_ordered` is a control for one straight-line
+    body and is not a second analysis.
+  * `array[i]` IS ONE FIELD. Indexes are ignored (p.86's own instruction), so two writes into
+    one array are indistinguishable, which is a known and intended imprecision.
+
+MEASURED: 1,458/1,458 on wasm and 1,322/1,322 on js and wasm-gc, thirteen new rows.
