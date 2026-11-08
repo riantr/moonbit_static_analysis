@@ -326,21 +326,30 @@ pub fn node_uses(kind : NodeKind) -> Map[String, Bool] {
 ///
 /// The transfer closes over the graph's node kinds, so the returned array is
 /// exactly the size of `cfg.kinds` and index-compatible with it.
-pub fn live_in(cfg : Cfg) -> Array[Map[String, Bool]] {
-  let lat = name_set_lattice()
-  let defs : Array[Map[String, Bool]] = []
-  let uses : Array[Map[String, Bool]] = []
-  let mut v = 0
-  while v < cfg.kinds.length() {
-    defs.push(node_defs(cfg.kinds[v]))
-    uses.push(node_uses(cfg.kinds[v]))
-    v = v + 1
-  }
-  // BACKWARD: the join-neighbours of a node are its SUCCESSORS (§5.8).
-  let transfer : (Int32, Map[String, Bool]) -> Map[String, Bool] = fn(
-    node,
-    out,
-  ) {
+
+///|
+/// The live-variables transfer function, as a VALUE rather than as a closure
+/// buried in `live_in`'s body.
+///
+/// WHY IT IS EXTRACTED, and this is 0545's whole reason. The solvers' two
+/// guarantees -- that the iteration terminates, and that what it reaches is the
+/// LEAST fixed point rather than merely a fixed point -- rest on one property of
+/// this function: it must be MONOTONE. The deck states the dependency and the
+/// definition in consecutive slides (Yue Li, `Data Flow Analysis --
+/// Foundations`, p.115 "OUT never shrinks ... it is about monotonicity"; p.118
+/// `x <= y implies f(x) <= f(y)`), and until this increment the property was
+/// asserted in `lattice.mbt`'s contract comment and observable nowhere: a
+/// function that exists only inside another function's body can be seen through
+/// its fixed point and through nothing else.
+///
+/// The two arrays are the per-node definitions and uses in node order --
+/// `node_defs` / `node_uses` answer that one node at a time, and `live_in`
+/// builds the arrays once because the transfer runs once per node per sweep.
+pub fn live_transfer(
+  defs : Array[Map[String, Bool]],
+  uses : Array[Map[String, Bool]],
+) -> (Int32, Map[String, Bool]) -> Map[String, Bool] {
+  fn(node, out) {
     let next = name_set_empty()
     for k, _ in out {
       if defs[node].contains(k) == false {
@@ -352,7 +361,26 @@ pub fn live_in(cfg : Cfg) -> Array[Map[String, Bool]] {
     }
     next
   }
-  solve_round_robin(lat, cfg.kinds.length(), cfg.succ, transfer)
+}
+
+///|
+pub fn live_in(cfg : Cfg) -> Array[Map[String, Bool]] {
+  let lat = name_set_lattice()
+  let defs : Array[Map[String, Bool]] = []
+  let uses : Array[Map[String, Bool]] = []
+  let mut v = 0
+  while v < cfg.kinds.length() {
+    defs.push(node_defs(cfg.kinds[v]))
+    uses.push(node_uses(cfg.kinds[v]))
+    v = v + 1
+  }
+  // BACKWARD: the join-neighbours of a node are its SUCCESSORS (§5.8).
+  solve_round_robin(
+    lat,
+    cfg.kinds.length(),
+    cfg.succ,
+    live_transfer(defs, uses),
+  )
 }
 
 ///|

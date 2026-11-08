@@ -37,9 +37,35 @@
 ///
 /// `join` MUST be an upper bound and MUST be associative and commutative for
 /// the solvers to return the least fixed point; `eq` MUST be the equality that
-/// agrees with the lattice order. Neither is checkable at this level, so each
-/// analysis documents its own lattice and `flow_worklist_test.mbt` pins the
-/// laws on a concrete one.
+/// agrees with the lattice order. NONE OF THAT IS CHECKABLE HERE -- a `Lattice`
+/// is three closures and nothing about them can be decided generically -- so
+/// each analysis documents its own lattice.
+///
+/// IT IS NOT UNCHECKABLE, AND THIS COMMENT USED TO SAY IT WAS. The two lattices
+/// this package's solvers run on have carriers that are SETS OF NAMES and SETS OF
+/// EXPRESSION KEYS over a fixed universe, so they are finite, and on a finite
+/// lattice all five laws are decided by trying every pair. `laws_test.mbt` does
+/// exactly that, for the may lattice and for the dual must lattice, and it also
+/// checks the property the comment above does not mention and the solvers depend
+/// on just as much: that each analysis's TRANSFER FUNCTION is monotone, which is
+/// the precondition of the fixed-point theorem the solvers implement (Yue Li,
+/// `Data Flow Analysis -- Foundations`, p.115 and p.118-119). "Not checkable at
+/// this level" was true of the LEVEL and false of these two lattices, and 0545
+/// is the difference.
+///
+/// AND THE PACKAGE SHIPS A THIRD LATTICE THE SAME SENTENCE WOULD BE FALSE OF, so
+/// the claim stops where the measurement stops: `interval_state_lattice(n)` is
+/// the interval domain, whose chain `[0,0] < [0,1] < [0,2]` never ends (book
+/// p.80), which is why 0529 needed WIDENING (p.93) rather than Kleene iteration
+/// and why its laws are not enumerated in `laws_test.mbt`. A blanket "every
+/// lattice here is finite" would have contradicted this tree's own 0529 record.
+///
+/// WHAT REMAINS UNCHECKABLE IS THE INTERFACE: a `Lattice[T]` says nothing about
+/// what `T`'s elements mean, so a caller that passes a join which is an upper
+/// bound of a DIFFERENT order gets a well-typed lie. That is why each analysis
+/// names its order next to its lattice, and why `avail_lattice` and
+/// `name_set_lattice` are factories with their order written down rather than
+/// anonymous records at the call site.
 ///
 /// WHY `bot` IS A THUNK AND NOT A VALUE. Every solver seeds one slot per node
 /// with `bot`. If `bot` is a value and the element is MUTABLE -- a set, a map,

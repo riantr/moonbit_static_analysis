@@ -12549,6 +12549,135 @@ the published number describe the author's tidiness instead of the analyzer's bl
 moved to 586, the README's "hiding 585 locals" moved with it, and the three shapes are named
 here so that the next reader does not re-derive them.
 
+## 0545: THE LAWS THE SOLVERS DEPEND ON, CHECKED INSTEAD OF ASSERTED
+
+The reference for this increment is the companion deck to 0544's -- same course, same lecturer,
+the FOUNDATIONS half (Yue Li, `Data Flow Analysis -- Foundations`, Nanjing University). Three of
+its slides are the whole increment:
+
+    p.104   a framework is (D, L, F): a direction, a lattice, a family of transfer functions
+    p.115   "OUT never shrinks ... it is about monotonicity"
+    p.118   f is monotone if for all x, y in L, x <= y implies f(x) <= f(y)
+    p.119   the fixed-point theorem, whose PRECONDITION is exactly that monotonicity
+
+AND `src/flow/lattice.mbt` SAID NONE OF IT WAS CHECKABLE. Its contract comment read:
+
+    `join` MUST be an upper bound and MUST be associative and commutative for the solvers to
+    return the least fixed point; `eq` MUST be the equality that agrees with the lattice
+    order. Neither is checkable at this level, so each analysis documents its own lattice and
+    `flow_worklist_test.mbt` pins the laws on a concrete one.
+
+The first half is a correct statement about the INTERFACE: a `Lattice` is three closures and
+nothing about them is decidable generically. The last sentence is false OF THE TWO LATTICES THE
+SOLVERS RUN ON, and it had been false for as long as the package existed: the carriers of
+`name_set_lattice` and `avail_lattice` (the same carrier read backwards) are sets of names and
+sets of expression keys over a fixed universe, so they are finite, and on a finite lattice all
+five laws are decided by trying every pair. What the comment actually described was not an
+impossibility but an ABSENCE -- and it read as a reason.
+
+AND THE CLAIM IS SCOPED, BECAUSE A BLANKET "EVERY LATTICE THIS PACKAGE SHIPS" WOULD HAVE
+CONTRADICTED THIS TREE'S OWN 0529 RECORD. `interval_state_lattice(n)` is the interval domain,
+whose chain `[0,0] ⊑ [0,1] ⊑ [0,2] ⊑ …` never ends (book p.80) -- 0529's section is literally
+titled AN INFINITE-HEIGHT LATTICE, and widening (p.93) is why it converges at all. Its laws are
+not enumerated by `laws_test.mbt` and cannot be; the first draft of this very section said
+"every lattice this package ships has a FINITE carrier", which was the increment's own failure
+mode performed on itself -- a comment one level of authority away from a measurement that had
+already refuted it. The scope is now written into both source comments and this record.
+
+
+The property it does not even mention is the one the solvers live on. Termination and "what it
+reaches is the LEAST fixed point" are theorems ABOUT A MONOTONE `f`. Nothing measured that for
+any transfer function in this tree, because each of them existed only as a closure inside the
+body of the function that solved with it: a function that cannot be named cannot be fed a pair.
+
+=> 判据: "NOT CHECKABLE AT THIS LEVEL" IS A CLAIM ABOUT THE LEVEL, AND IT IS ALMOST NEVER A CLAIM
+ABOUT THE THING. A contract that documents its own untestability has usually just moved the
+test to a place where nobody looks.
+
+### THE EXTRACTION, AND THE DUPLICATE IT REMOVED
+
+`live_transfer(defs, uses)` and `avail_transfer(cfg)` are the transfer functions as VALUES;
+`live_in` and `avail_after` now delegate. `avail_lattice(universe)` is the dual lattice as a
+value, and it exists because 0544 built that lattice TWICE -- once in `avail_after` for the
+solver's seed and once in `avail_in` for the join's identity -- and the two copies DISAGREED:
+`avail_in`'s was seeded with the empty set, whose intersection with anything is empty, so a node
+with ONE predecessor read nothing available. That was 0544's third silent failure mode, and it
+was found by three positive tests going quiet. One factory makes the disagreement unwritable
+rather than merely fixed.
+
+THE REFACTOR IS PROVEN BY THE SUITE AND NOT BY READING: `moon test --target wasm` was
+**1,426/1,426** after the extraction and before a single new test was added, which is the same
+number the suite reported on `8d68ab1`.
+
+### THE METHOD IS ENUMERATION, BECAUSE THE CARRIERS ARE FINITE
+
+`laws_test.mbt` enumerates the eight subsets of {a,b,c} and tries every pair -- and every triple,
+for associativity and for the least-upper-bound law -- for BOTH lattices:
+
+  * the may lattice: bottom = empty, join = union, order = inclusion;
+  * the must lattice: bottom = the WHOLE universe, join = intersection, order = SUPERSET.
+
+Five laws for each: idempotence, the bottom is the identity, commutativity, associativity, the
+join is an upper bound of both operands, and -- the one that discriminates -- the join is the
+LEAST upper bound: every common upper bound is above it. "Is an upper bound" alone cannot catch
+a join that computes something else, because the top of the lattice is an upper bound too.
+
+`eq` and `order` are checked against each other as well: `x <= y && y <= x` must hold exactly
+when `eq(x,y)` does. `eq` is passed to the solver and `order` is not, so a pair that disagreed
+would make every other law a statement about the wrong relation.
+
+AND THE TWO LATTICES ARE PROVEN TO BE DUALS, not merely to both satisfy the laws: the meet is
+the join of the complements, over the same enumeration. That identity is what makes
+`name_set_inter` and `name_set_union` two directions of ONE operation, which is the algebraic
+content of the deck's section 8, "May/Must Analysis, A Lattice View".
+
+### TWO OF MY OWN ASSUMPTIONS, KILLED BY THE TESTS
+
+This is the part worth reading, because both failures were mine and both were the kind a reader
+would have accepted.
+
+**FIRST: "the must transfer is not monotone under the may order."** It is. `gen ∪ (S - kill)` is
+monotone under inclusion AS WELL AS under superset -- subtracting a fixed set and unioning a
+fixed set are both monotone in inclusion -- so the row asserting otherwise went red on its first
+run. The corrected statement is sharper than the one I first wrote, and it is the deck's actual
+point: MONOTONICITY IS NOT WHAT DISTINGUISHES THE TWO READINGS. What the ORDER decides is WHICH
+FIXED POINT the solver reaches from its seed. Kleene's theorem gives the least fixed point above
+the bottom, so seeding from the empty set yields the least solution of the inclusion order and
+seeding from the universe yields its GREATEST -- which is the least solution of the dual order,
+and that is the safe answer for a must analysis. A file that had claimed monotonicity as the
+discriminator would have been a file that had never tried.
+
+**SECOND: the chain direction was passed backwards.** The row was written with `superset_of` for
+the may analysis, and the failure message named the witness: `node 0 moved the wrong way: {}
+then {b}`. A may chain ascends in inclusion, so the check is `subset_of(previous, next)`.
+
+MEASURED, the six new rows and what each one now pins:
+
+    the join laws hold in both directions, and the two are duals   five laws x two lattices + De Morgan
+    the must lattice's bottom is the universe, not the empty set   bot = ⊤, against bot = ∅ on the same carrier
+    the live-variables transfer is monotone                        all pairs, all nodes, order = ⊆
+    the avail transfer is monotone in the dual order               all pairs, all nodes, order = ⊇
+    the transfer is monotone in BOTH orders, so the order picks the fixed point   the corrected claim
+    the may chain only grows and the must chain only shrinks       the recorded sequence per node
+
+THE LAST ROW IS p.115 MEASURED. The solvers expose the fixed point and not the sequence that
+reached it, so the row wraps the transfer in a recorder and inspects the sequence: a may analysis
+only ever gains facts and a must analysis only ever loses them. That is what "OUT never shrinks"
+says, and it is the reason the may answer over-approximates what happens while the must answer
+under-approximates what is true.
+
+SUITE: 1,426 -> **1,432** on wasm, and nothing else in the tree moves -- no corpus SUMMARY, no
+census count, because no analysis changed and nothing emits.
+
+=> 判据: A CONTRACT THAT NAMES THE PROPERTY AND THEN DECLINES TO TEST IT HAS IDENTIFIED ITS OWN
+WEAKEST POINT AND LEFT IT WEAK. The five laws were written down, called uncheckable, and the one
+property that was not even written down -- monotonicity -- turned out to be the one the solvers
+live on.
+
+=> 判据: WHEN A TEST DISAGREES WITH A COMMENT, THE COMMENT IS THE THING THAT WAS NEVER MEASURED.
+Both of this increment's wrong claims were in the test file's OWN prose, written by the same hand
+five minutes earlier, and the compiler-plus-suite settled them in one run.
+
 ### 0493's M2 IS NOW A DECLARED SURVIVOR, AND THE ARGUMENT IS A MEASUREMENT
 
 0493's M2 removes the `def.cycle_ret` arm from `analyze_fn`'s return-value chain -- the arm

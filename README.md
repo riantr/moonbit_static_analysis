@@ -532,21 +532,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (197 files), with the per-file printing cap lifted so the count is the
+project's own source (198 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1426 | | `const` declaration | 6 |
+| `test` declaration | 1432 | | `const` declaration | 6 |
 | `if` expression | 94 | | `short lambda` | 5 |
 | `struct` declaration | 56 | | `type` declaration | 1 |
-| `anonymous function literal` | 28 | | `try` expression | 1 |
+| `anonymous function literal` | 26 | | `try` expression | 1 |
 | `enum` declaration | 16 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **128** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1505** sit outside every function's
+**position**: **126** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1511** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -579,7 +579,7 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,570** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,574** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,394** of them as printed per line and
 **16,208** as aggregated, and the 3,394 is exactly the number of rendered notice lines —
@@ -604,12 +604,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **586** `UnusedLocal` and **1,146** `UnusedParam` findings across the
+the tool produces **584** `UnusedLocal` and **1,151** `UnusedParam` findings across the
 seven pinned corpora and this repository's own source — the same 195 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **585** locals and **1,146** parameters, and the per-binding
+suppression is hiding **583** locals and **1,151** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -764,7 +764,7 @@ a missing entry case, and a meet whose accumulator identity is ∅ — are each 
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1426/1426 on wasm; 1290/1290 on js and wasm-gc
+moon test --deny-warn                # 1432/1432 on wasm; 1296/1296 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

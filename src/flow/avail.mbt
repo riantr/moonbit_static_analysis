@@ -316,9 +316,53 @@ pub fn avail_universe(cfg : Cfg) -> Map[String, Bool] {
 /// `bot`, which for a must analysis is ⊤, so the entry is the one node that has
 /// to be special-cased -- and `avail_test.mbt` pins both the special case and
 /// its absence.
-pub fn avail_after(cfg : Cfg) -> Array[Map[String, Bool]] {
+
+///|
+/// The DUAL LATTICE, as a value: `bot` is ⊤ (the whole universe) and `join` is
+/// ∩, so the solver's ascending chain is the must solution's descending chain.
+///
+/// ONE CONSTRUCTION SITE, AND THAT IS THE POINT. Before 0545 this lattice was
+/// built TWICE -- once here and once inside `avail_in` for the join -- and the
+/// two copies disagreed: `avail_in` seeded its fold with the empty set, whose
+/// intersection with anything is empty, so a node with ONE predecessor read ∅.
+/// That was the third silent failure mode of this analysis, found by three
+/// positive tests going quiet. A single factory makes the disagreement
+/// unwritable rather than merely fixed.
+pub fn avail_lattice(
+  universe : Map[String, Bool],
+) -> Lattice[Map[String, Bool]] {
+  {
+    // ⊤, not ∅: see the note on `avail_universe`. This is both the solver's
+    // seed and the identity element of ∩ for `join_of_nodes`.
+    bot: fn() {
+      let s = name_set_empty()
+      for key, _ in universe {
+        s.set(key, true)
+      }
+      s
+    },
+    join: fn(a, b) { name_set_inter(a, b) },
+    eq: fn(a, b) { name_set_eq(a, b) },
+  }
+}
+
+///|
+/// The available-expressions transfer function, as a VALUE.
+///
+/// WHY IT IS EXTRACTED: same reason as `live_transfer`. The two solvers promise
+/// termination and the LEAST fixed point, and both promises rest on this
+/// function being MONOTONE (Yue Li, `Data Flow Analysis -- Foundations`, p.115
+/// and p.118). A closure that exists only inside `avail_after`'s body can be
+/// observed through its fixed point and through nothing else, so the property
+/// could not be tested -- and for the MUST direction it is the property that
+/// says the answer never grows back, which is what makes the answer safe.
+///
+/// The work it needs is per-graph and is built here rather than passed in, so
+/// that a caller (and a test) gets the function by naming the graph.
+pub fn avail_transfer(
+  cfg : Cfg,
+) -> (Int32, Map[String, Bool]) -> Map[String, Bool] {
   let n = cfg.kinds.length()
-  let universe = avail_universe(cfg)
   // THE REVERSE INDEX the kill rule needs: name -> the keys that mention it.
   let keys_of_name : Map[String, Map[String, Bool]] = Map([])
   let mut scan = 0
@@ -361,24 +405,8 @@ pub fn avail_after(cfg : Cfg) -> Array[Map[String, Bool]] {
     kills.push(k)
     i = i + 1
   }
-  // THE DUAL LATTICE: `bot` is ⊤ (the whole universe) and `join` is ∩, so the
-  // solver's ascending chain is the must solution's descending chain.
-  let lat : Lattice[Map[String, Bool]] = {
-    bot: fn() {
-      let s = name_set_empty()
-      for key, _ in universe {
-        s.set(key, true)
-      }
-      s
-    },
-    join: fn(a, b) { name_set_inter(a, b) },
-    eq: fn(a, b) { name_set_eq(a, b) },
-  }
   let entry = cfg.entry
-  let transfer : (Int32, Map[String, Bool]) -> Map[String, Bool] = fn(
-    node,
-    input,
-  ) {
+  fn(node, input) {
     if node == entry {
       // Nothing is available before the program starts.
       name_set_empty()
@@ -398,7 +426,16 @@ pub fn avail_after(cfg : Cfg) -> Array[Map[String, Bool]] {
       }
     }
   }
-  solve_round_robin(lat, n, cfg.pred, transfer)
+}
+
+///|
+pub fn avail_after(cfg : Cfg) -> Array[Map[String, Bool]] {
+  solve_round_robin(
+    avail_lattice(avail_universe(cfg)),
+    cfg.kinds.length(),
+    cfg.pred,
+    avail_transfer(cfg),
+  )
 }
 
 ///|
@@ -410,20 +447,11 @@ pub fn avail_in(
   cfg : Cfg,
   after : Array[Map[String, Bool]],
 ) -> Array[Map[String, Bool]] {
-  let universe = avail_universe(cfg)
-  let lat : Lattice[Map[String, Bool]] = {
-    // ⊤, not ∅: see the note on `avail_universe`. `join_of_nodes` folds from
-    // this value, and the identity element of ∩ is "everything".
-    bot: fn() {
-      let s = name_set_empty()
-      for key, _ in universe {
-        s.set(key, true)
-      }
-      s
-    },
-    join: fn(a, b) { name_set_inter(a, b) },
-    eq: fn(a, b) { name_set_eq(a, b) },
-  }
+  // THE SAME LATTICE `avail_after` SEEDS THE SOLVER WITH. Its `bot` is ⊤, which
+  // is what `join_of_nodes` needs as the identity element of ∩ -- and building a
+  // second one here, with an empty `bot`, is the mistake 0544 shipped for one
+  // compile (see `avail_lattice`).
+  let lat = avail_lattice(avail_universe(cfg))
   let out : Array[Map[String, Bool]] = []
   let mut v = 0
   while v < cfg.kinds.length() {

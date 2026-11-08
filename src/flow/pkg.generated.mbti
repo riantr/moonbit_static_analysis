@@ -15,7 +15,11 @@ pub fn avail_in(Cfg, Array[Map[String, Bool]]) -> Array[Map[String, Bool]]
 
 pub fn avail_key(@ast.Expr) -> String?
 
+pub fn avail_lattice(Map[String, Bool]) -> Lattice[Map[String, Bool]]
+
 pub fn avail_redundant(Cfg) -> Array[Redundant]
+
+pub fn avail_transfer(Cfg) -> (Int32, Map[String, Bool]) -> Map[String, Bool]
 
 pub fn avail_universe(Cfg) -> Map[String, Bool]
 
@@ -58,6 +62,8 @@ pub fn[T] join_of_nodes(Lattice[T], Array[T], Array[Int32]) -> T
 pub fn live_in(Cfg) -> Array[Map[String, Bool]]
 
 pub fn live_out(Cfg, Array[Map[String, Bool]]) -> Array[Map[String, Bool]]
+
+pub fn live_transfer(Array[Map[String, Bool]], Array[Map[String, Bool]]) -> (Int32, Map[String, Bool]) -> Map[String, Bool]
 
 pub fn name_set_empty() -> Map[String, Bool]
 

@@ -381,7 +381,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19570'
+$NOTICE_TOTAL = '19574'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -400,10 +400,10 @@ $NOTICE_TOTAL = '19570'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '197'
-$SELF_NOTICES = 'test declaration=1426|if expression=94|struct declaration=56|anonymous function literal=28|enum declaration=16|const declaration=6|short lambda=5|type declaration=1|try expression=1'
-$SELF_PRINTED = '128'
-$SELF_AGGREGATED = '1505'
+$SELF_FILES = '198'
+$SELF_NOTICES = 'test declaration=1432|if expression=94|struct declaration=56|anonymous function literal=26|enum declaration=16|const declaration=6|short lambda=5|type declaration=1|try expression=1'
+$SELF_PRINTED = '126'
+$SELF_AGGREGATED = '1511'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -433,8 +433,18 @@ $SELF_AGGREGATED = '1505'
 # cannot see a read inside an anonymous function literal, so all three read as
 # assigned-and-never-read. That is the blindness this stage measures, and the pin
 # follows the measurement.
-$SUPPOFF_LOCAL = '586'
-$SUPPOFF_PARAM = '1146'
+#
+# 0545 MOVED IT AGAIN, 586/1146 -> 584/1151, and BOTH MOVEMENTS ARE THE REFACTOR.
+# The two 'universe' locals that 0544's pin was raised for are GONE: the dual
+# lattice is now built once, by avail_lattice, so there is no second copy of the
+# closure that read it (-2 UnusedLocal). And the extraction added parameters that
+# are read only INSIDE the closures they build -- defs/uses in live_transfer,
+# cfg in avail_transfer, universe in avail_lattice, and both arguments of the
+# test-side recorder -- which the lint cannot see with the suppression off
+# (+5 UnusedParam). Same mechanism, opposite sign, and the pin follows the
+# measurement rather than the other way round.
+$SUPPOFF_LOCAL = '584'
+$SUPPOFF_PARAM = '1151'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
