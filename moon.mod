@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.4.43"
+version = "0.4.44"
 
 readme = "README.md"
 
@@ -53,6 +53,27 @@ warnings = "-0079"
 // against. Measured 2026-11-02: async 0.22.7 does NOT -- it declares 194
 // externs and DROPS 22 of the 90 (the event_bus and io ones), so a build
 // against it would ask the host for a different set, not a bigger one.
+//
+// RE-MEASURED 2026-11-08 for the 0.4.44 release, and this time against the
+// ARTIFACT rather than against the package's declared externs, because that is
+// the thing a user instantiates. async 0.22.7 is still the registry's latest
+// (`moon add --upgrade moonbitlang/async@0.22.7`, then `moon build --target
+// wasm`) and building against it moves the wasm from
+//
+//     104 imports, 90 from `moonbitlang/async`
+// to
+//     107 imports, 93 from `moonbitlang/async`
+//
+// adding exactly three symbols: thread_pool/get_read_console_result,
+// thread_pool/make_read_console_job and thread_pool/make_write_console_job --
+// the console-job externs the 0.22.5 -> 0.22.6 bump introduced, which 0.22.7
+// still requires. So the bump is not a wider set of the same floor; it RAISES
+// THE MINIMUM HOST TOOLCHAIN, and anyone on a toolchain bundling 0.22.5 gets
+// "function import requires a callable" at instantiation. That is a
+// user-visible decision, so the pin stays and the measurement is recorded here
+// rather than taken as a routine upgrade.
+// `_verify/check_host_requirements.ps1` names the three symbols and fails, so a
+// future bump cannot land quietly.
 // The contract that says so is `_verify/host_requirements.txt`, and
 // `_verify/check_host_requirements.ps1` holds the artifact to it: a dependency
 // bump that widens the host requirements fails that gate instead of quietly

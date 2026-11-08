@@ -154,6 +154,68 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.44 — the flow framework becomes general: a CFG, liveness, a dead-store family, an infinite-height lattice, must analysis, edge transfer, and pointer analysis
+
+Twenty-three increments, each measured and each with its own section in
+`_verify/NARRATIVE.md` (§0525–§0547). The through-line is one object arriving and then being
+generalised three times: this tree had no control-flow graph, and everything below is what grew
+once it had one.
+
+**1. A CFG, a fixed point, and the first analysis built on it (§0526–§0528).** `src/flow/cfg.mbt`
+is a graph over ONE function body: `NodeKind` carries the statement, `succ`/`pred` are derived
+rather than maintained by hand (`pred_of` computes the inverse, because two structures that can
+disagree will), and `worklist.mbt` is a worklist solver over a `Lattice`. Live variables went on
+top of that, then `MSA-015 FDeadStore` — a store whose value nobody reads. Shipped against real
+code, with the two ways the first version was wrong written down in the narrative.
+
+**2. A return expression is a read (§0531).** Auditing the new family on other people's code found
+a CFG defect behind 20 of its 29 corpus findings: `return e` evaluated `e` in a node with no
+successor, so a binding read *only* in a `return` looked unread. The family's own false positives
+found a defect in the graph every finding sits on.
+
+**3. An infinite-height lattice, and two expectations the book refuted (§0529).** The interval
+domain with widening and narrowing, pinned against the book's own printed numbers rather than
+against the implementation's — and two of those numbers corrected the tests, not the other way
+round.
+
+**4. Six of fifteen families have ever fired (§0530–§0536, §0538–§0542).** Adequacy counted instead
+of asserted: across the pinned corpora, six of the fifteen families have ever produced a finding on
+someone else's code. `MSA-011`'s over-report was fixed (§0537); an attempted fix was measured and
+**reverted** because its hypothesis was wrong (§0535); the tenth family projection was filled from
+what the families have actually decided (§0539); and the nine remaining `MSA-015` findings were read
+one class at a time (§0542), which corrected §0532's second class.
+
+**5. The framework was may-only, then intra-only, then graph-bound (§0544–§0547).** Three missing
+terms, one increment each. A MUST analysis (`available expressions`) proved the solver was may-only
+(§0544). The lattice laws the solvers depend on are now checked rather than asserted (§0545). Edge
+transfer turned "node transfer" into "node transfer + EDGE transfer" over an ICFG, which is what
+interprocedural constant propagation needs and what a `(node, state) -> state` solver cannot even
+state (§0546). And pointer analysis arrived as the first analysis here that is **not a graph
+problem at all**: flow-insensitivity makes the program an unordered set of statements, so the CFGs
+are read for the statements and every edge in them is ignored (§0547).
+
+**The framework increments add no findings, and that is deliberate.** §0544–§0547 wire nothing into
+the report stream, so no corpus SUMMARY moves: the seven pinned corpora read exactly what they read
+at 0.4.43, and the only movement is this repository's own source. Whether "this pointer can only
+point at one object" or "this call has a constant result" should speak is its own increment with its
+own audit.
+
+**What the release measures.** 1,458 tests on wasm and 1,322 on each of js and wasm-gc; 15 families,
+15 ids, a three-value confidence axis; 87 numbered gates and 504 live mutations (461 expect a kill,
+384 name the test); the eight pinned trees carry **19,616** notices, which the `NOTICES` table counts
+as **3,402** printed per line and **16,214** aggregated, with the rendered `notice:` line count equal
+to `printed` on every tree. Own source: 204 files, 1,679 notices. With the region suppression
+switched off: **586** `UnusedLocal` and **1,152** `UnusedParam`, so the shipped suppression hides 585
+locals.
+
+**The `moonbitlang/async` pin stays at 0.22.5, re-measured rather than assumed.** The registry's
+latest is 0.22.7, and building against it moves the published wasm from 104 imports (90 from
+`moonbitlang/async`) to 107 (93), adding three console-job symbols the host must supply. That raises
+the MINIMUM HOST TOOLCHAIN — a user whose toolchain bundles 0.22.5 would get "function import
+requires a callable" at instantiation — so it is a decision, not a routine bump, and
+`check_host_requirements.ps1` now names the three symbols in the failure instead of letting a future
+bump land quietly. See the comment in `moon.mod`.
+
 ## 0.4.43 — five increments: contracts, adequacy, two constraint families, checkable assertions, and an audit that found a false positive
 
 This release is a series of five, each measured and each with its own section in
