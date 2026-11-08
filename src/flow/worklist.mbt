@@ -142,3 +142,82 @@ pub fn[T] states_after(
   }
   after
 }
+
+///|
+/// The propagation solver WITH EDGE TRANSFERS -- the third solver, and the first
+/// one this package has that can express a framework the second cannot.
+///
+/// WHY IT HAD TO EXIST (0546). The first two solvers take ONE function of
+/// `(node, state)`. That is the intraprocedural framework exactly, and it is one
+/// term short of the interprocedural one: Tian Tan's deck draws the difference
+/// as a table row -- "Transfer functions: node transfer" for the intraprocedural
+/// framework, "node transfer + EDGE transfer" for the interprocedural one
+/// (`Interprocedural Analysis`, Nanjing University, 2021, p.85) -- and no amount
+/// of cleverness inside a `(node, state) -> state` function can express a rule
+/// that depends on WHICH EDGE the state is travelling along. The specific rule
+/// that cannot be expressed is the one the deck's own worked example turns on
+/// (p.103): the value of a call's left-hand side must be KILLED on the
+/// call-to-return edge and supplied by the return edge, and those are two
+/// different edges out of the SAME node carrying the SAME input state.
+///
+/// THE LABEL IS THE API. `labels[i][k]` describes the edge `succ[i][k]`, and it
+/// is an unconstrained type parameter rather than a fixed edge type so that this
+/// solver stays a statement about lattices and not about control-flow graphs:
+/// this package's ICFG passes an `EdgeKind` that carries the data the transfer
+/// needs (the actual arguments of a call, the returned expression, the name to
+/// kill), and a test can pass an `Int` and prove the loop in isolation.
+///
+/// THE CONVENTION IS `solve_propagation`'s, DELIBERATELY: `state[v]` is the
+/// abstract state BEFORE `v`, and the node's output is pushed along each edge
+/// after that edge's own transfer. Keeping one index convention across the two
+/// propagation solvers is what makes "the edge version reduces to the plain one
+/// when every edge transfer is the identity" a comparison a test can state in a
+/// line instead of a comment -- and `icfg_test.mbt` states it.
+pub fn[T, L] solve_edges(
+  lat : Lattice[T],
+  n : Int32,
+  succ : Array[Array[Int32]],
+  labels : Array[Array[L]],
+  node_transfer : (Int32, T) -> T,
+  edge_transfer : (L, Int32, Int32, T) -> T,
+) -> Array[T] {
+  // One fresh element per node -- see the `bot`-as-thunk note on Lattice.
+  let before : Array[T] = []
+  let mut j = 0
+  while j < n {
+    before.push((lat.bot)())
+    j = j + 1
+  }
+  let pending : Array[Bool] = Array::make(n, false)
+  let mut v = 0
+  while v < n {
+    pending[v] = true
+    v = v + 1
+  }
+  let mut any = true
+  while any {
+    any = false
+    let mut i = 0
+    while i < n {
+      if pending[i] {
+        pending[i] = false
+        let y = node_transfer(i, before[i])
+        let mut k = 0
+        while k < succ[i].length() {
+          let s = succ[i][k]
+          let z = (lat.join)(before[s], edge_transfer(labels[i][k], i, s, y))
+          if (lat.eq)(before[s], z) == false {
+            before[s] = z
+            if pending[s] == false {
+              pending[s] = true
+              any = true
+            }
+          }
+          k = k + 1
+        }
+      }
+      i = i + 1
+    }
+  }
+  before
+}

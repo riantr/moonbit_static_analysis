@@ -12711,3 +12711,173 @@ yields no value; it is simply no longer reachable by removing this arm.
 Declaring the survivor keeps the row, keeps the claim and says out loud which measurement
 says the claim cannot be attacked this way -- which is a different thing from quietly
 dropping it.
+
+## 0546: THE FRAMEWORK WAS INTRA ONLY, AND EDGE TRANSFER IS A DIFFERENT KIND OF OBJECT
+
+The reference is the next lecture (Tian Tan, `Interprocedural Analysis`, Nanjing University,
+2021). It has four sections and this increment uses THREE of them:
+
+    [1] Motivation          a call is where an intraprocedural answer stops being an answer
+    [2] Call Graph (CHA)    Java: class hierarchies, virtual dispatch, spurious targets
+    [3] ICFG                p.77   ICFG = CFGs + call & return edges
+                            p.81   the third kind: CALL-TO-RETURN edges
+    [4] Interprocedural DF  p.85   transfer functions: "node transfer" -> "node transfer +
+                                   EDGE transfer"
+                            p.103  the call-to-return edge must KILL the value of the call
+                                   site's left-hand side, or the answer is "Imprecise!"
+                            p.105  the whole analysis in six rules -- two about nodes,
+                                   four about edges
+                            p.106-107  the same program answered three ways, with the numbers
+
+SECTION 2 IS DELIBERATELY NOT IMPLEMENTED, AND THAT IS A STATEMENT ABOUT THE LANGUAGE RATHER
+THAN AN OMISSION. CHA resolves a VIRTUAL call by walking a class hierarchy: `Dispatch(c,m)`
+climbs superclasses, `Resolve(cs)` enumerates the subclasses of the receiver's DECLARED type.
+MoonBit has no inheritance-based dispatch, so there is no hierarchy to walk and no virtual
+call to resolve -- a CHA port would be a procedure with nothing to be a procedure about. The
+tree's frontend already records the same fact from the other side: `EMethodCall` is resolved
+today only when the receiver's type is determined locally, and `interp.mbt` fails toward
+silence when it is not. What IS portable is the part that assumes a call graph exists, and
+that is sections 3 and 4.
+
+### THE GAP IS ONE TERM SHORT OF THE FRAMEWORK, NOT ONE ANALYSIS SHORT
+
+`src/flow/cfg.mbt` says in its first paragraph that it builds a graph for ONE function body,
+and `NodeKind` has no call node at all: a call is an `ECall` inside the payload of an
+`Assign` or an `Eval`, with no edge to the body it names. Both solvers take a function
+`(node, state) -> state`. That is the intraprocedural framework exactly, and the deck draws
+the difference as one table row -- "node transfer" against "node transfer + EDGE transfer"
+(p.85).
+
+NO AMOUNT OF CLEVERNESS INSIDE A NODE TRANSFER CLOSES THAT. The deck's own rule is the proof:
+out of ONE call node, the SAME input state travels two different edges and must be
+transformed DIFFERENTLY -- killed along the call-to-return edge, so the caller's stale value
+for the LHS cannot reach the return site, and passed as argument values along the call edge.
+A function that sees only `(node, state)` has no way to tell those two departures apart.
+
+=> 判据: WHEN A FRAMEWORK CANNOT STATE A RULE, THE RULE IS NOT MISSING FROM THE ANALYSIS, IT
+IS MISSING FROM THE TYPE OF THE SOLVER. The symptom here was not "one analysis is absent" but
+"every analysis is intraprocedural", which is a shape that no individual analysis can fix.
+
+### WHAT WAS BUILT
+
+`worklist.mbt` grew `solve_edges`: the propagation loop with a per-edge transfer, and the
+edge's LABEL is a type parameter, so the third solver stays a statement about lattices and not
+about control-flow graphs. `icfg_test.mbt` pins it against the second solver by turning
+every edge transfer into the identity, where the two equation systems are the same system and
+the least fixed points must agree node for node.
+
+`src/flow/icfg.mbt` is the graph: the per-function CFGs laid out end to end in one flat node
+space, plus the three edge kinds carrying their own data (`Call(args, params)`,
+`Ret(expr, lhs)`, `CallToReturn(lhs)`), so an edge transfer is a function OF THE EDGE rather
+than a lookup in a side table. Two shapes had to be derived rather than assumed:
+
+  * the RETURN SITE is the call node's own ordinary CFG successor -- the deck's "statements
+    following their call site" (p.76) -- and a call node whose control flow is not that simple
+    is not connected at all;
+  * the RETURN EDGE leaves from the VALUE NODE. `cfg.mbt` gives `return e` the shape
+    `Eval(e) -> Stop` with no successors on the `Stop`, so a body ending in `return` never
+    reaches its own `Exit`. A graph that emitted the return edge from `Exit` would emit an
+    edge no path can take; the test pins that `fallthrough` is false for both of the deck's
+    callees.
+
+`src/flow/cprop.mbt` is the analysis: `⊥` / constant / `NAC`, a state as a map, an evaluator,
+and the six rules of p.105 as match arms -- node transfer identity at a call node (p.87:
+"leave the handling of the LHS variable to edge transfer"), the kill on the call-to-return
+edge, argument values on the call edge, the returned value on the return edge, identity on
+ordinary edges.
+
+### THE BUG THAT MATTERED, AND IT WAS MINE
+
+THE FIRST VERSION OF THE EVALUATOR MAPPED `⊥` TO `⊤`. For `x + 1` with `x = ⊥` it answered
+`NAC` instead of `⊥`. The deck's table went red on the value `b`, and only on `b`: `b = 10`
+came out `b = NAC` while `a`, `c`, `x` and `y` were all right, which reads like a rule about
+return edges and is not one.
+
+The witness came from an EDGE LOG, not from reading: wrapping the edge transfer and recording
+every push into the node under suspicion showed the same edge transferred TWICE --
+
+    edge 10->8 N  in={y=NAC}      out={y=NAC}
+    edge 10->8 N  in={x=6,y=7}    out={x=6,y=7}
+
+-- and the FIRST one was on the solver's first sweep, when the callee's entry had not been
+reached and `x` was still `⊥`. `⊥ + 1` became `⊤`, `⊤` is the TOP of the lattice, and the join
+can never take a lattice element back down. Every later correction was absorbed.
+
+=> 判据: A TRANSFER FUNCTION MUST BE STRICT AT THE BOTTOM, BECAUSE THE SOLVER'S FIRST SWEEP
+RUNS ENTIRELY AT THE BOTTOM. A transfer that answers "I don't know" for an unknown input
+writes the top of the lattice on the first sweep and poisons the fixed point; `⊥` in, `⊥` out.
+The correct answer is the one that lets the first sweep be wrong and recoverable.
+
+### TWO SMALLER CORRECTIONS, BOTH AGAINST ME
+
+THE NODE INDICES ARE ALLOCATION ORDER, WHICH IS THE REVERSE OF SOURCE ORDER. `cfg_of` builds
+statement lists back to front, so the LAST statement of a body has the LOWEST index. The first
+version of the test helper counted in node order and produced two failures that looked like
+analysis bugs: the row asking for `c = b - 3` read `c = a * b`, and the row asking about the
+first call read the second. The helper now reverses, and the reversal is where it is because of
+those two failures rather than at every call site.
+
+AND TWO OF MY EXPECTED NUMBERS WERE WRONG, WHICH THE DECK SETTLED. I asserted `c = ⊥` at the
+return site of the second call; p.102 and p.104 both PRINT `a=6,b=…,c=4`, because `c = b - 3`
+is the third statement and the second call is the fourth, so the local `c` reaches that return
+site along the call-to-return edge. The deck's printed value corrected the test, not the other
+way round.
+
+### A PUBLISHED NUMBER THAT HAD STOPPED BEING RE-MEASURED
+
+Re-measuring the notice counts for this increment turned up a disagreement that had nothing to
+do with 0546: both READMEs published **19,574** notices and, in the same paragraph, a split of
+**3,394 printed + 16,208 aggregated**, which sums to **19,602**. The two halves of one
+paragraph had disagreed by 28 since the increment that changed the self-scan's file set
+(0542), because the total was re-derived every time and the split was not.
+
+MEASURED now, and both halves written down: 3,402 printed + 16,200 aggregated = 19,602 =
+the total.
+
+=> 判据: A NUMBER THAT IS PUBLISHED BUT NOT RE-MEASURED CANNOT GO RED, SO IT GOES QUIET. This
+gate's own header says exactly that about `$NOTICE_TOTAL`, and the split sat beside the total
+it contradicted, in the same table, for four increments.
+
+### AND THE TOOL CAUGHT THE INCREMENT THAT WAS EXTENDING IT
+
+The self-scan reported `unreliable=1` and `only named functions and methods can be called`,
+on a line that applied the result of a function call directly -- `cprop_node_transfer(k)(v,s)`
+written curried. This tree's frontend refuses a call whose callee is not a name or a method,
+so the file was PARTIAL, and the pin for `unresolved` is zero. Binding the transfer to a name
+first fixed it and the scan reads 202/202 parsed.
+
+=> 判据: THE ANALYZER IS A SUBJECT OF ITS OWN MEASUREMENT, AND THAT IS THE CHEAPEST TEST IT
+HAS. A construct its own frontend cannot read is a construct it would have been wrong about
+silently in someone else's file.
+
+### WHAT THIS DOES NOT DO
+
+  * NO FINDING FAMILY. Nothing emits, so no corpus SUMMARY moves: all seven pinned corpora
+    read exactly what they read before (3,457 / 698 / 186 / 1,654 / 1,799 / 29 / 10,114), the
+    per-function census is unchanged, and the only movement anywhere is this repository's own
+    source. Whether "this call has a constant result" should speak is a separate increment
+    with its own audit -- the family mechanism costs nine arms in `core.mbt`, a roster pin,
+    both README family tables, the census list and a re-pin of every corpus, and the last time
+    a family started speaking it produced nine findings whose classes had to be read one at a
+    time (0542).
+  * METHOD CALLS ARE NOT CALL SITES. `x.foo()` is `EMethodCall` and needs the resolution
+    section 2 is about, which this language does not have in that form.
+  * A CALL BURIED IN A LARGER EXPRESSION IS NOT A CALL SITE. `c = 1 + f(x)` assigns a value
+    that is not the call's result, so the node/edge split of the transfer functions has no
+    unambiguous subject.
+  * `raise` IS TREATED AS A DECLINE. `cfg.mbt` gives `return e` and `raise e` the same shape,
+    so a function that raises with a payload anywhere in its body is counted in
+    `Icfg.declined` and its calls contribute "value unknown" instead of a returned value.
+  * A FUNCTION WHOSE `Exit` IS REACHABLE IS DECLINED TOO (`Icfg.fallthrough`): its value is
+    its tail expression, which the graph evaluates in an `Eval` node it does not connect to
+    the exit, so the returned value is not recoverable from the graph.
+
+MEASURED: 1,445/1,445 on wasm and 1,309/1,309 on js and wasm-gc, thirteen new rows. Own-source
+pins: 198 -> 202 files, notices 1,637 -> 1,665 (test declaration 1,432 -> 1,445, struct
+declaration 56 -> 60 for the four new structs, enum declaration 16 -> 18 for `EdgeKind` and
+`Cpv`, const declaration 6 -> 7, type declaration 1 -> 2, `if` expression 94 -> 95, anonymous
+function literal 26 -> 29, short lambda 5 -> 8), printed 126 -> 133 and aggregated 1,511 ->
+1,532, eight-tree total 19,574 -> 19,602. Suppression off: 586 / 1,152, and again the movement
+is the mechanism rather than a defect -- the new factories read their input only inside the
+closure they return (self 27 -> 29 locals, 24 -> 25 params), and the seven corpora did not
+move at all.

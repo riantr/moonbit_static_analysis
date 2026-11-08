@@ -381,7 +381,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19574'
+$NOTICE_TOTAL = '19602'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -400,10 +400,10 @@ $NOTICE_TOTAL = '19574'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '198'
-$SELF_NOTICES = 'test declaration=1432|if expression=94|struct declaration=56|anonymous function literal=26|enum declaration=16|const declaration=6|short lambda=5|type declaration=1|try expression=1'
-$SELF_PRINTED = '126'
-$SELF_AGGREGATED = '1511'
+$SELF_FILES = '202'
+$SELF_NOTICES = 'test declaration=1445|if expression=95|struct declaration=60|anonymous function literal=29|enum declaration=18|const declaration=7|short lambda=8|type declaration=2|try expression=1'
+$SELF_PRINTED = '133'
+$SELF_AGGREGATED = '1532'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -443,8 +443,17 @@ $SELF_AGGREGATED = '1511'
 # test-side recorder -- which the lint cannot see with the suppression off
 # (+5 UnusedParam). Same mechanism, opposite sign, and the pin follows the
 # measurement rather than the other way round.
-$SUPPOFF_LOCAL = '584'
-$SUPPOFF_PARAM = '1151'
+# 0546 MOVED IT AGAIN, 584/1151 -> 586/1152, and AGAIN THE MECHANISM IS THE ONE
+# ABOVE rather than a defect: the new factories take the thing they are built from
+# as a PARAMETER -- cprop_node_transfer(kinds) and cprop_edge_transfer's label
+# argument -- and read it only inside the closure they return, which is invisible
+# with the region suppression off (+2 UnusedLocal: the self scan's own count went
+# 27 -> 29). One UnusedParam came the same way (self 24 -> 25). The corpora did
+# not move at all: every one of the seven reads exactly what it read before 0546,
+# which is what says the movement is this package's own source and not the lint
+# changing its mind about other people's code.
+$SUPPOFF_LOCAL = '586'
+$SUPPOFF_PARAM = '1152'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

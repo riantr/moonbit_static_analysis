@@ -23,7 +23,31 @@ pub fn avail_transfer(Cfg) -> (Int32, Map[String, Bool]) -> Map[String, Bool]
 
 pub fn avail_universe(Cfg) -> Map[String, Bool]
 
+pub fn call_shape(NodeKind) -> CallShape?
+
 pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
+
+pub fn cprop_after(Icfg, Array[Map[String, Cpv]], Int32) -> Map[String, Cpv]
+
+pub fn cprop_edge_transfer(EdgeKind, Int32, Int32, Map[String, Cpv]) -> Map[String, Cpv]
+
+pub fn cprop_eval(Map[String, Cpv], @ast.Expr) -> Cpv
+
+pub fn cprop_get(Map[String, Cpv], String) -> Cpv
+
+pub fn cprop_kill(Map[String, Cpv], String) -> Map[String, Cpv]
+
+pub fn cprop_lattice() -> Lattice[Map[String, Cpv]]
+
+pub fn cprop_node_transfer(Array[NodeKind]) -> (Int32, Map[String, Cpv]) -> Map[String, Cpv]
+
+pub fn cprop_run(Icfg) -> Array[Map[String, Cpv]]
+
+pub fn cprop_set(Map[String, Cpv], String, Cpv) -> Map[String, Cpv]
+
+pub fn cprop_text(Map[String, Cpv]) -> String
+
+pub fn cpv_text(Cpv) -> String
 
 pub fn eval_add(Interval, Interval) -> Interval
 
@@ -34,6 +58,8 @@ pub fn eval_div(Interval, Interval) -> Interval
 pub fn eval_mul(Interval, Interval) -> Interval
 
 pub fn eval_sub(Interval, Interval) -> Interval
+
+pub fn icfg_of(Array[IFn]) -> Icfg
 
 pub fn interval_at_least(Int32) -> Interval
 
@@ -89,6 +115,8 @@ pub fn node_uses(NodeKind) -> Map[String, Bool]
 
 pub fn pred_of(Array[Array[Int32]]) -> Array[Array[Int32]]
 
+pub fn[T, L] solve_edges(Lattice[T], Int32, Array[Array[Int32]], Array[Array[L]], (Int32, T) -> T, (L, Int32, Int32, T) -> T) -> Array[T]
+
 pub fn[T] solve_propagation(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
 
 pub fn[T] solve_round_robin(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
@@ -107,6 +135,19 @@ pub(all) struct AvailExpr {
   names : Map[String, Bool]
 }
 
+pub struct CallShape {
+  callee : String
+  args : Array[@ast.Expr]
+  lhs : String?
+}
+
+pub(all) struct CallSite {
+  caller : Int32
+  node : Int32
+  callee : Int32
+  lhs : String?
+}
+
 pub(all) struct Cfg {
   kinds : Array[NodeKind]
   spans : Array[@core.Span]
@@ -118,6 +159,42 @@ pub(all) struct Cfg {
 }
 pub fn Cfg::dump(Self) -> String
 pub fn Cfg::kind_label(Self, Int32) -> String
+
+#derive(Eq)
+pub(all) enum Cpv {
+  Undef
+  C(Int32)
+  Nac
+}
+
+pub(all) enum EdgeKind {
+  Normal
+  CallToReturn(String?)
+  Call(Array[@ast.Expr], Array[String])
+  Ret(@ast.Expr?, String?)
+}
+
+pub(all) struct IFn {
+  name : String
+  params : Array[String]
+  body : Array[@ast.Stmt]
+}
+
+pub(all) struct Icfg {
+  kinds : Array[NodeKind]
+  spans : Array[@core.Span]
+  succ : Array[Array[Int32]]
+  labels : Array[Array[EdgeKind]]
+  pred : Array[Array[Int32]]
+  fn_of : Array[Int32]
+  entry_of : Array[Int32]
+  exit_of : Array[Int32]
+  fallthrough : Array[Bool]
+  declined : Array[Bool]
+  call_sites : Array[CallSite]
+  unresolved : Int32
+  skipped : Int32
+}
 
 pub(all) struct Interval {
   has_lo : Bool
@@ -165,5 +242,6 @@ pub(all) struct WidenResult[T] {
 }
 
 // Type aliases
+pub type State = Map[String, Cpv]
 
 // Traits
