@@ -208,6 +208,16 @@ notice），per-function 普查也**MATCH**（TOTAL 28 条 actionable，DEMOTED 
 记的逐字相同，原因是 moon 0.1.20261104 开始对接口文件做类型检查，而语料的 pin 比它还早一个
 月。这一版既没动语料，也没动工具链。
 
+**发布出去的字节回答了本地构建回答不了的问题。** 0.4.45 在两个远端都打上了 `752624b`，CI 的
+`gate` 和 `publish` 在那个 commit 上都是绿的，GitHub release 已发布，registry 从
+`2026-11-09T16:25:03Z` 开始提供它，`latest_version = 0.4.45`。published-package self-scan 按
+registry 要 0.4.45，读的是**registry 真正在供的那棵树**，扫的也是那棵：203 个文件、203 解析、
+actionable 0、1,679 条 notice——而最要紧的是那个数：**正好 93 个契约符号**，`moon.mod` 导入 0 条
+路径，工具链自带契约里的 core，215 个 extern 覆盖全部 93 个。本地门禁读的是这个仓库自己构建的
+wasm；而那一次读的是 **registry 编译并提供**的 wasm，也就是用户真正实例化的那个。包也能跑：
+`moonx riantr/moonbit_static_analysis@0.4.45` 扫一个单文件目标，找出了里面没用到的绑定。
+（0.4.38 的失败是产物连**实例化**都做不到；现在这在结构上就不可能，而不是靠运气。）
+
 实测：wasm 上 1,458 个测试，js 与 wasm-gc 各 1,322 个——没变；自扫描读到 204 个文件、
 1,679 条 notice、133 打印 + 1,546 汇总、actionable 0，和 0.4.44 发布的数字一样。七个固定
 语料一个都没动：分析器的发现部分没有任何变化。

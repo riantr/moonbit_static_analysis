@@ -255,6 +255,19 @@ actionable, DEMOTED 21), and the per-function census control is the **recorded**
 0.1.20261104 beginning to type-check interface files against a corpus pin that predates it.
 Neither the corpus nor the toolchain moved in this release.
 
+**AND THE PUBLISHED BYTES ANSWERED THE QUESTION THE LOCAL BUILD COULD NOT.** 0.4.45 is tagged
+at `752624b` on both remotes, CI's `gate` and `publish` are green on that commit, the GitHub
+release is published, and the registry serves it from `2026-11-09T16:25:03Z` with
+`latest_version = 0.4.45`. The published-package self-scan asks the registry for 0.4.45,
+reads the tree the registry actually serves, and scans **that**: 203 files, 203 parsed,
+actionable 0, 1,679 notices, and — the number that matters — **exactly the 93 contracted
+symbols**, `moon.mod` importing 0 paths, the toolchain bundling the contracted core, and
+all 93 covered by its 215 externs. The local gate reads the wasm this repository built; that
+one read the wasm the **registry compiled and serves**, which is what a user instantiates.
+The package also runs: `moonx riantr/moonbit_static_analysis@0.4.45` on a one-file target
+scanned it and found the unused binding. (0.4.38's failure was an artifact that could not
+even be **instantiated**; that is now impossible by construction rather than by luck.)
+
 MEASURED: 1,458 tests on wasm and 1,322 on each of js and wasm-gc — unchanged, and the
 self-scan reads 204 files, 1,679 notices, 133 printed + 1,546 aggregated, actionable 0, the
 same numbers 0.4.44 published. The seven pinned corpora are untouched: nothing about the

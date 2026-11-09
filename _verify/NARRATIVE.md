@@ -9580,6 +9580,8 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
     published 0.4.41  wasm 2537C9CBA64E42000B7F090D448116BF6BB5A226ACA2B1A2838CE25DEE6EC27E  536714 bytes  checksum beea4bab0cb436201e889d476fe5ea87d35e3a30961cede8cbf1d3661a31385f  2026-11-02T17:06:30.109605+00:00
     published 0.4.42  wasm A190CBAF7378E00431D24D36F319CAE39FB29510C8ABB9B1721AE984A56742E4  536636 bytes  checksum 7b27b36a3a8070448f5a3d4f052a007a47941f7596f51e878414a0b672698f6a  2026-11-06T15:40:34.482028+00:00
     published 0.4.43  wasm 7665CD576ED23CE612BA9E708E3F361E42EEA99B2A87FA199A33040E652A76EC  567971 bytes  checksum bb9ff103099571a9ade23d4c7fea7e3570a9cb7dd8b158992695562a00b1e8fa  2026-11-07T05:06:05.793040+00:00
+    published 0.4.44  wasm A5C3200DE17EF9030DBE72B3CAD022D9C60391B4927B2F21703DB5D6AD2086DB  586411 bytes  checksum ffdf45a53c89af1aabc0e81f206285a8c0ea71bde7c79588fb224d717bc46540  2026-11-08T16:21:48.730202+00:00
+    published 0.4.45  wasm 131112DF5666C18DD1DB2C5C412600A950AF782AA1C3B79B02DEFEE2975E64FA  628777 bytes  checksum 81d0a4db66a300e90b5547555bc547b5f87bd44258908b3db43559694ff3a800  2026-11-09T16:25:03.671513+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -13318,3 +13320,51 @@ MEASURED: 1,458/1,458 on wasm and 1,322/1,322 on js and wasm-gc -- unchanged, be
 port touched no logic. `moon fmt --check` 0, `moon check --deny-warn` 0, the host contract
 gate green with its self-test, and the artifact's import surface 107 imports of which 93
 are the `moonbitlang/async` ABI.
+
+### THE RELEASE SHIPPED, AND THE PUBLISHED BYTES ANSWERED THE QUESTION THE LOCAL BUILD COULD NOT
+
+0.4.45 is tagged at `752624b` on both remotes, CI's `gate` and `publish` are green on that
+commit, the GitHub release is published (not a draft), and the registry serves it from
+`2026-11-09T16:25:03.671513+00:00` with `latest_version = 0.4.45`. Its row is the sixth in
+the published-bytes block:
+
+    published 0.4.45  wasm 131112DF...  628777 bytes  checksum 81d0a4db...  2026-11-09T16:25:03Z
+
+**AND THE 93-SYMBOL CONTRACT WAS CHECKED AGAINST THE PUBLISHED BYTES, NOT A LOCAL BUILD.**
+`selfscan_published.ps1` asks the registry for 0.4.45, reads the tree the registry actually
+serves, and runs the analyzer over THAT:
+
+    scanned 203 files under .repos/riantr/moonbit_static_analysis/0.4.45
+    ok  the tree scanned is 0.4.45
+    ok  parsed 203/203 files
+    SUMMARY  files=203  parsed=203  actionable=0  notices=1679  unchecked=2898
+    ok  it requires exactly the 93 contracted symbols
+    ok  moon.mod imports no `moonbitlang/async` (it imports 0 path(s) in total)
+    ok  the toolchain bundles core 0.10.20+65efd5b93, the contracted floor
+    ok  the bundled core declares 215 host externs and covers all 93 of them
+    GATE OK: the published bytes satisfy the host contract
+
+That is a stronger claim than any local stage can make. The local gate reads the wasm THIS
+repository built; this read the wasm the REGISTRY compiled and serves, which is what a user
+actually instantiates. And the number that matters is in the shipped artifact's own import
+section: **93**, against the contract's 93, in both directions.
+
+**THE PACKAGE ALSO RUNS.** `moonx riantr/moonbit_static_analysis@0.4.45` on a one-file
+target: `SCANNED 1 files`, `parsed 1/1`, `actionable=1` -- it found the unused binding in
+the fixture. An artifact that instantiates and scans is the end of the chain; the previous
+failure mode (0.4.38) was an artifact that could not even be INSTANTIATED, and that is now
+impossible here by construction rather than by luck.
+
+**AND THE ROW BLOCK WAS ONE SHORT.** While adding 0.4.45's row I found that 0.4.44's row was
+MISSING -- 0.4.44 shipped on `6283c12` and its bytes were never recorded. The gate only
+requires a row for the version the tree declares, so the gap was invisible to it, and it was
+visible only because the rows ACCUMULATE and a missing one is a hole in a block that is
+otherwise chronological. 0.4.44's row is now there, re-measured from the registry cache
+(`A5C3200D...`, 586,411 bytes, registry checksum `ffdf45a5...`), and it re-hashes.
+
+=> 判据: A ROW BLOCK THAT ACCUMULATES HAS TO BE CHECKED FOR HOLES, BECAUSE THE GATE THAT
+INSISTS ON THE ROW FOR THE CURRENT VERSION IS BLIND TO THE MISSING ONE FOR THE LAST. The
+requirement is "the version this tree declares" -- which is the right requirement for cutting
+a release, and the wrong instrument for auditing a ledger. Both were needed: the gate to
+stop a release shipping without its own number, and a reader with the cache to notice that
+0.4.44's number was never written down.
