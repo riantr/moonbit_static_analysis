@@ -15,6 +15,11 @@ param(
   # silently. That is not a theory: the first run of this gate read 0 symbols
   # and 90 "extra" ones, and the cause was that coercion.
   [string]$ContractFile = '',
+  # The toolchain's BUNDLED `moonbitlang/core`, whose `core/async` is the host's
+  # own implementation of the `moonbitlang/async` ABI. This is where the
+  # contract has to be checked against: there is no package this repository
+  # pins any more, so the floor is a property of the TOOLCHAIN.
+  [string]$CoreDir = '',
   # Prove the comparison rejects a widened and a narrowed contract.
   [switch]$SelfTest
 )
@@ -22,6 +27,7 @@ $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 $contractPath = if ($ContractFile -ne '') { $ContractFile } else { Join-Path $root '_verify\host_requirements.txt' }
 $moonModPath = Join-Path $root 'moon.mod'
+if ($CoreDir -eq '') { $CoreDir = Join-Path $HOME '.moon\lib\core' }
 
 # --- the wasm reader ------------------------------------------------------------
 # The import section is a flat list of (module, name, kind) triples. The reader
@@ -95,15 +101,17 @@ function Read-Contract {
   param([string]$Path)
   if (-not (Test-Path -LiteralPath $Path)) { throw ('the contract file is missing: ' + $Path) }
   $min = ''
+  $abi = ''
   $syms = @()
   foreach ($line in [System.IO.File]::ReadAllLines($Path, [System.Text.Encoding]::UTF8)) {
     $t = $line.Trim()
     if ($t -eq '' -or $t.StartsWith('#')) { continue }
-    if ($t.StartsWith('min-host-async:')) { $min = $t.Substring(15).Trim(); continue }
+    if ($t.StartsWith('min-host-core:')) { $min = $t.Substring(14).Trim(); continue }
+    if ($t.StartsWith('host-abi-module:')) { $abi = $t.Substring(16).Trim(); continue }
     if ($t.StartsWith('symbols:')) { continue }
     $syms += $t
   }
-  return @{ min = $min; symbols = $syms }
+  return @{ min = $min; abi = $abi; symbols = $syms }
 }
 
 # --- the comparison -------------------------------------------------------------
@@ -133,23 +141,72 @@ function Get-AsyncExterns {
 }
 
 function Test-ContractAgainst {
-  param([string]$WasmPath, [string[]]$Expected)
+  param([string]$WasmPath, [string[]]$Expected, [string]$AbiModule)
   $imports = Get-WasmImports $WasmPath
   # The prefix is counted, not typed: a hand-counted offset left a LEADING SPACE
   # on every symbol, which made all 90 of them compare as different from the
   # contract -- 90 "added" and 90 "missing" at the same time, which is a shape
   # no reader would believe.
-  $prefix = 'moonbitlang/async '
+  #
+  # THE ABI MODULE NAME COMES FROM THE CONTRACT, not from a literal here. The
+  # runtime moved into `moonbitlang/core`, but the wasm import name is still
+  # "moonbitlang/async" -- the FFI declarations in `core/async` say so -- and a
+  # literal here would have silently compared the wrong set.
+  $prefix = $AbiModule + ' '
   $async = @($imports | Where-Object { $_.StartsWith($prefix) } | ForEach-Object { $_.Substring($prefix.Length) } | Sort-Object -Unique)
   $cmp = Compare-SymbolSets $async $Expected
   return @{ total = $imports.Count; async = $async.Count; added = $cmp.added; missing = $cmp.missing; ok = $cmp.ok }
+}
+
+# THE HOST'S OWN IMPLEMENTATION OF THE ABI: the async runtime bundled with the
+# toolchain. The host supplies the contracted symbols from THIS, at
+# instantiation time, so the contract is checked against THIS -- not against a
+# package this repository pins, because there is no such package any more.
+function Get-BundledCore {
+  param([string]$CoreDir)
+  $mm = Join-Path $CoreDir 'moon.mod'
+  if (-not (Test-Path -LiteralPath $mm)) { return $null }
+  $txt = [System.IO.File]::ReadAllText($mm, [System.Text.Encoding]::UTF8)
+  $v = ([regex]::Match($txt, '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
+  $n = ([regex]::Match($txt, '(?m)^name\s*=\s*"([^"]+)"')).Groups[1].Value
+  return @{ version = $v; name = $n; dir = $CoreDir }
+}
+
+# The host externs the bundled core declares under the ABI module name.
+function Get-CoreAsyncExterns {
+  param([string]$CoreDir, [string]$AbiModule)
+  $dir = Join-Path $CoreDir 'async'
+  if (-not (Test-Path -LiteralPath $dir)) { return $null }
+  $set = @{}
+  foreach ($f in Get-ChildItem -LiteralPath $dir -Recurse -File -Filter '*.mbt') {
+    $txt = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
+    foreach ($m in [regex]::Matches($txt, '"' + [regex]::Escape($AbiModule) + '"\s+"([^"]+)"')) { $set[$m.Groups[1].Value] = $true }
+  }
+  return $set
+}
+
+# The module's IMPORTED PATHS, and nothing else.
+#
+# THE IMPORT BLOCK, NOT THE FILE. The first version of this check was
+# `'moonbitlang/async' -match` over the whole of moon.mod, and it fired on the
+# COMMENT that explains what the host ABI is called -- a sentence with the
+# module name in quotes. A gate that reads prose is a gate that fires on
+# prose, and the fix is to read the thing being checked: the import block.
+function Get-MoonModImports {
+  param([string]$Text)
+  $paths = @()
+  foreach ($m in [regex]::Matches($Text, '(?ms)^import\s*\{(.*?)^\}')) {
+    foreach ($p in [regex]::Matches($m.Groups[1].Value, '"([^"]+)"')) { $paths += $p.Groups[1].Value }
+  }
+  return $paths
 }
 
 # --- the gate --------------------------------------------------------------------
 Write-Output '=== the host contract of the artifact ==='
 $contractData = Read-Contract $contractPath
 Write-Output ('  contract      : ' + $contractPath)
-Write-Output ('  min-host-async: ' + $contractData.min)
+Write-Output ('  min-host-core : ' + $contractData.min)
+Write-Output ('  host ABI      : ' + $contractData.abi)
 Write-Output ('  symbols       : ' + $contractData.symbols.Count)
 
 $targets = @()
@@ -168,8 +225,8 @@ if ($targets.Count -eq 0) {
 
 $fail = 0
 foreach ($t in $targets) {
-  $r = Test-ContractAgainst $t $contractData.symbols
-  Write-Output ('  ' + (Split-Path -Leaf $t) + ': ' + $r.total + ' imports, ' + $r.async + ' from `moonbitlang/async`')
+  $r = Test-ContractAgainst $t $contractData.symbols $contractData.abi
+  Write-Output ('  ' + (Split-Path -Leaf $t) + ': ' + $r.total + ' imports, ' + $r.async + ' from `' + $contractData.abi + '`')
   if ($r.ok) {
     Write-Output ('  ok  it requires exactly the ' + $contractData.symbols.Count + ' contracted symbols')
   } else {
@@ -189,32 +246,55 @@ foreach ($t in $targets) {
   }
 }
 
-# The pin and the floor are ONE fact. Two facts that can disagree will.
+# THE DEPENDENCY MUST NOT COME BACK. `moon.mod` used to pin
+# `moonbitlang/async@0.22.5`; the runtime now comes from the toolchain-bundled
+# `moonbitlang/core`, so there is no dependency to pin -- and no pin that could
+# disagree with the floor, which is the whole point of the swap. A dependency on
+# the standalone module coming back would make the artifact's import surface a
+# function of a version THIS repository chooses, which is the failure mode the
+# swap removed. So the gate refuses it instead of ignoring it.
 $moonMod = [System.IO.File]::ReadAllText($moonModPath, [System.Text.Encoding]::UTF8)
-$pin = ([regex]::Match($moonMod, '"moonbitlang/async@([^"]+)"')).Groups[1].Value
-if ($pin -eq '') {
-  Write-Output 'FAIL: moon.mod does not pin `moonbitlang/async`.'
-  $fail++
-} elseif ($pin -ne $contractData.min) {
-  Write-Output ('FAIL: moon.mod pins `moonbitlang/async@' + $pin + '` but the contracted floor is ' + $contractData.min + '.')
-  Write-Output '      The floor and the pin are one fact, and a bump that moves one must move the other.'
+$modImports = @(Get-MoonModImports $moonMod)
+$asyncImports = @($modImports | Where-Object { $_ -eq 'moonbitlang/async' -or $_ -like 'moonbitlang/async@*' -or $_ -like 'moonbitlang/async/*' })
+if ($asyncImports.Count -gt 0) {
+  Write-Output ('FAIL: moon.mod imports `' + ($asyncImports -join '`, `') + '` again.')
+  Write-Output '      The runtime now comes from the toolchain-bundled moonbitlang/core,'
+  Write-Output '      and a dependency on the standalone module would make the import'
+  Write-Output '      surface a function of a version this repository chooses -- with the'
+  Write-Output '      floor and the artifact two facts again.'
   $fail++
 } else {
-  Write-Output ('  ok  moon.mod pins `moonbitlang/async@' + $pin + '`, the contracted floor')
+  Write-Output ('  ok  moon.mod imports no `moonbitlang/async` (it imports ' + $modImports.Count + ' path(s) in total)')
 }
 
-# The pinned dependency has to be ABLE to satisfy the contract.
-$externs = Get-AsyncExterns $contractData.min $root
-if ($null -eq $externs) {
-  Write-Output ('  note  the pinned async ' + $contractData.min + ' is not on disk under .repos -- the coverage check needs it fetched.')
+# THE FLOOR IS A TOOLCHAIN NOW. The host supplies the ABI from the async
+# runtime bundled with the USER's toolchain, so the floor is checked against
+# that bundle: it has to declare every contracted symbol, and its version has
+# to BE the recorded floor.
+$core = Get-BundledCore $CoreDir
+if ($null -eq $core) {
+  Write-Output ('  note  no bundled core at ' + $CoreDir + ' -- the coverage check needs the toolchain that built the artifact.')
 } else {
-  $notDeclared = @($contractData.symbols | Where-Object { -not $externs.ContainsKey($_) })
-  if ($notDeclared.Count -gt 0) {
-    Write-Output ('FAIL: the pinned async ' + $contractData.min + ' does not declare ' + $notDeclared.Count + ' contracted symbol(s) as a host extern:')
-    $notDeclared | Select-Object -First 12 | ForEach-Object { Write-Output ('      ' + $_) }
+  Write-Output ('  bundled core  : ' + $core.name + ' ' + $core.version)
+  if ($core.version -ne $contractData.min) {
+    Write-Output ('FAIL: the toolchain bundles core ' + $core.version + ', the contracted floor is ' + $contractData.min + '.')
+    Write-Output '      The floor and the toolchain are one fact, and a toolchain that moved must move the floor.'
     $fail++
   } else {
-    Write-Output ('  ok  the pinned async ' + $contractData.min + ' declares ' + $externs.Count + ' host externs and covers all ' + $contractData.symbols.Count + ' of them')
+    Write-Output ('  ok  the toolchain bundles core ' + $core.version + ', the contracted floor')
+  }
+  $externs = Get-CoreAsyncExterns $CoreDir $contractData.abi
+  if ($null -eq $externs) {
+    Write-Output ('  note  the bundled core has no async package -- the coverage check needs it.')
+  } else {
+    $notDeclared = @($contractData.symbols | Where-Object { -not $externs.ContainsKey($_) })
+    if ($notDeclared.Count -gt 0) {
+      Write-Output ('FAIL: the bundled core declares ' + $externs.Count + ' host externs and covers only ' + ($contractData.symbols.Count - $notDeclared.Count) + ' of the ' + $contractData.symbols.Count + ':')
+      $notDeclared | Select-Object -First 12 | ForEach-Object { Write-Output ('      ' + $_) }
+      $fail++
+    } else {
+      Write-Output ('  ok  the bundled core declares ' + $externs.Count + ' host externs and covers all ' + $contractData.symbols.Count + ' of them')
+    }
   }
 }
 
@@ -240,17 +320,17 @@ if ($SelfTest) {
   # is made wrong on purpose.
   $cases = @(
     @{ name = 'a contract that does not allow a symbol the artifact requires'; symbols = @($base | Where-Object { $_ -ne 'runtime/exit' }); want = 'added' },
-    @{ name = 'a contract that lists a symbol the artifact does not require';  symbols = @($base + 'thread_pool/make_write_console_job'); want = 'missing' }
+    @{ name = 'a contract that lists a symbol the artifact does not require';  symbols = @($base + 'thread_pool/never_declared'); want = 'missing' }
   )
   foreach ($c in $cases) {
     # The contract is written to a FILE and read back through the SAME reader
     # the gate uses, so the self-test exercises the whole path -- reader,
     # comparison and verdict -- and not a copy of half of it.
     $f = Join-Path $scratch 'contract.txt'
-    $lines = @('# the self-test contract', ('min-host-async: ' + $contractData.min), ('symbols: ' + $c.symbols.Count), '') + $c.symbols
+    $lines = @('# the self-test contract', ('min-host-core: ' + $contractData.min), ('host-abi-module: ' + $contractData.abi), ('symbols: ' + $c.symbols.Count), '') + $c.symbols
     [System.IO.File]::WriteAllLines($f, $lines, (New-Object System.Text.UTF8Encoding($false)))
     $readBack = Read-Contract $f
-    $r = Test-ContractAgainst $probe $readBack.symbols
+    $r = Test-ContractAgainst $probe $readBack.symbols $readBack.abi
     $saw = if ($c.want -eq 'added') { $r.added.Count } else { $r.missing.Count }
     if ($r.ok -or $saw -lt 1) {
       Write-Output ('FAIL: ' + $c.name + ' was ACCEPTED. The gate cannot fail, so it is a comment.')
@@ -266,5 +346,5 @@ if ($fail -gt 0) {
   Write-Output ('ABORT: {0} check(s) failed.' -f $fail)
   exit 1
 }
-Write-Output 'GATE OK: the artifact requires exactly the contracted symbols, the pin and the floor agree, and the pinned dependency can satisfy every one of them.'
+Write-Output 'GATE OK: the artifact requires exactly the contracted symbols, the dependency has not come back, and the toolchain''s bundled core is the contracted floor and can satisfy every one of them.'
 exit 0

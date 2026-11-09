@@ -393,8 +393,7 @@ async fn file_request(args : Array[String]) -> String? {
   let mut i = 0
   while i + 1 < args.length() {
     if args[i] == "--file" {
-      let data = @fs.read_file(args[i + 1]) catch { _ => return None }
-      let text = data.text() catch { _ => return None }
+      let text = @fs.read_text(args[i + 1]) catch { _ => return None }
       return Some(text)
     }
     i += 1

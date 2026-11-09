@@ -48,11 +48,12 @@ jobs:
             exit 1
           }
           moon version --all
-      # Mandatory, not optional. A fresh runner has an EMPTY registry index, and
-      # this module imports moonbitlang/async from mooncakes.io, so without
-      # this every build command below fails with "Failed to resolve registry
-      # dependency". The local machine never shows this because its index is
-      # already warm.
+      # Insurance, not a requirement. Since 0.4.45 this module has NO registry
+      # dependency at all: the async runtime is `moonbitlang/core/async`, which
+      # the toolchain itself bundles, so a fresh runner resolves everything it
+      # needs without touching mooncakes.io. `moon update` is kept because a
+      # future dependency would need a warm index, and a warm index costs
+      # nothing -- but the commands below no longer fail without it.
       - name: Resolve the registry index
         run: moon update
       # --deny-warn per the official package-configuration guidance ("In CI, add

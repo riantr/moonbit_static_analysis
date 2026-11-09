@@ -12,8 +12,9 @@
 /// Three toolchain facts this is written around:
 ///   - there is no `.await` postfix in MoonBit; an `async fn` body calls other
 ///     async functions directly. `await` is a reserved word, not an operator.
-///   - file IO and subprocesses come from `moonbitlang/async`, not from core,
-///     and both work on the wasm backend that `moonx` uses.
+///   - file IO and subprocesses come from `moonbitlang/core/async` -- the async
+///     runtime the toolchain itself bundles -- and both work on the wasm backend
+///     that `moonx` uses.
 ///   - no `t[..n]` slicing: `..` is a parse error. Substrings are built by
 ///     iterating characters.
 
@@ -1058,7 +1059,7 @@ async fn emit_mmd(
     verdicts, s, prov, findings_shown_per_file, max_files,
   )
   let path = if dest == "@" { scan_artifact_name(prov, root) } else { dest }
-  @fs.write_file(path, text) catch {
+  @fs.write_text(path, text) catch {
     _ => {
       println("ERROR\t--mmd: cannot write \{path}")
       return
@@ -1513,14 +1514,11 @@ fn bump(m : Map[String, Int32], k : String) -> Int32 {
 
 ///|
 async fn read_or(p : String) -> String {
-  let data = @fs.read_file(p) catch {
+  @fs.read_text(p) catch {
     err => {
       println("SKIP\t\{p}\tunreadable: \{err}")
       return ""
     }
-  }
-  data.text() catch {
-    _ => return ""
   }
 }
 
@@ -1624,6 +1622,22 @@ pub fn dir_of(path : String) -> String {
 /// and skipped (the rest of the scan continues without that dep's types).
 /// Transitive deps are NOT followed — the user can fetch them by hand if a
 /// .mbti they wrote is not enough.
+
+///|
+/// The exit code of a command, or 0 when the command could not be started.
+///
+/// `moonbitlang/core/async/process`'s `run` returns a `ProcessResult` and the
+/// exit code is a field on it; the standalone `moonbitlang/async` module's `run`
+/// returned the exit code directly. So the call site that wants the code now
+/// reads it off the result, and a command that could not be STARTED at all is
+/// reported as 0 -- the caller only ever asks "did it work", and a process that
+/// never ran did not work.
+async fn run_exit_code(cmd : String, args : Array[String]) -> Int32 {
+  let res = @process.run(cmd, args) catch { _ => return 0 }
+  res.exit_code
+}
+
+///|
 async fn fetch_moon_mod_imports(root : String) -> Unit {
   let mod_path = root + "/moon.mod"
   let text = read_or(mod_path)
@@ -1641,7 +1655,7 @@ async fn fetch_moon_mod_imports(root : String) -> Unit {
     // result discarded, so a coordinate that could not be fetched produced
     // no line at all here — only moon's own stderr — and the scan went on
     // as if the dependency's types were present.
-    let ok = @process.run("moon", ["fetch", coord]) catch { _ => 0 }
+    let ok = run_exit_code("moon", ["fetch", coord])
     if ok != 0 {
       failed += 1
       println("FETCH\tcould not fetch \{coord}")
@@ -1851,8 +1865,7 @@ async fn collect_iface_symtabs(
           }
           stack.push(p)
         } else if e.has_suffix(".mbti") {
-          let data = @fs.read_file(p) catch { _ => continue }
-          let text = data.text() catch { _ => continue }
+          let text = @fs.read_text(p) catch { _ => continue }
           let sub = @moonfiles.collect_iface_names(text)
           let _ = tab.merge(sub)
         }
@@ -1889,8 +1902,7 @@ async fn collect_private_symtabs(
     if !f.has_suffix(".mbt") {
       continue
     }
-    let data = @fs.read_file(f) catch { _ => continue }
-    let text = data.text() catch { _ => continue }
+    let text = @fs.read_text(f) catch { _ => continue }
     if text == "" {
       continue
     }

@@ -154,6 +154,112 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.45 — the async runtime moved into the toolchain, and the dependency is gone
+
+This release has one subject and three consequences, and the consequences are the point:
+**this package no longer depends on `moonbitlang/async` at all.** The runtime is now
+`moonbitlang/core/async`, part of the `moonbitlang/core` module that the user's toolchain
+already bundles, so `moon.mod` has no import block and there is no version to keep in step
+with the user's toolchain.
+
+**WHY THAT IS NOT A COSMETIC CHANGE.** The disagreement between "the version this package
+pins" and "the version the user's toolchain has" is what broke 0.4.38: the pin said
+`moonbitlang/async` 0.22.6, whose three console-job externs a toolchain bundling 0.22.5
+cannot supply, and the artifact failed to instantiate before the analyzer ran a line. With
+the runtime bundled, the build and the host come from the SAME toolchain and the artifact
+cannot ask for symbols the host was never going to have.
+
+**THE HOST ABI NAME DID NOT CHANGE, BUT THE SYMBOL SET DID.** A wasm import's module name
+comes from the FFI declaration in the source, and `moonbitlang/core/async` still declares
+its host externs under the name `moonbitlang/async` — measured in the toolchain's own
+source. So the host supplies the same module as before. The set went **90 → 93**:
+
+| | symbols |
+|---|---|
+| new | `stdio/get_stdio_handle`, `thread_pool/get_read_console_result`, `thread_pool/make_read_console_job`, `thread_pool/make_write_console_job`, `thread_pool/run_job` |
+| gone | `io/errno_is_read_EOF/windows`, `thread_pool/errno_is_cancelled` |
+
+**AND THE FLOOR WENT UP WITH IT.** MEASURED: the standalone `moonbitlang/async` 0.22.5
+covers only **89** of the 93. The bundled `moonbitlang/core` **0.10.20+65efd5b93**
+declares 215 externs and covers all 93. So **0.4.45 needs a toolchain bundling
+`moonbitlang/core` 0.10.20+65efd5b93 or later** — moon 0.1.20261104 or later — and a
+toolchain still bundling the standalone module cannot instantiate it. That is the trade,
+and it is written down in the README and in `moon.mod` rather than discovered by a user.
+
+**The gate was rewritten to match, because the old one checked a pin that no longer
+exists.** `check_host_requirements.ps1` now compares the artifact's import surface against
+the contract in both directions as before, but the floor is checked against the
+**toolchain's bundled core** instead of against a package this repository pinned, and it
+**refuses a `moonbitlang/async` dependency coming back** — because a dependency on the
+standalone module would make the import surface a function of a version this repository
+chooses, which is the failure the swap removed. The contract file now names
+`min-host-core` and `host-abi-module` instead of `min-host-async`, and the ABI module name
+is read FROM the contract rather than written into the gate as a literal.
+
+**The API is not the same API, and the port is in the release.** The merged runtime renamed
+and reshaped four things the code used: `fs.read_file` → `fs.read_text` and
+`fs.write_file` → `fs.write_text` (the merged runtime has no `Data`-returning file read),
+`process.run` returns a `ProcessResult` whose `exit_code` is a field rather than the
+return value, and `process.collect_output` is **gone** — `run` takes the redirection as an
+argument (`stdout=Collect`) and the streams come back through `stdout_text()`. One
+behaviour changed as a side effect and is worth naming: a file that is not valid UTF-8 used
+to be skipped **silently** and is now reported with the same `SKIP … unreadable:` line every
+other unreadable file gets.
+
+**`moonbitlang/core/async` IS MARKED EXPERIMENTAL**, so the three packages that use it
+(`moon.pkg`, `src/sa/moon.pkg`, `src/jsoncli/moon.pkg`) declare
+`options("allow-experimental-packages": …)`. A package that ships with your toolchain and a
+package that is not yet stable are two different things, and this one is both.
+
+**The docs that still described the old setup were swept — by measurement, not by
+substitution.** Six files named the old runtime, the old symbol count, or the old floor.
+The one that mattered most was `SKILL.md`: it said the wasm "imports 90 symbols" and told
+the reader that "0.4.39 is built against async 0.22.5 and links on any toolchain bundling
+0.22.4 or 0.22.5" — and that paragraph IS the troubleshooting note for the exact error a
+user hits when their toolchain is too old. Being wrong in a changelog is a blemish; being
+wrong in that paragraph sends the user to upgrade the analyzer instead of the toolchain,
+which is the one thing that cannot help them. `src/sa/main.mbt` was sharper still: it
+opened with "file IO and subprocesses come from `moonbitlang/async`, NOT FROM CORE", and
+the swap makes that sentence **false**. What was left alone matters more than what was
+changed — `EXTENSIONS.md` mentions `moonbitlang/async` seven times, and the analyzer's own
+source mentions it 34 times across 10 files, and almost every one of those is a
+**provenance citation** naming the corpus a measurement was taken against. The dependency
+is gone; the corpus is not. A global find-and-replace would have rewritten those 41
+citations into claims about a package this repository no longer imports, and the compiler
+would not have noticed one of them.
+
+**A pinned line moved, and the gate caught it.** `check_transfer_scope.ps1` resolves every
+line number of 0525's TRANSFER MAP against the tree. This release's own documentation sweep
+moved one of them: `src/sa/main.mbt` opened with the sentence quoted above, and correcting
+it from two lines to three added one line to a file that 1,287 lines below it carries a
+pinned site, so `fn filtered_reports` moved from 1,287 to 1,288. The map was re-measured
+and corrected, and the check was **not** weakened — the obvious "fix" would have been to
+match the token anywhere in the file instead of at the pinned line, and the map's entire
+value is that it says *where*, not just *what*. That is the third time this map has
+drifted and the third time the gate caught it rather than a reader.
+
+**THE GATE, BEFORE PUBLICATION — AND THE ACCOUNTING, BECAUSE IT IS TWO RUNS.** The full gate
+reports **117 stage rows: 116 True, 1 False**, and the one False is `published package
+self-scan`, which fetches the version in `moon.mod` from the registry and cannot pass before
+that version is published. Every other row is True — all 87 mutation gates, the host
+contract, the self-scan, the README gate, the eight structural gates.
+
+**BUT THE ROWS BEHIND THAT RED ONE DID NOT RUN.** `release.ps1` guards the last block with
+`if ($failed.Count -eq 0)`, so while the published self-scan is red the corpus comparison and
+the per-function census are skipped — 117 rows now, 122 after publication. They were
+therefore measured in a second run with `-SkipMutations`, which skips the published
+self-scan and lets that block run: the corpus comparison **MATCHes on all seven corpora**
+(19,616 notices across the eight trees), the per-function census **MATCHes** (TOTAL 28
+actionable, DEMOTED 21), and the per-function census control is the **recorded** red —
+`BASELINE FAILED: … abort/pkg.mbti:4`, byte-identical to 0.4.44 and 0.4.43, caused by moon
+0.1.20261104 beginning to type-check interface files against a corpus pin that predates it.
+Neither the corpus nor the toolchain moved in this release.
+
+MEASURED: 1,458 tests on wasm and 1,322 on each of js and wasm-gc — unchanged, and the
+self-scan reads 204 files, 1,679 notices, 133 printed + 1,546 aggregated, actionable 0, the
+same numbers 0.4.44 published. The seven pinned corpora are untouched: nothing about the
+analyzer's findings changed.
+
 ## 0.4.44 — the flow framework becomes general: a CFG, liveness, a dead-store family, an infinite-height lattice, must analysis, edge transfer, and pointer analysis
 
 Twenty-three increments, each measured and each with its own section in

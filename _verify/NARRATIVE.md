@@ -9473,9 +9473,8 @@ against this tree, so it cannot rot without the gate saying so.
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
     row 3  src/sa/profile.mbt:341       fn stale_report
-    row 3  src/sa/main.mbt:1287         fn filtered_reports
+    row 3  src/sa/main.mbt:1288         fn filtered_reports
     --- END TRANSFER MAP ---
-
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
 and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
 `_verify/check_transfer_scope.ps1` is the stage that checks THIS map against the
@@ -11080,6 +11079,38 @@ tree. Two separate edits inside `core.mbt` moved it:
 Neither drift was noticed by reading; both were noticed by the gate, which is
 the only reason the map is worth having. A map of line numbers with no gate is a
 map that is wrong in silence.
+
+### THE THIRD DRIFT WAS MINE, AND IT WAS A COMMENT
+
+0.4.45's own documentation sweep moved the map a third time, and the gate caught it
+exactly the way it caught the first two -- by failing, not by being noticed:
+
+    after one comment line was added above it:  filtered_reports 1287 -> 1288
+
+The edit was the correction of a FALSE sentence. `src/sa/main.mbt` opened with "file
+IO and subprocesses come from `moonbitlang/async`, NOT FROM CORE", and the swap makes
+that sentence false -- they come from core now -- so the line had to change. Changing
+it from two lines to three added one line to a file that 1,287 lines below it carries a
+pinned site, and the map went stale by one.
+
+THE INTERESTING PART IS NOT THAT A PIN BROKE. It is that a COMMENT is load-bearing for
+a line-number pin, which is not obvious until a comment is edited and something
+halfway down the file stops being findable. Nothing about the map says "this is
+sensitive to the number of lines above it", and nothing about a documentation fix
+looks like a structural change. A reviewer reading the diff would see a corrected
+sentence and no reason to distrust a map 1,270 lines away.
+
+=> 判据: A PIN IS A PROMISE ABOUT A PLACE, AND A COMMENT IS PART OF THE DISTANCE TO
+IT. When an edit adds or removes a line ABOVE a pinned site, the pin is now wrong,
+and the honest fix is to re-measure it rather than to leave the map describing a
+tree that no longer exists. The map was re-measured: `fn filtered_reports` is at
+1,288, and the gate says so.
+
+=> 判据: A GATE THAT FAILS ON A HARMLESS EDIT IS NOT A FALSE ALARM. This one could
+have been "fixed" by loosening the check -- by matching the token anywhere in the
+file instead of at the pinned line -- and that would have been WORSE: the map's
+entire value is that it says WHERE, not just WHAT. The line was re-measured and the
+map corrected; the check was not weakened.
 
     moon fmt --check        exit 0
     moon check --deny-warn  exit 0
@@ -13043,3 +13074,247 @@ the repository. The next increment that moves it will have to measure it again.
     one array are indistinguishable, which is a known and intended imprecision.
 
 MEASURED: 1,458/1,458 on wasm and 1,322/1,322 on js and wasm-gc, thirteen new rows.
+
+## 0548: THE DEPENDENCY IS GONE, AND THE FLOOR WENT UP WITH IT
+
+Not an increment from a lecture. A request: drop the `moonbitlang/async` dependency and use
+`moonbitlang/core/async` instead. The work turned out to be three things -- a dependency that
+disappears, an API that is not the same API, and a host floor that moves -- and the third is
+the one a reader of this file needs most.
+
+### WHAT THE DEPENDENCY WAS, AND WHY IT WAS THE WRONG SHAPE
+
+`moon.mod` pinned `moonbitlang/async@0.22.5`, and the packages imported
+`moonbitlang/async{,/fs,/process}`. The pin was not decoration: the published wasm is not
+self-contained, and the host has to supply the async ABI at instantiation time -- from the
+async bundled with the USER's toolchain, not from the version this repository pins. So the
+pin and the user's toolchain were two facts that could disagree, and they did: 0.4.38 pinned
+0.22.6, whose three console-job externs a toolchain bundling 0.22.5 cannot supply, and a
+user hit
+
+    LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async"
+    "thread_pool/make_write_console_job": function import requires a callable
+
+`moonbitlang/core/async` is the copy that ships with the toolchain, so after the swap the
+build and the host come from the SAME toolchain. `moon.mod` has no import block at all.
+
+=> 判据: A PIN THAT CANNOT AGREE WITH THE HOST IS NOT A PIN, IT IS A RISK. The shape that
+survives is the one where there is nothing to keep in step.
+
+### THE HOST ABI NAME DID NOT CHANGE, AND THAT IS THE SURPRISING PART
+
+The obvious expectation is that moving the package path moves the wasm import module name.
+It does not, and the reason is worth stating because a reader would otherwise think the
+contract had been got wrong: a wasm import's module name comes from the FFI DECLARATION in
+the source, and `moonbitlang/core/async` still declares its host externs under the name
+`moonbitlang/async`. Measured in the toolchain's own source -- every
+`= "moonbitlang/async" "..."` declaration is still there, 215 of them.
+
+So the host supplies the same MODULE. What changed is the SET: **90 -> 93**.
+
+    + stdio/get_stdio_handle
+    + thread_pool/get_read_console_result
+    + thread_pool/make_read_console_job
+    + thread_pool/make_write_console_job
+    + thread_pool/run_job
+    - io/errno_is_read_EOF/windows
+    - thread_pool/errno_is_cancelled
+
+The three console-job symbols are the SAME three that broke 0.4.38. The merged runtime asks
+for them again, and asks for two more.
+
+### THE FLOOR WENT UP, AND THE GATE WAS REWRITTEN BECAUSE IT HAD TO BE
+
+MEASURED, from the artifact's own import section rather than from a package's declared
+externs, because the bytes are what a user instantiates:
+
+  * the standalone `moonbitlang/async` 0.22.5 covers only **89** of the 93 -- it has
+    `stdio/get_stdio_handle` and none of the four `thread_pool` additions;
+  * the bundled `moonbitlang/core` 0.10.20+65efd5b93 declares 215 externs and covers all 93.
+
+So **0.4.45 needs a toolchain bundling core 0.10.20+65efd5b93 or later** (moon
+0.1.20261104+), and a toolchain still bundling the standalone module cannot instantiate it.
+That is the trade, stated rather than discovered.
+
+THE GATE THAT CHECKED THE PIN HAD TO BECOME A GATE THAT CHECKS THE TOOLCHAIN. The old one
+read `"moonbitlang/async@([^"]+)"` out of `moon.mod` and compared it to `min-host-async`,
+and looked for the pinned package under `.repos` to check it declares the symbols. There is
+no pin and there is no package, so all three of those became something else:
+
+  * the ABI module name is read FROM THE CONTRACT (`host-abi-module`) rather than written
+    into the gate as a literal -- a literal would have silently compared the wrong set, and
+    the wrong set is exactly what the swap moved;
+  * the floor is checked against the toolchain's bundled core, which is where the host
+    actually gets the symbols from;
+  * and a NEW check: `moon.mod` must NOT depend on `moonbitlang/async` again. A dependency
+    on the standalone module would make the import surface a function of a version this
+    repository chooses -- the failure the swap removed -- so the gate refuses it rather than
+    ignoring it.
+
+The contract file's two facts became `min-host-core` and `host-abi-module`, and the symbol
+list was regenerated FROM the artifact (93 entries) rather than typed out.
+
+### THE API IS NOT THE SAME API
+
+Four things the code used are renamed or reshaped:
+
+    moonbitlang/async/fs        moonbitlang/core/async/fs
+      read_file(path) -> &Data    read_text(path) -> String
+      write_file(path, data)      write_text(path, text)
+    moonbitlang/async/process  moonbitlang/core/async/process
+      run(cmd, args) -> Int       run(cmd, args) -> ProcessResult
+                                  (the exit code is the field .exit_code)
+      collect_output(cmd, args)   GONE: run(cmd, args, stdout=Collect)
+      -> (Int, &Data, &Data)            then .stdout_text()
+
+`collect_output` is the one that is a SHAPE change rather than a rename, so it got a helper
+rather than a call-site edit: `run_exit_code` in `src/sa/main.mbt` reads `.exit_code` off
+the result, and `moonbit_version` in `provenance.mbt` collects stdout explicitly.
+
+**ONE BEHAVIOUR CHANGED AS A SIDE EFFECT, AND IT IS NAMED RATHER THAN DISCOVERED.** The old
+`read_file` returned a `Data` and the code called `.text()` on it, and a file that is not
+valid UTF-8 raised THERE -- in a second `catch` that returned "" SILENTLY. `read_text`
+raises in the same place, but it is the FIRST `catch` now, so such a file is reported with
+the same `SKIP <path> unreadable: <err>` line every other unreadable file gets. One line
+more output, and it says why a file was skipped instead of pretending it was not there.
+
+### THE DOCS THAT STILL DESCRIBED THE OLD SHAPE
+
+The swap changed three things a document can name: the runtime's package path, the symbol
+count, and the floor. Every file in this repository that names any of those three was a
+candidate for going stale. Six were, and not one of them was in the set the version bump
+had to touch -- which is exactly why they would have survived to be published.
+
+  * `SKILL.md` said the published wasm "imports 90 symbols", and told the reader that
+    "0.4.39 is built against async 0.22.5 and links on any toolchain bundling 0.22.4 or
+    0.22.5". That paragraph IS the troubleshooting note for the exact error a user hits
+    when their toolchain is too old. Being wrong in a changelog is a blemish; being wrong
+    in THAT paragraph sends the user to upgrade the analyzer instead of the toolchain,
+    which is the one thing that cannot help them. It says 93 now, and the floor it names
+    is the toolchain floor -- moon 0.1.20261104 or later -- because that is what the
+    floor IS now.
+  * `main.mbt` carried the note "MoonBit exposes no process-exit entry point in the
+    packages available here (no `sys` package; moonbitlang/async has only
+    `Output::exit_code`, which reads a finished process)". The CLAIM survives the swap,
+    MEASURED against the new runtime: `moonbitlang/core/async/process` still publishes
+    `Output::exit_code` (`output.mbt:32`, `pkg.generated.mbti:25`), and there is still no
+    public exit entry point -- `exit` appears in the runtime's `integration.wasm.mbt` as a
+    private `fn` the runtime calls on itself. Only the package name was stale.
+  * `src/sa/main.mbt` opened with "file IO and subprocesses come from `moonbitlang/async`,
+    NOT FROM CORE" -- a sentence the swap made FALSE, since they now come from core. It
+    was the sharpest stale line in the repository, because it was not merely out of date:
+    it stated the opposite of the new truth.
+  * `src/sa/provenance.mbt` named `moonbitlang/async::now()` as the clock it reads.
+    Now `moonbitlang/core/async::now()` -- and the new runtime really does still export
+    it: `async.mbt:155` is `pub using @event_loop {now}`, `event_loop` still lives under
+    `internal/`, and `event_loop.mbt:215` is still the extern
+    `= "moonbitlang/async" "time/get_ms_since_epoch"`.
+  * `.github/workflows/gate.yml` and `.github/workflows/publish.yml` each explained their
+    `moon update` step with "this module imports moonbitlang/async from mooncakes.io, so
+    without this every build command below fails with 'Failed to resolve registry
+    dependency'". The STEP survives -- a future dependency would want a warm index, and a
+    warm index costs nothing -- but its REASON was the dependency, and the reason is gone.
+    Both now say the step is insurance, not a requirement.
+
+THE ONES THAT WERE NOT STALE ARE AS INTERESTING AS THE ONES THAT WERE, and a grep cannot
+tell them apart. `EXTENSIONS.md` mentions `moonbitlang/async` seven times, and every one
+of them is about that package AS A CORPUS: the workspace example, the `guard!` finding
+site, the `.mbt.md` documents the literate frontend is checked against. Those are
+statements about the WORLD, and rewriting them would have made them false.
+
+And the analyzer's own production source mentions `moonbitlang/async` 34 times across 10
+files under `src/` -- 9 in `interp.mbt`, 9 in `parser.mbt`, 4 in `walk.mbt`, 3 in
+`lexer.mbt`, and one each in `ast.mbt`, `moonfiles.mbt`, `pipeline/deadstore.mbt` and
+`sa/main.mbt`, plus the two `moon.pkg` files. Almost every one is a PROVENANCE CITATION
+-- "MEASURED, moonbitlang/async 0.22.4 `src/socket/ffi.mbt:16`" -- naming the corpus a
+measurement was taken against. The dependency is gone; the CORPUS is not, and the corpus
+is still the thing every one of those numbers was measured on. The one historical
+sentence in `sa/main.mbt` that names `moonbitlang/async` stays as it is, because it is
+about the module that was in use when that bug was found.
+
+=> 判据: A RENAME SWEEPS THE DOCS THAT NAME THE OLD SETUP AND LEAVES ALONE THE DOCS THAT
+NAME THE OLD SETUP'S NEW HOME. The two look identical in a search box -- the same
+string, in the same font, one folder apart -- and only the tense tells them apart. Sweep
+by MEASUREMENT, not by substitution: a global find-and-replace would have rewritten the
+41 remaining occurrences -- 34 under `src/` and 7 in `EXTENSIONS.md` -- into claims about
+a package this repository no longer imports, and the compiler would not have noticed a
+single one of them.
+
+### THE GATE WAS MEASURED IN TWO RUNS, AND THE ACCOUNTING IS WORTH READING
+
+The full gate reports **117 stage rows: 116 True, 1 False**, and the one False is
+`published package self-scan`. That stage fetches the version in `moon.mod` from the registry
+and scans it, and 0.4.45 was not published yet, so it cannot pass before publication. Every
+other row -- all 87 mutation gates, the host contract, the self-scan, the README gate, the
+eight structural gates, the corpus comparison, the per-function census -- is True.
+
+**BUT THE ROWS BEHIND THE RED ONE DID NOT RUN, AND THAT IS NOT A DETAIL.** `release.ps1`
+guards the last block with `if ($failed.Count -eq 0)`, so while the published self-scan is
+red the corpus comparison and the per-function census are SKIPPED. A pre-publication run
+therefore says NOTHING about them, and the row count proves it: 117 here, 122 after
+publication, because five more rows execute once nothing is red.
+
+So they were measured in a second run, with `-SkipMutations` -- which skips the published
+self-scan AND the mutation gates, and therefore lets the guarded block run:
+
+    corpus SUMMARY vs pinned baseline        True   all seven corpora MATCH, 19,616 notices
+    per-function census vs pinned baseline   True   TOTAL 28 actionable, DEMOTED 21
+    per-function census control              False  the recorded one (below)
+    the notice reconciliation can go red     True
+
+=> 判据: A STAGE GATED BEHIND A RED ONE HAS NOT PASSED. It has not run. Saying "the corpus
+comparison passes" because the only run that reached it was a run where it was skipped would
+be the same mistake this repository's own record warns about -- and the fix is a SECOND RUN
+that reaches it, not a looser reading of the first.
+
+**THE ONE FALSE IN THAT SECOND RUN IS THE RECORDED ONE, AND IT IS THE TOOLCHAIN'S.** The
+per-function census control fails with
+
+    BASELINE FAILED: the corpus has errors beyond the one this control knows: abort/pkg.mbti:4
+
+which is byte-identical to what 0.4.44 and 0.4.43 recorded: moon 0.1.20261104 began
+TYPE-CHECKING interface files, and the pinned `moonbitlang/core` 0.1.20260920 corpus's only
+`.mbti` says `fn[T] abort(String) -> T` where `String` is out of scope in a self-hosted
+module. `abort` is foundational, so that one error stops the checker before it reads any
+other package and the control reads 0 of 16 files. Two repairs were tried and measured in
+0519 and both were rejected; the control was left red, because a control that cannot run is
+not a control that passed. Nothing about it moved in this release: the corpus pin is a month
+older than the toolchain and this release changed neither.
+
+### WHAT IT COST TO FIND OUT
+
+**`#` IS NOT A COMMENT IN A `moon.pkg`.** The three files that needed the experimental
+acknowledgement were written with `#` comments, and the build failed with `Lexing error at
+603..604` -- no package name, no file name, just an offset into the root `moon.pkg`. The
+lexer's offset was the only clue, and the byte at 603 was `0x23`.
+
+=> 判据: WHEN A PARSER SAYS "LEXING ERROR AT n" AND NAMES NO FILE, THE OFFSET IS THE FILE
+NAME. The repository's own `moon.pkg` files use `//` for comments and `#cfg` for directives,
+and nothing had ever used a bare `#` there -- so the rule was never written down, and it
+was learned by breaking it.
+
+**THE EXPERIMENTAL WARNING NAMES EVERY SUB-PACKAGE SEPARATELY.** `moonbitlang/core/async`,
+`.../async/fs` and `.../async/process` each produced their own warning with its own
+suggested `options(...)` line, so the allow-list has three entries in `src/sa/moon.pkg` and
+two in `src/jsoncli/moon.pkg` -- and one in the root `moon.pkg`, which imports the runtime
+too and was the one the first build plan failed on (`Cannot find import 'moonbitlang/async'`
+-- the root package's import block, which the first sweep of the swap had missed).
+
+### WHAT THIS DOES NOT DO
+
+  * NO FINDING CHANGES. The analyzer's behaviour is untouched: the self-scan reads 204
+    files, 1,679 notices, 133 printed + 1,546 aggregated, actionable 0 -- the numbers
+    0.4.44 published, measured again after the port. The seven pinned corpora are
+    byte-identical.
+  * THE RUNTIME IS STILL MARKED EXPERIMENTAL. `moonbitlang/core/async` carries
+    `experimental: true` in its own `moon.pkg`, so the packages that use it say so. A
+    package that ships with the toolchain and a package that is not yet stable are two
+    different things, and this one is both. The alternative -- the stable standalone
+    module -- is the one with a pin.
+  * NO NEW HOST SYMBOLS WERE INVENTED. The 93 are what the artifact actually imports; the
+    contract was generated from the artifact's import section.
+
+MEASURED: 1,458/1,458 on wasm and 1,322/1,322 on js and wasm-gc -- unchanged, because the
+port touched no logic. `moon fmt --check` 0, `moon check --deny-warn` 0, the host contract
+gate green with its self-test, and the artifact's import surface 107 imports of which 93
+are the `moonbitlang/async` ABI.

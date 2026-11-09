@@ -9,6 +9,20 @@
 // makes check/test on those backends SKIP this package instead of failing.
 supported_targets = "+wasm+native"
 
+// The async runtime now comes from the toolchain-bundled `moonbitlang/core`
+// module, and `moonbitlang/core/async` is EXPERIMENTAL there. The standalone
+// `moonbitlang/async` module was stable and had to be pinned; this one needs
+// no pin at all, which is the point of the swap -- and it still has to be
+// acknowledged, or the build refuses it.
+
+options(
+  "allow-experimental-packages": [
+    "moonbitlang/core/async",
+    "moonbitlang/core/async/fs",
+    "moonbitlang/core/async/process",
+  ],
+)
+
 import {
   "riantr/moonbit_static_analysis/src/pipeline",
   "riantr/moonbit_static_analysis/src/moonfiles",
@@ -16,7 +30,7 @@ import {
   "riantr/moonbit_static_analysis/src/report",
   "riantr/moonbit_static_analysis/src/core",
   "moonbitlang/core/env",
-  "moonbitlang/async",
-  "moonbitlang/async/fs",
-  "moonbitlang/async/process",
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/fs",
+  "moonbitlang/core/async/process",
 }

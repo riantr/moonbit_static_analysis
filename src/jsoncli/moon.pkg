@@ -12,6 +12,17 @@ pkgtype(kind: "executable")
 
 supported_targets = "+wasm+native"
 
+// `moonbitlang/core/async` is EXPERIMENTAL in the toolchain-bundled core
+// module. The standalone `moonbitlang/async` module was stable and had to be
+// pinned; this one is bundled with the toolchain the user already has.
+
+options(
+  "allow-experimental-packages": [
+    "moonbitlang/core/async",
+    "moonbitlang/core/async/fs",
+  ],
+)
+
 import {
   "riantr/moonbit_static_analysis/src/pipeline",
   "riantr/moonbit_static_analysis/src/statecheck",
@@ -20,6 +31,6 @@ import {
   "riantr/moonbit_static_analysis/src/core",
   "moonbitlang/core/json",
   "moonbitlang/core/env",
-  "moonbitlang/async",
-  "moonbitlang/async/fs",
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/fs",
 }

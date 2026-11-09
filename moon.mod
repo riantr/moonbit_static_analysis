@@ -7,7 +7,7 @@
 // riantr/pyroduct audit package); we never import them.
 name = "riantr/moonbit_static_analysis"
 
-version = "0.4.44"
+version = "0.4.45"
 
 readme = "README.md"
 
@@ -37,48 +37,60 @@ preferred_target = "wasm"
 
 warnings = "-0079"
 
-// The async pin is also a promise about the HOST, and that is the promise that
-// was broken once.
+// THE ASYNC RUNTIME COMES FROM THE TOOLCHAIN, AND THAT IS THE WHOLE POINT.
 //
-// The published wasm imports 90 symbols from `moonbitlang/async`, and the host
-// has to supply every one of them when the module is instantiated -- `moonx`
-// supplies them from the async bundled with the USER's toolchain, not from the
-// version pinned here. async 0.22.6 turned three of the console jobs into host
-// externs, so a build against 0.22.6 needs a toolchain bundling 0.22.6 or
-// later; 0.4.38 shipped that and a user on an older toolchain could not
-// instantiate it.
+// There is NO dependency on a separate `moonbitlang/async` module any more.
+// The runtime is `moonbitlang/core/async`, part of the `moonbitlang/core`
+// module that the user's toolchain already bundles, so:
 //
-// 0.22.5 is the newest async MEASURED to have a host surface a toolchain
-// bundling 0.22.4 or 0.22.5 can satisfy, and it is what the artifact is built
-// against. Measured 2026-11-02: async 0.22.7 does NOT -- it declares 194
-// externs and DROPS 22 of the 90 (the event_bus and io ones), so a build
-// against it would ask the host for a different set, not a bigger one.
+//   * there is no pin here that could disagree with the user's toolchain --
+//     which is the disagreement that broke 0.4.38, when the pin said 0.22.6
+//     and the user's toolchain bundled 0.22.5;
+//   * the build and the host come from the SAME toolchain, so the artifact
+//     cannot ask for symbols the host was never going to have.
 //
-// RE-MEASURED 2026-11-08 for the 0.4.44 release, and this time against the
-// ARTIFACT rather than against the package's declared externs, because that is
-// the thing a user instantiates. async 0.22.7 is still the registry's latest
-// (`moon add --upgrade moonbitlang/async@0.22.7`, then `moon build --target
-// wasm`) and building against it moves the wasm from
+// The host ABI NAME did not change, and that is worth being precise about: a
+// wasm import's module name comes from the FFI declaration in the source, and
+// `moonbitlang/core/async` still declares its host externs under the name
+// "moonbitlang/async". The host supplies the same MODULE as before. What
+// changed is the SET of symbols, and the set got BIGGER: the artifact now
+// requires 93, not 90.
 //
-//     104 imports, 90 from `moonbitlang/async`
-// to
-//     107 imports, 93 from `moonbitlang/async`
+//     + stdio/get_stdio_handle
+//     + thread_pool/get_read_console_result
+//     + thread_pool/make_read_console_job
+//     + thread_pool/make_write_console_job
+//     + thread_pool/run_job
+//     - io/errno_is_read_EOF/windows
+//     - thread_pool/errno_is_cancelled
 //
-// adding exactly three symbols: thread_pool/get_read_console_result,
-// thread_pool/make_read_console_job and thread_pool/make_write_console_job --
-// the console-job externs the 0.22.5 -> 0.22.6 bump introduced, which 0.22.7
-// still requires. So the bump is not a wider set of the same floor; it RAISES
-// THE MINIMUM HOST TOOLCHAIN, and anyone on a toolchain bundling 0.22.5 gets
-// "function import requires a callable" at instantiation. That is a
-// user-visible decision, so the pin stays and the measurement is recorded here
-// rather than taken as a routine upgrade.
-// `_verify/check_host_requirements.ps1` names the three symbols and fails, so a
-// future bump cannot land quietly.
-// The contract that says so is `_verify/host_requirements.txt`, and
-// `_verify/check_host_requirements.ps1` holds the artifact to it: a dependency
-// bump that widens the host requirements fails that gate instead of quietly
-// dropping users. Raising the floor is allowed -- it is a decision -- but it
-// has to be written down here and in the README.
-import {
-  "moonbitlang/async@0.22.5",
-}
+// (measured 2026-11-09 from the artifact's own import section, not from a
+// package's declared externs, because the bytes are what a user instantiates.)
+//
+// THE FLOOR IS A TOOLCHAIN NOW, AND IT IS HIGHER THAN IT WAS. MEASURED: the
+// standalone `moonbitlang/async` 0.22.5 covers only 89 of the 93 -- it has
+// `stdio/get_stdio_handle` and none of the four thread_pool additions -- so a
+// toolchain still bundling the standalone module CANNOT instantiate this
+// artifact. The bundled `moonbitlang/core` 0.10.20+65efd5b93 declares 215
+// externs and covers all 93.
+//
+// THAT IS THE TRADE, and it is a real one. The dependency is gone, but the
+// minimum host toolchain moved up with it, and a user on an older toolchain
+// gets "function import requires a callable" at instantiation -- the same
+// failure 0.4.38 had. The contract that says so is
+// `_verify/host_requirements.txt`, and `_verify/check_host_requirements.ps1`
+// holds the artifact to it: it compares the published import surface against
+// the contract in BOTH directions, it refuses a `moonbitlang/async` dependency
+// coming back, and it checks the toolchain's bundled core against the
+// contract. Raising the floor is allowed -- it is a decision -- but it has to
+// be written down here and in the README.
+//
+// The packages that use the runtime declare it as an experimental package: see
+// the `options("allow-experimental-packages": ...)` blocks in `moon.pkg`,
+// `src/sa/moon.pkg` and `src/jsoncli/moon.pkg`. `moonbitlang/core/async` is
+// still marked experimental by the core team, and that is the other side of
+// the same trade: a package that ships with the toolchain but is not yet
+// stable.
+//
+// There is NO import block below, and that is the change: this module depends
+// on nothing but the standard library the toolchain already carries.

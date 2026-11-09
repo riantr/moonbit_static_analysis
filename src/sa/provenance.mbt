@@ -8,7 +8,7 @@
 //
 // Two decisions, both measured rather than assumed:
 //
-//   - The clock. `moonbitlang/async::now()` is milliseconds since epoch, and
+//   - The clock. `moonbitlang/core/async::now()` is milliseconds since epoch, and
 //     that was checked against wall time rather than read off a doc comment: a
 //     wasm run returned 1791522911114 against a wall clock of
 //     1791522910008 measured ~1.1 s earlier, which is exactly the delay
@@ -442,10 +442,14 @@ pub fn target_version(target : String, tree_version : String) -> String {
 /// the same honest fallback the version and stamp already use.
 async fn moonbit_version() -> String {
   let args : Array[String] = ["version"]
-  let (_, out, _) = @process.collect_output("moon", args) catch {
+  // `moonbitlang/core/async/process` has no `collect_output`: `run` takes the
+  // redirection as an argument and returns a `ProcessResult` whose stdout is
+  // read back through `stdout_text`. The old `collect_output` returned the two
+  // streams as a tuple, so this is a shape change and not a rename.
+  let res = @process.run("moon", args, stdout=@process.Collect) catch {
     _ => return ""
   }
-  let text = out.text() catch { _ => return "" }
+  let text = res.stdout_text() catch { _ => return "" }
   parse_moon_version(first_line(text))
 }
 
@@ -511,8 +515,7 @@ fn join_path(root : String, leaf : String) -> String {
 /// Read a file, or return `""`. Unlike `read_or` this does not print: a tree
 /// with no `moon.mod` is a normal thing to scan, not a file that failed.
 async fn read_quietly(p : String) -> String {
-  let data = @fs.read_file(p) catch { _ => return "" }
-  data.text() catch {
+  @fs.read_text(p) catch {
     _ => return ""
   }
 }

@@ -128,6 +128,90 @@ moonx riantr/moonbit_static_analysis@latest riantr/pyroduct@latest
 来的测试漏洞**：把 `union` 的 types 半边改成写进 `self`，整个套件仍然全绿——因为原
 测试只查了值那一半。补上类型侧之后才变红。
 
+## 0.4.45 —— 异步运行时搬进了工具链，依赖没有了
+
+这一版只有一个主题和三个后果，而后果才是重点：**这个包再也不依赖 `moonbitlang/async`
+了。** 运行时现在是 `moonbitlang/core/async`，属于用户工具链本来就自带的 `moonbitlang/core`
+模块，所以 `moon.mod` 里没有 import 块，也没有版本需要和用户的工具链对齐。
+
+**这不是一次表面改动。** 正是「这个包钉的版本」和「用户的工具链自带的版本」之间的分歧
+让 0.4.38 坏掉了：pin 写的是 `moonbitlang/async` 0.22.6，它那三个 console job 的 extern
+是自带 0.22.5 的工具链提供不出的，于是产物在分析器跑第一行之前就实例化失败了。运行时
+随工具链一起走之后，构建端和宿主端来自**同一个工具链**，产物没法再向宿主要它根本不会有
+的符号。
+
+**宿主 ABI 的模块名没变，但符号集合变了。** wasm 导入的模块名来自源码里的 FFI 声明，而
+`moonbitlang/core/async` 仍然用 `moonbitlang/async` 这个名字声明它的宿主 extern——在
+工具链自己的源码里量过。所以宿主提供的还是同一个模块。变的是集合：**90 → 93**。
+
+| | 符号 |
+|---|---|
+| 新增 | `stdio/get_stdio_handle`、`thread_pool/get_read_console_result`、`thread_pool/make_read_console_job`、`thread_pool/make_write_console_job`、`thread_pool/run_job` |
+| 消失 | `io/errno_is_read_EOF/windows`、`thread_pool/errno_is_cancelled` |
+
+**下限也跟着抬高了。** 实测：独立的 `moonbitlang/async` 0.22.5 只能覆盖 93 个里的 **89**
+个。工具链自带的 `moonbitlang/core` **0.10.20+65efd5b93** 声明了 215 个 extern，93 个全覆盖。
+所以 **0.4.45 需要自带 `moonbitlang/core` 0.10.20+65efd5b93（或更新）的工具链**——也就是
+moon 0.1.20261104 或更新；还在自带独立模块的工具链实例化不了它。这就是那笔交易，它写在
+README 和 `moon.mod` 里，而不是等一个用户去撞。
+
+**门禁被重写了，因为旧门禁检查的那个 pin 已经不存在了。** `check_host_requirements.ps1`
+仍然双向比对产物的导入面和契约，但下限改成对着**工具链自带的 core** 检查，而不是对着这个
+仓库钉的某个包；同时它**拒绝 `moonbitlang/async` 依赖回来**——因为对独立模块的依赖会让
+导入面重新变成「这个仓库自己选的版本」的函数，而那正是这次交换要消灭的失败。契约文件现在
+写的是 `min-host-core` 和 `host-abi-module`，ABI 模块名**从契约里读**，而不是在门禁里写成
+字面量。
+
+**API 已经不是同一个 API，移植就在这一版里。** 合并后的运行时改名并改了形状：代码用到的
+四样东西变了——`fs.read_file` → `fs.read_text`、`fs.write_file` → `fs.write_text`（合并后
+的运行时没有返回 `Data` 的文件读取了）、`process.run` 返回 `ProcessResult`、退出码是它的一个
+字段而不是返回值，还有 `process.collect_output` **没了**——`run` 把重定向当参数收
+（`stdout=Collect`），输出流从 `stdout_text()` 拿回来。顺带有一个行为变化值得点名：不是
+合法 UTF-8 的文件以前是**静默**跳过的，现在和其它读不出来的文件一样报 `SKIP … unreadable:`。
+
+**`moonbitlang/core/async` 被标着 experimental**，所以用到它的三个包（`moon.pkg`、
+`src/sa/moon.pkg`、`src/jsoncli/moon.pkg`）都声明了
+`options("allow-experimental-packages": …)`。随工具链一起发、和还没稳定，是两件不同的
+事，这个包两件都占。
+
+**还描述旧设置的文档被扫了一遍——按实测扫，不是按替换扫。** 有六个文件还在说旧的运行时、
+旧的符号数或者旧的下限。其中最要紧的是 `SKILL.md`：它写着产物「imports 90 symbols」，
+还告诉读者「0.4.39 是对着 async 0.22.5 构建的，在自带 0.22.4 或 0.22.5 的工具链上都能
+链上」——而那段话**就是**工具链太旧时用户撞上那个错误时读的排障说明。在 changelog 里写错
+只是瑕疵；在那段话里写错，会把用户导向「升级分析器」而不是「升级工具链」，而那恰恰是
+唯一帮不上他的做法。`src/sa/main.mbt` 那句更尖锐：它开头写着「文件 IO 和子进程来自
+`moonbitlang/async`，**而不是 core**」，而这次交换让这句话变成了**假话**。**没动**的部分
+比动掉的更重要——`EXTENSIONS.md` 提到 `moonbitlang/async` 七次，分析器自己的源码在 10 个
+文件里提到 34 次，其中几乎每一处都是**出处标注**，写明某个测量是在哪个语料上做的。依赖没了，
+语料还在。全局替换会把那 41 处出处改写成 41 条关于一个本仓库已不依赖的包的断言，而编译器
+一句都不会报错。
+
+**一处钉住的行号挪了位，是门禁抓到的。** `check_transfer_scope.ps1` 会把 0525 那张
+TRANSFER MAP 里的每个行号对到这棵树上。这一版自己的文档清扫挪动了其中一处：
+`src/sa/main.mbt` 开头就是上面引的那句话，把它从两行改成三行，等于在一个 1,287 行之下
+钉着一处位置的文件里多加了一行，于是 `fn filtered_reports` 从 1,287 挪到了 1,288。地图被
+重新量过并改正，而检查**没有被放松**——这里最省事的「修法」本来是改成在文件里任意位置
+匹配那个 token，可那样更糟：这张地图的全部价值就在于它说的是**哪里**，不只是**什么**。
+这是这张地图第三次漂移，也是第三次被门禁而不是被人抓住。
+
+**发布前的门禁——以及这份账，因为它是两轮跑出来的。** 完整门禁报出 **117 行 stage：116 个
+True，1 个 False**，那个 False 是 `published package self-scan`：它按 `moon.mod` 里的版本去
+registry 取产物来扫，而这个版本还没发布，所以发布前它不可能通过。其余每一行都是 True——87 个
+变异门禁、宿主契约、自扫描、README 门禁、八个结构门禁。
+
+**但那个红行后面的行根本没跑。** `release.ps1` 用 `if ($failed.Count -eq 0)` 把最后一段守住
+了，所以 published self-scan 红着的时候，语料对比和 per-function 普查是**被跳过**的——现在是
+117 行，发布后是 122 行。因此它们用第二次跑测量：`-SkipMutations` 会跳过 published
+self-scan，于是那段守住的代码就能跑：语料对比在**七个语料上全部 MATCH**（八棵树 19,616 条
+notice），per-function 普查也**MATCH**（TOTAL 28 条 actionable，DEMOTED 21），而 per-function
+普查控制是**有案可查**的那个红——`BASELINE FAILED: … abort/pkg.mbti:4`，和 0.4.44、0.4.43
+记的逐字相同，原因是 moon 0.1.20261104 开始对接口文件做类型检查，而语料的 pin 比它还早一个
+月。这一版既没动语料，也没动工具链。
+
+实测：wasm 上 1,458 个测试，js 与 wasm-gc 各 1,322 个——没变；自扫描读到 204 个文件、
+1,679 条 notice、133 打印 + 1,546 汇总、actionable 0，和 0.4.44 发布的数字一样。七个固定
+语料一个都没动：分析器的发现部分没有任何变化。
+
 ## 0.4.44 —— 数据流框架走向通用：CFG、活变量、死存储家族、无穷格、必然分析、边转移，以及指针分析
 
 二十三个增量，每一件都实测过，各自在 `_verify/NARRATIVE.md` 有对应小节（§0525–§0547）。主线

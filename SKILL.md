@@ -34,7 +34,7 @@ analyzer → registry → target source.
 Pin a version when reproducibility matters:
 
 ```sh
-moonx riantr/moonbit_static_analysis@0.4.44 riantr/moonbit_doubleML
+moonx riantr/moonbit_static_analysis@0.4.45 riantr/moonbit_doubleML
 ```
 
 > `moonx` is the recommended invocation. It downloads the **prebuilt wasm** that
@@ -50,15 +50,18 @@ moonx riantr/moonbit_static_analysis@0.4.44 riantr/moonbit_doubleML
 > the command needs no `/src/sa` suffix.
 >
 > **IF `moonx` SAYS `failed to instantiate … .wasm`, IT IS A TOOLCHAIN FLOOR, NOT A
-> BUG IN THE TARGET.** The published wasm imports 90 symbols from
+> BUG IN THE TARGET.** The published wasm imports 93 symbols from
 > `moonbitlang/async`, and the host has to supply every one of them at
-> instantiation time — from the async bundled with the USER's toolchain. A
-> `LinkError: … "thread_pool/make_write_console_job": function import requires a
-> callable` means the toolchain's async is older than the one the artifact was
-> built against. 0.4.38 shipped that way; 0.4.39 is built against async 0.22.5
-> and links on any toolchain bundling 0.22.4 or 0.22.5. The fix on the user's
-> side is to use an older analyzer version or to upgrade the MoonBit toolchain —
-> NOT to change the project being scanned.
+> instantiation time — from the async runtime bundled with the USER's toolchain.
+> A `LinkError: … "thread_pool/make_write_console_job": function import requires
+> a callable` means the toolchain's runtime is older than the one the artifact
+> was built against. 0.4.38 shipped that way. Since 0.4.45 the runtime IS the
+> toolchain's own `moonbitlang/core/async`, so the floor is a toolchain floor:
+> **moon 0.1.20261104 or later**, which bundles `moonbitlang/core`
+> 0.10.20+65efd5b93 and declares every one of the 93. A toolchain still
+> bundling the standalone `moonbitlang/async` cannot instantiate this artifact.
+> The fix on the user's side is to upgrade the MoonBit toolchain or to use an
+> older analyzer version — NOT to change the project being scanned.
 
 ## Reading the output
 
@@ -918,7 +921,7 @@ on the module and call the API — `@pipeline.run`, `@moonfiles.literate` /
 `@sa.provenance_for(target, root)` collects four facts and
 `@sa.scan_artifact_name(prov, root)` lays them out —
 `<package>_<version>_<moonbit>_<UTC stamp>.mmd`, e.g.
-`moonbit_static_analysis_0.4.44_0.1.20261023_20261024T060000Z.mmd`.
+`moonbit_static_analysis_0.4.45_0.1.20261023_20261024T060000Z.mmd`.
 
 Read that name as provenance, not decoration: it is what distinguishes two
 scans of the same tree. `package` is the coordinate, or the **resolved**

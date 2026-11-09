@@ -104,9 +104,12 @@ jobs:
           moon version --all
 
       - name: Resolve the registry index
-        # A fresh runner's index is empty, and this module imports
-        # moonbitlang/async from mooncakes.io, so the gate below would fail with
-        # "Failed to resolve registry dependency" without this.
+        # Insurance, not a requirement. Since 0.4.45 this module has NO
+        # registry dependency at all: the async runtime is
+        # `moonbitlang/core/async`, which the toolchain itself bundles, so a
+        # fresh runner publishes without ever resolving a mooncakes.io
+        # dependency. `moon update` is kept because a future dependency would
+        # need a warm index, and a warm index costs nothing.
         run: moon update
 
       - name: moon.mod must agree with the tag

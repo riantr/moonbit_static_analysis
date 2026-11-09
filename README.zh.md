@@ -63,23 +63,22 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.44
+moon add riantr/moonbit_static_analysis@0.4.45
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.44",
+  "riantr/moonbit_static_analysis@0.4.45",
 }
 ```
 
 ### 宿主要满足什么
 
-发布出去的 wasm **不是自包含的**。它从 `moonbitlang/async` 导入了 **90 个符号**——文件 IO、
+发布出去的 wasm **不是自包含的**。它从 `moonbitlang/async` 导入了 **93 个符号**——文件 IO、
 进程调用、事件循环——实例化模块时**宿主**必须把这些符号全都提供出来。`moonx` 提供的是
-**你的** MoonBit 工具链自带的那个 `moonbitlang/async`，不是这个包自己 `moon.mod` 里钉住的
-那个版本。
+**你的** MoonBit 工具链自带的那个异步运行时。
 
 所以这个产物有一条**下限**，而下限是发布出去的**字节**的属性：
 
@@ -89,26 +88,43 @@ import {
 | 把产物按这份清单卡住的门 | `_verify/check_host_requirements.ps1` |
 | 对**发布出去的字节**做同一件事 | `_verify/selfscan_published.ps1` |
 
-清单里写着 90 个符号，而 **0.22.5** 是**实测过**能覆盖它们全部的最新 `moonbitlang/async`：
-0.22.4 声明的是同样的 223 个 extern，也一样能覆盖，所以这个产物在自带 0.22.4 或 0.22.5
-的工具链上都能链接起来。**更新的两个版本不行，而且坏法不一样。** 0.22.6 在那 223 个之外又加了
-三个 console job 的 extern（2026-10-30 实测）。0.22.7 只声明 **194** 个 extern：它把 90 个里的
-**22** 个丢掉了——`event_bus/*` 和 `io/*` 那些——又加了同样那三个（2026-11-02 实测）。自带这两个
-版本之一的工具链无法实例化这个产物，而只升级这个包本身改变不了这一点：导入面是**发布出去的字节**
-的属性。
+**从 0.4.45 起，运行时来自 `moonbitlang/core/async`——你的工具链自带的那一份——而这个包
+本身一个依赖都没有了。** `moon.mod` 里没有 import 块，没有版本需要和用户的工具链对齐。
+这正是要点：正是「这个包钉的版本」和「用户的工具链自带的版本」之间的分歧，让 0.4.38
+坏掉了。
 
-**0.4.38 是按比多数人更新的宿主构建的，然后被一个用户撞出来了。** 它的 `moonbitlang/async`
-被升到了 0.22.6，而 0.22.6 多声明了三个必须由宿主提供的符号——`thread_pool/make_write_console_job`、
-`thread_pool/make_read_console_job` 和 `thread_pool/get_read_console_result`。自带 0.22.5 的
-工具链提供不出它们，于是分析器一行都还没跑，错误就先到了：
+**宿主 ABI 的模块名没变，变的是符号集合，而且变大了。** wasm 导入的模块名来自源码里的
+FFI 声明，而 `moonbitlang/core/async` 仍然用 `moonbitlang/async` 这个名字声明它的宿主
+extern——所以宿主提供的还是同一个模块。变的是集合：**90 → 93**。
+
+| | 符号 |
+|---|---|
+| **新增** | `stdio/get_stdio_handle`、`thread_pool/get_read_console_result`、`thread_pool/make_read_console_job`、`thread_pool/make_write_console_job`、`thread_pool/run_job` |
+| **消失** | `io/errno_is_read_EOF/windows`、`thread_pool/errno_is_cancelled` |
+
+**而下限也跟着抬高了，这一条值得读两遍。** 实测：独立的 `moonbitlang/async` 0.22.5 只能覆盖
+93 个里的 **89** 个——它有 `stdio/get_stdio_handle`，但四个 `thread_pool` 新增的一个都没有。
+工具链自带的 `moonbitlang/core` **0.10.20+65efd5b93** 声明了 215 个 extern，93 个全覆盖。所以：
+
+> **0.4.45 需要自带 `moonbitlang/core` 0.10.20+65efd5b93（或更新）的 MoonBit 工具链**——
+> 也就是 moon 0.1.20261104 或更新。还在自带独立 `moonbitlang/async` 的工具链无法实例化
+> 这个产物，而只升级这个包本身改变不了这一点：导入面是发布出去的字节的属性。
+
+错误在分析器一行都还没跑的时候就到了：
 
 ```
 LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/make_write_console_job": function import requires a callable
 ```
 
-0.4.42 又改回对着 async **0.22.5** 构建，它的导入面和 0.4.37 发布的那个完全一样——就是在那些
-工具链上能链接起来的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.4.42**——导入面和 0.4.37 一样。
+**0.4.38 是按比多数人更新的宿主构建的，然后被一个用户撞出来了。** 它的 `moonbitlang/async`
+被升到了 0.22.6，而 0.22.6 多声明了三个必须由宿主提供的符号——同样那三个 console job。
+自带 0.22.5 的工具链提供不出它们。0.4.45 又要了那三个，外加两个新的，因为它用的运行时
+就是随工具链一起发的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
+你的 MoonBit 工具链，或者换到 **0.4.45**。
+
+升级前还有一件事要知道：`moonbitlang/core/async` 目前仍被 core 团队标为 **experimental**，
+所以用到它的那些包在自己的 `moon.pkg` 里明确写了出来。随工具链一起发、但还没稳定——这
+两件事同时成立，这个包就是两件事都占。
 
 ## 快速上手
 
@@ -259,7 +275,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.44_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.45_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
@@ -565,7 +581,7 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 > 读不到的构造或算不出来的运算符；剩下 1 条是真缺陷——`moonbit_labeler` 里一个赋了值却没被读的
 > 局部变量，也是本工具在任何一个语料上报出的第一条真缺陷。
 >
-> **它们每一条都归进了有名家族。** census 为"归不了类"的发现留了一个桶，那个桶在 0.4.44
+> **它们每一条都归进了有名家族。** census 为"归不了类"的发现留了一个桶，那个桶在 0.4.45
 > 之前一直装着 9 条 `MSA-015` 死存储——一个家族在读还在某个"前端声明为子集之外"的区域里时，
 > 报出了"这个值没人读"。修掉它们的规则，正是帧审计早就在用的那条：一个身上有洞的函数，
 > 就不审它。
@@ -647,7 +663,7 @@ src/jsoncli   DeepSeek Harness 的 JSON 桥
 ```
 
 根包是个薄转发层；实现是 `src/sa`，一个**库**。`src/sa` 和根包都声明
-`supported_targets = "+wasm+native"`，因为文件 IO 和子进程来自 `moonbitlang/async`，
+`supported_targets = "+wasm+native"`，因为文件 IO 和子进程来自 `moonbitlang/core/async`，
 而只有部分后端有可用的 async 运行时；其余后端**跳过**这两个包而不是失败。
 
 ### 数据流框架同时承载两个方向

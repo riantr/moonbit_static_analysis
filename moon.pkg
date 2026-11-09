@@ -12,8 +12,19 @@ supported_targets = "+wasm+native"
 
 pkgtype(kind: "executable")
 
+// `moonbitlang/core/async` is an EXPERIMENTAL package in the toolchain-bundled
+// `moonbitlang/core` module, and using it has to be acknowledged here. The
+// alternative -- the standalone `moonbitlang/async` module -- is stable, and
+// this is the trade this swap makes: one fewer dependency to pin, at the price
+// of depending on a package the core team still marks experimental. See the
+// comment in `moon.mod` for the measurement behind the swap.
+
+options(
+  "allow-experimental-packages": [ "moonbitlang/core/async" ],
+)
+
 import {
   "riantr/moonbit_static_analysis/src/sa",
-  "moonbitlang/async",
+  "moonbitlang/core/async",
   "moonbitlang/core/env",
 }

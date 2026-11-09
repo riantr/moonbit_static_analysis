@@ -1,11 +1,23 @@
 # THE HOST CONTRACT OF THE SHIPPED ARTIFACT.
 #
-# WHAT THIS FILE IS. The published wasm is not self-contained: it imports 90
-# symbols from `moonbitlang/async`, and the HOST has to provide every one of
-# them when the module is instantiated. `moonx` provides them from the async
-# package BUNDLED WITH THE USER'S MOONBIT TOOLCHAIN -- not from the version
-# this package pins in `moon.mod`. So the artifact's host requirements are a
-# property of the PUBLISHED BYTES, and nothing in the source tree can see them.
+# WHAT THIS FILE IS. The published wasm is not self-contained: it imports 93
+# symbols from the `moonbitlang/async` HOST ABI -- the file IO, the process
+# calls, the event loop -- and the HOST has to provide every one of them when
+# the module is instantiated. `moonx` provides them from the async runtime
+# bundled with the USER's MoonBit toolchain. So the artifact's host
+# requirements are a property of the PUBLISHED BYTES, and nothing in the
+# source tree can see them.
+#
+# THE HOST ABI NAME DID NOT CHANGE, AND THAT IS THE SURPRISING PART. The
+# runtime moved from the standalone `moonbitlang/async` MODULE into the
+# toolchain-bundled `moonbitlang/core` module, so the package path is now
+# `moonbitlang/core/async` and there is no dependency to pin. But a wasm
+# import's module name comes from the FFI declaration in the SOURCE, and
+# `moonbitlang/core/async` still declares its host externs under the ABI name
+# "moonbitlang/async" -- measured in the toolchain's own source, every
+# `= "moonbitlang/async" "..."` declaration is still there. So the host
+# supplies the same MODULE as before; what changed is the SET of symbols, and
+# the set got BIGGER.
 #
 # WHY IT IS PINNED. On 2026-10-30 the `moonbitlang/async` 0.22.5 -> 0.22.6 bump
 # added three host-required symbols to the published wasm:
@@ -34,18 +46,44 @@
 # CHANGELOG. A bump that does NOT edit this file fails the gate instead of
 # silently dropping users.
 #
-# `min-host-async` is the newest async MEASURED to have an extern set that
-# covers every symbol below. 0.22.4 and 0.22.5 both declare 223 externs and
-# both cover all 90. Measured 2026-11-02: 0.22.7 does NOT -- it declares 194
-# externs, it DROPS 22 of the 90 (the event_bus and io ones) and adds the
-# three console jobs, so it fails in a different shape than 0.22.6 did.
-# It must equal the `moonbitlang/async` pin in `moon.mod`: the floor and the
-# pin are one fact, and two facts that can disagree will.
+# WHAT CHANGED WHEN THE RUNTIME MOVED INTO `moonbitlang/core` (0.4.45, measured
+# 2026-11-09). The symbol count went 90 -> 93. Five symbols are new:
+#
+#     stdio/get_stdio_handle
+#     thread_pool/get_read_console_result
+#     thread_pool/make_read_console_job
+#     thread_pool/make_write_console_job
+#     thread_pool/run_job
+#
+# and two are gone: `io/errno_is_read_EOF/windows` and
+# `thread_pool/errno_is_cancelled`, which the newer runtime no longer declares.
+# The three console-job symbols are the same three that broke 0.4.38; the two
+# others are new with the merged runtime.
+#
+# `min-host-core` is the bundled `moonbitlang/core` whose `core/async` declares
+# an extern set covering every symbol below. It was MEASURED, not guessed:
+# the standalone `moonbitlang/async` 0.22.5 covers only 89 of the 93 (it has
+# `stdio/get_stdio_handle` and neither of the four thread_pool additions), so a
+# toolchain still bundling the standalone module CANNOT instantiate this
+# artifact. The bundled core 0.10.20+65efd5b93 declares 215 externs and covers
+# all 93.
+#
+# The floor is a TOOLCHAIN now, not a pin: `moon.mod` no longer depends on
+# `moonbitlang/async` at all, so there is nothing in the source tree that
+# could disagree with it. The gate checks the two things that CAN disagree --
+# the artifact's imports against the contract, and the toolchain's bundled
+# core against the contract -- and it checks that the dependency has not come
+# back.
 
-min-host-async: 0.22.5
-symbols: 90
+min-host-core: 0.10.20+65efd5b93
+host-abi-module: moonbitlang/async
+symbols: 93
 
-# --- the symbols the artifact requires from `moonbitlang/async` ---
+# --- the symbols the artifact requires from the `moonbitlang/async` HOST ABI ---
+# --------------------------------------------------------------------------
+# generated from the artifact on 2026-11-09 by _verify tools; 93 symbols
+# --------------------------------------------------------------------------
+
 c_buffer/free
 c_buffer/is_null
 c_buffer/new
@@ -71,7 +109,6 @@ fs/dir_entry_is_dir
 fs/dir_entry_is_hidden
 fs/dir_entry_length
 io/cancel_io_result/windows
-io/errno_is_read_EOF/windows
 io/free_io_result/windows
 io/io_result_copy_read/windows
 io/io_result_get_event/windows
@@ -107,12 +144,13 @@ signal/set_console_control_handler
 signal/set_global_cancellation_signals
 signal/start_signal_handler
 signal/terminate_signal_handler
+stdio/get_stdio_handle
 thread_pool/cancel_worker_with_retry
 thread_pool/destroy_thread_pool
-thread_pool/errno_is_cancelled
 thread_pool/fetch_completion/unix
 thread_pool/free_job
 thread_pool/free_worker
+thread_pool/get_read_console_result
 thread_pool/get_read_result
 thread_pool/get_stat_result
 thread_pool/init_thread_pool
@@ -121,12 +159,15 @@ thread_pool/job_get_ret
 thread_pool/make_fstatx_job
 thread_pool/make_fsync_job
 thread_pool/make_open_stat_job
+thread_pool/make_read_console_job
 thread_pool/make_read_job
 thread_pool/make_readdir_job
 thread_pool/make_statx_job
 thread_pool/make_wait_for_process_job
+thread_pool/make_write_console_job
 thread_pool/make_write_job
 thread_pool/open_job_get_fd
+thread_pool/run_job
 thread_pool/spawn_job/set_cwd
 thread_pool/spawn_job/set_no_console_window
 thread_pool/spawn_job/unix
