@@ -13623,3 +13623,231 @@ code.
     section this attachment does not contain. Nothing is passed into or out of a call.
   * NOT A FINDING-GATE PINS CHANGE FOR THE CORPORA. The seven corpus SUMMARYs are
     unchanged, MEASURED, and the eight-tree split is now checked rather than asserted.
+## 0551: WHAT SITS UNDER THE CFG -- BASIC BLOCKS, AND THE DECK THAT PRINTS THE ANSWERS
+
+The attachment is a new lecture: Yue Li, `Intermediate Representation`, Nanjing
+University, Fall 2026 -- the same series as the `Interprocedural Analysis` deck 0546
+read. It fills the layer that deck assumed: 0546's ICFG is built on "named function
+CFGs", and the CFG it used was this package's statement-level graph. THIS lecture says
+what sits UNDER a CFG.
+
+### THE DECK NAMES TWO EXECUTABLE QUESTIONS, AND BOTH HAVE A PRINTED ANSWER
+
+Its "The X You Need To Understand" (p.95) says:
+
+> * "How to build basic blocks on top of IR"
+> * "How to construct control flow graphs on top of BBs?"
+
+Both are answered with one worked example, the same twelve instructions from p.46 to
+p.71:
+
+    (1) x = input          (7) a = q            (11) goto (3)
+    (2) y = x - 1          (8) b = x + a        (12) return
+    (3) z = x * y          (9) c = 2a - b
+    (4) if z < x goto (7)  (10) if p == q goto (12)
+    (5) p = x / y          (6) q = p + y
+
+with the LEADERS printed at p.68 and the BLOCKS printed at p.71:
+
+    Leaders: (1), (3), (5), (7), (11), (12)
+    B1 {(1),(2)}   B2 {(3),(4)}   B3 {(5),(6)}
+    B4 {(7),(8),(9),(10)}   B5 {(11)}   B6 {(12)}
+
+and the CFG over those blocks drawn at p.93. The ALGORITHM is printed at p.55 -- (1)
+find the leaders, (2) a BB is a leader and all its subsequent instructions until the
+next leader -- and the EDGE RULE at p.80, and the two synthetic nodes at p.91, where
+the deck says of them that they "do not correspond to executable IR".
+
+This is the first deck in this series to print an answer for every question it asks,
+and that is why it is worth an increment rather than a reading.
+
+### THE TRANSLATION, AND WHY IT IS EXACT RATHER THAN REASONABLE
+
+The deck states the rules over THREE-ADDRESS CODE: a flat instruction list with
+explicit `goto`s. This tree has no IR, and its graph is the CFG, and a CFG node is one
+STATEMENT. So the rules have to be read in the CFG's terms:
+
+  * L1 "the first instruction in P is a leader" -> the first EXECUTABLE node in source
+    order.
+  * L2 "any target instruction of a jump is a leader" and L3 "any instruction that
+    immediately follows a jump is a leader" -> together: a node is a leader when it has
+    MORE THAN ONE predecessor (a merge -- only one predecessor can reach a node by
+    falling through, so a second one got there by a jump), or when its ONE predecessor
+    is a BRANCH (in which case the node is either that branch's jump target or the
+    instruction right after it), or when it has NO predecessor at all (unreachable code,
+    which L3 makes a leader whether or not it can be reached).
+
+The proof that the reading is right is the deck's own example: `bb_test.mbt` builds the
+twelve instructions and gets the printed leaders, the printed blocks and the printed
+edges back. If the translation were wrong, the leaders would not be (1),(3),(5),(7),
+(11),(12).
+
+### THREE THINGS THE DECK'S JUMP KINDS BECOME, AND WHY TWO OF THEM ARE NOT OBVIOUS
+
+The deck's IR has a conditional jump, an UNCONDITIONAL jump and a terminator. This
+tree's CFG has ONE branch kind -- `Test`, whose `succ[0]` is taken and `succ[1]` is
+not -- and `Stop`, which has no successors at all because control LEAVES through it.
+
+  * A CONDITIONAL JUMP IS A `Test` WITH TWO SUCCESSORS, exactly as `cfg_of` builds it
+    for an `if`.
+  * AN UNCONDITIONAL JUMP IS A `Test` WITH ONE SUCCESSOR. It has to be, because this
+    graph's only branch kind splits; and therefore "is this node a branch" is decided
+    BY KIND and not by the successor count. The deck's `goto (3)` is the fixture that
+    forces this: a count-based test would call (11) a non-branch, and B5 would swallow
+    the instruction after it.
+  * A TERMINATOR IS A `Stop`, AND THE DECK'S EXIT NODE IS NOT THIS TREE'S EXIT NODE.
+    The deck's Exit is reached from "any BB containing an instruction that could be the
+    last instruction of IR", and a `return` IS such an instruction -- but this tree's
+    `Stop` has NO edge to `Exit`, so a function that ends in `return` leaves the graph
+    through the `Stop` and never reaches the `Exit` node. A block whose last node is a
+    `Stop` leaves the function too, and it is counted, or the block CFG would claim that
+    a function ending in `return` never ends. The deck's wording is "CONTAINING", so
+    every node of the block is looked at and not only its last.
+
+### THE `break` CAVEAT IS CARRIED, NOT PAPERED OVER
+
+`cfg.mbt` turns a `break` and a `continue` into a `Stop` as well, and a `break` does
+NOT leave the function -- it leaves the loop. The graph does not say which `Stop` is
+which, so `bb_exits` cannot tell them apart and it counts both. `Bb.skipped` IS THE
+SIGNAL: `cfg_of` counts every `break` and `continue` it did not convert faithfully, and
+`Bb` carries that count so a caller that wants to make a claim checks it first -- the
+way `dead_stores` declines a function rather than report on a graph it knows is missing
+an edge.
+
+### THE SOURCE ORDER MOVED UP, AND THE MOVE BROKE SOMETHING
+
+A block is a run of instructions IN SOURCE ORDER, and this tree's node indices are
+ALLOCATION order -- back to front, because `cfg_of` walks the statement list backwards
+so that each statement's successor is known before it is linked. The pointer analysis
+(0547) needed the source order and wrote it in `pta.mbt`; the block layer needed the
+same thing, and two definitions of "the source order of a graph" is one more than can
+stay in agreement -- so the order now lives with the graph, in `Cfg::source_order`, and
+`pta.mbt` calls it.
+
+**AND THE MOVE WAS WRONG FOR ONE COMMIT.** The first version of the shared sort asked
+"is `cur` after `prev`?" where it had to ask "is `prev` after `cur`?", which sorts
+DESCENDING. The sort had the right SHAPE -- a permutation of the nodes, so every node
+was present exactly once -- and the wrong DIRECTION, and the pointer analysis's own
+suite caught it: four rows that read a statement's state in source order came back with
+the states of the wrong statements.
+
+=> 判据: A PERMUTATION IS NOT AN ORDER. "the list contains every node" and "the list is
+in source order" are different claims, and only the second one is the one the analysis
+needs. The existing 1468-row suite caught it because it reads STATES, and a state is
+attached to a position.
+
+### THE BLOCKS DROPPED EDGES, AND THE SHAPE WAS RIGHT
+
+The first version of `bb_of` recorded a block only for the LEADERS, and the block
+edges are then built by asking which block a node belongs to -- so a node in the MIDDLE
+of a block had no block, and its edge was dropped. The graph still had the right number
+of blocks, the right leaders and the right shape, and was missing edges. A
+block-count assertion cannot see that; an edge assertion and a reachability assertion
+can, and both are in the suite now.
+
+=> 判据: A PARTITION IS NOT ENOUGH. "the blocks cover the nodes" is satisfied by a
+partition that also loses every edge out of the nodes it covers. The row that catches
+this is not a count but a COMPARISON AGAINST THE NODE GRAPH -- the same reachability
+analysis, run by the same solver on both, and required to agree.
+
+### ONE DUPLICATION, AND IT WAS MINE
+
+`pta_flow_test.mbt` (0550) defined its own `pf_span`, `pf_name`, `pf_str`, `pf_field`,
+`pf_struct`, `pf_let`, `pf_assign`, `pf_while` and `pf_node_at`, and every one of them
+was a second copy of a helper `pta_test.mbt` already defines -- and test files in one
+package SHARE a namespace, so the second copy was not a local convenience but a second
+definition of one operation. The project's rule is that an operation used twice lives
+in ONE place, and ten copies broke it: a change to the shape of a statement fixture
+would have had to be made twice, and the two copies would have drifted.
+
+The `if` statement builder had no twin, and it was MOVED rather than kept under a
+second name for the same thing. This is the third time in this tree's history that the
+rule caught a real duplication rather than a hypothetical one.
+
+### THE FIXTURE HAD A BUG IN IT, AND THE DECK'S OWN LEADERS FOUND IT
+
+The deck's twelve instructions are hand-built into a graph, in the shape `cfg_of`
+produces (nodes allocated back to front), because two of the deck's instructions have
+no MoonBit statement to come from: the unconditional `goto (3)` and the `return`. The
+first version of that hand-written table had THREE successors shifted by one, and the
+result was SEVEN leaders where the deck prints SIX -- with (8) among them.
+
+=> 判据: A FIXTURE IS NOT NEUTRAL. A hand-built graph can carry the same kind of
+off-by-one as any other code, and the deck's PRINTED answer is the only thing that
+catches it. This is the reason the expectations here are the deck's and not this tree's
+own: a suite that asserted "the blocks partition the graph" would have passed for a
+layer that computes the WRONG blocks.
+
+### WHAT IS NOT HERE, AND IT IS THE DECK'S OWN DIVISION OF THE MATERIAL
+
+  * 3AC ITSELF (sections 3 and 4) -- a linear instruction form with compiler-generated
+    temporaries. This tree has no IR and no lowering, and building one is an increment
+    of its own with its own audit.
+  * SSA (section 5) -- the deck's phi-functions, the define-and-use pairs, and "flow-
+    insensitive analysis gains partial precision of flow-sensitive analysis via SSA"
+    (p.36). SSA is defined ON a basic-block CFG, so the blocks have to exist first; this
+    increment is that first half.
+  * TAI-E (section 4) -- a real analyzer's IR and architecture, in pictures.
+
+### WHAT THIS DOES NOT DO
+
+  * NO FINDING FAMILY. Nothing emits, so no corpus SUMMARY moves and no roster changes.
+  * NO NEW SOLVER. The block graph has the same SHAPE as the node graph -- a count, a
+    successor relation, a predecessor relation -- so `solve_round_robin` runs on it
+    with no new solver, and one of the rows runs the SAME reachability analysis over
+    BOTH graphs and requires them to agree. A second solver would be a second thing to
+    be wrong.
+  * THE ENTRY AND THE EXIT ARE NOT BLOCKS. The deck says of them that they "do not
+    correspond to executable IR" (p.91), so `Bb` carries `entry` and `exits` beside the
+    block list rather than putting two non-blocks in it.
+
+### THE NUMBERS, ALL RE-MEASURED
+
+    own-source files            206 -> 208
+    own-source notices          1693 -> 1704
+    own-source printed          137 -> 137     (unchanged)
+    own-source aggregated       1556 -> 1567
+    eight-tree notices          19630 -> 19641
+    eight-tree split            3406 + 16224 -> 3406 + 16235
+    suppression-off UnusedLocal  587 -> 587     (unchanged)
+    suppression-off UnusedParam 1152 -> 1152   (unchanged)
+    tests on wasm               1468 -> 1478
+    tests on js / wasm-gc       1332 -> 1342
+
+THE SEVEN CORPORA DID NOT MOVE BY A SINGLE NOTICE -- every one of them MATCHes its
+pinned baseline -- and the EIGHT-TREE TOTAL STILL MOVED BY ELEVEN. The reason is
+arithmetic, and it is worth writing down because it is not obvious from the name:
+THE EIGHT TREES ARE THE SEVEN CORPORA PLUS THIS REPOSITORY'S OWN SOURCE, so
+
+    17,937 notices over the seven corpora  +  1,704 over this repository  =  19,641
+
+and the delta is exactly the own-source delta. The eight-tree split's PRINTED half
+did not move (3,406), because the ten new test declarations sit outside every
+function's extent and aggregate; its AGGREGATED half moved by the same eleven.
+
+=> 判据: "THE CORPORA DID NOT MOVE" AND "THE TOTAL DID NOT MOVE" ARE DIFFERENT
+CLAIMS, AND ONLY THE SECOND ONE IS WHAT A PUBLISHED NUMBER SAYS. This increment
+first wrote the eight-tree total down as unchanged -- reasoning from the seven
+corpora, which really did not move -- and the gate caught it: the corpus stage
+reported `DRIFT ... the eight trees carry 19641 notices, pinned 19630`, and named a
+delta of eleven that the own-source notices accounted for exactly. A pin that had
+not been gated would have let a number that is wrong by eleven sit in two READMEs
+until somebody noticed the arithmetic.
+
+AND THE GATE DID MORE THAN REPORT IT. The corpus stage sits behind
+`if ($failed.Count -eq 0)`, so a drifted corpus SKIPS the two per-function census
+stages -- and the 0550 run's 121 stage rows became 119, with `per-function census
+vs pinned baseline` and `per-function census control` both absent rather than
+merely red. A stage that is SKIPPED is invisible in the summary, and a summary
+that loses rows is a summary nobody can count. The re-pinned run has them back.
+
+The corpora did not move at all -- not one of the seven changed by a single notice --
+and the reason is measured rather than assumed: the pointer analysis is used in
+`src/flow` and in its own tests and NOWHERE in the pipeline, so the source-order move
+cannot have changed what the analyzer says about other people's code. The only two
+notices that moved are the ten new test declarations and the new `Bb` struct, both of
+which are this repository's own source -- and it is the eighth tree that carries
+them, which is why the total moved and the seven corpora did not.
+
+The suppression-off pin did not move either, and that is worth one sentence: the new
+code reads every local it binds, so the region suppression has nothing new to hide.

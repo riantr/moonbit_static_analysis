@@ -61,7 +61,28 @@ fn p_span(line : Int32) -> @core.Span {
 
 ///|
 fn p_name(n : String) -> @ast.Expr {
-  { span: p_span(0), kind: @ast.EName(n), }
+  p_name_at(0, 1, n)
+}
+
+///|
+/// A name AT A POSITION.
+///
+/// IT EXISTS BECAUSE A CFG NODE'S POSITION IS NOT ALWAYS THE STATEMENT'S. `cfg_of`
+/// gives a branch node the position of its CONDITION, not of the `if`, so a
+/// fixture whose conditions sit at line 0 -- which is what `p_name` produces --
+/// would put the branch node BEFORE the statements around it in source order.
+fn p_name_at(line : Int32, col : Int32, n : String) -> @ast.Expr {
+  { span: p_span_at(line, col), kind: @ast.EName(n), }
+}
+
+///|
+fn p_return(line : Int32) -> @ast.Stmt {
+  { span: p_span(line), kind: @ast.SReturn(None), }
+}
+
+///|
+fn p_break(line : Int32) -> @ast.Stmt {
+  { span: p_span(line), kind: @ast.SBreak([]), }
 }
 
 ///|
@@ -126,6 +147,11 @@ fn p_while(
   body : Array[@ast.Stmt],
 ) -> @ast.Stmt {
   { span: p_span(line), kind: @ast.SWhile(cond, body), }
+}
+
+///|
+fn p_if(line : Int32, cond : @ast.Expr, body : Array[@ast.Stmt]) -> @ast.Stmt {
+  { span: p_span(line), kind: @ast.SIf(cond, body, [], None), }
 }
 
 ///|

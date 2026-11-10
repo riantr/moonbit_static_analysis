@@ -561,21 +561,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (206 files), with the per-file printing cap lifted so the count is the
+project's own source (208 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1468 | | `const` declaration | 7 |
+| `test` declaration | 1478 | | `const` declaration | 7 |
 | `if` expression | 95 | | `short lambda` | 8 |
-| `struct` declaration | 60 | | `type` declaration | 3 |
+| `struct` declaration | 61 | | `type` declaration | 3 |
 | `anonymous function literal` | 33 | | `try` expression | 1 |
 | `enum` declaration | 18 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **137** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1556** sit outside every function's
+audit off, so they are printed one per line; the other **1567** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -608,10 +608,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,630** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,641** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,406** of them as printed per line and
-**16,224** as aggregated — which is 3,406 + 16,224 = 19,630, the same number — and the 3,406
+**16,235** as aggregated — which is 3,406 + 16,235 = 19,641, the same number — and the 3,406
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -753,7 +753,8 @@ The full taxonomy is in [EXTENSIONS.md](EXTENSIONS.md).
 src/core      Span/Severity/Lens/Family(merge_group contract)/Frame + Family::advice
 src/report    Report struct and rendering (union lens tags, vst frames)
 src/flow      data-flow framework: CFG + two solvers (round-robin and work-list, run
-              against each other in tests), live variables (may, backward), the
+              against each other in tests), basic blocks and the CFG over them,
+              live variables (may, backward), the
               interval domain with widening, and available expressions (must,
               forward — the dual reading of the same solver)
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
@@ -802,6 +803,33 @@ so there is exactly one pointer per (object, field) pair and nothing else can ho
 different opinion about that field. `src/flow/pta_flow_test.mbt` pins the tables the source
 deck prints for one program, in both readings, and checks the two solvers agree on it.
 
+### And under the CFG there are basic blocks
+
+`src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
+them — the layer a CFG is normally drawn on top of. The lecture it is pinned to
+(`Intermediate Representation`, Nanjing University, Fall 2026) prints a worked example
+and names two questions as the executable ones: *"How to build basic blocks on top of
+IR"* and *"How to construct control flow graphs on top of BBs?"*. Its twelve
+instructions come with the **leaders** and the **blocks** printed, so the layer is
+checked against those and not against its own output.
+
+Two of the lecture's instructions have no MoonBit statement to come from — an
+unconditional `goto` and a `return` that leaves the program — so the deck's program is
+built as a graph by hand, in the shape this tree's own builder produces (nodes
+allocated back to front, so the source order is exercised rather than assumed). The
+same shape is then built again through `cfg_of` from real MoonBit statements, because
+a layer that only works on hand-built graphs has not been shown to work.
+
+The block graph has the **same shape** as the node graph — a count, a successor
+relation, a predecessor relation — so the existing solvers run on it with no second
+solver, and one of the tests runs the same reachability analysis over both graphs and
+requires them to agree. The lecture's Entry and Exit are not blocks: it says of them
+that they "do not correspond to executable IR", so they are carried beside the block
+list. A `break` is a way out of a *loop* and not out of the *function*, and the graph
+cannot tell the two kinds of `Stop` apart, so the count of statements the builder did
+not convert faithfully is carried through and a caller checks it first — the way the
+dead-store family does.
+
 ### The two solvers are checked against each other, and so is the lattice
 
 `src/flow/laws_test.mbt` enumerates every element of the two finite lattices and checks the
@@ -813,7 +841,7 @@ points-to map lattice is checked the same way.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1468/1468 on wasm; 1332/1332 on js and wasm-gc
+moon test --deny-warn                # 1478/1478 on wasm; 1342/1342 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

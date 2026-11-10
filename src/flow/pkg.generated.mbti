@@ -23,6 +23,8 @@ pub fn avail_transfer(Cfg) -> (Int32, Map[String, Bool]) -> Map[String, Bool]
 
 pub fn avail_universe(Cfg) -> Map[String, Bool]
 
+pub fn bb_of(Cfg) -> Bb
+
 pub fn call_shape(NodeKind) -> CallShape?
 
 pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
@@ -143,6 +145,8 @@ pub fn[T] solve_round_robin(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -
 
 pub fn[T] solve_widening(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T, (Int32, T, T) -> T, (Int32) -> Bool, Int32) -> WidenResult[T]
 
+pub fn source_after(Int32, Int32, Int32, Int32) -> Bool
+
 pub fn[T] states_after(Int32, Array[T], (Int32, T) -> T) -> Array[T]
 
 pub fn widen_interval(Interval, Interval, Array[Int32]) -> Interval
@@ -154,6 +158,17 @@ pub(all) struct AvailExpr {
   key : String
   names : Map[String, Bool]
 }
+
+pub(all) struct Bb {
+  blocks : Array[Array[Int32]]
+  block_of : Map[Int32, Int32]
+  succ : Array[Array[Int32]]
+  pred : Array[Array[Int32]]
+  entry : Int32
+  exits : Array[Int32]
+  skipped : Int32
+}
+pub fn Bb::dump(Self) -> String
 
 pub struct CallShape {
   callee : String
@@ -179,6 +194,7 @@ pub(all) struct Cfg {
 }
 pub fn Cfg::dump(Self) -> String
 pub fn Cfg::kind_label(Self, Int32) -> String
+pub fn Cfg::source_order(Self) -> Array[Int32]
 
 #derive(Eq)
 pub(all) enum Cpv {

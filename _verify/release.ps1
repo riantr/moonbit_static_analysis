@@ -381,7 +381,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19630'
+$NOTICE_TOTAL = '19641'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -395,8 +395,20 @@ $NOTICE_TOTAL = '19630'
 # `NOTICES` table -- and it is checked against the TOTAL as well, because a
 # split that does not add up to the total is two numbers that happen to be
 # printed next to each other.
+#
+# 0551. AND THE EIGHT TREES ARE SEVEN CORPORA PLUS THIS REPOSITORY'S OWN SOURCE.
+# That is not a detail of the arithmetic, it is WHY the total moves with the
+# own-source notices: 17,937 notices over the seven corpora + 1,704 over this
+# repository's own source = 19,641. The seven corpora have not moved by a single
+# notice -- each one MATCHes its pinned baseline -- and the total still moved by
+# exactly the own-source delta, because the eighth tree IS this repository.
+#
+# AND THE PIN BELOW IS WHAT THE GATE READS, so a wrong one is a red row that
+# names the drift rather than a number that is quietly wrong. It was red once,
+# for exactly this reason, and the drift it reported (+11, all aggregated) was
+# the ten new test declarations and the new `Bb` struct.
 $NOTICE_SPLIT_PRINTED = '3406'
-$NOTICE_SPLIT_AGGREGATED = '16224'
+$NOTICE_SPLIT_AGGREGATED = '16235'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -415,10 +427,10 @@ $NOTICE_SPLIT_AGGREGATED = '16224'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '206'
-$SELF_NOTICES = 'test declaration=1468|if expression=95|struct declaration=60|anonymous function literal=33|enum declaration=18|const declaration=7|short lambda=8|type declaration=3|try expression=1'
+$SELF_FILES = '208'
+$SELF_NOTICES = 'test declaration=1478|if expression=95|struct declaration=61|anonymous function literal=33|enum declaration=18|const declaration=7|short lambda=8|type declaration=3|try expression=1'
 $SELF_PRINTED = '137'
-$SELF_AGGREGATED = '1556'
+$SELF_AGGREGATED = '1567'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.

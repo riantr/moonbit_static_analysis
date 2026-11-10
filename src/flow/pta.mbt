@@ -272,11 +272,15 @@ fn pta_after(
   t2 : Int32,
   i2 : Int32,
 ) -> Bool {
-  if l1 != l2 {
-    return l1 > l2
+  // THE `(line, column)` PART IS NOT RE-DERIVED HERE: `source_after` owns it,
+  // and it is the same comparison the basic-block layer uses (0551), because
+  // two definitions of "which position is later" is one more than can stay in
+  // agreement.
+  if source_after(l1, c1, l2, c2) {
+    return true
   }
-  if c1 != c2 {
-    return c1 > c2
+  if l1 != l2 || c1 != c2 {
+    return false
   }
   if t1 != t2 {
     return t1 > t2
@@ -519,40 +523,13 @@ pub fn pta_run(cfgs : Array[Cfg]) -> Array[Pta] {
 /// by building statement lists back to front, so reading `kinds[0], kinds[1], ...`
 /// reads the body backwards. A flow-sensitive reading of a straight-line body has
 /// to re-derive source order from the spans.
+///
+/// THE ORDER IS NOT DERIVED HERE ANY MORE (0551). It was, and the basic-block
+/// layer needed the same thing, and two definitions of "the source order of a
+/// graph" is one more than can stay in agreement -- so the order now lives with
+/// the graph, in `Cfg::source_order`, and this function is gone.
 fn pta_source_order(g : Cfg) -> Array[Int32] {
-  let order : Array[Int32] = []
-  let mut v = 0
-  while v < g.kinds.length() {
-    order.push(v)
-    v = v + 1
-  }
-  let mut a = 1
-  while a < order.length() {
-    let cur = order[a]
-    let mut b = a - 1
-    let mut placed = false
-    while b >= 0 && !placed {
-      let prev = order[b]
-      if pta_after(
-          g.spans[prev].start.line,
-          g.spans[prev].start.col,
-          0,
-          prev,
-          g.spans[cur].start.line,
-          g.spans[cur].start.col,
-          0,
-          cur,
-        ) {
-        order[b + 1] = prev
-        b = b - 1
-      } else {
-        placed = true
-      }
-    }
-    order[b + 1] = cur
-    a = a + 1
-  }
-  order
+  g.source_order()
 }
 
 ///|

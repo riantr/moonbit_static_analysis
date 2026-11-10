@@ -127,6 +127,94 @@ pub fn no_span() -> @core.Span {
 }
 
 ///|
+/// Strict order over a `(line, column)` pair: true when the FIRST comes AFTER
+/// the second.
+///
+/// IT IS PUBLIC, AND IT IS HERE, because two analyses now ask "which of these two
+/// positions is later in the source" -- the pointer analysis's site ranking and
+/// the basic-block layer's block order -- and two implementations of that
+/// question is one more than can stay in agreement. The project's rule is that
+/// an operation used twice lives in ONE place: `live.mbt` says it for the set
+/// operations, and this is the same rule for the position order.
+pub fn source_after(l1 : Int32, c1 : Int32, l2 : Int32, c2 : Int32) -> Bool {
+  if l1 != l2 {
+    return l1 > l2
+  }
+  c1 > c2
+}
+
+///|
+/// The nodes of a graph in SOURCE order -- by (line, column), with the node
+/// index only as a tie-break.
+///
+/// WHY IT LIVES HERE AND NOT IN THE ANALYSIS THAT FIRST NEEDED IT. The pointer
+/// analysis (0547) needed it, and wrote it there; the basic-block layer (0551)
+/// needs it too, and a second copy would be two definitions of "the source
+/// order of a graph" -- and two definitions of an order is how two parts of an
+/// analyzer start to disagree about which statement came first. The order is a
+/// property of the GRAPH, so it belongs beside the graph.
+///
+/// THE TIE-BREAK IS THE NODE INDEX, and it is not arbitrary: a `return e`
+/// produces TWO nodes with the SAME span (`cfg.mbt:313-326` -- the `Eval` that
+/// carries the read and the `Stop` that ends the flow), and the `Eval` is
+/// allocated first, so the index puts the read BEFORE the terminator. A
+/// tie-break on anything else would be able to put the terminator first, and a
+/// block whose nodes are in the wrong order is not a block.
+pub fn Cfg::source_order(self : Cfg) -> Array[Int32] {
+  let order : Array[Int32] = []
+  let mut v = 0
+  while v < self.kinds.length() {
+    order.push(v)
+    v = v + 1
+  }
+  // Insertion sort into SOURCE order. The graph is small and the sort is not
+  // the point; the point is that the ORDER is defined once.
+  //
+  // THE COMPARISON IS `prev` AFTER `cur`, and the first draft of this function
+  // asked the opposite question -- "is `cur` after `prev`?" -- which sorts
+  // DESCENDING. The pointer analysis's own suite caught it: four rows that
+  // read a statement's state in source order came back with the states of the
+  // wrong statements. The sort had the right SHAPE (a permutation of the
+  // nodes, so every node was present exactly once) and the wrong DIRECTION,
+  // which is the kind of defect a "the order contains every node" assertion
+  // cannot see.
+  let mut a = 1
+  while a < order.length() {
+    let cur = order[a]
+    let mut b = a - 1
+    let mut placed = false
+    while b >= 0 && !placed {
+      let prev = order[b]
+      if self.node_after(prev, cur) {
+        order[b + 1] = prev
+        b = b - 1
+      } else {
+        placed = true
+      }
+    }
+    order[b + 1] = cur
+    a = a + 1
+  }
+  order
+}
+
+///|
+/// True when node `a` comes AFTER node `b` in the source.
+fn Cfg::node_after(self : Cfg, a : Int32, b : Int32) -> Bool {
+  let la = self.spans[a].start.line
+  let lb = self.spans[b].start.line
+  let ca = self.spans[a].start.col
+  let cb = self.spans[b].start.col
+  if source_after(la, ca, lb, cb) {
+    return true
+  }
+  if la != lb || ca != cb {
+    return false
+  }
+  a > b
+}
+
+///|
 /// The mutable half of the builder: the arrays that are filled in as the
 /// recursion unwinds. `pred` is derived at the end from `succ`, so it cannot
 /// disagree with it.

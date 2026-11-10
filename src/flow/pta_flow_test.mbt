@@ -12,90 +12,24 @@
 //
 // THE EXPECTED STRINGS ARE IN SHORTLEX ORDER, NOT ALPHABETICAL, for the reason
 // `pta_test.mbt` records: `Array::sort` orders strings by LENGTH first.
-
-///|
-fn pf_span_at(line : Int32, col : Int32) -> @core.Span {
-  { start: @core.pos(line, col), end: @core.pos(line, col), }
-}
-
-///|
-fn pf_span(line : Int32) -> @core.Span {
-  pf_span_at(line, 1)
-}
-
-///|
-fn pf_name(n : String) -> @ast.Expr {
-  { span: pf_span(0), kind: @ast.EName(n), }
-}
-
-///|
-fn pf_str(v : String) -> @ast.Expr {
-  { span: pf_span(0), kind: @ast.EStr(v, []), }
-}
-
-///|
-fn pf_field(b : @ast.Expr, f : String) -> @ast.Expr {
-  { span: pf_span(0), kind: @ast.EField(b, f), }
-}
-
-///|
-fn pf_struct(ty : String) -> @ast.Expr {
-  { span: pf_span(0), kind: @ast.EStruct(ty, []), }
-}
-
-///|
-fn pf_let(line : Int32, x : String, e : @ast.Expr) -> @ast.Stmt {
-  { span: pf_span(line), kind: @ast.SLet(x, "", e), }
-}
-
-///|
-fn pf_assign(line : Int32, lhs : @ast.Expr, rhs : @ast.Expr) -> @ast.Stmt {
-  { span: pf_span(line), kind: @ast.SAssign(lhs, rhs), }
-}
-
-///|
-fn pf_if(line : Int32, cond : @ast.Expr, body : Array[@ast.Stmt]) -> @ast.Stmt {
-  { span: pf_span(line), kind: @ast.SIf(cond, body, [], None), }
-}
-
-///|
-fn pf_while(
-  line : Int32,
-  cond : @ast.Expr,
-  body : Array[@ast.Stmt],
-) -> @ast.Stmt {
-  { span: pf_span(line), kind: @ast.SWhile(cond, body), }
-}
-
-///|
-/// The index of the node whose span starts on `line`; -1 when there is none.
-fn pf_node_at(g : @flow.Cfg, line : Int32) -> Int32 {
-  let mut i = 0
-  let mut found = -1
-  while i < g.spans.length() {
-    if found < 0 && g.spans[i].start.line == line {
-      found = i
-    }
-    i = i + 1
-  }
-  found
-}
-
-///|
-/// The deck's four-statement program from p.57, built as statements.
-fn pf_p57_body() -> Array[@ast.Stmt] {
-  [
-    pf_let(1, "c", pf_struct("C")),
-    pf_assign(2, pf_field(pf_name("c"), "f"), pf_str("x")),
-    pf_let(3, "s", pf_field(pf_name("c"), "f")),
-    pf_assign(4, pf_field(pf_name("c"), "f"), pf_str("y")),
-  ]
-}
+//
+// THE FIXTURE BUILDERS ARE NOT REPEATED HERE. The first draft of this file
+// defined its own `pf_span`, `pf_name`, `pf_str`, `pf_field`, `pf_struct`,
+// `pf_let`, `pf_assign`, `pf_while` and `pf_node_at`, and every one of them was
+// a second copy of a helper `pta_test.mbt` already defines in the same package
+// -- and test files in one package SHARE a namespace, so the second copy was
+// not a local convenience but a second definition of one operation. The
+// project's rule is that an operation used twice lives in ONE place, and the
+// ten copies broke it: a change to the shape of a statement fixture would
+// have had to be made twice, and the two copies would have drifted. The
+// builders used below therefore come from `pta_test.mbt`, which is their one
+// home -- the one helper that had no twin there, the `if` statement builder,
+//// was moved there rather than kept as a second name for the same thing.
 
 ///|
 /// The state after the node on `line`, as text.
 fn pf_after_text(g : @flow.Cfg, line : Int32) -> String {
-  @flow.pta_text(@flow.pta_run_flow_sensitive(g)[pf_node_at(g, line)])
+  @flow.pta_text(@flow.pta_run_flow_sensitive(g)[first_node_at(g, line)])
 }
 
 ///|
@@ -184,7 +118,7 @@ fn pf_round_robin(g : @flow.Cfg) -> Array[@flow.Pta] {
 
 ///|
 test "0550: the map at each location is the deck's p.61-64 table" {
-  let g = @flow.cfg_of(pf_p57_body())
+  let g = @flow.cfg_of(pta_p57_body())
   // p.61 prints the state after the load: c -> {o1}, o1.f -> {"x"}, s -> {"x"}.
   // p.62 is the same, p.63 adds the store at line 4 and p.64 is the final table:
   // c -> {o1}, o1.f -> {"y"}, s -> {"x"}.
@@ -196,7 +130,7 @@ test "0550: the map at each location is the deck's p.61-64 table" {
 
 ///|
 test "0550: the flow-sensitive reading is the deck's p.64 and the flow-insensitive one is p.68" {
-  let g = @flow.cfg_of(pf_p57_body())
+  let g = @flow.cfg_of(pta_p57_body())
   // p.64, the flow-sensitive table.
   assert_eq(pf_last_text(g), "c -> {o1}; s -> {\"x\"}; o1.f -> {\"y\"}")
   // p.68, the flow-insensitive table for the SAME program.
@@ -209,7 +143,7 @@ test "0550: the flow-sensitive reading is the deck's p.64 and the flow-insensiti
   let weak = @flow.pta_run([g])[0]
   let fs = @flow.pta_run_flow_sensitive(g)
   assert_eq(@flow.pta_of(weak, "s").length(), 2)
-  assert_eq(@flow.pta_of(fs[pf_node_at(g, 4)], "s").length(), 1)
+  assert_eq(@flow.pta_of(fs[first_node_at(g, 4)], "s").length(), 1)
 }
 
 ///|
@@ -217,7 +151,7 @@ test "0550: the general analysis and the straight-line control agree on the deck
   // Two different implementations of the same question: one walks the statements
   // once in source order, the other is a fixed point over the graph. They have to
   // give the same answer on the program the deck prints, or one of them is wrong.
-  let g = @flow.cfg_of(pf_p57_body())
+  let g = @flow.cfg_of(pta_p57_body())
   assert_eq(pf_last_text(g), @flow.pta_text(@flow.pta_run_ordered(g)))
 }
 
@@ -230,10 +164,10 @@ test "0550: a branch is where the straight-line control stops and the analysis d
   // does not know where it is. This is the deck's p.69 verdict on a program with
   // control flow in it, which is the case the straight-line control cannot run.
   let g = @flow.cfg_of([
-    pf_let(1, "a", pf_struct("A")),
-    pf_assign(2, pf_field(pf_name("a"), "f"), pf_str("x")),
-    pf_if(3, pf_name("cond"), [pf_let(4, "s", pf_field(pf_name("a"), "f"))]),
-    pf_assign(6, pf_field(pf_name("a"), "f"), pf_str("y")),
+    p_let(1, "a", p_struct("A")),
+    p_assign(2, p_field(p_name("a"), "f"), p_str("x")),
+    p_if(3, p_name("cond"), [p_let(4, "s", p_field(p_name("a"), "f"))]),
+    p_assign(6, p_field(p_name("a"), "f"), p_str("y")),
   ])
   assert_eq(pf_last_text(g), "a -> {o1}; s -> {\"x\"}; o1.f -> {\"y\"}")
   assert_eq(
@@ -251,10 +185,10 @@ test "0550: a field pointer is named by its OBJECT, so a store through one alias
   // sound: there is exactly one pointer per (object, field) pair, so the store
   // through `a` cannot be lost by the name `b`.
   let g = @flow.cfg_of([
-    pf_let(1, "a", pf_struct("A")),
-    pf_let(2, "b", pf_name("a")),
-    pf_assign(3, pf_field(pf_name("a"), "f"), pf_str("x")),
-    pf_let(4, "s", pf_field(pf_name("b"), "f")),
+    p_let(1, "a", p_struct("A")),
+    p_let(2, "b", p_name("a")),
+    p_assign(3, p_field(p_name("a"), "f"), p_str("x")),
+    p_let(4, "s", p_field(p_name("b"), "f")),
   ])
   assert_eq(
     pf_last_text(g),
@@ -273,8 +207,8 @@ test "0550: a loop converges, and its head keeps what entered it" {
   // REPLACES the name, so the body always says {o3} and the head is what keeps
   // both.
   let g = @flow.cfg_of([
-    pf_let(1, "x", pf_struct("A")),
-    pf_while(2, pf_name("cond"), [pf_assign(3, pf_name("x"), pf_struct("B"))]),
+    p_let(1, "x", p_struct("A")),
+    p_while(2, p_name("cond"), [p_assign(3, p_name("x"), p_struct("B"))]),
   ])
   assert_eq(pf_last_text(g), "x -> {o1,o3}")
 }
@@ -283,7 +217,7 @@ test "0550: a loop converges, and its head keeps what entered it" {
 test "0550: the two solvers agree on the points-to map" {
   // The book says the two solvers compute the same least fixed point, and this
   // package does not take that on trust anywhere else either.
-  let g = @flow.cfg_of(pf_p57_body())
+  let g = @flow.cfg_of(pta_p57_body())
   let rr = pf_round_robin(g)
   let fs = @flow.pta_run_flow_sensitive(g)
   assert_eq(rr.length(), fs.length())
@@ -301,7 +235,7 @@ test "0550: the flow-sensitive answer never names an object the flow-insensitive
   // object the flow-sensitive map holds was put there by one of the deck's four
   // rules, so the flow-insensitive map -- which applies the same rules weakly --
   // holds it too.
-  let g = @flow.cfg_of(pf_p57_body())
+  let g = @flow.cfg_of(pta_p57_body())
   let weak = @flow.pta_run([g])[0]
   let fs = @flow.pta_run_flow_sensitive(g)
   let mut i = 0
@@ -354,7 +288,7 @@ test "0550: the strong-update transfer is monotone, which is what the solver nee
   // adding one -- so the law is checked here rather than assumed for the new kind
   // of transfer. `x <= y implies step(x) <= step(y)`, for every node, over all
   // sixteen points-to maps.
-  let g = @flow.cfg_of(pf_p57_body())
+  let g = @flow.cfg_of(pta_p57_body())
   let tr = @flow.pta_fs_transfer_of(g)
   let elems = pf_law_maps()
   let mut i = 0
