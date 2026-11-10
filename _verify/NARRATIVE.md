@@ -14029,3 +14029,241 @@ rather than an omission:
   * A NEW FINDING FAMILY -- and this is the project rule rather than an oversight:
     a family is a public contract with eleven places to change, and "how to compute
     the blocks" is a claim about HOW, not a defect anybody can commit.
+
+
+## 0553 -- SSA: THE ARROW THE DECK PRINTS IN THE FOOTER
+
+The lecture has seven sections. 0551 built the blocks, 0552 built the three-address code and
+the CFG over it, and this increment builds the FIFTH: the one 0552 wrote down as "the blocks
+have to exist first". It is the last landable layer of the deck, and it is the only one whose
+SUBJECT is a transformation of the layer below it -- p.31/32's footer prints `3AC -> SSA`.
+
+### WHAT THE DECK PRINTS, VERBATIM
+
+p.31/32:
+
+    Static Single Assignment (SSA)
+    All assignments in SSA are to variables with distinct names
+    - Give each definition a fresh name
+    - Propagate fresh name to subsequent uses
+    - Every variable has exactly one definition
+
+p.33 asks its question in one line -- "What if a variable use is at control flow merges?" --
+and answers it with a control-flow graph: `if e` forks to `x0 = 0` and to `x1 = 1`, the two
+meet at ONE node, that node holds `y = x + 7`, and the `x` is CIRCLED IN RED.
+
+p.34 draws the same graph again, with the merge node holding `x2 = ∅(x0,x1)` ABOVE
+`y = x2 + 7`, and says two things about it:
+
+    A special merge operator, ∅ (called phi-function), is introduced to select the values
+    at merge nodes
+    ∅(x0,x1) has the value x0 if the control flow passes through the true part of the
+    conditional and the value x1 otherwise
+
+p.36/37 ask "Why SSA?" and "Why not SSA?", and the second list is three claims with NO
+NUMBER IN ANY OF THEM:
+
+    SSA may introduce too many variables and phi-functions
+    May introduce inefficiency problem when translating to machine code (due to copy
+    operations)
+    May help deliver some simpler analyses, e.g., flow-insensitive analysis gains partial
+    precision of flow-sensitive analysis via SSA
+
+### THE DECK'S DRAWING, REPRODUCED INSTRUCTION FOR INSTRUCTION
+
+`src/flow/ssa_test.mbt` turns the drawing into a program, lowers it to 3AC with 0552's
+lowering, and requires the SSA form to BE the drawing:
+
+    if e goto L1
+    goto L2
+    x₀ = 0
+    goto L3
+    x₁ = 1
+    x₂ = ∅(x₀,x₁)
+    y = x₂ + 7
+
+That row is the sharpest thing in this increment, and it was checked the way this repository
+checks things: the expectation was broken ON PURPOSE (`∅(x₁,x₀)` instead of `∅(x₀,x₁)`), the
+suite went red, and the failure printed the ACTUAL form -- which is the deck's drawing. A
+row that has never been seen to fail is a comment.
+
+And the operand order is not decoration: the deck's sentence says `∅(x0,x1)` "has the value x0
+if the control flow passes through the true part of the conditional and the value x1
+otherwise", so the FIRST operand is the TRUE part's value. The test pins both halves
+separately -- that `x₀ = 0` is the THEN branch's definition, and that the merge selects
+`∅(x₀,x₁)` -- because pinning only the spelling would not say which side is which.
+
+### FOUR DECISIONS, AND EACH ONE IS THE DECK'S OR IT IS MEASURED
+
+  * THE SUBSCRIPT. The deck's PDF text layer writes `x0`, `x1`, `x2` with PLAIN digits,
+    while the DRAWING prints the digit as a subscript -- smaller and below the baseline.
+    The two disagree about the same glyph, so the drawing is what this tree prints: `x₀`,
+    `x₁`, `x₂`. The deck's drawing was rendered to a PNG and looked at, rather than the
+    text layer being trusted.
+  * THE BARE NAME. The deck's drawing prints `y = x₂ + 7` and NOT `y₀ = x₂ + 7`, so a
+    variable with exactly ONE version keeps its bare name. Only a variable with more than
+    one is numbered. That is why `SsaAddr`'s version is -1 for two different cases: a
+    variable the program only READS (a parameter -- its definition is outside the program)
+    and the single version of a variable that has only one.
+  * THE NUMBERING. The deck's `x₀` is the definition in the TRUE part, `x₁` the one in the
+    other part, and the phi is `x₂` -- the LAST. So the versions are numbered by their
+    PLACE IN THE PROGRAM among the sites of their own variable, and a phi-function, which
+    is printed at the TOP of its block, comes before the definitions of that block. A
+    numbering by source order would have called the phi `z₁` and the definition `z₀` in a
+    loop, and the program would have used `z₁` before anything had defined it.
+  * WHERE A MERGE IS. The deck draws a merge node as a node with TWO INCOMING EDGES and
+    says a phi-function "select[s] the values at merge nodes" -- but the place where two
+    definitions of ONE VARIABLE meet is not that. It is the DOMINANCE FRONTIER, and
+    `src/flow/dom.mbt` computes it: the immediate dominators of every block, the reverse
+    postorder they are found in, and the frontier of each block. On the deck's own
+    twelve-instruction program the two questions disagree -- the deck's own program needs
+    EIGHT phi-functions, not the two its drawing suggests -- and the disagreement is the
+    whole reason the frontier is computed rather than drawn.
+
+AND ONE THING THE DECK DOES NOT HAVE: a phi operand can be UNDEFINED. When one path into a
+merge defines the variable and the other does not, the merged value has no name on that
+path, and the deck's own program does this: its block B4 has two incoming edges, `z` is
+defined only in B2, and the path through B3 never defines `z`. So an operand can be `⊥`,
+and the count of those is part of the cost.
+
+### A GRAPH DEFECT THIS LAYER EXPOSED
+
+The dominance tree is only as good as the graph it is computed on, and building it turned
+up a defect in 0552's CFG: a block that ends in a `return` still had a FALL-THROUGH
+successor.
+
+The deck's IR HAS NO RETURN FORM -- p.19's six forms are the copies, the operations and the
+two jumps -- so p.80's rule ("B immediately follows A ... and A does not end in an
+unconditional jump") never has to say what a block that ends in a `return` does. This
+tree's IR has `return` and `raise`, and a terminator ENDS ITS BLOCK: control cannot
+continue past one. MEASURED on this tree's own lowering, a `while` whose body returns
+produces the block
+
+    t1 = 1
+    return
+    goto L_cond
+
+where the `return` is in the MIDDLE of the block. The block's last instruction was the
+`goto`, so the back edge was drawn from a block the program can never reach again -- and
+the loop head then had a predecessor it does not have, which moves the dominator tree and
+with it every phi-function SSA places. The fix is a fourth leader rule (an instruction
+after a terminator starts a block) and one clause on the fall-through edge (no fall-through
+out of a terminated block), and the deck's own program is unchanged by it: its `return` (12)
+is alone in its block already.
+
+The fix is in the CFG and not in the SSA layer, because the block graph is one thing with
+one definition -- two structures that could disagree about what a block is would be two
+definitions of "a block", which is the reason 0552's 3AC path produces the SAME `Bb` type
+the statement path produces.
+
+### THE 0552 LESSON, AGAIN, AND IT WAS CAUGHT THE SAME WAY
+
+The first draft of the version numbering read
+
+    let v = if total <= 1 { -1 } else { rank }
+
+and an `if` used as a VALUE is outside the analysed subset -- so the frame audit never
+sees the reads inside it, and with the region suppression switched off the locals it
+cannot see read as unread. That is 0552's exact mechanism, and the own-source scan said so
+immediately: the `if expression` notice went 95 -> 96. The fix is the `if` as a STATEMENT
+(`let mut v = rank` and then `if total <= 1 { v = -1 }`), and the two suppression-off pins
+DID NOT MOVE (587 / 1,152) -- which is the check that the fix landed rather than the number
+being re-pinned.
+
+### THE DECK'S COST CLAIM, MEASURED
+
+p.37's two cost claims carry no number, and a claim without a number is a slogan. The
+measurement is in `src/flow/ssa.mbt` (`SsaCost`) and it is counted WHILE the form is
+built, not reconstructed afterwards.
+
+ON THE DECK'S OWN TWELVE-INSTRUCTION PROGRAM:
+
+    variables      8 -> 16 versions      (every variable with one definition stays bare;
+                                          the ones the loop carries are numbered)
+    phi-functions  8                     (six at the loop head, two at the merge)
+    copies        16                     (one per incoming edge of every phi)
+    undef operands 6                     (the loop head's first iteration has no value yet)
+    instructions  12 -> 20               (the phis are instructions too)
+
+The claim is not a figure of speech on a twelve-instruction example, and it is not one on
+real code either. The measurement is a mode of the scanner -- `--ssa-cost` -- and over this
+project's own source it says:
+
+    files=197  unreadable=0  functions=898  converted=3  partial=895  declined=4869
+    instructions=7051  variables=788  versions=1955  phis=707  copies=1749
+    undef_operands=143  dead_blocks=357  undef_uses=876
+
+So: 788 variables become 1,955 versions, 707 phi-functions appear, and taking them away
+would need 1,749 copies -- in 7,051 instructions of three-address code.
+
+AND THE COVERAGE IS IN THE SAME LINE, because a number without its coverage is half a
+number: the files read (197), the functions measured (898), the functions whose lowering
+converted WHOLE (3) and the ones that had a statement it declined (895), and the number of
+declined STATEMENTS (4,869). The lowering converts the statements it understands and counts
+the ones it does not, so the measurement is of the deck's SSA over the deck's 3AC on the part
+of the code this tree's 3AC layer converts -- and it says so rather than rounding itself
+up to "the whole program".
+
+The release gate pins the line (`$SSA_COST`), so the next increment that moves it has to
+move the pin on purpose. The pin is stable against the TOOLCHAIN, which is the thing that
+made one of the seven corpus pins red once: the parse is this repository's own code, not
+the toolchain's.
+
+### WHAT MOVED, AND WHAT DID NOT
+
+The seven corpora did not move by a single notice, and the reason is measured rather than
+assumed: `src/flow` reaches the pipeline for `live` ONLY, and the SSA layer is a library, so
+it cannot have changed what the analyzer says about other people's code. The eight-tree
+total moved by the own-source delta and nothing else:
+
+    17,937 notices over the seven corpora  +  1,739 over this repository  =  19,676
+
+and the split moved with it: 3,406 + 16,251 -> 3,407 + 16,269. The PRINTED half moved by
+one and the AGGREGATED half by eighteen, and the reason is the same as 0552's: a `test`
+declaration and a `struct`/`enum` declaration sit outside every function's extent, so they
+aggregate.
+
+The own-source table moved in four rows and held in five:
+
+    test declaration       1490 -> 1499     (+9: the new test rows)
+    struct declaration       63 ->   70     (+7)
+    enum declaration         20 ->   22     (+2)
+    anonymous function lit.  33 ->   34     (+1)
+    if expression            95 ->   95     (95 -> 96 with the draft's if-as-value, and
+                                             back to 95 after the fix above)
+    const declaration         7 ->    7     (unchanged)
+    short lambda              8 ->    8     (unchanged)
+    type declaration          3 ->    3     (unchanged)
+    try expression            1 ->    1     (unchanged)
+
+The own-source file count moved 211 -> 215 (the four new files), the own-source notices
+1,720 -> 1,739, the printed half 137 -> 138 and the aggregated half 1,583 -> 1,601. The
+suppression-off pair did NOT move: 587 `UnusedLocal` and 1,152 `UnusedParam`, unchanged,
+which is the check that the new layer added no false positive of its own.
+
+The test counts moved too: wasm 1490 -> 1499, js and wasm-gc 1354 -> 1363 -- nine rows each,
+one per pinned deck fact.
+
+=> 判据: "THE NEW FEATURE PRODUCES A NEW FINDING" IS NOT WHAT A LIBRARY INCREMENT
+LOOKS LIKE, and this is the second increment in a row that says so. The SSA layer is a
+library; the analyzer's findings over other people's code did not move by one; what moved is
+the analyzer's own source, and what it moved there is a DECLARATION COUNT. What this
+increment added to the project beyond the layer itself is a NUMBER for a claim the deck
+made without one, and a graph defect that the layer's own requirements exposed.
+
+### WHAT IS NOT HERE, AND IT IS THE DECK'S OWN DIVISION OF THE MATERIAL
+
+  * TAI-E (section 4) -- a real analyzer's IR and architecture, in pictures. There is
+    nothing in it to compute against.
+  * THE FULL COMPILER (sections 1-2) -- the AST-to-IR lowering 0552 performs is over this
+    tree's own AST, not over a language front end.
+  * "FLOW-INSENSITIVE ANALYSIS GAINS PARTIAL PRECISION OF FLOW-SENSITIVE ANALYSIS VIA
+    SSA" (p.37) -- the third "Why not SSA" bullet is a CLAIM about an analysis this tree
+    does not have, and it is the one claim in the deck that would need a new analysis
+    rather than a new representation.
+  * A NEW FINDING FAMILY -- and this is the project rule rather than an oversight: a
+    family is a public contract with eleven places to change, and "how to compute the
+    static single assignment form" is a claim about HOW, not a defect anybody can commit.
+  * PHI ELIMINATION. The copies are COUNTED (1,749 over this project's own source) and
+    not removed: removing them is a machine-code lowering, and the deck's p.37 only
+    claims they cost something. The count is the claim's number.

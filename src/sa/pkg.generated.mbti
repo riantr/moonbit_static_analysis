@@ -15,6 +15,8 @@ pub fn apply_nosec(Array[@report.Report], Array[Nosec]) -> (Array[@report.Report
 
 pub fn apply_profile(Array[@report.Report], Profile) -> Array[@report.Report]
 
+pub async fn collect(String, Array[String], Array[String]) -> Bool
+
 pub fn count_by_shape(Array[@report.Report]) -> Array[(String, Int32)]
 
 pub fn count_notices(Array[@report.Report]) -> Int32
@@ -59,6 +61,8 @@ pub fn parse_nosec(String) -> Array[Nosec]
 
 pub fn partition_findings(Array[@report.Report], Array[@core.Span], Bool) -> (Array[@report.Report], Array[@report.Report])
 
+pub async fn print_ssa_cost(String, Array[String]) -> Unit
+
 pub fn profile_keeps(@core.Family, Profile) -> Bool
 
 pub fn prov_or_unknown(String) -> String
@@ -74,6 +78,8 @@ pub fn show_plan(Int32, Int32) -> (Int32, Bool)
 pub fn split_coord(String) -> (String, String)
 
 pub fn split_findings(Array[@report.Report], Array[@core.Span]) -> (Array[@report.Report], Array[@report.Report])
+
+pub async fn ssa_cost_over_files(Array[String]) -> TreeCost
 
 pub fn stamp_utc(Int64) -> String
 
@@ -119,6 +125,23 @@ pub struct Summary {
   n_unchecked : Int32
   n_calls : Int32
   n_checked : Int32
+}
+
+pub(all) struct TreeCost {
+  mut files : Int32
+  mut unreadable : Int32
+  mut functions : Int32
+  mut converted : Int32
+  mut partial : Int32
+  mut declined : Int32
+  mut instructions : Int32
+  mut variables : Int32
+  mut versions : Int32
+  mut phis : Int32
+  mut undef_operands : Int32
+  mut copies : Int32
+  mut dead_blocks : Int32
+  mut undef_uses : Int32
 }
 
 pub(all) struct Verdict {

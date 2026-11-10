@@ -155,7 +155,7 @@ function Read-TextWhenFree {
 }
 
 function Scan-Tree {
-  param([string]$Wasm, [string]$Path, [string]$Exclude = '')
+  param([string]$Wasm, [string]$Path, [string]$Exclude = '', [string[]]$Extra = @())
   $dir = Join-Path $env:TEMP ('rel_' + [guid]::NewGuid().ToString('N').Substring(0,8))
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $out = Join-Path $dir 'o.txt'; $err = Join-Path $dir 'o.err'
@@ -186,6 +186,11 @@ function Scan-Tree {
   # number has to be reproducible from a CLEAN checkout, and this one now is.
   $args = @($Wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000')
   if ($Exclude -ne '') { $args += @('--exclude', $Exclude) }
+  # 0553. THE EXTRA ARGUMENTS, for the modes that are not scans. The
+  # `--ssa-cost` mode prints one line and stops, and it needs the same walk
+  # over the same tree -- so it is the SAME function with one more flag, and
+  # not a second walk that could disagree about which files are in the tree.
+  if ($Extra.Count -gt 0) { $args += $Extra }
   Start-Process -FilePath $moonrun `
     -ArgumentList $args `
     -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait | Out-Null
@@ -381,7 +386,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19657'
+$NOTICE_TOTAL = '19676'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -427,8 +432,8 @@ $NOTICE_TOTAL = '19657'
 # to make the `if` a STATEMENT, which put the read in a region the audit does
 # read: the false positive is gone rather than re-pinned, and the own-source
 # tree is one `if expression` notice lighter than the draft had it.
-$NOTICE_SPLIT_PRINTED = '3406'
-$NOTICE_SPLIT_AGGREGATED = '16251'
+$NOTICE_SPLIT_PRINTED = '3407'
+$NOTICE_SPLIT_AGGREGATED = '16269'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -447,10 +452,10 @@ $NOTICE_SPLIT_AGGREGATED = '16251'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '211'
-$SELF_NOTICES = 'test declaration=1490|if expression=95|struct declaration=63|anonymous function literal=33|enum declaration=20|const declaration=7|short lambda=8|type declaration=3|try expression=1'
-$SELF_PRINTED = '137'
-$SELF_AGGREGATED = '1583'
+$SELF_FILES = '215'
+$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1499|try expression=1|type declaration=3'
+$SELF_PRINTED = '138'
+$SELF_AGGREGATED = '1601'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -502,6 +507,16 @@ $SELF_AGGREGATED = '1583'
 $SUPPOFF_LOCAL = '587'
 $SUPPOFF_PARAM = '1152'
 
+#   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
+#                 own source, measured by the scanner's own `--ssa-cost` mode
+#                 (0553). THE LECTURE'S CLAIM (p.37) IS "SSA may introduce too
+#                 many variables and phi-functions" -- a claim with no number in
+#                 it -- and this is the number, WITH THE COVERAGE BESIDE IT: the
+#                 files read, the functions measured, and the statements the
+#                 lowering declined. A number without its coverage is half a
+#                 number, and the coverage moves with every increment.
+$SSA_COST = 'files=197|unreadable=0|functions=898|converted=3|partial=895|declined=4869|instructions=7051|variables=788|versions=1955|phis=707|copies=1749|undef_operands=143|dead_blocks=357|undef_uses=876'
+
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
 #                   and the files carrying them, in the pinned core corpus.
@@ -526,6 +541,7 @@ if ([string]::IsNullOrWhiteSpace($SELF_PRINTED))  { $emptyPins += 'SELF_PRINTED'
 if ([string]::IsNullOrWhiteSpace($SELF_AGGREGATED)) { $emptyPins += 'SELF_AGGREGATED' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_LOCAL)) { $emptyPins += 'SUPPOFF_LOCAL' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_PARAM)) { $emptyPins += 'SUPPOFF_PARAM' }
+if ([string]::IsNullOrWhiteSpace($SSA_COST))      { $emptyPins += 'SSA_COST' }
 if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_PRINTED)) { $emptyPins += 'NOTICE_SPLIT_PRINTED' }
 if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_AGGREGATED)) { $emptyPins += 'NOTICE_SPLIT_AGGREGATED' }
 if ($emptyPins.Count -gt 0) {
@@ -784,6 +800,38 @@ if ($failed.Count -eq 0) {
     }
   }
   if (-not $script:lastOk) { $failed += 'self-scan' }
+}
+
+# --- 4a  what SSA would COST on this project's own source ----------------------
+# THE LECTURE'S CLAIM, MEASURED (p.37): "SSA may introduce too many variables
+# and phi-functions", and "May introduce inefficiency problem when translating
+# to machine code (due to copy operations)". NEITHER CLAIM CARRIES A NUMBER, and
+# the numbers are what turn a claim into a fact.
+#
+# IT IS A SEPARATE SCAN AND NOT A COLUMN OF THE SELF-SCAN, because the two
+# measure different things: the self scan measures the analyzer's FINDINGS, and
+# this measures the lecture's SSA over the lecture's 3AC -- two questions about
+# the same tree.
+if ($failed.Count -eq 0) {
+  Stage 'ssa cost (own source)' {
+    $text = Scan-Tree $wasm $root '_verify' @('--ssa-cost')
+    $line = [regex]::Match($text, '(?m)^SSA-COST\t(.+)$')
+    if (-not $line.Success) {
+      Write-Output '  FAIL: the scan printed no SSA-COST line.'
+      $script:stageOk = $false
+    } else {
+      $got = ($line.Groups[1].Value -replace "`t", '|')
+      if ($got -ne $SSA_COST) {
+        Write-Output '  FAIL: the SSA cost drifted from the pin.'
+        Write-Output ('      pinned : ' + $SSA_COST)
+        Write-Output ('      actual : ' + $got)
+        $script:stageOk = $false
+      } else {
+        Write-Output ('  the SSA cost matches the pin (' + ($got -split '\|').Count + ' numbers)')
+      }
+    }
+  }
+  if (-not $script:lastOk) { $failed += 'ssa-cost' }
 }
 
 # --- 4b  the README's own links, anchors, versions and counts ------------------

@@ -133,6 +133,21 @@ async fn main {
   //                           reported as a finding of its own -- a stale
   //                           suppression is a fact about the source, and the
   //                           source is what this tool analyses.
+  //   --ssa-cost
+  //                           Measure what STATIC SINGLE ASSIGNMENT would cost
+  //                           on the target tree and print one `SSA-COST` line:
+  //                           how many variables the programs define, how many
+  //                           versions SSA would give them, how many
+  //                           phi-functions and how many copies their removal
+  //                           would need. It is a QUERY and not a scan: it
+  //                           prints the line and stops, and no finding is
+  //                           reported. The claim it measures is the one the
+  //                           lecture makes without a number (p.37): "SSA may
+  //                           introduce too many variables and phi-functions".
+  //                           The line also carries the COVERAGE -- the files
+  //                           read, the functions measured, and the functions
+  //                           whose lowering declined a statement -- because a
+  //                           number without its coverage is half a number.
   let mut target = ""
   let excludes : Array[String] = []
   let extern_iface_dirs : Array[String] = []
@@ -168,6 +183,11 @@ async fn main {
   // measured reason `--metrics` is: it builds a string per body execution, and
   // every SUMMARY-pinning stage of the release gate parses the lines above it.
   let mut contexts = false
+  // 0553. `--ssa-cost` asks what SSA would COST on the target tree, and it is
+  // a QUERY and not a scan: it prints one line and stops, like `--explain`.
+  // The claim it measures is the lecture's own (p.37): "SSA may introduce too
+  // many variables and phi-functions" -- a claim with no number in it.
+  let mut ssa_cost = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -262,6 +282,8 @@ async fn main {
       metrics = true
     } else if a == "--contexts" {
       contexts = true
+    } else if a == "--ssa-cost" {
+      ssa_cost = true
     } else if target == "" {
       target = a
     } else {
@@ -283,6 +305,13 @@ async fn main {
   }
   if target == "" {
     target = "."
+  }
+  // 0553. A COST REQUEST IS NOT A SCAN, for the same reason `--explain` is
+  // not one: the answer is a property of the target tree, so it needs the
+  // tree and nothing else -- no profile, no findings, no report.
+  if ssa_cost {
+    @sa.print_ssa_cost(target, excludes)
+    return
   }
   // 0507. THE PROFILE IS VALIDATED BEFORE THE SCAN RUNS, and the two rules
   // are different on purpose:

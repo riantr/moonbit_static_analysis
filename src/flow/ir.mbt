@@ -713,3 +713,14 @@ pub fn Ir::dump(self : Ir) -> String {
   }
   out
 }
+
+///|
+/// How many statements this lowering did NOT convert.
+///
+/// IT IS PUBLIC because a caller outside this package has to be able to say
+/// what the form is worth: a program whose lowering skipped half its
+/// statements is a program whose SSA form is a measurement of half the
+/// program, and the number that says so has to be readable from outside.
+pub fn Ir::skipped_count(self : Ir) -> Int32 {
+  self.skipped
+}

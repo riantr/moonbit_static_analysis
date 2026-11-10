@@ -51,6 +51,10 @@ pub fn cprop_text(Map[String, Cpv]) -> String
 
 pub fn cpv_text(Cpv) -> String
 
+pub fn dominance_frontiers(Bb, Dom) -> Array[Array[Int32]]
+
+pub fn dominators(Bb) -> Dom
+
 pub fn eval_add(Interval, Interval) -> Interval
 
 pub fn eval_arith(@ast.BOp, Interval, Interval) -> Interval?
@@ -151,6 +155,12 @@ pub fn[T] solve_widening(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T
 
 pub fn source_after(Int32, Int32, Int32, Int32) -> Bool
 
+pub fn ssa_check(SsaIr) -> SsaCheck
+
+pub fn ssa_cost(Ir) -> SsaCost
+
+pub fn ssa_of(Ir) -> SsaIr
+
 pub fn[T] states_after(Int32, Array[T], (Int32, T) -> T) -> Array[T]
 
 pub fn widen_interval(Interval, Interval, Array[Int32]) -> Interval
@@ -214,6 +224,13 @@ pub(all) enum Cpv {
   Nac
 }
 
+pub(all) struct Dom {
+  idom : Array[Int32]
+  rpo : Array[Int32]
+  rpo_num : Array[Int32]
+  children : Array[Array[Int32]]
+}
+
 pub(all) enum EdgeKind {
   Normal
   CallToReturn(String?)
@@ -265,6 +282,7 @@ pub(all) struct Ir {
   skipped : Int32
 }
 pub fn Ir::dump(Self) -> String
+pub fn Ir::skipped_count(Self) -> Int32
 
 pub(all) enum IrInst {
   Copy(Addr, Addr)
@@ -308,6 +326,52 @@ pub(all) struct Redundant {
   node : Int32
   key : String
 }
+
+pub(all) enum SsaAddr {
+  Var(String, Int32)
+  Const(String)
+  Temp(Int32)
+}
+pub fn SsaAddr::text(Self) -> String
+
+pub(all) struct SsaCheck {
+  unique : Bool
+  resolved : Bool
+  dangling : Int32
+}
+
+pub struct SsaCost {
+  blocks : Int32
+  instructions : Int32
+  variables : Int32
+  versions : Int32
+  phis : Int32
+  undef_operands : Int32
+  copies : Int32
+  unreachable_blocks : Int32
+  undef_uses : Int32
+}
+
+pub(all) enum SsaInst {
+  Copy(SsaAddr, SsaAddr)
+  UnOp(SsaAddr, @ast.UOp, SsaAddr)
+  BinOp(SsaAddr, @ast.BOp, SsaAddr, SsaAddr)
+  Goto(Int32)
+  IfGoto(SsaAddr, Int32)
+  IfRelGoto(SsaAddr, @ast.BOp, SsaAddr, Int32)
+  Ret
+  Raise
+  Call(SsaAddr?, String, Array[SsaAddr])
+  Phi(SsaAddr, Array[SsaAddr?])
+}
+pub fn SsaInst::text(Self) -> String
+
+pub(all) struct SsaIr {
+  insts : Array[SsaInst]
+  labels : Map[Int32, Int32]
+  cost : SsaCost
+}
+pub fn SsaIr::dump(Self) -> String
 
 pub(all) struct WidenResult[T] {
   states : Array[T]

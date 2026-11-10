@@ -357,7 +357,7 @@ moonx riantr/moonbit_static_analysis@latest <target> [flags]
 | `--families MSA-007,MSA-002` | report **only** these families, by their **stable id**. The ids are the `MSA-NNN` codes every rendered finding and every JSON record carries; the full roster is in [Confidence, ids, profiles and `nosec`](#confidence-ids-profiles-and-nosec). An id this version does not know is a `WARNING` and the scan still runs -- a family added in a later release must not make an older analyzer's profile unusable, and a typo must be loud rather than fatal. |
 | `--exclude-families MSA-007` | report everything **except** these families. The same id vocabulary and the same rules. An id that is **both** included and excluded is an `ERROR` and the scan does not run at all: the two rules contradict each other, and which one won would be decided by the order of two `if`s inside the scanner. |
 | `--honor-nosec` | honour `// nosec` comments in the **analysed** source: `// nosec` silences every finding on that line, and `// nosec MSA-007` silences that one family on that line. **Off by default**, and the default is a decision rather than an omission: a tool that stops reporting a finding because of a comment in the analysed source has an output the reader cannot trust without reading that source first. A `// nosec` that suppresses **nothing** is reported as a finding of its own -- a stale suppression is a fact about the source, and the source is what this tool analyses. |
-
+| `--ssa-cost` | Measure what **static single assignment** would cost on the target tree and print one `SSA-COST` line: the variables the programs define, the versions SSA would give them, the phi-functions, and the copies their removal would need. It is a **query** and not a scan — it prints the line and stops, and no finding is reported. The claim it measures is the lecture's own (p.37): *"SSA may introduce too many variables and phi-functions"* — a claim with no number in it. The line carries its **coverage** beside the numbers, because a number without its coverage is half a number. |
 `--mmd` requires its path and `--mmd-auto` is a separate flag, on purpose: an optional
 value is ambiguous, because in `<target> --mmd <path>` the bare word after `--mmd` could
 equally be a second, unexpected target, and there is no way to tell the two apart.
@@ -561,21 +561,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (211 files), with the per-file printing cap lifted so the count is the
+project's own source (215 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1490 | | `const` declaration | 7 |
+| `test` declaration | 1499 | | `const` declaration | 7 |
 | `if` expression | 95 | | `short lambda` | 8 |
-| `struct` declaration | 63 | | `type` declaration | 3 |
-| `anonymous function literal` | 33 | | `try` expression | 1 |
-| `enum` declaration | 20 | | | |
+| `struct` declaration | 70 | | `type` declaration | 3 |
+| `anonymous function literal` | 34 | | `try` expression | 1 |
+| `enum` declaration | 22 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **137** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1583** sit outside every function's
+**position**: **138** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1601** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -608,10 +608,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,657** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,676** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,406** of them as printed per line and
-**16,251** as aggregated — which is 3,406 + 16,251 = 19,657, the same number — and the 3,406
+says so itself: its `NOTICES` table counts **3,407** of them as printed per line and
+**16,269** as aggregated — which is 3,407 + 16,269 = 19,676, the same number — and the 3,407
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -635,7 +635,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **587** `UnusedLocal` and **1,152** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 206 files the notice table
+seven pinned corpora and this repository's own source — the same 215 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -868,11 +868,61 @@ five lattice laws and the transfer's **monotonicity** — the precondition the f
 theorem needs, and the one property a lattice's three closures cannot guarantee. The
 points-to map lattice is checked the same way.
 
+### And the arrow the deck prints in the footer: 3AC -> SSA
+
+`src/flow/ssa.mbt` is the **static single assignment** form the same lecture's fifth section
+defines. The lecture states its rules in three sentences — *"All assignments in SSA are to
+variables with distinct names"*, *"Give each definition a fresh name"*, *"Propagate fresh name to
+subsequent uses"*, *"Every variable has exactly one definition"* — and the page footer prints the
+arrow it is about: `3AC -> SSA`.
+
+The lecture's own drawing is the test. It forks `if e` to `x₀ = 0` and to `x₁ = 1`, the two meet
+at one node, and that node holds `y = x + 7` — with the `x` **circled in red**, because that is
+the question the page asks: *"What if a variable use is at control flow merges?"* The answer is
+the merge operator the next page introduces: `x₂ = ∅(x₀,x₁)`, and *"∅(x₀,x₁) has the value x₀ if
+the control flow passes through the true part of the conditional and the value x₁ otherwise"*.
+`src/flow/ssa_test.mbt` turns that drawing into a program, lowers it to 3AC, and requires the
+result to be the drawing **instruction for instruction**:
+
+```
+if e goto L1
+goto L2
+x₀ = 0
+goto L3
+x₁ = 1
+x₂ = ∅(x₀,x₁)
+y = x₂ + 7
+```
+
+Two things the lecture leaves open are settled by measurement rather than by taste. It draws a
+merge node as a node with **two incoming edges** and says a phi-function "select[s] the values at
+merge nodes" — but the place where two definitions of one variable meet is not that, it is the
+**dominance frontier**, and `src/flow/dom.mbt` computes it. And the drawing prints `y` with no
+subscript while `x` has three, so a variable with exactly one definition keeps its bare name.
+
+**The lecture's own cost claim, measured.** p.37 says *"SSA may introduce too many variables and
+phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
+copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
+program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
+would need **16** copies. Over this project's own source — 197 files, 898 functions, 7,051
+instructions of 3AC — the same measurement gives **788** variables becoming **1,955** versions,
+**707** phi-functions and **1,749** copies. The claim is not a figure of speech.
+
+The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
+
+```
+SSA-COST	files=197	unreadable=0	functions=898	converted=3	partial=895	declined=4869	…
+```
+
+It reports its **coverage** beside the numbers, because a number without its coverage is half a
+number: the files read, the functions measured, and the statements the lowering declined (4,869
+of them — the 3AC layer converts the statements it understands and counts the rest). The release
+gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1490/1490 on wasm; 1354/1354 on js and wasm-gc
+moon test --deny-warn                # 1499/1499 on wasm; 1363/1363 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -922,6 +972,7 @@ and is not named here is a stage a reader cannot find:
     the host contract of the artifact (what a user's toolchain must supply)
     grammar probe control (its verdicts can go red)
     self-scan (own source)
+    ssa cost (own source)
     README links, anchors, versions and counts
     gate roster: self-test (seven injected defects must be caught)
     gate roster: one harness, one list, and a count that matches

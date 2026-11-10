@@ -1187,7 +1187,7 @@ async fn is_dir(p : String) -> Bool {
 /// ones containing nothing analysable: `moon_openblas/vendor` holds 19483
 /// vendored files and `ML/CI` another 10572, and neither contributes a single
 /// `.mbt`. The directory counter moves in every directory, analysable or not.
-async fn collect(
+pub async fn collect(
   root : String,
   out : Array[String],
   excludes : Array[String],

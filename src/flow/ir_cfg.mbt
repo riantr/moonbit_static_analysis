@@ -83,6 +83,30 @@ pub fn ir_bb(ir : Ir) -> Bb {
 ///   L3  "Any instruction that immediately follows a conditional or unconditional
 ///        jump is a leader"
 ///
+/// AND ONE MORE, AND IT IS THIS TREE'S, NOT THE DECK'S: L4, "an instruction
+/// that immediately follows a TERMINATOR is a leader". The deck's IR HAS NO
+/// RETURN FORM -- p.19's six forms are the copies, the operations and the two
+/// jumps, and nothing else -- so p.55's three rules never have to say where a
+/// block ends after a `return`. This tree's IR has `return` and `raise`, and a
+/// terminator ENDS ITS BLOCK, because control cannot continue past one. The
+/// deck's own program agrees: its `return` (12) is alone in its block.
+///
+/// WITHOUT L4 THE GRAPH IS WRONG, AND IT IS WRONG IN A WAY A BLOCK COUNT DOES
+/// NOT CATCH -- the shape is right and an edge is not. Measured on this tree's
+/// own lowering (0553): a `while` whose body returns produces the block
+///
+///     t1 = 1
+///     return
+///     goto L_cond
+///
+/// where the `return` is in the MIDDLE of the block. The block's last
+/// instruction is the `goto`, so the back edge was drawn from a block the
+/// program can never reach again -- and the loop head then has a predecessor
+/// it does not have, which moves the dominator tree and with it every
+/// phi-function SSA places. With L4 the block ends at the `return`, the
+/// `goto L_cond` becomes a block of its own, and that block is unreachable --
+/// which is what it is.
+///
 /// L2 IS THE ONE THAT NEEDS A LOOKUP, and the lookup is done ONCE, before the
 /// walk: the set of instruction indices that some jump targets. Doing it per
 /// instruction would be a scan per instruction, and a scan that returns a
@@ -110,6 +134,13 @@ fn ir_leaders(ir : Ir) -> Array[Int32] {
       leader = true
     }
     if leader == false && k > 0 && ir.insts[k - 1].is_jump() {
+      leader = true
+    }
+    // L4, AND IT IS THIS TREE'S RULE: the instruction after a TERMINATOR
+    // starts a new block, because control cannot continue past the
+    // terminator. See the header for why the deck does not have this rule
+    // and why this tree needs it.
+    if leader == false && k > 0 && ir.insts[k - 1].is_terminator() {
       leader = true
     }
     if leader {
@@ -221,7 +252,17 @@ fn ir_block_succ(
       None => ()
     }
     // The fall-through to the block that immediately follows.
-    if b + 1 < blocks.length() && ir.insts[last].is_uncond_jump() == false {
+    //
+    // AND NOT AFTER A TERMINATOR, and that is this tree's clause and not the
+    // deck's: the deck's IR has no return form, so p.80's "A does not end in
+    // an unconditional jump" has nothing to say about a block that ends in a
+    // `return`. A `return` ends the function, and control cannot fall out of
+    // it into the next block. The block that follows is still a block -- it is
+    // the deck's L1/L2/L3 that put it there -- it is just not reachable from
+    // this one.
+    if b + 1 < blocks.length() &&
+      ir.insts[last].is_uncond_jump() == false &&
+      ir.insts[last].is_terminator() == false {
       if succ[b].contains(b + 1) == false {
         succ[b].push(b + 1)
       }
