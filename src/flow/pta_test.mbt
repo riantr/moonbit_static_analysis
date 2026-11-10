@@ -76,6 +76,29 @@ fn p_name_at(line : Int32, col : Int32, n : String) -> @ast.Expr {
 }
 
 ///|
+/// A binary expression at a position.
+fn p_bin_at(
+  line : Int32,
+  col : Int32,
+  op : @ast.BOp,
+  lhs : @ast.Expr,
+  rhs : @ast.Expr,
+) -> @ast.Expr {
+  { span: p_span_at(line, col), kind: @ast.EBin(op, lhs, rhs), }
+}
+
+///|
+/// A unary expression at a position.
+fn p_unary_at(
+  line : Int32,
+  col : Int32,
+  u : @ast.UOp,
+  e : @ast.Expr,
+) -> @ast.Expr {
+  { span: p_span_at(line, col), kind: @ast.EUnary(u, e), }
+}
+
+///|
 fn p_return(line : Int32) -> @ast.Stmt {
   { span: p_span(line), kind: @ast.SReturn(None), }
 }
@@ -83,6 +106,11 @@ fn p_return(line : Int32) -> @ast.Stmt {
 ///|
 fn p_break(line : Int32) -> @ast.Stmt {
   { span: p_span(line), kind: @ast.SBreak([]), }
+}
+
+///|
+fn p_raise(line : Int32) -> @ast.Stmt {
+  { span: p_span(line), kind: @ast.SRaise(None), }
 }
 
 ///|

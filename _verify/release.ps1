@@ -381,7 +381,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19641'
+$NOTICE_TOTAL = '19657'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -407,8 +407,28 @@ $NOTICE_TOTAL = '19641'
 # names the drift rather than a number that is quietly wrong. It was red once,
 # for exactly this reason, and the drift it reported (+11, all aggregated) was
 # the ten new test declarations and the new `Bb` struct.
+# 0552. AND THE SPLIT MOVED IN ONE HALF ONLY, and the reason is the geometry
+# rather than a coincidence. The eight trees carry 19,657 notices now:
+# 17,937 over the seven corpora (UNCHANGED -- each one still MATCHes its
+# pinned baseline) + 1,720 over this repository's own source. The own-source
+# half moved by exactly +16, and every one of those sixteen is AGGREGATED:
+# they are the twelve new test declarations and the new struct and enum
+# declarations of the 3AC layer, and a declaration sits OUTSIDE every
+# function's extent, so it hides nothing and is counted by shape. The
+# PRINTED half is 3,406 and it did NOT move, and that is the check that the
+# two numbers are still the same fact: printed + aggregated must equal the
+# total, and a printed notice is one that can hide a finding.
+#
+# AND THE `if expression` ROW DID NOT MOVE EITHER, which took a fix to
+# achieve. The 3AC layer's first draft read `ir.insts.length()` inside an
+# `if` USED AS A VALUE, and an `if` used as a value is outside the analysed
+# subset -- so the analyzer never saw the read and reported `parameter 'ir'
+# may not be used` for a parameter that is read on the next line. The fix was
+# to make the `if` a STATEMENT, which put the read in a region the audit does
+# read: the false positive is gone rather than re-pinned, and the own-source
+# tree is one `if expression` notice lighter than the draft had it.
 $NOTICE_SPLIT_PRINTED = '3406'
-$NOTICE_SPLIT_AGGREGATED = '16235'
+$NOTICE_SPLIT_AGGREGATED = '16251'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -427,10 +447,10 @@ $NOTICE_SPLIT_AGGREGATED = '16235'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '208'
-$SELF_NOTICES = 'test declaration=1478|if expression=95|struct declaration=61|anonymous function literal=33|enum declaration=18|const declaration=7|short lambda=8|type declaration=3|try expression=1'
+$SELF_FILES = '211'
+$SELF_NOTICES = 'test declaration=1490|if expression=95|struct declaration=63|anonymous function literal=33|enum declaration=20|const declaration=7|short lambda=8|type declaration=3|try expression=1'
 $SELF_PRINTED = '137'
-$SELF_AGGREGATED = '1567'
+$SELF_AGGREGATED = '1583'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.

@@ -561,21 +561,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (208 files), with the per-file printing cap lifted so the count is the
+project's own source (211 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1478 | | `const` declaration | 7 |
+| `test` declaration | 1490 | | `const` declaration | 7 |
 | `if` expression | 95 | | `short lambda` | 8 |
-| `struct` declaration | 61 | | `type` declaration | 3 |
+| `struct` declaration | 63 | | `type` declaration | 3 |
 | `anonymous function literal` | 33 | | `try` expression | 1 |
-| `enum` declaration | 18 | | | |
+| `enum` declaration | 20 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **137** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1567** sit outside every function's
+audit off, so they are printed one per line; the other **1583** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -608,10 +608,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,641** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,657** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,406** of them as printed per line and
-**16,235** as aggregated — which is 3,406 + 16,235 = 19,641, the same number — and the 3,406
+**16,251** as aggregated — which is 3,406 + 16,251 = 19,657, the same number — and the 3,406
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -830,7 +830,38 @@ cannot tell the two kinds of `Stop` apart, so the count of statements the builde
 not convert faithfully is carried through and a caller checks it first — the way the
 dead-store family does.
 
-### The two solvers are checked against each other, and so is the lattice
+### And under the blocks there is the three-address code the rules are written over
+
+`src/flow/ir.mbt` is the **three-address code** the same lecture states its rules over. It
+is not a bag of instructions but a language with a grammar, and the lecture prints the
+grammar: at most one operator on the right-hand side of an instruction, so `c = a + b + 3`
+lowers to `t1 = a + b` then `c = t1 + 3`; at most three addresses per instruction; and
+exactly three kinds of address — a **name**, a **constant**, and a **compiler-generated
+temporary**. The six common forms are `x = y`, `x = uop y`, `x = y bop z`, `goto L`,
+`if x goto L` and `if x rop y goto L`.
+
+`src/flow/ir_cfg.mbt` then applies the lecture's **leader rule**, its **edge rule** and
+its **Entry/Exit** to a list of those instructions — with no translation at all. The
+previous layer had to translate them, because the lecture states them over 3AC and this
+tree's graph is a statement graph; the translation could therefore only be trusted. Now
+the two paths are compared against each other on the lecture's own program: same leaders,
+same blocks, same edges, same entry, same exits. That is the same shape as the two
+solvers being checked against each other.
+
+The 3AC path produces the **same `Bb` type** the statement path produces, on purpose —
+the block graph is one thing with one definition, and two structures that could disagree
+about what a block is would be two definitions of "a block".
+
+Two extensions are labelled as such rather than smuggled in: the lecture's IR has no
+call form at all (which is why it writes `x = input` as a copy from an address named
+`input`), and its "six common forms" do not include a `return` although its own program
+ends with one.
+
+And the lecture's own twelve instructions are **not** strictly three-address code:
+`(9) c = 2a - b` has two operators on its right-hand side, and `2a` is not one of the
+three address kinds. The fixture keeps the lecture's text as it is, so the blocks the
+lecture prints are the blocks the code produces, and a test says so in words — a fixture
+that "corrected" the example would be checking something the lecture does not print.
 
 `src/flow/laws_test.mbt` enumerates every element of the two finite lattices and checks the
 five lattice laws and the transfer's **monotonicity** — the precondition the fixed-point
@@ -841,7 +872,7 @@ points-to map lattice is checked the same way.
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1478/1478 on wasm; 1342/1342 on js and wasm-gc
+moon test --deny-warn                # 1490/1490 on wasm; 1354/1354 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

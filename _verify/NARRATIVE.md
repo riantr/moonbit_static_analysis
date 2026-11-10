@@ -13851,3 +13851,181 @@ them, which is why the total moved and the seven corpora did not.
 
 The suppression-off pin did not move either, and that is worth one sentence: the new
 code reads every local it binds, so the region suppression has nothing new to hide.
+## 0552: THREE-ADDRESS CODE -- THE LAYER THE CFG'S RULES ARE ACTUALLY WRITTEN OVER
+
+0551 built the basic blocks and the CFG over them, and it had to TRANSLATE the deck's
+rules: the deck states them over three-address code, and this tree has none. 0552
+removes the translation by building the deck's CFG FROM three-address code, so the
+translation 0551 made can be CHECKED instead of trusted.
+
+### WHAT THE DECK PRINTS ABOUT 3AC, VERBATIM
+
+p.13 says the IR is "compact and uniform", and p.14 gives the rule that makes it
+three-address:
+
+> There is at most one operator on the right side of an instruction
+
+with the lowering printed beside it: `c = a + b + 3` becomes
+
+    t1 = a + b
+    c = t1 + 3
+
+p.15/16 answer the name itself -- "Each 3AC contains at most 3 addresses" -- and p.17
+gives the ADDRESS TAXONOMY, which is exactly three kinds:
+
+> Address can be one of the following: Name: a, b, c / Constant: 3 /
+> Compiler-generated temporary: t1
+
+p.19 then prints the six common forms:
+
+    x = y            x = uop y           x = y bop z
+    goto L           if x goto L         if x rop y goto L
+
+where `bop` is a binary arithmetic or logical operator, `uop` a unary one (minus,
+negation, casting), `rop` a relational operator, and `L` a label at a position in the
+program.
+
+The three-address code is therefore not a bag of instructions but a LANGUAGE with a
+grammar, and this increment implements that language: `src/flow/ir.mbt` has the
+address taxonomy, the six forms, and a lowering from this tree's AST that follows
+p.14's rule (at most one operator per instruction) and introduces p.17's temporaries.
+
+### THE DECK'S OWN EXAMPLE IS NOT THREE-ADDRESS CODE, AND THAT IS WORTH SAYING
+
+The twelve instructions 0551 pinned are, strictly speaking, a PSEUDO-3AC. Instruction
+`(9) c = 2a - b` has TWO operators on its right-hand side, which p.14 forbids, and
+`2a` is not one of p.17's three address kinds -- it is neither a name in the program
+nor a constant nor a temporary.
+
+So the blocks the deck prints at p.71 are the blocks of a pseudo-3AC list. The
+fixture keeps the deck's text as it is (`2a` carried as a `Name`), so the printed
+blocks ARE the printed blocks, and `ir_test.mbt` has a row that says so in words. A
+fixture that "corrected" the example would be testing something the deck does not
+print.
+
+There is a second, smaller inconsistency, and it is the same kind: p.19's "six common
+forms" do not include a `return`, and the deck's own program ends with `(12) return`.
+`Ret` is therefore carried as the deck's own extension, and `Call` and `Raise` are
+labelled as this tree's extensions -- the deck's IR has no call form at all, which is
+exactly why it writes `x = input` as a copy from an address named `input`.
+
+### THE CFG IS BUILT OVER THE 3AC LIST, WITH NO TRANSLATION AT ALL
+
+`src/flow/ir_cfg.mbt` applies p.55's two steps, p.80's edge rule and p.91's Entry and
+Exit to a LIST OF INSTRUCTIONS, and it returns the SAME `Bb` type 0551's
+statement-level path returns -- on purpose. The block graph is one thing with one
+definition; two structures that could disagree about what a block is would be two
+definitions of "a block". So the 3AC path PRODUCES a `Bb` rather than a look-alike,
+and `ir_test.mbt` compares the two paths against each other: same leaders, same block
+sizes, same edges, same entry, same exits, on the deck's own program.
+
+That differential is the point of the increment. 0551's translation said, in the CFG's
+words, that a node is a leader when it has more than one predecessor, or one
+predecessor that is a branch, or none at all. The deck's own words are "the first
+instruction", "a jump target", and "the instruction after a jump". Those are two
+vocabularies for one algorithm, and now they run against each other. The shape is the
+same as `flow_worklist_test.mbt` running the two solvers against each other.
+
+p.80's rule is the deck's, in the deck's words, and the deck's own example is what
+settles the reading of its first clause: a jump is at the END of a block, because the
+instruction after a jump is a leader (p.55's L3). And the second clause is the one
+that distinguishes the deck's `(4) if z < x goto (7)` from its `(11) goto (3)`: a
+CONDITIONAL jump still falls through and an UNCONDITIONAL one does not, which is why
+B5 has no edge to B6.
+
+### THE FIRST DRAFT REPORTED A PARAMETER THAT WAS NOT UNUSED, AND THE FIX WAS NOT A PIN
+
+The 3AC layer's first draft ended `ir_blocks` with
+
+    let stop = if li + 1 < leaders.length() { leaders[li + 1] } else { ir.insts.length() }
+
+and the own-source scan, with the region suppression switched OFF, reported
+
+    src/flow/ir_cfg.mbt :: 129:14 - parameter 'ir' may not be used (UnusedParam)
+
+for a parameter that is read on the very next line. The cause is a property of the
+ANALYZER, and it is worth stating precisely: an `if` USED AS A VALUE is outside the
+analyzed subset, so the analyzer does not read its branches, and a parameter read only
+inside such a branch is invisible to the frame audit.
+
+So the draft had two ways to be wrong about one number: re-pin the count and let a
+false positive stand, or change the code so the read is visible. The second one was
+right, and the change was to make the `if` a STATEMENT:
+
+    let mut stop = ir.insts.length()
+    if li + 1 < leaders.length() {
+      stop = leaders[li + 1]
+    }
+
+The read is now in a region the audit does read. MEASURED: `ir_cfg.mbt` scans CLEAN,
+the self tree's `UnusedParam` count is 25 -- the same as before the 3AC layer -- and
+the suppression-off pins are 587 / 1152, UNCHANGED from 0551. The 3AC layer's net
+effect on the suppression-off measurement is therefore ZERO, and it is zero because the
+code was written in a shape the analyzer can read.
+
+The draft also had a second copy of `if b { "true" } else { "false" }`, which the
+own-source notice table caught in the other direction: an `if` used as a value is a
+SCOPE LIMIT, and a second copy of it is a second notice. It is now one function
+(`bool_const`), which is the project's own rule -- an operation used twice lives in
+one place -- and the `if expression` row came back to 95, exactly where 0551 left it.
+
+### WHAT MOVED, AND WHAT DID NOT
+
+The seven corpora did not move by a single notice -- every one of them MATCHes its
+pinned baseline -- and the reason is measured rather than assumed: `src/flow` is used
+by the pipeline for `live` ONLY, and the 3AC layer is a library, so it cannot have
+changed what the analyzer says about other people's code.
+
+The eight-tree total still moved, for the reason 0551 wrote down: the eight trees are
+the seven corpora PLUS this repository's own source.
+
+    17,937 notices over the seven corpora  +  1,720 over this repository  =  19,657
+
+and the delta is exactly the own-source delta. The eight-tree split's PRINTED half did
+not move (3,406), and its AGGREGATED half moved by the same sixteen -- because the
+sixteen new notices are the twelve new test declarations and the new struct and enum
+declarations, and a declaration sits outside every function's extent and aggregates.
+
+The own-source table itself moved in four rows and held in five:
+
+    test declaration       1478 -> 1490      (+12: the new test rows)
+    struct declaration       61 ->   63      (+2)
+    enum declaration         18 ->   20      (+2)
+    if expression            95 ->   95      (UNCHANGED, after the fix above)
+    anonymous function lit.  33 ->   33      (unchanged)
+    const declaration         7 ->    7      (unchanged)
+    short lambda              8 ->    8      (unchanged)
+    type declaration          3 ->    3      (unchanged)
+    try expression            1 ->    1      (unchanged)
+
+The own-source file count moved 208 -> 211 (the three new files), the own-source
+notices 1,704 -> 1,720, the printed half held at 137 and the aggregated half moved
+1,567 -> 1,583.
+
+The test counts moved too: wasm 1468 -> 1490, js and wasm-gc 1332 -> 1354, twelve
+rows each, one per pinned deck fact.
+
+=> 判据: "THE NEW FEATURE PRODUCES A NEW FINDING" IS NOT WHAT A LIBRARY INCREMENT
+LOOKS LIKE. This increment added a whole language -- three addresses, six forms, a
+lowering, and a CFG over it -- and the analyzer's findings over other people's code
+did not move by one, because none of the new code is in the pipeline. What moved is
+the analyzer's own source, and what it moved there is a DECLARATION COUNT and nothing
+else. A feature that had changed a finding would have needed its own justification;
+this one needed the translation it replaced to be CHECKED, and that is what it got.
+
+### WHAT IS NOT HERE, AND IT IS THE DECK'S OWN DIVISION OF THE MATERIAL
+
+The lecture has four sections this increment does not touch, and each is a decision
+rather than an omission:
+
+  * SSA (section 5) -- the phi-functions, the define-and-use pairs, and "flow-
+    insensitive analysis gains partial precision of flow-sensitive analysis via SSA"
+    (p.36). SSA is defined ON a basic-block CFG, so the blocks have to exist first;
+    this increment and 0551 are that first half. The p.33-34 phi example is the whole
+    of what could be pinned today, and pinning one example is not a layer.
+  * TAI-E (section 4) -- a real analyzer's IR and architecture, in pictures.
+  * THE FULL COMPILER (sections 1-2) -- the AST-to-IR lowering this increment
+    performs is over this tree's own AST, not over a language front end.
+  * A NEW FINDING FAMILY -- and this is the project rule rather than an oversight:
+    a family is a public contract with eleven places to change, and "how to compute
+    the blocks" is a claim about HOW, not a defect anybody can commit.

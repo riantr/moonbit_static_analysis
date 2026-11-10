@@ -83,6 +83,8 @@ pub fn interval_state_lattice(Int32) -> Lattice[Array[Interval]]
 
 pub fn interval_state_same(Array[Interval], Array[Interval]) -> Bool
 
+pub fn ir_bb(Ir) -> Bb
+
 pub fn[T] join_all(Lattice[T], Array[T]) -> T
 
 pub fn[T] join_of_nodes(Lattice[T], Array[T], Array[Int32]) -> T
@@ -92,6 +94,8 @@ pub fn live_in(Cfg) -> Array[Map[String, Bool]]
 pub fn live_out(Cfg, Array[Map[String, Bool]]) -> Array[Map[String, Bool]]
 
 pub fn live_transfer(Array[Map[String, Bool]], Array[Map[String, Bool]]) -> (Int32, Map[String, Bool]) -> Map[String, Bool]
+
+pub fn lower_body(Array[@ast.Stmt]) -> Ir
 
 pub fn name_set_empty() -> Map[String, Bool]
 
@@ -154,6 +158,13 @@ pub fn widen_interval(Interval, Interval, Array[Int32]) -> Interval
 // Errors
 
 // Types and methods
+pub(all) enum Addr {
+  Name(String)
+  Const(String)
+  Temp(Int32)
+}
+pub fn Addr::text(Self) -> String
+
 pub(all) struct AvailExpr {
   key : String
   names : Map[String, Bool]
@@ -247,6 +258,33 @@ pub fn Interval::meet(Self, Self) -> Self
 pub fn Interval::omega(Self, Array[Int32]) -> Self
 pub fn Interval::same(Self, Self) -> Bool
 pub fn Interval::text(Self) -> String
+
+pub(all) struct Ir {
+  insts : Array[IrInst]
+  labels : Map[Int32, Int32]
+  skipped : Int32
+}
+pub fn Ir::dump(Self) -> String
+
+pub(all) enum IrInst {
+  Copy(Addr, Addr)
+  UnOp(Addr, @ast.UOp, Addr)
+  BinOp(Addr, @ast.BOp, Addr, Addr)
+  Goto(Int32)
+  IfGoto(Addr, Int32)
+  IfRelGoto(Addr, @ast.BOp, Addr, Int32)
+  Ret
+  Raise
+  Call(Addr?, String, Array[Addr])
+}
+pub fn IrInst::addresses(Self) -> Array[Addr]
+pub fn IrInst::defines(Self) -> Addr?
+pub fn IrInst::is_jump(Self) -> Bool
+pub fn IrInst::is_terminator(Self) -> Bool
+pub fn IrInst::is_uncond_jump(Self) -> Bool
+pub fn IrInst::jump_label(Self) -> Int32?
+pub fn IrInst::reads(Self) -> Array[Addr]
+pub fn IrInst::text(Self) -> String
 
 pub(all) struct Lattice[T] {
   bot : () -> T
