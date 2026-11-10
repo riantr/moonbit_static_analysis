@@ -119,11 +119,17 @@ pub fn pta_alias(Map[String, Map[String, Bool]], String, String) -> Bool
 
 pub fn pta_empty() -> Map[String, Map[String, Bool]]
 
+pub fn pta_fs_transfer_of(Cfg) -> (Int32, Map[String, Map[String, Bool]]) -> Map[String, Map[String, Bool]]
+
+pub fn pta_map_lattice() -> Lattice[Map[String, Map[String, Bool]]]
+
 pub fn pta_of(Map[String, Map[String, Bool]], String) -> Map[String, Bool]
 
 pub fn pta_of_expr(Map[String, Map[String, Bool]], @ast.Expr) -> Map[String, Bool]
 
 pub fn pta_run(Array[Cfg]) -> Array[Map[String, Map[String, Bool]]]
+
+pub fn pta_run_flow_sensitive(Cfg) -> Array[Map[String, Map[String, Bool]]]
 
 pub fn pta_run_ordered(Cfg) -> Map[String, Map[String, Bool]]
 

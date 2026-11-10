@@ -13368,3 +13368,258 @@ requirement is "the version this tree declares" -- which is the right requiremen
 a release, and the wrong instrument for auditing a ledger. Both were needed: the gate to
 stop a release shipping without its own number, and a reader with the cache to notice that
 0.4.44's number was never written down.
+
+## 0550: THE DECK'S OTHER HALF IS FLOW-SENSITIVITY, AND IT IS NOT A STRAIGHT LINE
+
+The reference is the SAME 104-page attachment 0547 read: Tian Tan, `Pointer Analysis`,
+Nanjing University, 2021. That increment took the deck's RULE SYSTEM -- the domain of
+p.97 and the four rules of p.98 -- and built the reading the deck's course chose:
+flow-INsensitive, which p.70 marks "Chosen in this course". This increment builds the
+other one.
+
+### WHAT THE DECK STILL PRINTS AND THIS TREE STILL DID NOT COMPUTE
+
+The deck spends fifteen slides on the flow-sensitivity factor (p.55-70), and its two
+columns are:
+
+    flow-sensitive     "Maintain a map of points-to relations at each program location"
+    flow-insensitive   "Maintain one map of points-to relations for the whole program"
+
+and then it runs ONE program through both:
+
+    1 c = new C();
+    2 c.f = "x";
+    3 s = c.f;
+    4 c.f = "y";
+
+    p.64   flow-sensitive     c -> {o1}   o1.f -> {"y"}      s -> {"x"}
+    p.68   flow-insensitive   c -> {o1}   o1.f -> {"x","y"}   s -> {"x","y"}
+    p.69   and the word "false positive" printed next to the flow-insensitive `s`
+
+The false positive is the DECK'S OWN verdict and not a criticism added here: the load at
+line 3 runs BEFORE the store at line 4, so `s` can only ever hold "x". A map that does
+not know where it is cannot see that, and keeps "y" as well.
+
+0547's own "WHAT THIS DOES NOT DO" already named the gap, and named it precisely:
+`pta_run_ordered` "is a control for one straight-line body and is not a second
+analysis", because "it re-derives source order from the spans and walks the statements
+once, so it cannot answer the question on a body with a branch or a loop". A
+flow-sensitive analysis that only works when the program is straight is not the analysis
+the deck describes.
+
+### THE COST OF LOOKING BEFORE LOOKING, AND WHAT IT CHANGED
+
+Before writing anything, the tree was surveyed for what an increment of this shape
+COSTS, and the survey changed the plan:
+
+  * ONLY ONE OF SEVEN FLOW MODULES PRODUCES A FINDING. `live` does: `live_in`/`live_out`
+    in `src/pipeline/deadstore.mbt:167-180` -> `FDeadStore`. `interval`, `avail`,
+    `cprop`, `icfg` and `pta` are LIBRARIES -- nothing outside `src/flow/` calls them.
+    (`FInfeasibleBranch` and `FRedundantGuard` come from `src/walk/guardfacts.mbt`,
+    which carries its OWN private interval type and does not import `src/flow` at all.)
+  * A NEW FINDING FAMILY COSTS ELEVEN ARMS: the `Family` enum, `Family::name`,
+    `Family::id`, `family_by_id`, `all_families`, `Family::reach`, `Family::property`,
+    `Family::assumption`, `Family::excluded`, `Family::severity`, and
+    `Family::advice` -- plus a `None` entry in `src/report/predicate.mbt` -- and THREE
+    UNCONDITIONAL GATE RE-PINS (`check_family_roster.ps1`, `settle_0505_finding_quality.ps1`,
+    `settle_0507_bandit_transfers.ps1`).
+
+So a finding family is not this increment. What the deck's flow-sensitivity section
+needs is an ANALYSIS, and the framework that holds analyses is `src/flow` -- where
+`pta` already lives, next to the deck's own rule system.
+
+=> 判据: A NEW ANALYSIS IS NOT AUTOMATICALLY A NEW FINDING FAMILY. The taxonomy is a
+PUBLIC CONTRACT -- an id, a name, a severity, four prose contracts -- and every family
+in it is a claim to a user. The deck's flow-sensitivity section is a claim about how to
+COMPUTE, and it belongs in the library.
+
+### WHAT WAS BUILT
+
+`src/flow/pta_flow.mbt` is the flow-sensitive reading as a FIRST-CLASS analysis on the
+framework this package already has:
+
+    pta_map_lattice()   the lattice whose elements are POINTS-TO MAPS
+    pta_fs_step()       the deck's rules at one node, with STRONG updates
+    pta_fs_transfer_of() the (node, state) -> state function the solvers take
+    pta_run_flow_sensitive(g)  the state AFTER each node
+
+p.55's "a map of points-to relations at each program location" IS a lattice whose
+elements are points-to maps, joined key by key, and the deck's flow-sensitive reading IS
+a transfer that REPLACES a pointer's set instead of joining into it.
+
+`src/flow/pta_flow_test.mbt` is ten rows, and every one of them pins something the deck
+prints or a property the framework depends on:
+
+  * p.61-64's per-location table, one row per line of the program -- `c -> {o1}`,
+    then `o1.f -> {"x"}`, then `s -> {"x"}`, then `o1.f -> {"y"}`;
+  * p.68's flow-insensitive table for the SAME program, and p.69's false positive;
+  * the general analysis and the straight-line control agreeing on the deck's program --
+    two implementations of one question, checked against each other;
+  * a BRANCH, which is where the straight-line control stops and the analysis does not;
+  * a field pointer named by its OBJECT, so a store through one alias is seen by the
+    other;
+  * a loop that converges, with the head keeping what entered it;
+  * the two solvers agreeing, node for node;
+  * the precision claim's soundness side -- the flow-sensitive answer may be SMALLER but
+    never names an object the flow-insensitive one does not;
+  * the lattice's five laws over all sixteen two-pointer points-to maps;
+  * the transfer's MONOTONICITY over the same sixteen maps.
+
+### WHY A STRONG UPDATE IS SOUND HERE, WHICH IS NOT TRUE OF A STRONG UPDATE IN GENERAL
+
+The usual condition on a strong update is that the variable being overwritten is not
+aliased, because otherwise the old value survives somewhere else and dropping it loses a
+fact. Two properties of the deck's own DOMAIN make that condition unnecessary, and both
+come from p.97:
+
+    Pointer = V UNION (O x F)
+
+ 1. A VARIABLE'S OLD BINDING IS PRIVATE TO THE VARIABLE. `x = e` rebinds the NAME `x`;
+    it does not change any object. Another pointer `y` that pointed at the same object
+    still points at it, and its own set is untouched. The only thing the strong update
+    drops is `x`'s own previous binding, which the assignment has just replaced.
+
+ 2. A FIELD POINTER IS NAMED BY ITS OBJECT, NOT BY THE VARIABLE THAT REACHES IT.
+    `a.f` and `b.f` are the SAME pointer when `a` and `b` point at the same object,
+    because the key is `o.f`. A store through `a` is therefore visible through `b`,
+    which is what makes the strong update of a FIELD sound: there is exactly one
+    pointer per (object, field) pair, so nothing else can be holding a different
+    opinion about that field.
+
+=> 判据: A DOMAIN IS NOT BOOKKEEPING. p.97 reads as notation, and it is the thing that
+makes the strong update SOUND. A field keyed by the variable that reaches it
+(`a.f` rather than `o1.f`) would break property 2, and the analysis would then have to
+either give up the strong update on fields or be wrong. The deck's domain is load-bearing
+and the test pins the property, not just the answer.
+
+### THE TRANSFER IS THE FIRST ONE HERE THAT IS NOT A JOIN, AND IT IS STILL MONOTONE
+
+Every other transfer in this package only ever ADDS facts -- live variables, intervals,
+available expressions, and the flow-insensitive arm of p.98 -- and that is what lets the
+framework's solvers be plain ascending-chain iterations. This one REMOVES: after
+`c.f = "y"` the field holds "y" and not "x" as well.
+
+It is still monotone, because the transfer replaces ONE key and copies the rest: the
+ascending chain still works and the laws the solvers depend on still hold. But it is a
+different KIND of object from the four rules of p.98, and the difference is exactly the
+word on p.55. So the monotonicity is CHECKED (`pta_flow_test.mbt`, over all sixteen maps
+and every node) rather than inherited from the other transfers -- the other transfers
+cannot inherit it, because none of them removes anything.
+
+### THE RIGHT-HAND SIDE IS READ IN THE INCOMING STATE
+
+`x = x` and `x.f = x` both read the value `x` had BEFORE the statement, and an
+allocation's initialisers are read the same way: `A::{ b: v }` stores `v` into the fresh
+object, and `v` is whatever it was before the allocation. So the transfer takes the
+INCOMING map for its right-hand sides and builds a NEW map for its output. A transfer
+that read the outgoing map would compute `x = x` as the empty set.
+
+### WHAT IS NOT MODELLED, NAMED RATHER THAN LEFT TO BE DISCOVERED
+
+  * CALLS. p.88's fifth statement kind is still the one this attachment withholds
+    (p.96 defers it to a section the file does not contain), so a call contributes no
+    objects and binds nothing. That is also what makes the strong update of a variable
+    sound inside a body: no callee can observe a binding this analysis does not pass.
+  * A METHOD'S RECEIVER. `self` is a parameter like any other and nothing binds it to
+    the object a call would pass. The deck's own p.21-25 table shows `this` in the
+    points-to relation, and that table is about a method CALL.
+  * `array[i]` IS ONE FIELD `arr` (p.86), so two writes into one array are
+    indistinguishable. That is the deck's own instruction, and flow sensitivity does not
+    refine it: the two writes are at DIFFERENT locations and the deck collapses them
+    anyway.
+  * A STATEMENT THE GRAPH DID NOT CONVERT. `Cfg.skipped` counts them, and a skipped
+    statement is a read this analysis cannot see -- so a caller that wants a claim about
+    a function has to check `skipped == 0` first, exactly as `dead_stores` does for the
+    dead-store family.
+
+### ONE BUG, AND IT WAS THE BACKWARDS-KIND OF ONE
+
+The first version of the test helper read the state at the LAST INDEX of the state
+array. Every row that used it failed with an EMPTY string, and the reason is the trap
+`pta_source_order` exists to undo: `cfg_of` allocates nodes BACK TO FRONT, so the last
+index is the ENTRY, whose state is the empty map. The graph carries `exit` for this, and
+the helper now asks the graph.
+
+=> 判据: A TEST THAT FAILS WITH AN EMPTY STRING HAS NOT FOUND A WRONG ANSWER, IT HAS
+FOUND A MISSING LOOKUP. Five rows failing with `""` against the deck's own tables is a
+different fact from five rows failing with the wrong objects, and reading it as the
+second would have sent the search into the analysis instead of into the harness.
+
+### TWO GAPS THIS INCREMENT CLOSED, BOTH FOUND BY LOOKING AT THE PINS
+
+**1. THE EIGHT-TREE SPLIT IS NOW GATED.** 0547 recorded the gap in these words: "the
+EIGHT-TREE split is not -- `check_readme_links.ps1` checks the total and the own-source
+pair, and the '3,402 + 16,214' sentence is prose no gate reads. It was measured here by
+a script that mirrors the corpus stage, and that script is in `%TEMP%`, not in the
+repository. The next increment that moves it will have to measure it again."
+
+THIS INCREMENT IS THAT NEXT INCREMENT: two new files moved the own-source half of the
+split, so a number 0547 could not gate became a number that needed a gate. The corpus
+stage ALREADY reads each tree's `NOTICES` table for its own reconciliation, so the split
+is summed there -- over the same seven corpora AND this repository's own source -- and
+checked against a pin. It is ALSO checked against the TOTAL, because a split that does
+not add up to the total is two numbers that happen to be printed next to each other.
+
+A script in `%TEMP%` is a measurement the next increment has to REINVENT, and reinventing
+it is how a published number ends up quoted from a mechanism nobody can reproduce.
+
+**2. THE README'S FAMILY TABLES WERE NEVER COMPARED TO THE CODE.** `MSA-015`
+(`DeadStore`) was missing from BOTH READMEs' family id tables for a whole release, and
+nothing said so, because every gate compared the code's roster with ITSELF:
+`check_family_roster.ps1` reads `Family::id` and `family_by_id` out of `src/core/core.mbt`
+and checks they are exact inverses -- a real check, but one that cannot see a table in a
+README that is not in the code. The published table and the code's roster were two tables
+written down twice, and nothing compared THEM.
+
+`check_readme_links.ps1` now reads the ids and names out of BOTH READMEs and asserts
+that the set of families each table names is the set `all_families()` returns, in BOTH
+directions -- a stale row is as wrong as a missing one. The roster comes from THE CODE,
+so a family added to the code and forgotten in the README is a gate failure that names
+the family, not a reader's discovery.
+
+THE FIRST VERSION OF THAT CHECK REPORTED A FALSE FAILURE, and the reason is worth
+recording: it matched `=> "..."` over the WHOLE of `core.mbt` and picked up
+`merge_group`'s arms as well -- `FUndefinedName => "undef"` and `FCondBool => "cond"` --
+so it believed the family `UndefinedName` was named "undef" and called the README's own
+correct row a mismatch. The matchers are now scoped to their own functions.
+
+=> 判据: A GATE THAT FAILS ON A TRUE STATEMENT IS A GATE THAT GETS DISABLED, AND A
+DISABLED GATE IS A COMMENT. So the false failure is fixed at the MATCHER, not by
+loosening the check -- and the negative control is part of the record: the row was
+removed from the README and the gate went red with `MISSING 1 family row(s): MSA-015|
+DeadStore` naming the exact family.
+
+### THE NUMBERS, ALL RE-MEASURED
+
+The own-source numbers moved because two files were added, and every pin that covers
+them moved WITH the measurement:
+
+    own-source files            204 -> 206
+    own-source notices          1679 -> 1693
+    own-source printed          133 -> 137
+    own-source aggregated       1546 -> 1556
+    eight-tree notices          19616 -> 19630
+    eight-tree split            3402 + 16214 -> 3406 + 16224
+    suppression-off UnusedLocal  586 -> 587
+    suppression-off UnusedParam 1152 -> 1152   (unchanged)
+    tests on wasm               1458 -> 1468
+    tests on js / wasm-gc       1322 -> 1332
+
+The suppression-off pin moved by ONE and for the reason 0544, 0545 and 0546 each
+recorded: the new file reads `sites` only INSIDE a closure, and the region suppression
+cannot see a read inside an anonymous function literal. The corpora did not move at all
+-- not one of the seven changed by a single notice -- which is what says the movement is
+this package's own source and not the analyzer changing its mind about other people's
+code.
+
+### WHAT THIS DOES NOT DO
+
+  * NO FINDING FAMILY. Nothing emits, so no corpus SUMMARY moves and no roster changes.
+    Whether "this pointer can only point at one object" should speak is an increment of
+    its own, with its own audit: the family mechanism costs eleven arms in `core.mbt`,
+    a roster pin, both README family tables, the census list and a re-pin of every
+    corpus.
+  * NO METHOD CALLS. p.90-91's `Call` is the fifth statement kind and p.96 defers it to a
+    section this attachment does not contain. Nothing is passed into or out of a call.
+  * NOT A FINDING-GATE PINS CHANGE FOR THE CORPORA. The seven corpus SUMMARYs are
+    unchanged, MEASURED, and the eight-tree split is now checked rather than asserted.

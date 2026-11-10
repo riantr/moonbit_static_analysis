@@ -520,6 +520,110 @@ foreach ($f in @('README.md','README.zh.md')) {
 }
 
 Write-Output ''
-if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections and counts all check out.'; exit 0 }
+Write-Output '=== 7. the family id tables name every family the code has ==='
+# WHY THIS CHECK EXISTS, AND WHAT IT COSTED TO LEARN. The READMEs publish the
+# family roster as a TABLE -- an id and a name per family -- and for a whole
+# release that table was missing `MSA-015` (`DeadStore`), a family that exists
+# in the code and fires on real code. Nothing said so, because every other gate
+# compared the code's roster with ITSELF: `check_family_roster.ps1` reads
+# `Family::id` and `family_by_id` out of `src/core/core.mbt` and checks that
+# they are exact inverses, and that is a real check -- but it cannot see a table
+# in a README that is not in the code. The published table and the code's roster
+# were two tables written down twice, and nothing compared THEM.
+#
+# So the comparison is made here, and the roster comes from THE CODE rather than
+# from a list written down here: `all_families()` is read out of
+# `src/core/core.mbt`, along with each family's id and name. A family added to
+# the code and forgotten in the README is then a failure with the family's own
+# name in the message -- which is the difference between a gate failure and a
+# reader's discovery.
+#
+# THE MATCHER IS THE TABLE ROW, not the whole document. The ids and the names
+# appear in prose too (`--explain MSA-011`, the `nosec` paragraphs), and a
+# matcher over the whole file would count those as table rows and pass a table
+# that is missing a family. So the rows are the lines that look like table
+# rows: a pipe, an `MSA-NNN` in backticks, and a name in backticks.
+#
+# The check is in BOTH directions, because a table with a family that does not
+# exist is just as wrong as a table missing one -- and a stale row is how a
+# renamed family survives in the published document.
+$coreTxt = [System.IO.File]::ReadAllText((Join-Path $root 'src\core\core.mbt'), [System.Text.Encoding]::UTF8)
+# The id table: `FParse => "MSA-001"` and the name table: `FParse => "ParseError"`.
+#
+# BOTH ARE SCOPED TO THEIR OWN FUNCTION, and the scoping is not tidiness. The
+# first version of this check matched `=> "..."` over the WHOLE file, and it
+# picked up `merge_group`'s arms as well -- `FUndefinedName => "undef"` and
+# `FCondBool => "cond"` -- so the roster it built said the family `UndefinedName`
+# was named "undef" and the gate reported the README's own correct row as a
+# mismatch. A matcher that is too wide produces a FALSE failure, and a gate that
+# fails on a true statement is a gate that gets disabled.
+$idM = [regex]::Match($coreTxt, '(?s)pub fn Family::id\(self : Family\)\s*->\s*String\s*\{(.*?)\n\}')
+$nameM = [regex]::Match($coreTxt, '(?s)pub fn Family::name\(self : Family\)\s*->\s*String\s*\{(.*?)\n\}')
+if (-not $idM.Success -or -not $nameM.Success) {
+  Write-Output '  FAIL: could not read Family::id / Family::name out of src/core/core.mbt -- the check has nothing to compare against.'
+  $fail++
+}
+$idOf = @{}
+foreach ($m in [regex]::Matches($idM.Groups[1].Value, '(?m)^\s*(F[A-Za-z0-9]+)\s*=>\s*"(MSA-\d+)"')) {
+  $idOf[$m.Groups[1].Value] = $m.Groups[2].Value
+}
+$nameOf = @{}
+foreach ($m in [regex]::Matches($nameM.Groups[1].Value, '(?m)^\s*(F[A-Za-z0-9]+)\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"')) {
+  $nameOf[$m.Groups[1].Value] = $m.Groups[2].Value
+}
+# THE ROSTER, read from `all_families()`, so the expectation is the CODE's list
+# and not a copy of it. The function's body is a bracketed list of the tags.
+$rosterM = [regex]::Match($coreTxt, '(?s)pub fn all_families\(\)\s*->\s*Array\[Family\]\s*\{(.*?)\}')
+if (-not $rosterM.Success) {
+  Write-Output '  FAIL: could not read all_families() out of src/core/core.mbt -- the check has nothing to compare against.'
+  $fail++
+} else {
+  $roster = @()
+  foreach ($m in [regex]::Matches($rosterM.Groups[1].Value, 'F[A-Za-z0-9]+')) { $roster += $m.Value }
+  Write-Output ('  the code has ' + $roster.Count + ' families')
+  $expected = @()
+  foreach ($tag in $roster) {
+    if (-not $idOf.ContainsKey($tag) -or -not $nameOf.ContainsKey($tag)) {
+      Write-Output ('  FAIL: ' + $tag + ' has no id or no name in core.mbt, so the READMEs cannot be checked against it.')
+      $fail++
+    } else {
+      $expected += ($idOf[$tag] + '|' + $nameOf[$tag])
+    }
+  }
+  foreach ($f in @('README.md','README.zh.md')) {
+    $p = Join-Path $root $f
+    $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+    $lines = $txt -split "`r?`n"
+    $rows = @()
+    foreach ($l in $lines) {
+      # A table row: it starts with a pipe, and it carries an `MSA-NNN` in
+      # backticks. Every cell of the row is read, so a two-pair row counts both
+      # of its families.
+      if ($l -notmatch '^\s*\|') { continue }
+      foreach ($m in [regex]::Matches($l, '`(MSA-\d+)`\s*\|\s*`([A-Za-z][A-Za-z0-9]*)`')) {
+        $rows += ($m.Groups[1].Value + '|' + $m.Groups[2].Value)
+      }
+    }
+    $missing = @($expected | Where-Object { $rows -notcontains $_ })
+    $extra = @($rows | Where-Object { $expected -notcontains $_ })
+    if ($missing.Count -eq 0 -and $extra.Count -eq 0) {
+      Write-Output ("  {0,-14} names all {1} families  OK" -f $f, $expected.Count)
+    } else {
+      if ($missing.Count -gt 0) {
+        Write-Output ("  {0,-14} MISSING {1} family row(s):" -f $f, $missing.Count)
+        foreach ($m in $missing) { Write-Output ('      ' + $m) }
+        $fail += $missing.Count
+      }
+      if ($extra.Count -gt 0) {
+        Write-Output ("  {0,-14} has {1} row(s) the code does not have:" -f $f, $extra.Count)
+        foreach ($e in $extra) { Write-Output ('      ' + $e) }
+        $fail += $extra.Count
+      }
+    }
+  }
+}
+
+Write-Output ''
+if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts and family tables all check out.'; exit 0 }
 Write-Output ("VERIFY FAILED: " + $fail + " problem(s).")
 exit 1

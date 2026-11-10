@@ -381,7 +381,22 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19616'
+$NOTICE_TOTAL = '19630'
+# 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
+# these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
+# the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
+# no gate reads. It was measured here by a script that mirrors the corpus
+# stage, and that script is in `%TEMP%`, not in the repository. The next
+# increment that moves it will have to measure it again."
+#
+# THIS INCREMENT IS THAT NEXT INCREMENT: two new files moved the own-source half
+# of the split, so the number 0547 could not gate became a number that needed a
+# gate. It is measured in the corpus stage -- which already reads each tree's
+# `NOTICES` table -- and it is checked against the TOTAL as well, because a
+# split that does not add up to the total is two numbers that happen to be
+# printed next to each other.
+$NOTICE_SPLIT_PRINTED = '3406'
+$NOTICE_SPLIT_AGGREGATED = '16224'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -400,10 +415,10 @@ $NOTICE_TOTAL = '19616'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '204'
-$SELF_NOTICES = 'test declaration=1458|if expression=95|struct declaration=60|anonymous function literal=29|enum declaration=18|const declaration=7|short lambda=8|type declaration=3|try expression=1'
-$SELF_PRINTED = '133'
-$SELF_AGGREGATED = '1546'
+$SELF_FILES = '206'
+$SELF_NOTICES = 'test declaration=1468|if expression=95|struct declaration=60|anonymous function literal=33|enum declaration=18|const declaration=7|short lambda=8|type declaration=3|try expression=1'
+$SELF_PRINTED = '137'
+$SELF_AGGREGATED = '1556'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -452,7 +467,7 @@ $SELF_AGGREGATED = '1546'
 # not move at all: every one of the seven reads exactly what it read before 0546,
 # which is what says the movement is this package's own source and not the lint
 # changing its mind about other people's code.
-$SUPPOFF_LOCAL = '586'
+$SUPPOFF_LOCAL = '587'
 $SUPPOFF_PARAM = '1152'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
@@ -479,6 +494,8 @@ if ([string]::IsNullOrWhiteSpace($SELF_PRINTED))  { $emptyPins += 'SELF_PRINTED'
 if ([string]::IsNullOrWhiteSpace($SELF_AGGREGATED)) { $emptyPins += 'SELF_AGGREGATED' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_LOCAL)) { $emptyPins += 'SUPPOFF_LOCAL' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_PARAM)) { $emptyPins += 'SUPPOFF_PARAM' }
+if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_PRINTED)) { $emptyPins += 'NOTICE_SPLIT_PRINTED' }
+if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_AGGREGATED)) { $emptyPins += 'NOTICE_SPLIT_AGGREGATED' }
 if ($emptyPins.Count -gt 0) {
   Write-Output ('FATAL: the pins ' + ($emptyPins -join ', ') + ' are empty.')
   Write-Output '  A gate that compares against an empty pin compares against nothing.'
@@ -1834,6 +1851,11 @@ if ($failed.Count -eq 0) {
   Stage 'corpus SUMMARY vs pinned baseline' {
     $drift = 0
     $parseErr = $script:selfNotices
+    # 0550. The eight-tree SPLIT, accumulated over the same seven corpora and
+    # this repository's own source. The own-source half starts at the self-scan
+    # stage's numbers, because that stage measured them already.
+    $splitPrinted = $script:selfPrinted
+    $splitAggregated = $script:selfAggregated
     foreach ($k in $TARGETS.Keys) {
       $p = Join-Path $repos $TARGETS[$k]
       if (-not (Test-Path $p)) { Write-Output ("  [ABSENT] {0,-16}" -f $k); $drift++; continue }
@@ -1880,6 +1902,8 @@ if ($failed.Count -eq 0) {
         $drift++
       }
       $parseErr += $nt
+      $splitPrinted += $tab.Printed
+      $splitAggregated += $tab.Aggregated
       $want = $PINNED[$k]
       if ($sum -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $k, $sum) }
       else {
@@ -1898,6 +1922,37 @@ if ($failed.Count -eq 0) {
       $drift++
     } else {
       Write-Output ('  [MATCH ] the eight trees carry ' + $parseErr + ' notices')
+    }
+    # 0550. THE EIGHT-TREE SPLIT IS PINNED NOW, and the gap it closes is named
+    # in 0547: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
+    # the total and the own-source pair, and the '3,402 + 16,214' sentence is
+    # prose no gate reads. It was measured here by a script that mirrors the
+    # corpus stage, and that script is in `%TEMP%`, not in the repository."
+    #
+    # A script in `%TEMP%` is a measurement that the next increment has to
+    # REINVENT, and reinventing it is how a published number ends up quoted
+    # from a mechanism nobody can reproduce. The corpus stage ALREADY has every
+    # number this needs -- it reads each tree's `NOTICES` table for the
+    # reconciliation above -- so the split is summed here, over the same seven
+    # corpora AND this repository's own source, and checked against a pin.
+    #
+    # IT IS A SPLIT AND NOT A SECOND TOTAL, and the two are checked against
+    # each other: printed + aggregated must be the eight-tree notice total. A
+    # pin on the split alone could be satisfied by two numbers that do not add
+    # up to the total, and the total alone says nothing about the split.
+    if ("$splitPrinted" -ne $NOTICE_SPLIT_PRINTED -or "$splitAggregated" -ne $NOTICE_SPLIT_AGGREGATED) {
+      Write-Output ('  [DRIFT ] the eight trees split into ' + $splitPrinted + ' printed and ' + $splitAggregated +
+                    ' aggregated, pinned ' + $NOTICE_SPLIT_PRINTED + ' / ' + $NOTICE_SPLIT_AGGREGATED + '.')
+      $drift++
+    } else {
+      Write-Output ('  [MATCH ] the eight trees split into ' + $splitPrinted + ' printed and ' + $splitAggregated + ' aggregated')
+    }
+    if (($splitPrinted + $splitAggregated) -ne $parseErr) {
+      Write-Output ('  [DRIFT ] the eight-tree split ' + $splitPrinted + ' + ' + $splitAggregated +
+                    ' is not the ' + $parseErr + ' notices.')
+      $drift++
+    } else {
+      Write-Output ('  the eight-tree split adds up to the eight-tree total (' + $parseErr + ')')
     }
     if ($drift -eq 0) { return }
     if ($AllowCorpusDrift) { Write-Output '  (-AllowCorpusDrift: drift reported, not failed)'; return }

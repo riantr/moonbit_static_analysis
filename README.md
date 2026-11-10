@@ -478,6 +478,7 @@ allocated once and **never renumbered**, so it survives a rename:
 | `MSA-005` | `ParamChanged` | `MSA-011` | `Unreachable` |
 | `MSA-006` | `AssignTypeMismatch` | `MSA-012` | `StaleNosec` |
 | `MSA-013` | `InfeasibleBranch` | `MSA-014` | `RedundantGuard` |
+| `MSA-015` | `DeadStore` | | |
 
 The ids are hand-allocated on purpose — deriving one from the enum's position would
 renumber every family after an insertion, which is the one thing an id must never do —
@@ -485,6 +486,14 @@ and `_verify/check_family_roster.ps1` **checks** the table: one id per family, n
 twice, the ids a contiguous run from `MSA-001`, and the inverse table (id → family) the
 exact reverse of the forward one. Two tables written down twice will disagree eventually,
 and a disagreement between them is invisible, so a gate compares them.
+
+**AND THIS TABLE IS CHECKED AGAINST THE CODE TOO**: `MSA-015` (`DeadStore`,
+the dead-store family) was missing from this table for a whole release, and nothing said
+so, because every gate compared the code's roster with itself and this table was prose.
+`_verify/check_readme_links.ps1` now reads the ids and names out of **both** READMEs and
+asserts that the set of families each table names is the set `all_families()` returns — so
+a family that exists in the code and is missing from the table is a **gate failure**, not
+a reader's discovery.
 
 **THE PROFILE SELECTS FAMILIES BY ID**, and it is checked before the scan runs: an id this
 version does not know is a `WARNING` and the scan still runs; an id that is both included
@@ -552,21 +561,21 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (204 files), with the per-file printing cap lifted so the count is the
+project's own source (206 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1458 | | `const` declaration | 7 |
+| `test` declaration | 1468 | | `const` declaration | 7 |
 | `if` expression | 95 | | `short lambda` | 8 |
 | `struct` declaration | 60 | | `type` declaration | 3 |
-| `anonymous function literal` | 29 | | `try` expression | 1 |
+| `anonymous function literal` | 33 | | `try` expression | 1 |
 | `enum` declaration | 18 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **133** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1546** sit outside every function's
+**position**: **137** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1556** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -599,10 +608,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,616** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,630** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,402** of them as printed per line and
-**16,214** as aggregated — which is 3,402 + 16,214 = 19,616, the same number — and the 3,402
+says so itself: its `NOTICES` table counts **3,406** of them as printed per line and
+**16,224** as aggregated — which is 3,406 + 16,224 = 19,630, the same number — and the 3,406
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -625,12 +634,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **586** `UnusedLocal` and **1,152** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 204 files the notice table
+the tool produces **587** `UnusedLocal` and **1,152** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 206 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **585** locals and **1,152** parameters, and the per-binding
+suppression is hiding **586** locals and **1,152** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -781,11 +790,30 @@ available before the program starts), and the three ways this goes silently wron
 a missing entry case, and a meet whose accumulator identity is ∅ — are each pinned by a test in
 `src/flow/avail_test.mbt`.
 
+**AND A FOURTH KIND OF ANALYSIS: ONE THAT REMOVES A FACT.** Pointers-to analysis
+(`src/flow/pta.mbt`) asks which objects a pointer can point to, and the framework carries it
+twice. The flow-insensitive reading — one map of points-to relations for the whole program —
+is the one the source is written in, and the flow-sensitive one keeps a map **at each program
+location** and **replaces** a pointer's set when it is written instead of joining into it. That
+is the first transfer in this package that is not a join, and it is still monotone, so it
+still runs on the same solver. Its soundness rests on the pointer domain: a variable's old
+binding is private to the variable, and a field pointer is named by its **object** (`o1.f`),
+so there is exactly one pointer per (object, field) pair and nothing else can hold a
+different opinion about that field. `src/flow/pta_flow_test.mbt` pins the tables the source
+deck prints for one program, in both readings, and checks the two solvers agree on it.
+
+### The two solvers are checked against each other, and so is the lattice
+
+`src/flow/laws_test.mbt` enumerates every element of the two finite lattices and checks the
+five lattice laws and the transfer's **monotonicity** — the precondition the fixed-point
+theorem needs, and the one property a lattice's three closures cannot guarantee. The
+points-to map lattice is checked the same way.
+
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1458/1458 on wasm; 1322/1322 on js and wasm-gc
+moon test --deny-warn                # 1468/1468 on wasm; 1332/1332 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
