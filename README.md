@@ -904,18 +904,18 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 197 files, 898 functions, 7,051
-instructions of 3AC — the same measurement gives **793** variables becoming **1,962** versions,
+would need **16** copies. Over this project's own source — 200 files, 906 functions, 7,071
+instructions of 3AC — the same measurement gives **795** variables becoming **1,964** versions,
 **708** phi-functions and **1,751** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=200	unreadable=0	functions=903	converted=3	partial=900	declined=4884	…
+SSA-COST	files=200	unreadable=0	functions=906	converted=3	partial=903	declined=4889	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (4,880
+number: the files read, the functions measured, and the statements the lowering declined (4,889
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification

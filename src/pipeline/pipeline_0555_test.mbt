@@ -22,6 +22,11 @@
 // is the half that matters -- a fix that silenced the family would pass the
 // four shape tests and would be a fix that removes the tool's claim instead of
 // correcting it.
+//
+// The sixth row is the THIRD MECHANISM -- a `match`'s arms -- which 0555
+// pinned as a defect and 0557 FIXED. That row asserts the fix now, and it is
+// kept rather than deleted for 0524's reason: a deleted test cannot catch the
+// defect coming back.
 
 ///|
 /// Count findings of one family by its stable id.
@@ -84,13 +89,13 @@ test "0555: the control -- code that really is unreachable is still reported" {
 }
 
 ///|
-/// THE THIRD MECHANISM, PINNED AS A DEFECT AND NOT AS A FEATURE.
+/// THE THIRD MECHANISM -- FIXED IN 0557, AND THIS ROW NOW ASSERTS THE FIX.
 ///
 /// A `match`'s arms are NOT evaluated by the behavioral lens -- 0469 and 0502
 /// decided that on purpose, because the lens has no notion of which arm a
 /// subject selects and evaluating one would be evaluating a path that may not
-/// happen. The consequence is that a variable assigned ONLY inside an arm
-/// reads as DEFINITELY unassigned after the match:
+/// happen. The consequence was that a variable assigned ONLY inside an arm
+/// read as DEFINITELY unassigned after the match:
 ///
 ///     let mut plain = false
 ///     if t > 0 {
@@ -103,22 +108,36 @@ test "0555: the control -- code that really is unreachable is still reported" {
 ///     match st { ... }        // reported UNREACHABLE -- wrongly
 ///
 /// MEASURED on this project's own source, `src/parser/parser.mbt:4221` in
-/// `Parser::c_for_init` -- the tail `match st.kind` is reported unreachable,
+/// `Parser::c_for_init` -- the tail `match st.kind` was reported unreachable,
 /// and it is reached on the path where `plain_decl` is true.
 ///
-/// THIS IS NOT THE DEFECT 0555 FIXED. The defect 0555 fixed was the `if`'s
-/// PATH JOIN: the fall-through path was missing from it, and an alternative
-/// branch started from the then-branch's environment. Both are fixed and
-/// pinned above. THIS ONE is the modelling limit underneath: the arm never
-/// runs, so its write never happens.
+/// THIS ROW USED TO ASSERT THE WRONG ANSWER ON PURPOSE, and its own
+/// instruction was to be deleted when it went red. It went red in 0557. It is
+/// kept and INVERTED rather than deleted, for 0524's reason: the defect is
+/// exactly the kind that comes back -- a regression here is silent, and a
+/// deleted test cannot catch it.
 ///
-/// THIS ROW ASSERTS THE WRONG ANSWER ON PURPOSE, and it is the audit's
-/// record: the over-report exists, it is anchored on a line the next caller
-/// runs, and the family's `excluded` contract now names it. WHEN THIS GOES
-/// RED, the defect has been fixed -- delete this test, update NARRATIVE 0555,
-/// and remove the `excluded` clause that names it. 0524's row, same rule.
-test "0555: a match arm that is never evaluated still over-reports (NOT YET FIXED)" {
+/// 0557's rule, and it is NOT "evaluate the arms": what an arm's body MAY
+/// WRITE is collected SYNTACTICALLY -- the names, and nothing else -- and a
+/// name an arm writes is no longer definitely known after the match. The arms
+/// are still not evaluated, so 0469 and 0502 stand: an arm's READS are not
+/// evaluated either, and an arm's `return` still does not make the match
+/// return.
+test "0555: a match arm that is never evaluated no longer over-reports (FIXED in 0557)" {
+  // THE SHAPE 0555 PINNED. The published 0.4.45 artifact reports it -- one
+  // MSA-011, on the tail `match` -- and this build reports none.
   let src = "fn k(t : Int) -> Int {\n  let mut plain = false\n  if t > 0 {\n    match t {\n      1 => plain = true\n      _ => ()\n    }\n  }\n  let st = t\n  if !plain {\n    return st\n  }\n  match st {\n    1 => 1\n    _ => 2\n  }\n}\nlet m = k(1)\n"
   let r = @pipeline.run(src, "u.mbt", empty_iface())
-  assert_eq(count0555(r.reports, "MSA-011"), 1)
+  assert_eq(count0555(r.reports, "MSA-011"), 0)
+  // THE NESTED SHAPE -- the one measured on this project's own source, where
+  // the write is in the arm of a match that is itself an arm.
+  let src2 = "fn p(t : Int) -> Int {\n  let mut plain_decl = false\n  if t > 0 {\n    match t {\n      1 =>\n        match t {\n          2 => plain_decl = true\n          _ => ()\n        }\n      _ => ()\n    }\n  }\n  if !plain_decl {\n    return t\n  }\n  match t {\n    1 => 1\n    _ => 2\n  }\n}\nlet m = p(1)\n"
+  let r2 = @pipeline.run(src2, "u.mbt", empty_iface())
+  assert_eq(count0555(r2.reports, "MSA-011"), 0)
+  // AND THE SAME RULE ON A `catch` ARM, whose body is not evaluated either.
+  // `moon check --target all` accepts all three sources: a fixture the
+  // toolchain rejects would be testing the wrong thing.
+  let src3 = "fn c(t : Int) -> Int {\n  let mut flag = false\n  let r = t catch {\n    _ => {\n      flag = true\n      0\n    }\n  }\n  if !flag {\n    return r\n  }\n  r + 1\n}\nlet m = c(1)\n"
+  let r3 = @pipeline.run(src3, "u.mbt", empty_iface())
+  assert_eq(count0555(r3.reports, "MSA-011"), 0)
 }

@@ -14550,13 +14550,23 @@ shapes that the defect reported wrongly, one CONTROL -- a statement after an unc
 `return` is still reported, because a fix that turned the family off would pass the other
 four -- and one row that pins the THIRD MECHANISM rather than a fix for it.
 
-THE THIRD MECHANISM IS PINNED, NOT FIXED. A `match`'s arms are not evaluated by this lens
--- 0469 and 0502 decided that on purpose, because the lens has no notion of which arm a
-subject selects -- so a value assigned only inside an arm reads as DEFINITELY unassigned,
-and a later `if` on it commits to one side. That is the remaining
-`src/parser/parser.mbt:4221`, and it is a MODELLING LIMIT rather than a join defect. Its
-row asserts the WRONG ANSWER ON PURPOSE, the way 0524's row did, so that the defect is
-pinned rather than described; the day the row goes red the defect is fixed.
+*** CORRECTED IN 0557. THE THIRD MECHANISM IS FIXED, AND THE PARAGRAPH BELOW WAS WRONG
+*** WHEN IT WAS WRITTEN. IT IS CORRECTED HERE, WHERE A READER OF 0555 ALONE WOULD FIND
+*** IT, AND NOT ONLY IN THE 0557 CHAPTER. ***
+
+THE THIRD MECHANISM WAS PINNED, NOT FIXED, AND 0557 FIXED IT. A `match`'s arms are not
+evaluated by this lens -- 0469 and 0502 decided that on purpose, because the lens has no
+notion of which arm a subject selects -- so a value assigned only inside an arm read as
+DEFINITELY unassigned, and a later `if` on it committed to one side. That was the remaining
+`src/parser/parser.mbt:4221`, and it was a MODELLING LIMIT rather than a join defect. Its
+row asserted the WRONG ANSWER ON PURPOSE, the way 0524's row did, so that the defect was
+pinned rather than described.
+
+THE ROW WENT RED IN 0557 -- which is the signal the row itself named -- and it was
+INVERTED rather than deleted, for 0524's reason: the defect is the kind that comes back,
+and a deleted test cannot catch it coming back. 0557's fix collects what an arm's body MAY
+WRITE -- the names, SYNTACTICALLY, without evaluating the arm -- and widens the names that
+are already bound. The 0557 chapter has the measurement, and the one pin that moved.
 
 THE NUMBERS, and the important part is what did NOT move.
 
@@ -14667,9 +14677,10 @@ sentence has cost something.
 
 ### WHAT IS NOT HERE, AND WHY
 
-  * NO FIX FOR THE THIRD MECHANISM, and the reason is a measurement rather than tidiness:
-    modelling a `match`'s arms means executing code that may not run, and the arms are not
-    evaluated today (0469, 0502). The row that pins it is the record.
+  * NO FIX FOR THE THIRD MECHANISM -- AND THIS BULLET WAS TRUE WHEN IT WAS WRITTEN AND IS
+    FALSE NOW. 0557 fixed it, and it did NOT execute a `match`'s arms: what an arm MAY
+    WRITE is collected syntactically and the names already bound are widened. The row that
+    pinned it went red, and it now asserts the fix.
   * NO CHANGE TO THE SEVEN CORPORA IN THE MODULE VIEW, and no change to any module-view
     corpus pin: their notice counts are unchanged, digit for digit. ONE corpus pin DID
     move -- the per-function census's demoted set, 21 -> 22 -- and the section above
@@ -14777,10 +14788,11 @@ when 0.4.46 ships. That is a release decision, and this increment does not make 
   * NO SOURCE CHANGE, and the measurement says so: not one of LunaFlow's 136 findings is a
     defect in this module. They are its false positives, and the 16 dead-code ones are the
     class this project already fixed on its own side.
-  * NO FIX FOR THE THIRD MECHANISM, and no new row for it. A `match`'s arms are still not
-    evaluated (0469, 0502), so a value assigned only inside an arm still reads as definitely
-    unassigned -- the remaining `src/parser/parser.mbt:4221`, still pinned by 0555's row
-    that asserts the wrong answer on purpose. The row says what to do when it goes red.
+  * NO FIX FOR THE THIRD MECHANISM -- AND THIS BULLET WAS TRUE WHEN IT WAS WRITTEN AND IS
+    FALSE NOW. 0557 fixed it, and the row this bullet names went red and was inverted: a
+    `match`'s arms are STILL not evaluated (0469, 0502), but what an arm MAY WRITE is now
+    collected syntactically and the names already bound are widened, so the remaining
+    `src/parser/parser.mbt:4221` is gone.
   * NO CHANGE TO ANY PIN, because no source changed: the seven corpora, the census, the
     own-source notice table and the SSA cost are all unchanged, digit for digit.
   * NO CHANGE TO THE PUBLISHED VERSION. This is an increment, and an increment does not move
@@ -14788,3 +14800,153 @@ when 0.4.46 ships. That is a release decision, and this increment does not make 
   * NO NEW GATE STAGE. What is pinned here is pinned by the record and by the two
     corrections, which are text in the chapter above; a stage that resolved a version of
     another package would have to fetch one, and the fetch is the network.
+
+## 0557: THE THIRD MECHANISM -- WHAT A MATCH ARM MAY WRITE, WITHOUT RUNNING IT
+
+THE ASK was to run `riantr/moonbit_static_analysis@latest` and `riantr/LunaFlow@latest`
+locally, and to revise the project on the result. Both were run. The result was ONE
+disagreement between the two tools, and it was OURS.
+
+### THE TWO PACKAGES, AS THEY ARE TODAY
+
+    riantr/LunaFlow@latest                  0.1.4
+    riantr/moonbit_static_analysis@latest   0.4.45
+
+LunaFlow 0.1.4 pointed at THIS repository's tree -- a clean `git worktree` of 68263b2, so
+that the untracked scratch under `_verify/` could not be counted -- reports:
+
+    files 199   functions 2416   statements 18228   unsupported 529
+    trace_events 29013   steps 4825   elapsed_ms 5870
+    dead_code 21   unreachable 0   infinite_loop 0   taint_sinks 98
+    range_vars 60   level 1
+    abstract_findings 0   vcs_proved 0   vcs_failed 0   vcs_unknown 0   slices 0
+
+And this analyzer, on the same bytes:
+
+    module view          0   MSA-011
+    per-function view    1   MSA-011, at src/parser/parser.mbt:4221
+
+ONE finding is the whole disagreement, and it is the over-report 0555 pinned rather than
+removed: a `match`'s arms are not evaluated, so a value assigned only inside an arm read as
+DEFINITELY unassigned, and the `if` that read it committed to one side.
+
+### TWO THINGS THE CROSS-CHECK MEASURED THAT ARE WORTH KEEPING
+
+**THE REGISTRY'S WASM IS NOT A CRIPPLED BUILD.** LunaFlow 0.1.4's published wasm asset and
+a local native build from the same 0.1.4 source produce THE SAME SUMMARY, item for item --
+files 185, functions 2243, statements 16713, unsupported 467, trace_events 28626, steps
+4660, dead_code 37, unreachable 0, taint_sinks 98, range_vars 57, level 1, and the five
+fields 0.1.4 added (all 0). The only difference is the clock: 749 ms for the wasm, 6,685 ms
+for the native build. So the artifact the registry serves is the same analyzer, and a
+difference between the two tools is a difference between the tools and not between their
+builds.
+
+**LUNAFLOW'S DEAD-CODE VERDICT IS NOT A FUNCTION OF THE FILE'S OWN BYTES.** The 16 dead-code
+findings at `src/parser/parser.mbt:2381` and `:3122` are present on the published 0.4.45
+tree and ABSENT on the current tree -- and `src/parser/parser.mbt` is byte-identical between
+the two, by SHA256, because nothing since 0.4.35 has touched it. A verdict that moves when
+a file that is NOT the one being judged moves is a verdict about the RUN and not about the
+file. That is a caveat on using LunaFlow as an oracle, and it is a measurement rather than
+an opinion.
+
+### THE FIX, AND WHY IT IS NOT "EVALUATE THE ARMS"
+
+The arms are still not evaluated. 0469 and 0502 decided that on purpose -- the lens has no
+notion of which arm a subject selects, and evaluating one would be evaluating a path that
+may not happen -- and 0502's reading of the arms found THIRTEEN false positives. Both
+reasons survive this fix.
+
+What 0557 does instead is the question a syntactic walk can answer: **what may an arm's
+body WRITE?**
+
+    arm_writes(body)   ->  the NAMES a body writes
+    expr_writes(e)     ->  the names an EXPRESSION's arms write -- a nested match, a
+                           catch, a noraise, a block used as a value
+    widen_arm_writes   ->  widen the names that are ALREADY BOUND, and add nothing
+
+Three properties, and each of them is a decision:
+
+  * **THE ARMS ARE NOT EXECUTED.** `arm_writes` collects names and nothing else: no reads,
+    no values, no flow. An arm's `return` still does not make the match return, and an
+    arm's reads are still not evaluated.
+  * **ONLY THE NAMES THAT ARE ALREADY BOUND ARE WIDENED.** A name the arms introduce and
+    nothing else binds stays UNBOUND after the match, because the arms do not run and
+    nothing binds it. Inventing the binding would silence the `undefined variable`
+    findings the corpus measures, and that is the direction of the error that hurts.
+  * **THE WIDENED VALUE IS THE WIDENED ONE** -- `widen`: a constant becomes its type. A
+    `false` becomes "a bool, not necessarily this one", which is the shape 0555's join
+    produces for two disagreeing constants.
+
+### THE MEASUREMENT, AND WHAT DID NOT MOVE
+
+This analyzer, on THIS repository's own tree, per-function view:
+
+    before 0557   1   src/parser/parser.mbt:4221
+    after 0557    0
+
+The module view was 0 before and is 0 after. So on THIS class the two tools now AGREE:
+LunaFlow says `unreachable 0`, and this analyzer says 0 in both views.
+
+EVERY PIN IN THE REPOSITORY, re-measured:
+
+    the seven corpora, module view        unchanged, digit for digit
+    the per-function census               actionable 28 (core 27, labeler 1)
+                                          demoted 22 (core 20, proton 2)
+    this repository's own source          218 files, 1,751 notices
+    the suppression-off pair              587 / 1,152
+    the `raise?` reach                    188 | 33, and 0 everywhere else
+    the match-arms gate                   GATE OK
+    the per-function census control       still red, for the reason it is red in 0556
+                                          (the toolchain's `moon` cannot type-check the
+                                          pinned core: abort/pkg.mbti:4)
+
+**ONE PIN MOVED, and it moved because THIS ANALYZER'S OWN SOURCE grew.** The SSA cost is
+measured over this project's own source, and the fix added three functions to
+`src/interp/interp.mbt`:
+
+    functions   903 -> 906
+    partial     900 -> 903
+    declined   4884 -> 4889
+
+and NOTHING else moved: the instructions (7,071), the variables (795), the versions (1,964),
+the phis (708), the copies (1,751), the dead blocks (358) and the undefined uses (884) are
+identical, digit for digit. That is what says the movement is three new functions and not
+the lowering changing its mind about the old ones.
+
+**AND A PUBLISHED NUMBER THAT WAS STALE.** The README's prose paraphrase of that line said
+"197 files, 898 functions, 7,051 instructions ... 793 variables becoming 1,962 versions ...
+4,880 declined", while the line it paraphrases said 200 / 903 / 7,071 / 795 / 1,964 / 4,884.
+Nothing checked the prose, so it drifted. It is corrected here and in `README.zh.md`, and
+the correction is recorded because a published number that is not re-measured is a number
+that is wrong.
+
+### THE REGRESSION ROW, AND WHY IT IS INVERTED RATHER THAN DELETED
+
+0555's row asserted the wrong answer on purpose and said what to do when it went red: "delete
+this test, update NARRATIVE 0555, and remove the `excluded` clause that names it". It went
+red in 0557. It was INVERTED rather than deleted, for 0524's reason, which is written down
+in `src/pipeline/pipeline_0524_test.mbt`: the defect is exactly the kind that comes back, a
+regression here is silent, and a deleted test cannot catch it.
+
+The row now carries three shapes -- the one 0555 pinned, the NESTED one measured on this
+project's own source (`src/parser/parser.mbt:4204`, where the write is in the arm of a
+match that is itself an arm), and the same rule on a `catch` arm -- and `moon check --target
+all` accepts all three sources. The published 0.4.45 artifact reports all three, one MSA-011
+each, in both views, so the row is not vacuous: reverting the fix turns it red.
+
+`src/core/core.mbt`'s `excluded` clause and `property` for `FUnreachable` named the
+over-report and said the day the row goes red the defect is fixed. They now say it is fixed.
+
+### WHAT IS NOT HERE, AND WHY
+
+  * NO EVALUATION OF A MATCH'S ARMS. The arms are still not run, and 0469 and 0502 stand.
+  * NO NEW NAME IN THE ENVIRONMENT. A name the arms introduce and nothing else binds is
+    still unbound after the match.
+  * NO CHANGE TO THE SEVEN CORPORA, and no change to any corpus pin. The fix does not move
+    one of them, and that is the measurement that says the fix is narrow.
+  * NO CHANGE TO THE PUBLISHED VERSION. This is an increment, and an increment does not move
+    the version. The defect was in the PUBLISHED 0.4.45 as well -- it was measured there --
+    so the fix reaches a user only when 0.4.46 ships, and that is a release decision this
+    increment does not make.
+  * NO NEW GATE STAGE. The fix is pinned by the test suite, and the measurement above is
+    the record.

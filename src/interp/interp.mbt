@@ -654,6 +654,138 @@ fn widen_all(e : Map[String, AbsVal]) -> Map[String, AbsVal] {
 }
 
 ///|
+/// The names an arm body MAY WRITE.
+///
+/// 0557. The arms of a `match` (and of a `catch` / `noraise`) are not
+/// EVALUATED -- 0469 and 0502 decided that on purpose, because the lens has no
+/// notion of which arm a subject selects and evaluating one would be
+/// evaluating a path that may not happen. The consequence was that a name
+/// written ONLY inside an arm read as DEFINITELY unassigned after the
+/// construct:
+///
+///     let mut plain_decl = false
+///     match toks[i] {
+///       TName(_) => match toks[i + 1] {
+///         TAssign => plain_decl = true
+///         _ => ()
+///       }
+///       _ => ()
+///     }
+///     if !plain_decl { return st }
+///     match st.kind { .. }     // reported UNREACHABLE -- wrongly
+///
+/// THE FIX IS NOT TO EVALUATE THE ARMS. It is to say what an arm's body MAY
+/// do to the environment, which is a SYNTACTIC question: this walk collects
+/// the NAMES a body writes and nothing else -- no reads, no values, no flow.
+/// A write inside an arm is a write that MAY happen, so a name an arm writes
+/// is not definitely known after the construct.
+///
+/// IT IS A WALK AND NOT AN EXECUTION, and that is what keeps 0469 and 0502
+/// intact: the arms' READS are still not evaluated (0502 measured 13 false
+/// positives from reading branch bodies), and the arms' control flow is still
+/// not modelled (an arm's `return` still does not make the match return).
+///
+/// THE NAMES A BODY WRITES, in this lens's FLAT scoping (see `SBlock`): a
+/// `let` binds in the same environment an assignment writes, because the
+/// lenses do not open a scope for a block.
+fn arm_writes(stmts : Array[@ast.Stmt], out : Array[String]) -> Unit {
+  for s in stmts {
+    match s.kind {
+      SLet(n, _, _) => out.push(n)
+      SLetDestruct(ns, _) =>
+        for n in ns {
+          out.push(n)
+        }
+      // Only a NAME target writes a binding. `x.f = v`, `x[i] = v` and
+      // `p.0 = v` reach THROUGH a base, and this lens models no struct, array
+      // or tuple value -- so there is no binding of theirs to widen.
+      SAssign(target, _) =>
+        match target.kind {
+          EName(n) => out.push(n)
+          _ => ()
+        }
+      SIf(_, then_body, elseifs, else_body) => {
+        arm_writes(then_body, out)
+        for ei in elseifs {
+          arm_writes(ei.body, out)
+        }
+        match else_body {
+          Some(b) => arm_writes(b, out)
+          None => ()
+        }
+      }
+      SWhile(_, body) => arm_writes(body, out)
+      SFor(_, _, _, body) => arm_writes(body, out)
+      SForUpdate(body) => arm_writes(body, out)
+      SNoBreak(loop_stmt, block) => {
+        arm_writes([loop_stmt], out)
+        arm_writes(block, out)
+      }
+      SBlock(body) => arm_writes(body, out)
+      SLocalFunc(_, _, _, body, _) => arm_writes(body, out)
+      SExpr(e) => expr_writes(e, out)
+      _ => ()
+    }
+  }
+}
+
+///|
+/// The names an EXPRESSION may write.
+///
+/// An expression writes a binding only through a construct whose bodies are
+/// statements -- a `match`, a `catch`, a `noraise`, a block used as an
+/// expression. Every other expression is a READ.
+fn expr_writes(e : @ast.Expr, out : Array[String]) -> Unit {
+  match e.kind {
+    EMatch(_, arms) =>
+      for arm in arms {
+        arm_writes(arm.body, out)
+      }
+    ECatch(_, arms) =>
+      for arm in arms {
+        arm_writes(arm.body, out)
+      }
+    ENoRaise(_, arms) =>
+      for arm in arms {
+        arm_writes(arm.body, out)
+      }
+    EBlock(body) => arm_writes(body, out)
+    _ => ()
+  }
+}
+
+///|
+/// Widen the names the arm bodies MAY write.
+///
+/// 0557. ONLY THE NAMES THAT ARE ALREADY BOUND ARE WIDENED. A name the arms
+/// introduce and nothing else binds stays UNBOUND after the construct: the
+/// arms are not executed, so nothing binds it, and inventing a binding would
+/// silence the `undefined variable` findings that the corpus measures.
+///
+/// The value becomes the WIDENED one (`widen`: a constant becomes its type),
+/// which is the same shape 0555's join produces for two disagreeing
+/// constants -- "a bool, not necessarily this one".
+///
+/// GLOBALS ARE NOT WIDENED. A module-level binding is not mutable in MoonBit,
+/// so an arm cannot write one; and a name that is only a global is not a
+/// local this lens tracks.
+fn widen_arm_writes(
+  bodies : Array[Array[@ast.Stmt]],
+  env : Map[String, AbsVal],
+) -> Unit {
+  let names : Array[String] = []
+  for body in bodies {
+    arm_writes(body, names)
+  }
+  for n in names {
+    match env.get(n) {
+      Some(v) => env.set(n, widen(v))
+      None => ()
+    }
+  }
+}
+
+///|
 /// Build the interpreter and register every method (from the signature
 /// table -- assembly point 2) plus the local-function names.
 ///
@@ -2059,8 +2191,22 @@ fn Interp::eval(
     // which arm a subject selects, so evaluating one of them would be evaluating a
     // path that may not happen. The arms' READS are counted by the structural walk,
     // which is where an unused binding is decided -- not here.
-    EMatch(subject, _) => {
+    EMatch(subject, arms) => {
       let _ = self.eval(subject, env)
+      // 0557. THE ARMS ARE NOT EVALUATED, AND WHAT THEY MAY WRITE IS STILL
+      // KNOWN. A name an arm writes is not definitely known after the match,
+      // because the arm may not be the one that is selected. Without this the
+      // name kept the value it had BEFORE the match, which is how a variable
+      // set inside an arm read as definitely unset -- and a statement after it
+      // was reported unreachable.
+      //
+      // See `arm_writes` for what is collected and `widen_arm_writes` for what
+      // is done with it.
+      let bodies : Array[Array[@ast.Stmt]] = []
+      for arm in arms {
+        bodies.push(arm.body)
+      }
+      widen_arm_writes(bodies, env)
       ABottom
     }
     // A tuple literal; `(e)` grouping is folded at parse time, so every
@@ -2151,16 +2297,29 @@ fn Interp::eval(
     // later condition takes. The arms are not evaluated: they are alternative
     // control paths, and the interpreter has no notion of which one an error
     // would select.
-    ECatch(base, _) => {
+    ECatch(base, arms) => {
       let _ = self.eval(base, env)
+      // 0557. The same rule as `EMatch`: the handler arms are not evaluated,
+      // and a name one of them writes is not definitely known afterwards.
+      let bodies : Array[Array[@ast.Stmt]] = []
+      for arm in arms {
+        bodies.push(arm.body)
+      }
+      widen_arm_writes(bodies, env)
       AAny
     }
     // `noraise { .. }` prunes for the same reason and on the same grounds as the
     // `catch` it is attached to: the base here is the `ECatch` node, so evaluating
     // it already evaluates the try expression, and a `noraise` block whose arms
     // are not modelled must not let a folded value decide a later branch either.
-    ENoRaise(base, _) => {
+    ENoRaise(base, arms) => {
       let _ = self.eval(base, env)
+      // 0557. The same rule as `EMatch`, for the same reason.
+      let bodies : Array[Array[@ast.Stmt]] = []
+      for arm in arms {
+        bodies.push(arm.body)
+      }
+      widen_arm_writes(bodies, env)
       AAny
     }
   }

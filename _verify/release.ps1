@@ -515,7 +515,17 @@ $SUPPOFF_PARAM = '1152'
 #                 files read, the functions measured, and the statements the
 #                 lowering declined. A number without its coverage is half a
 #                 number, and the coverage moves with every increment.
-$SSA_COST = 'files=200|unreadable=0|functions=903|converted=3|partial=900|declined=4884|instructions=7071|variables=795|versions=1964|phis=708|copies=1751|undef_operands=143|dead_blocks=358|undef_uses=884'
+#
+# 0557 MOVED IT, and the movement is the ANALYZER'S OWN SOURCE growing: the
+# fix for the third mechanism added three functions to `src/interp/interp.mbt`
+# (`arm_writes`, `expr_writes`, `widen_arm_writes`), so the measurement over
+# this project's own source sees three more functions (903 -> 906), three more
+# of them partial (900 -> 903) and five more statements the lowering declined
+# (4884 -> 4889). NOTHING ELSE MOVED: the instructions, the variables, the
+# versions, the phis, the copies, the dead blocks and the undefined uses are
+# identical, digit for digit -- which is what says the movement is three new
+# functions and not the lowering changing its mind about the old ones.
+$SSA_COST = 'files=200|unreadable=0|functions=906|converted=3|partial=903|declined=4889|instructions=7071|variables=795|versions=1964|phis=708|copies=1751|undef_operands=143|dead_blocks=358|undef_uses=884'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
