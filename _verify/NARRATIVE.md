@@ -14429,6 +14429,8 @@ The SSA cost moves because the tree it is measured over grew:
     does not exist`. That is a property of THAT package, not of this one, and
     the analyzer here scanned LunaFlow 0.1.3 perfectly well AS A TARGET:
     `files=26 parsed=25 actionable=1 notices=189 unreliable=11 ... total=201`.
+    (0556: LunaFlow 0.1.4 ships a prebuilt wasm, so `moonx` CAN run it now --
+    the statement above was true of 0.1.3 and is false of `@latest` today.)
 ## 0555: THE CROSS-CHECK -- ANOTHER ANALYZER, THE SAME TREE, AND A FALSE POSITIVE OF OUR OWN
 
 THE QUESTION THIS INCREMENT ANSWERS is not "what does another tool say about us". It is
@@ -14440,19 +14442,26 @@ analyzer, published on the same registry, which never compiles the module it ana
 parses the MoonBit source it is pointed at, executes a model of it, and writes one Markdown
 report.
 
-THE COMMAND, AND WHY IT CANNOT RUN AS WRITTEN:
+THE COMMAND, AND WHY IT DID NOT RUN AS WRITTEN -- AND WHY THAT IS NO LONGER TRUE.
+
+0555 ran it and got:
 
     moonx riantr/LunaFlow@latest riantr/moonbit_static_analysis@latest
 
     Error: Prebuilt wasm asset does not exist
 
-`moonx` is the registry runner and its `--target` takes `wasm` as its ONE possible value.
-LunaFlow 0.1.3 declares `supported_targets = "+native"`, because it reaches the filesystem
-and spawns `moon fetch` through `moonbitlang/async/fs` and `moonbitlang/async/process`, and
-those packages do not exist on the wasm, wasm-gc or js backends. LunaFlow's own README says
-the same thing and gives the native equivalent, which is what ran:
+`moonx` is the registry runner and its `--target` takes `wasm` as its ONE possible value, and
+LunaFlow 0.1.3 declares `supported_targets = "+native"` -- it reaches the filesystem and
+spawns `moon fetch` through `moonbitlang/async/fs` and `moonbitlang/async/process`, and
+those packages do not exist on the wasm, wasm-gc or js backends. So 0555 ran the native
+equivalent, which is what LunaFlow's own README gave as the substitute:
 
     moon run src/cli --target native -- analyze riantr/moonbit_static_analysis@latest --out reports
+
+CORRECTED 2026-11-11, and the correction IS the finding of increment 0556: LUNAFLOW 0.1.4
+SHIPS A PREBUILT WASM ASSET, so the command as written RUNS -- exit 0 -- and the report it
+writes is the one 0556 measured. What is written above was true of 0.1.3 and is false of
+`@latest` today. See 0556.
 
 MEASURED over the PUBLISHED 0.4.45 tree, LunaFlow 0.1.3 reports:
 
@@ -14463,12 +14472,23 @@ MEASURED over the PUBLISHED 0.4.45 tree, LunaFlow 0.1.3 reports:
 
 WHAT LUNAFLOW FOUND, AND WHY NONE OF IT IS TRUE. Its 37 DEAD-CODE findings are 21 in
 `src/flow/laws_test.mbt` (159-190, 217-220), 8 at `src/parser/parser.mbt:2381` and 8 at
-`:3122`; every one of them is a MULTI-LINE EXPRESSION -- the continuation lines of a
-`return "..." + show(a) + " and " + show(b)` -- read as a statement of its own after an
-unconditional exit. The 98 TAINT-INDEX findings are `chars[j]`-style reads whose bounds are
-provable from the guard above them (`while j < n`, `while j < cut`, `to - from == 2`), and
-the one BUDGET-EXCEEDED is `path_tail`'s `while j < n`, whose trip count is the input's
-length and not a non-termination. All 136 are false positives on our side of the line.
+`:3122`.
+
+CORRECTED 2026-11-11 (0556): THE ATTRIBUTION ABOVE WAS WRONG. It said "every one of them is
+a MULTI-LINE EXPRESSION", and that is true of the 21 in `laws_test.mbt` -- the continuation
+lines of a `return "..." + show(a) + " and " + show(b)` read as statements of their own after
+an unconditional exit -- and it is FALSE of the 16 in `src/parser/parser.mbt`. `:2381` is the
+field list of a struct literal and `:3122` opens the tuple-destructuring block; neither is a
+multi-line expression. Those 16 are reported because the `return` at `:2373` and the `break`
+at `:3108` -- an exit inside a NESTED block -- were treated as exits of the ENCLOSING block,
+so everything after them read as unreachable. THAT IS THE CLASS OF DEFECT 0555 FIXED ON OUR
+SIDE, and LunaFlow 0.1.4 still has it. The correction does not change the verdict: all 37
+are still false positives about our code.
+
+The 98 TAINT-INDEX findings are `chars[j]`-style reads whose bounds are provable from the
+guard above them (`while j < n`, `while j < cut`, `to - from == 2`), and the one
+BUDGET-EXCEEDED is `path_tail`'s `while j < n`, whose trip count is the input's length and
+not a non-termination. All 136 are false positives on our side of the line.
 
 THE COMPARISON THAT MATTERS. Our own analyzer, pointed at the SAME tree -- the same 203
 files, of which the same 185 are `.mbt` -- reported:
@@ -14670,3 +14690,101 @@ sentence has cost something.
     falsify the record. The one that read as a live pointer -- `run_top`'s `SFunc` skip,
     cited from `src/pipeline/pipeline_0429_test.mbt` -- was repointed at the line that
     holds it now.
+## 0556: THE CROSS-CHECK, RUN AGAINST A NEW VERSION OF THE OTHER TOOL -- AND TWO SENTENCES OF THIS RECORD THAT ARE NOW WRONG
+
+THE INPUT CHANGED. `riantr/LunaFlow` published **0.1.4**; 0555 measured 0.1.3. And 0.1.4
+ships a PREBUILT WASM ASSET, so the command 0555 recorded as unrunnable RUNS:
+
+    moonx riantr/LunaFlow@latest riantr/moonbit_static_analysis@latest
+
+    module  riantr/moonbit_static_analysis@latest@0.4.45
+    root    ./.repos/riantr/moonbit_static_analysis/0.4.45
+    files 185   functions 2243   statements 16713   unsupported 467
+    trace_events 28626   steps 4660
+    dead_code 37   unreachable 0   infinite_loop 0   taint_sinks 98
+    range_vars 57   level 1   elapsed_ms 749
+    exit 0
+
+It writes three artifacts: a Markdown report, a trace JSONL and a summary JSON. The summary
+JSON also carries five fields 0.1.3 did not have -- `abstract_findings`, `vcs_proved`,
+`vcs_failed`, `vcs_unknown` and `slices` -- and **all five are 0** on this module. So the
+capability the new version adds (an abstract value domain and a slicer) says nothing about
+this module, and brings no finding of its own.
+
+THE FINDINGS ARE THE SAME 136, AT THE SAME PLACES. Measured row by row against 0555's audit
+rather than assumed, because a new version of the other tool is exactly the thing that can
+move them:
+
+    DEAD-CODE       37   21 in src/flow/laws_test.mbt (159-161, 165-167, 177-181,
+                            185-190, 217-220), 8 at src/parser/parser.mbt:2381,
+                            8 at :3122
+    TAINT-INDEX     98   77 at src/core/core.mbt:69, 16 at :65, 2 at
+                            src/sa/main.mbt:1811, 2 at :1814, 1 at :1576
+    BUDGET-EXCEEDED  1   src/core/core.mbt:70 -- `path_tail`'s `while j < n`
+
+Every one of them is still a false positive about our code, and the reasoning is the
+reasoning 0555 recorded: the 21 are the continuation lines of a multi-line `return`; the 16
+are an exit inside a nested block treated as an exit of the enclosing block; the 98 are
+index reads whose bounds the guard above them proves (`while j < n`, `while j < cut`,
+`to - from == 2`); the 1 is a loop whose trip count is the input's length.
+
+### TWO SENTENCES OF THE 0555 CHAPTER THAT ARE NOW WRONG, CORRECTED IN PLACE
+
+  * "THE COMMAND, AND WHY IT CANNOT RUN AS WRITTEN" -- it runs. 0.1.4 ships a wasm asset.
+  * "every one of them is a MULTI-LINE EXPRESSION" -- true of 21 of the 37, false of the 16
+    in `src/parser/parser.mbt`.
+
+Both corrections are made where the sentences are, not only here, because a reader who
+reads 0555 alone would otherwise be misled twice.
+
+### AND THE SIXTEEN ARE THE CLASS OF DEFECT THIS PROJECT FIXED IN 0555
+
+That is the part worth keeping. `src/parser/parser.mbt:2373` is
+
+    if self.parse_external_binding(name) {
+      return { span: sp, kind: @ast.SFunc(name, params, retann, [], sp), }
+    }
+    let (body, endsp) = self.parse_block(true)
+
+and `:3108` is a `break` inside a `while`. LunaFlow reads the code after each of them as
+unreachable, because the exit inside the nested block is taken as an exit of the enclosing
+block. THE JOIN IS NOT EVEN REACHED: this is the CFG's missing edge.
+
+0555 fixed the same class of modelling error on OUR side -- an `if` without an `else` has a
+FALL-THROUGH path, and the path's environment is part of the join -- and the regression rows
+in `src/pipeline/pipeline_0555_test.mbt` pin it. So on this class the two tools now DISAGREE
+about which of them is wrong, and the measurements say it is LunaFlow: the code after
+`if c { return x }` is reached whenever `c` is false, and the code after a `while` with a
+`break` in it is reached whenever the loop ends.
+
+### THE OTHER SIDE, RE-MEASURED ON THE SAME TREE
+
+0555 measured our own analyzer against the SAME published 0.4.45 tree with `--per-function`
+and got TWO false positives on our own source. That was the PRE-FIX build. The FIXED build,
+pointed at the same tree with the same flags, reports ONE:
+
+    published 0.4.45 wasm, the published tree, --per-function   2   (1729:5, 4221:3)
+    this build,              the published tree, --per-function   1   (4221:3)
+    this build,              the published tree, module view      0
+
+so the fix's effect is measured ON THE PUBLISHED BYTES, not only on this repository's
+working tree. And the artifact a user downloads today -- the published 0.4.45 wasm -- still
+reports TWO false positives against its own shipped source, so the fix only reaches a user
+when 0.4.46 ships. That is a release decision, and this increment does not make it.
+
+### WHAT IS NOT HERE, AND WHY
+
+  * NO SOURCE CHANGE, and the measurement says so: not one of LunaFlow's 136 findings is a
+    defect in this module. They are its false positives, and the 16 dead-code ones are the
+    class this project already fixed on its own side.
+  * NO FIX FOR THE THIRD MECHANISM, and no new row for it. A `match`'s arms are still not
+    evaluated (0469, 0502), so a value assigned only inside an arm still reads as definitely
+    unassigned -- the remaining `src/parser/parser.mbt:4221`, still pinned by 0555's row
+    that asserts the wrong answer on purpose. The row says what to do when it goes red.
+  * NO CHANGE TO ANY PIN, because no source changed: the seven corpora, the census, the
+    own-source notice table and the SSA cost are all unchanged, digit for digit.
+  * NO CHANGE TO THE PUBLISHED VERSION. This is an increment, and an increment does not move
+    the version.
+  * NO NEW GATE STAGE. What is pinned here is pinned by the record and by the two
+    corrections, which are text in the chapter above; a stage that resolved a version of
+    another package would have to fetch one, and the fetch is the network.
