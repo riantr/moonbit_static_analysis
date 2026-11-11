@@ -561,12 +561,12 @@ audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (217 files), with the per-file printing cap lifted so the count is the
+project's own source (218 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1505 | | `const` declaration | 7 |
+| `test` declaration | 1511 | | `const` declaration | 7 |
 | `if` expression | 95 | | `short lambda` | 8 |
 | `struct` declaration | 70 | | `type` declaration | 3 |
 | `anonymous function literal` | 34 | | `try` expression | 1 |
@@ -575,7 +575,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **138** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1607** sit outside every function's
+audit off, so they are printed one per line; the other **1613** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -608,10 +608,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,682** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,688** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,407** of them as printed per line and
-**16,275** as aggregated — which is 3,407 + 16,275 = 19,682, the same number — and the 3,407
+**16,281** as aggregated — which is 3,407 + 16,281 = 19,688, the same number — and the 3,407
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -635,7 +635,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **587** `UnusedLocal` and **1,152** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 217 files the notice table
+seven pinned corpora and this repository's own source — the same 218 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -696,21 +696,21 @@ numbers with and without the flag.
 > | J | 1 | `*` on two function values |
 > | K | 3 | a local call with a named argument |
 >
-> **AND 21 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
+> **AND 22 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
 > rendered `notice:` and counted as a notice rather than as actionable, and the census keeps
 > the demoted set in its own table and its own total — a set of findings that leaves the
-> census is a set that can go missing silently. Every one of the 21 carries the confidence
+> census is a set that can go missing silently. Every one of the 22 carries the confidence
 > `low`, and every one of them is a name the analyzer could not resolve.
 >
 > **THE MODULE VIEW COUNTS 18 OF THEM, AND IT IS NOT THE SAME 18.** The two views are two
 > analyses — this one takes every function as an entry point, the module view takes the
-> module — so they do not find the same names: in `moonbit_core` this view reports 19 and
+> module — so they do not find the same names: in `moonbit_core` this view reports 20 and
 > the module view 18, and only **15** of those are the same site. That is the same difference
 > as the 27 against the 10 above, and the two views stay separate, not additive.
 >
 > | demoted family | n | what the lens claimed |
 > |---|---:|---|
-> | A | 12 | a hex float literal (`0x1.0p1023`) is not read, so its exponent part is reported as an undefined name |
+> | A | 13 | a hex float literal (`0x1.0p1023`) is not read, so its exponent part is reported as an undefined name |
 > | B | 5 | a BigInt literal's `N` suffix (`0N`) is not read |
 > | F | 2 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index, a module qualifier |
 > | L | 2 | the documented `#doc(hidden)` limit |
@@ -911,7 +911,7 @@ instructions of 3AC — the same measurement gives **793** variables becoming **
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=199	unreadable=0	functions=901	converted=3	partial=898	declined=4880	…
+SSA-COST	files=200	unreadable=0	functions=903	converted=3	partial=900	declined=4884	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
@@ -922,7 +922,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1505/1505 on wasm; 1363/1363 on js and wasm-gc
+moon test --deny-warn                # 1511/1511 on wasm; 1369/1369 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

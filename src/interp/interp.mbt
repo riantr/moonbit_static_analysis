@@ -600,6 +600,34 @@ fn copy_env(e : Map[String, AbsVal]) -> Map[String, AbsVal] {
 }
 
 ///|
+/// The VALUES of `base` and the NAMES of `from` that `base` does not have.
+///
+/// 0555. This is how an ALTERNATIVE branch of an `if` gets its environment:
+/// the values come from the state the `if` was reached in -- because the
+/// alternative branch runs when the condition is FALSE, and the then-branch
+/// did not run -- while the NAMES come from the accumulated branch
+/// environment, because this lens scopes bindings flat (see `SBlock`) and a
+/// name introduced by an earlier condition must stay visible.
+///
+/// The two halves are different on purpose. Taking the values from the
+/// accumulated environment is what the defect was: a variable assigned only
+/// inside the then-branch read as DEFINITELY assigned after the `if`. See
+/// the `SIf` arm.
+fn copy_new_names(
+  base : Map[String, AbsVal],
+  from : Map[String, AbsVal],
+) -> Map[String, AbsVal] {
+  let out = copy_env(base)
+  for k, v in from {
+    match out.get(k) {
+      Some(_) => ()
+      None => out.set(k, v)
+    }
+  }
+  out
+}
+
+///|
 fn Interp::merge_env(
   self : Interp,
   base : Map[String, AbsVal],
@@ -1203,8 +1231,55 @@ fn Interp::exec_stmt(
           // join has to report -- and `FReturn` was not it. See `join_flow`.
           let flows : Array[Flow] = [self.flow]
           let acc = env_then
+          // 0555. THE JOIN WAS MISSING A PATH, AND THE ALTERNATIVE BRANCHES
+          // STARTED FROM THE WRONG STATE.
+          //
+          // MEASURED, this project's own source, `src/sa/main.mbt:1729` in
+          // `parse_moon_mod_imports` -- found by the cross-check against
+          // riantr/LunaFlow 0.1.3, which analyses this module as a black box:
+          //
+          //     if t == "}" || t == "};" || t == "}," {
+          //       in_import = false
+          //       continue
+          //     }
+          //     if !in_import {
+          //       ...
+          //       continue
+          //     }
+          //     for part in t.split("\"") {      <-- reported UNREACHABLE
+          //
+          // It is reached: on the second iteration of the loop `in_import` is
+          // `true`. The old code based the else-if and else branches on the
+          // THEN-branch's environment, so `in_import` read as `false` for
+          // certain after the first `if` -- the value the then-branch assigned
+          // was taken as the value on EVERY path -- and `if !in_import` then
+          // committed to its then-branch, whose `continue` left the block, and
+          // the statement after it was reported dead.
+          //
+          // The minimal form, measured on its own:
+          //
+          //     let mut x = false
+          //     if c { x = true }        // x is NOT true on every path
+          //     if x { return 1 }
+          //     2                         // reported UNREACHABLE -- wrongly
+          //
+          // TWO PARTS TO THE FIX, and both are about the JOIN rather than
+          // about the pruning:
+          //
+          //   1. An alternative branch starts from the state the `if` was
+          //      reached in, not from the then-branch's environment.
+          //   2. The path that takes NO branch is part of the join. An `if`
+          //      without an `else` has one: the fall-through.
+          //
+          // What the fix does NOT do is prune less loudly. `vjoin` of two
+          // disagreeing constants widens to the type (see `vjoin`), so `x`
+          // after the `if` is `AType("bool")` -- unknown -- and the `if x`
+          // below explores BOTH branches again. The statements the old code
+          // reported dead are reachable; the code that really is dead is
+          // still reported, because a branch that returns on EVERY path
+          // still joins to `FReturn` (see `join_flow`).
           for ei in elseifs {
-            let env_ei = copy_env(acc)
+            let env_ei = copy_new_names(env, acc)
             self.flow = FNormal
             // THE CONDITION IS CODE, AND IT WAS NOT EVALUATED HERE. Two
             // consequences, and they point in opposite directions.
@@ -1251,7 +1326,10 @@ fn Interp::exec_stmt(
           }
           match els {
             Some(e) => {
-              let env_e = copy_env(acc)
+              // 0555. The else branch runs when the condition is FALSE, so
+              // the then-branch did not run and its assignments are not the
+              // state the else branch starts from. See the `SIf` arm.
+              let env_e = copy_new_names(env, acc)
               self.flow = FNormal
               self.exec_block(e, env_e)
               val = vjoin(val, self.last_value)
@@ -1265,7 +1343,22 @@ fn Interp::exec_stmt(
             // A MISSING else always falls through: when no branch is taken,
             // nothing runs and control continues, so it must not make the
             // statements after the `if` look dead either.
-            None => flows.push(FNormal)
+            //
+            // 0555. AND THE FALL-THROUGH PATH'S ENVIRONMENT IS PART OF THE
+            // JOIN. It is a path like any other: the `if` did not run its
+            // then-branch, so the values the then-branch assigned are not
+            // the values after the `if`. The old code left them out of the
+            // join entirely, which is what made a variable assigned only
+            // inside a branch read as DEFINITELY assigned after it. See the
+            // `SIf` arm for the measurement.
+            None => {
+              flows.push(FNormal)
+              let merged = Interp::merge_env(self, acc, env)
+              acc.clear()
+              for k, v in merged {
+                acc.set(k, v)
+              }
+            }
           }
           env.clear()
           for k, v in acc {

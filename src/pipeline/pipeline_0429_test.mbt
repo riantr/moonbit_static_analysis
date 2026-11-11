@@ -180,7 +180,7 @@ test "0429: a type error inside a cast operand is still reported" {
 ///      nothing, and the one finding a probe counted was a WARNING
 ///      (`UnusedParam`) that a grep for `error:` had filtered out.
 ///   2. The same idea in a function that is never CALLED. `Interp::run_top`
-///      skips `SFunc` outright (interp.mbt:389), so nothing in that body ran.
+///      skips `SFunc` outright (interp.mbt:999), so nothing in that body ran.
 ///   3. The same idea in `fn main` — which `run_top` also skips, being an
 ///      `SFunc` like any other.
 ///

@@ -14429,3 +14429,244 @@ The SSA cost moves because the tree it is measured over grew:
     does not exist`. That is a property of THAT package, not of this one, and
     the analyzer here scanned LunaFlow 0.1.3 perfectly well AS A TARGET:
     `files=26 parsed=25 actionable=1 notices=189 unreliable=11 ... total=201`.
+## 0555: THE CROSS-CHECK -- ANOTHER ANALYZER, THE SAME TREE, AND A FALSE POSITIVE OF OUR OWN
+
+THE QUESTION THIS INCREMENT ANSWERS is not "what does another tool say about us". It is
+"what do two analyzers say about the SAME BYTES", because that is the only comparison
+whose disagreement means one of them is wrong.
+
+THE OTHER TOOL IS `riantr/LunaFlow` 0.1.3 -- a MoonBit control-flow, taint and contract
+analyzer, published on the same registry, which never compiles the module it analyses: it
+parses the MoonBit source it is pointed at, executes a model of it, and writes one Markdown
+report.
+
+THE COMMAND, AND WHY IT CANNOT RUN AS WRITTEN:
+
+    moonx riantr/LunaFlow@latest riantr/moonbit_static_analysis@latest
+
+    Error: Prebuilt wasm asset does not exist
+
+`moonx` is the registry runner and its `--target` takes `wasm` as its ONE possible value.
+LunaFlow 0.1.3 declares `supported_targets = "+native"`, because it reaches the filesystem
+and spawns `moon fetch` through `moonbitlang/async/fs` and `moonbitlang/async/process`, and
+those packages do not exist on the wasm, wasm-gc or js backends. LunaFlow's own README says
+the same thing and gives the native equivalent, which is what ran:
+
+    moon run src/cli --target native -- analyze riantr/moonbit_static_analysis@latest --out reports
+
+MEASURED over the PUBLISHED 0.4.45 tree, LunaFlow 0.1.3 reports:
+
+    files 185   functions 2243   statements 16713   unsupported 467
+    trace_events 28626   steps 4660
+    dead_code 37   unreachable 0   infinite_loop 0   taint_sinks 98
+    level 1   elapsed_ms 6264
+
+WHAT LUNAFLOW FOUND, AND WHY NONE OF IT IS TRUE. Its 37 DEAD-CODE findings are 21 in
+`src/flow/laws_test.mbt` (159-190, 217-220), 8 at `src/parser/parser.mbt:2381` and 8 at
+`:3122`; every one of them is a MULTI-LINE EXPRESSION -- the continuation lines of a
+`return "..." + show(a) + " and " + show(b)` -- read as a statement of its own after an
+unconditional exit. The 98 TAINT-INDEX findings are `chars[j]`-style reads whose bounds are
+provable from the guard above them (`while j < n`, `while j < cut`, `to - from == 2`), and
+the one BUDGET-EXCEEDED is `path_tail`'s `while j < n`, whose trip count is the input's
+length and not a non-termination. All 136 are false positives on our side of the line.
+
+THE COMPARISON THAT MATTERS. Our own analyzer, pointed at the SAME tree -- the same 203
+files, of which the same 185 are `.mbt` -- reported:
+
+    MSA-011 (unreachable code)   0 findings
+
+LunaFlow reported 37, and the two sets are DISJOINT. So the disagreement was not "our
+analyzer is quiet because it does not look": the two tools answered different questions
+about the same bytes, and only one of them was right about the code.
+
+THE NEGATIVE CONTROL, because a clean report is only evidence if the tool can report at all.
+The same analyzer over the same tree with `--per-function` (which enters the behavioral lens
+at each FUNCTION rather than at the module) reported TWO unreachable findings:
+
+    src/sa/main.mbt:1729          in parse_moon_mod_imports
+    src/parser/parser.mbt:4221    in Parser::c_for_init
+
+Both were false positives, and both are in THIS repository's own source.
+
+THE DEFECT, and it is in the `if` -- not in the match, and not in the loop:
+
+    let mut x = false
+    if c {
+      x = true
+    }
+    if x {
+      return 1
+    }
+    2                         // reported `unreachable code` -- WRONGLY
+
+Two things were wrong, and they are one thing:
+
+  1. THE JOIN WAS MISSING A PATH. An `if` without an `else` has one path more than its
+     branches: the fall-through. The old code pushed `FNormal` for it and left its
+     ENVIRONMENT out of the join.
+  2. THE ALTERNATIVE BRANCHES STARTED FROM THE WRONG STATE. The else-if and the else
+     branches were based on the THEN-branch's environment, so the value the then-branch
+     assigned was taken as the value on every path.
+
+Together they made `x` read as `true` after the `if` -- a value that holds on no path -- and
+the `if x` then committed to its then-branch, whose `return` left the block, and the
+statement after it was reported dead.
+
+THE FIX is in the `SIf` arm of the behavioral lens (`src/interp/interp.mbt`), and it is two
+lines of behaviour:
+
+  * an alternative branch starts from the state the `if` was reached in -- `copy_new_names
+    (env, acc)`: the VALUES from `env`, the NAMES from the accumulated branch environment,
+    because this lens scopes bindings flat (see `SBlock`);
+  * the path that takes no branch is part of the join.
+
+`vjoin` of two disagreeing constants widens to the type, so `x` after the `if` is
+`AType("bool")` -- unknown -- and the `if x` below explores BOTH branches again. THE FIX
+DOES NOT PRUNE LESS LOUDLY: a branch that returns on EVERY path still joins to `FReturn`
+(see `join_flow`), so the code that really is dead is still reported.
+
+THE REGRESSION ROWS are in `src/pipeline/pipeline_0555_test.mbt`, and there are six: four
+shapes that the defect reported wrongly, one CONTROL -- a statement after an unconditional
+`return` is still reported, because a fix that turned the family off would pass the other
+four -- and one row that pins the THIRD MECHANISM rather than a fix for it.
+
+THE THIRD MECHANISM IS PINNED, NOT FIXED. A `match`'s arms are not evaluated by this lens
+-- 0469 and 0502 decided that on purpose, because the lens has no notion of which arm a
+subject selects -- so a value assigned only inside an arm reads as DEFINITELY unassigned,
+and a later `if` on it commits to one side. That is the remaining
+`src/parser/parser.mbt:4221`, and it is a MODELLING LIMIT rather than a join defect. Its
+row asserts the WRONG ANSWER ON PURPOSE, the way 0524's row did, so that the defect is
+pinned rather than described; the day the row goes red the defect is fixed.
+
+THE NUMBERS, and the important part is what did NOT move.
+
+The seven corpora move by NOTHING IN THE MODULE VIEW. Every one of the seven reads
+exactly what it read before:
+
+    moui 3457   moonbit_labeler 698   moonbit_image 186   async 1654
+    proton 1799   proton_contract 29   moonbit_core 10114   -> 17937
+
+That is the honest answer to "does the fix change what the tool says about other people's
+code" -- in the MODULE view, it does not. The PER-FUNCTION view is a second measurement of
+the same seven trees, and it DOES move, by one site -- and the site comes BACK rather
+than appearing. The first draft of this chapter said the defect's shape does not occur
+in those seven trees. That was WRONG, and the measurement that corrected it is below.
+
+The own-source numbers move only by what the new test file adds:
+
+    own-source files             217 -> 218
+    own-source notices           1745 -> 1751
+    own-source printed           138 -> 138      (UNCHANGED)
+    own-source aggregated        1607 -> 1613
+    eight-tree notices           19682 -> 19688
+    eight-tree split             3407 + 16275 -> 3407 + 16281
+    suppression-off UnusedLocal  587 -> 587      (UNCHANGED)
+    suppression-off UnusedParam  1152 -> 1152    (UNCHANGED)
+    tests wasm                   1505 -> 1511    (+6)
+    tests js / wasm-gc           1363 -> 1369    (+6)
+
+The six new notices are six new `test` declarations, and they are all AGGREGATED: a `test`
+block sits outside every function body. The printed half does not move, and that is the
+check that says the fix did not change which notices a reader sees. The js and wasm-gc
+counts move by six too -- unlike 0554's, whose new tests lived in `src/sa`, and that
+package declares `supported_targets = "+wasm+native"`, so those two backends SKIP it. The
+new rows live in `src/pipeline`, which every backend builds.
+
+THE SSA cost moves because the tree it is measured over grew:
+
+    files=199 -> 200   functions=901 -> 903   instructions=7069 -> 7071
+    variables=793 -> 795   versions=1962 -> 1964   phis=708 -> 708
+    copies=1751 -> 1751   declined=4880 -> 4884
+
+### THE PER-FUNCTION CENSUS MOVED, AND IT MOVED BECAUSE A PRUNING WAS REMOVED
+
+The per-function view -- every function entered as an entry point -- has its own census
+over the same seven corpora, and its own demoted set, and that set moved:
+
+    per-function census, demoted    21 -> 22      (moonbit_core 19 -> 20, proton 2)
+    family A, a hex float literal   12 -> 13
+
+ONE SITE CAME BACK. It is in `moonbitlang/core` 0.1.20260920+7d59c7ec9, at
+`math/scalbn.mbt`:
+
+    36:13  undefined variable 'p1023'
+    39:15  undefined variable 'p1023'
+    48:13  undefined variable 'p'
+    51:15  undefined variable 'p'      <- THE SITE THAT CAME BACK
+
+`0x1.0p-1022` is a hex float whose exponent this project's lexer does not read, so the
+exponent part is reported as an undefined name -- family A, a family this project has
+carried since 0508. It is this analyzer's own limitation, not a defect in moonbit_core's
+code, and that is exactly why it is DEMOTED rather than actionable.
+
+THE OBVIOUS READING IS THE WRONG ONE. "The fix added a false positive" is what a moved
+count usually means, and it is not what happened here: THE FIX REMOVED AN OVER-PRUNING.
+Measured on that one file, with the PUBLISHED 0.4.45 wasm -- which is this analyzer as
+it was before this increment, because 0554 touched the version resolution in `src/sa`
+and nothing else, and the diff between the two releases touches only `src/flow`, a
+library the findings pipeline does not call, and `src/sa`:
+
+    published 0.4.45    3 sites
+    this increment      4 sites
+
+The pre-fix build never ANALYSED the statement at `:51`. It pruned the branch that
+statement sits in. The pruning was correct on its own terms -- the branch is guarded by
+`if n < -1022` -- but the value the guard was folded against was wrong, and it was wrong
+because of the defect this increment fixes:
+
+    if n > 1023 {
+      ...
+      if n > 1023 {
+        n = 1023                      <- a CONSTANT
+      }
+    } else if n < -1022 {              <- the ALTERNATIVE branch started from the
+      ...                                then-branch's state, so `n` was 1023 here
+      n += 1022 - 53                     and not `exp`
+      if n < -1022 {                   <- 1023 + 969 < -1022 is FALSE, so the branch
+        y *= 0x1.0p-1022 * 0x1.0p53       was PRUNED, and the statement inside it
+      }                                   was never analysed
+    }
+
+TWO CONTROLS, both measured on that file, and neither of them is a story:
+
+  * W4 -- delete the `n = 1023`. The constant was the carrier: with it gone the two
+    builds AGREE (2 and 2), because the guard now folds to UNKNOWN and both builds
+    explore the branch.
+  * Z2 -- flip the guard's comparison to `n > -1022`. The constant now makes the guard
+    TRUE, and the two builds AGREE (2 and 2) again: the pre-fix build explores the
+    branch, because the guard no longer prunes it.
+
+The pre-fix build's missing site is therefore accounted for by the GUARD'S VALUE, and
+the guard's value is accounted for by the JOIN this increment fixes. The count that moved
+is the demoted set, and the demoted set is where a finding the analyzer does not stand
+behind belongs -- so the movement is the fix WORKING, not the fix leaking.
+
+THE MODULE VIEW'S DEMOTED SET DID NOT MOVE -- 18 before, 18 now -- and `math/scalbn.mbt`
+is in neither list. The two views are two measurements, and this is the next time that
+sentence has cost something.
+
+### WHAT IS NOT HERE, AND WHY
+
+  * NO FIX FOR THE THIRD MECHANISM, and the reason is a measurement rather than tidiness:
+    modelling a `match`'s arms means executing code that may not run, and the arms are not
+    evaluated today (0469, 0502). The row that pins it is the record.
+  * NO CHANGE TO THE SEVEN CORPORA IN THE MODULE VIEW, and no change to any module-view
+    corpus pin: their notice counts are unchanged, digit for digit. ONE corpus pin DID
+    move -- the per-function census's demoted set, 21 -> 22 -- and the section above
+    says why: the fix removed an over-pruning that had hidden one site.
+  * NO CHANGE TO THE PUBLISHED VERSION. This is an increment, and an increment does not
+    move the version. The defect this fixes is in the PUBLISHED 0.4.45 as well -- it was
+    measured there -- so the fix only reaches a user when 0.4.46 ships.
+  * NO NEW GATE STAGE. The defect is pinned by the test suite, and the test suite is three
+    gate rows.
+  * NO CHANGE TO THE TRANSFER MAP. The pins it carries into `src/core/core.mbt` are at
+    lines 481, 537, 613 and 650, and this increment's change to that file is at line 736
+    and below.
+  * NO CHANGE TO THE STALE LINE REFERENCES THAT PREDATE THIS INCREMENT. Three comments
+    cite `interp.mbt` lines that were already pointing elsewhere before 0555 (measured:
+    the same lines in `9763dfd^`'s descendant tree): `src/lexer/lexer.mbt:813` and
+    `src/interp/interp.mbt:2054` cite where a measurement was TAKEN in an older tree, and
+    a citation of a past state is a record rather than a pointer. Rewriting it would
+    falsify the record. The one that read as a live pointer -- `run_top`'s `SFunc` skip,
+    cited from `src/pipeline/pipeline_0429_test.mbt` -- was repointed at the line that
+    holds it now.

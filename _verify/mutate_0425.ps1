@@ -71,24 +71,23 @@ $muts = @(
   # `break` (see `join_flow`'s own note). The MUTATION is the same one: the
   # missing-else arm stops contributing a fall-through flow, so the join
   # reports the branches as terminating. The ANCHOR is the current text.
+  #
+  # RE-ANCHORED at 0555. The arm is a BLOCK now: 0555 made the fall-through
+  # path's ENVIRONMENT part of the join as well, so the arm does the merge and
+  # not only the flow. The MUTATION is unchanged -- the missing-else arm stops
+  # contributing a fall-through flow -- and the ANCHOR is the arm's new shape.
   @{
     Name = 'M1 a missing else stops falling through'
     File = $F
     Find = @'
-            // A MISSING else always falls through: when no branch is taken,
-            // nothing runs and control continues, so it must not make the
-            // statements after the `if` look dead either.
-            None => flows.push(FNormal)
-          }
-          env.clear()
+            None => {
+              flows.push(FNormal)
+              let merged = Interp::merge_env(self, acc, env)
 '@
     Repl = @'
-            // A MISSING else always falls through: when no branch is taken,
-            // nothing runs and control continues, so it must not make the
-            // statements after the `if` look dead either.
-            None => flows.push(FReturn)
-          }
-          env.clear()
+            None => {
+              flows.push(FReturn)
+              let merged = Interp::merge_env(self, acc, env)
 '@
   }
 
@@ -178,15 +177,21 @@ $muts = @(
   # and with it the isolation between the branches. The ANCHOR is two lines now,
   # because that is where the reset is; the third line it used to name is still
   # there, further down, behind the condition.
+  #
+  # RE-ANCHORED at 0555. The elseif branch's environment now comes from
+  # `copy_new_names(env, acc)` rather than `copy_env(acc)`, because 0555 made
+  # an alternative branch start from the state the `if` was reached in. The
+  # MUTATION is unchanged -- the per-branch flow reset is removed -- and the
+  # ANCHOR is the new line.
   @{
     Name = 'M4 the per-branch flow reset removed'
     File = $F
     Find = @'
-            let env_ei = copy_env(acc)
+            let env_ei = copy_new_names(env, acc)
             self.flow = FNormal
 '@
     Repl = @'
-            let env_ei = copy_env(acc)
+            let env_ei = copy_new_names(env, acc)
 '@
   }
 
