@@ -15197,3 +15197,148 @@ it is checked rather than asserted.
   * **NO CHANGE TO THE PUBLISHED VERSION.** This is an increment, and an increment does
     not move the version.
   * **NO CHANGE TO THE TWO READMEs.**
+
+## 0559: THE CROSS-CHECK, RUN AGAINST AN UPGRADED ORACLE -- AND THE RELEASE THAT FOLLOWS
+
+### THE ASK
+
+`riantr/LunaFlow` was upgraded, and the ask was to run `moonx riantr/LunaFlow@latest` over the
+current project directory and then DECIDE whether to release. The registry answers:
+
+    riantr/LunaFlow                    0.1.4  ->  0.1.5
+    riantr/moonbit_static_analysis     0.4.45 (unchanged)
+
+and the version is worth stating because it is a fact WITH A TIMESTAMP: at 0557 the same query
+answered 0.1.4, and the claims this record makes about that version were measured against it.
+
+### THE MEASUREMENT, AND WHY IT HAD TO BE AN A/B
+
+The first run was over the working directory, and it answered a question nobody asked: that
+directory carries a hundred untracked scratch copies under `_verify/`, so the file count came out
+217 instead of 199 and every number that depended on the tree was a fact about the scratch pile
+as much as about the project.
+
+So the measurement was redone on a CLEAN WORKTREE of this commit, and BOTH LUNAFLOW VERSIONS were
+run over THE SAME TREE:
+
+    LunaFlow 0.1.5   files 199   functions 2417   statements 12997   unsupported 611
+                    trace_events 30006   steps 4884   elapsed_ms 1150
+                    dead_code 0   unreachable 0   infinite_loop 0   taint_sinks 8   level 1
+                    range_vars 67   abstract_findings 0   vcs_proved 0   vcs_failed 0
+                    vcs_unknown 0   slices 0
+    LunaFlow 0.1.4   files 199   functions 2419   statements 18242   unsupported 532
+                    trace_events 29013   steps 4825   elapsed_ms 721
+                    dead_code 21   unreachable 0   infinite_loop 0   taint_sinks 98   level 1
+                    range_vars 60   abstract_findings 0   vcs_proved 0   vcs_failed 0
+                    vcs_unknown 0   slices 0
+
+THE TREE IS THE SAME IN BOTH ROWS, so every difference between them is the OTHER TOOL'S version
+and not this tree's. And the differences are large: `dead_code` 21 -> 0, `taint_sinks` 98 -> 8,
+and `statements` 18242 -> 12997.
+
+A FINDING COUNT GOING TO ZERO IS A MEASUREMENT TO CHECK, NOT A RESULT TO CELEBRATE, so both
+halves were looked at.
+
+### THE TWENTY DEAD-CODE FINDINGS WERE THE OTHER TOOL'S FALSE POSITIVES
+
+Every one of 0.1.4's twenty `DEAD-CODE` rows is at `src/flow/laws_test.mbt` -- sixteen in
+`laws_violation` (159, 160, 161, 165, 166, 167, 177, 178, 179, 180, 181, 185, 186, 187, 188, 189,
+190) and four in `monotone_violation` (217, 218, 219, 220). The message is the same for all of
+them: "statement is unreachable after an unconditional exit".
+
+And the source says otherwise. `laws_test.mbt:158-161` is ONE statement:
+
+    158          return "the join is not an upper bound of its LEFT operand at " +
+    159            show(a) +
+    160            " and " +
+    161            show(b)
+
+The `return` is on line 158; lines 159 to 161 are the CONTINUATION of the same expression, because
+a statement that ends in `+` continues on the next line. LunaFlow 0.1.4 counted each continuation
+line as a statement of its own, built no CFG predecessor for it -- the `return` above it ends the
+block -- and reported it as dead code. 0.1.5 does not, and the twenty rows are gone.
+
+SO THE TWENTY WERE FALSE, AND 0.1.5 FIXED THEM. This analyzer never had them: the module view and
+the per-function view both report ZERO `unreachable` findings on this tree, and they did so
+before 0.1.5 existed.
+
+### 0.1.5 ALSO GOT MORE HONEST, AND ITS TAINT ENGINE REACHED FURTHER
+
+Three things in 0.1.5's report are worth carrying, because they are the kind of thing a
+cross-check is for:
+
+  * **THE CFG COVERAGE IS NOW DISCLOSED.** 0.1.4's report says "CFG functions | 600" and stops.
+    0.1.5 says "600 of 2417 -- the first 600 in file order; 1817 functions had no CFG and can
+    carry no CFG finding". The cap was the same; the difference is that the reader is told.
+  * **THE TAINT VERDICT IS SPLIT IN TWO.** 0.1.4 reported every tainted array index as an
+    `error`. 0.1.5 reports `TAINT-INDEX` (error) only where an out-of-bounds access was WITNESSED,
+    and `TAINT-INDEX-RANGE` (warning, confidence 0.5) where "the observed index was inside the
+    array, so no out-of-bounds access was witnessed". Ninety of 0.1.4's ninety-eight rows were
+    that same in-range case.
+  * **THE TAINT ENGINE REACHED TWO PLACES 0.1.4 NEVER TOUCHED**: `src/sa/ssa_cost.mbt:111` and
+    `:112`, and `src/sa/mermaid_test.mbt:238`.
+
+The last one is a family this analyzer does NOT have -- there is no taint lens here -- so it is
+recorded as a GAP and not as a defect. A finding this tool cannot make is not a defect in the
+code it reads.
+
+### THE CROSS-CHECK THAT DECIDED THE RELEASE: THE PUBLISHED 0.4.45 STILL OVER-REPORTS
+
+The other half of the comparison is this analyzer against ITSELF: the published artifact and the
+current tree, over the same clean worktree, with the same harness and the same flags.
+
+    published 0.4.45   module view        actionable 0   notices 1751
+    published 0.4.45   per-function view  actionable 3   notices 1751
+    current 5ba3af1    module view        actionable 0   notices 1751
+    current 5ba3af1    per-function view  actionable 0   notices 1751
+
+The three are all `unreachable code (Unreachable) [behavior, MSA-011, high]`, and they are on
+THIS PROJECT'S OWN SOURCE:
+
+    src/sa/main.mbt:1733:5       in scan
+    src/sa/version.mbt:95:5      in newest_version
+    src/parser/parser.mbt:4221:3 in Parser::c_for_init
+
+So a user on 0.4.45 who runs the tool over this project's source sees three findings that are not
+there. 0.4.46 has none of them, and the mechanism that removes them is 0557's: what a match's arm
+MAY WRITE, collected without running the arm.
+
+### THE DEPENDENCY QUESTION, MEASURED RATHER THAN ASSUMED
+
+The release policy asks for the dependencies to be at their latest before the gate runs, so the
+dependency set was MEASURED and not read off `moon.mod`:
+
+  * `moon.mod` has NO import block;
+  * and no file under `src/` contains an `import { ... }` line at all.
+
+So the module depends on nothing but the standard library the toolchain already carries: there is
+no version to upgrade and no pin to re-measure. The toolchain's own bundled `moonbitlang/core` is
+the only host, and the gate's host-contract stage holds the artifact to
+`_verify/host_requirements.txt` in BOTH directions -- the same floor as 0.4.45, because 0557 added
+no host symbol.
+
+### WHAT 0.4.46 CARRIES, AND THE ORDER IT WAS CUT IN
+
+    0550  the flow-sensitive reading of the pointer analysis
+    0551  basic blocks
+    0552  three-address code
+    0553  SSA
+    0554  the version resolver: `@latest` analysed 0.4.7 while it fetched 0.4.45
+    0555  the cross-check, and the false positive of ours it found
+    0556  the cross-check against a new version of the other tool
+    0557  the fix for the third mechanism
+    0558  the deck's own configuration table, cell by cell
+
+THE ORDER WAS THE POLICY'S, and the gate came FIRST: the full gate on this tree was green BEFORE
+a single version reference was touched, and the version bump, the README sync and the tag came
+after it.
+
+### WHAT IS NOT HERE
+
+  * **NO LOCAL PUBLISH.** The tag push is what publishes; `moon publish` did not run on this
+    machine.
+  * **NO CHANGE TO THE DEPENDENCY SET**, because there is none.
+  * **NO NEW FINDING FAMILY.** The layers carry an analysis; they do not say more about defects.
+  * **NO CHANGE TO ANY CORPUS NUMBER.** Every corpus is byte-identical to 0.4.45's measurement.
+  * **NO ANSWER TO THE TAINT FINDINGS.** There is no taint lens here, so `TAINT-INDEX` and
+    `TAINT-INDEX-RANGE` are recorded as a gap in THIS tool and not as defects in the code.

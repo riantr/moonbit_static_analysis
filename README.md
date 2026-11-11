@@ -68,14 +68,14 @@ not resolve — are counted as notices and are not in that 10. On that same tree
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.45
+moon add riantr/moonbit_static_analysis@0.4.46
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.45",
+  "riantr/moonbit_static_analysis@0.4.46",
 }
 ```
 
@@ -115,8 +115,8 @@ standalone `moonbitlang/async` 0.22.5 covers only **89** of the 93 — it has
 `stdio/get_stdio_handle` and none of the four `thread_pool` additions. The bundled
 `moonbitlang/core` **0.10.20+65efd5b93** declares 215 externs and covers all 93. So:
 
-> **0.4.45 needs a MoonBit toolchain bundling `moonbitlang/core` 0.10.20+65efd5b93 or
-> later** — moon 0.1.20261104 or later. A toolchain that still bundles the standalone
+> **0.4.45 and later need a MoonBit toolchain bundling `moonbitlang/core` 0.10.20+65efd5b93
+> or later** — moon 0.1.20261104 or later. A toolchain that still bundles the standalone
 > `moonbitlang/async` cannot instantiate this artifact, and upgrading this package alone
 > will not change that: the import surface is a property of the published bytes.
 
@@ -131,7 +131,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 symbols — the same three console jobs. A toolchain bundling 0.22.5 cannot supply them.
 0.4.45 asks for those three again, plus two more, because the runtime it uses is the one
 that ships with the toolchain. If you hit that error on 0.4.38: use **0.4.37**, or
-upgrade your MoonBit toolchain, or move to **0.4.45**.
+upgrade your MoonBit toolchain, or move to **0.4.46**.
 
 One more thing to know before you upgrade: `moonbitlang/core/async` is still marked
 **experimental** by the core team, so the packages that use it say so explicitly in their
@@ -299,7 +299,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.45_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.46_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
 ```

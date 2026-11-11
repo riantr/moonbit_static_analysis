@@ -154,6 +154,106 @@ of them was found *by* a mutation: rewriting the types half of `union` to write
 into `self` left the whole suite green, because the test only checked the values
 half. It went red once the type side was covered too.
 
+## 0.4.46 — the layers under the pointer analysis, and a false positive of our own that another analyzer found
+
+**WHAT THIS RELEASE CARRIES.** Nine increments, and they are one subject. The pointer analysis
+0.4.44 introduced was written against the deck's rules, and the deck's rules are written over a
+control-flow graph this tree did not have. So this release builds the layers under it — and then
+fixes what a cross-check found.
+
+| increment | what it is |
+|---|---|
+| 0550 | the flow-sensitive reading of the pointer analysis |
+| 0551 | basic blocks — the CFG the deck's rules are written over |
+| 0552 | three-address code — the layer between the CFG and the solver |
+| 0553 | SSA — the arrow the deck prints in the footer |
+| 0554 | the version resolver: `@latest` fetched **0.4.45** and analysed **0.4.7** |
+| 0555 | the cross-check against another analyzer, which found a false positive of ours |
+| 0556 | the same cross-check against a new version of that analyzer |
+| 0557 | the fix for the third mechanism |
+| 0558 | the deck's own configuration table, cell by cell |
+
+### THE HEADLINE: THE PUBLISHED 0.4.45 REPORTS THREE FALSE POSITIVES ON THIS PROJECT'S OWN SOURCE
+
+The cross-check runs another MoonBit analyzer (`riantr/LunaFlow`) over this repository's own
+tree and compares the verdicts. At 0.1.4 it disagreed with this analyzer on ONE class, and the
+disagreement was OURS: a `match`'s arms are not evaluated, so a value assigned only inside an
+arm read as DEFINITELY unassigned, and a later `if` on it committed to one side.
+
+MEASURED on this repository's own tree, at the same commit, with the same harness and the same
+flags:
+
+| artifact | module view | per-function view | the unreachable findings |
+|---|---|---|---|
+| published **0.4.45** | actionable 0 | **actionable 3** | `src/sa/main.mbt:1733`, `src/sa/version.mbt:95`, `src/parser/parser.mbt:4221` |
+| **0.4.46** | actionable 0 | **actionable 0** | none |
+
+All three are `unreachable code (Unreachable) [behavior, MSA-011, high]`, and all three are
+**false positives on this project's own source**. 0.4.46 has none of them.
+
+The fix does NOT evaluate a match's arms. It asks a question a syntactic walk can answer: **what
+may an arm's body WRITE?** The names are collected without running anything, and only the names
+that are ALREADY bound are widened — a name the arms introduce and nothing else binds stays
+unbound, because the arms do not run.
+
+### THE FLOW-SENSITIVE READING, AND THE LAYERS UNDER IT
+
+The reference deck (Tian Tan, *Pointer Analysis*, Nanjing University, 2021) prints the SAME
+four-statement program twice, and prints the word "false positive" next to the second answer:
+
+    1 c = new C();  2 c.f = "x";  3 s = c.f;  4 c.f = "y";
+
+    p.64  flow-sensitive     c -> {o1}   o1.f -> {"y"}      s -> {"x"}
+    p.68  flow-insensitive   c -> {o1}   o1.f -> {"x","y"}   s -> {"x","y"}
+
+0.4.44 built the flow-INSENSITIVE reading — the one the deck marks "Chosen in this course".
+0.4.46 builds the flow-SENSITIVE one, over a general solver: **basic blocks** (0551),
+**three-address code** (0552) and **SSA** (0553), with a strong-update transfer that is monotone
+so it runs on the same solver. Ten rows pin the deck's own tables.
+
+**NONE OF THIS ADDS A FINDING FAMILY.** The layers carry an analysis the deck describes; a tool
+that says more about the program it reads does not necessarily say more about the program's
+defects. Every corpus number is unchanged.
+
+### THE VERSION RESOLVER, WHICH WAS ANALYSING 38 RELEASES AGO
+
+Running the analyzer the way the README says to run it — against a registry coordinate — printed:
+
+    Latest version of riantr/moonbit_static_analysis is 0.4.45
+    Fetching riantr/moonbit_static_analysis@0.4.45
+    TARGET   riantr/moonbit_static_analysis@latest   .repos/riantr/moonbit_static_analysis/0.4.7
+    SCANNED  46 files under .repos/riantr/moonbit_static_analysis/0.4.7
+
+It fetched 0.4.45 and analysed **0.4.7**. The cause: the resolver took the LAST entry of a
+`readdir`, and `readdir` does not sort — so "the last entry" was the LEXICOGRAPHIC maximum, and
+"0.4.7" sorts above "0.4.45" while 7 is BELOW 45 as a number. Versions are now compared as
+numbers, and a row pins it.
+
+### THE RECORD, AND THE ONE READING THIS TREE DOES NOT BUILD
+
+0558 prints the deck's own configuration table — four factors, eight options — cell by cell
+against this tree, with the row that pins each cell, and the four "chosen in this course" marks
+MEASURED by word-box coordinates rather than read off the text layer. Five cells are built and
+three are not, and the three absences are not alike: `storeless` never gets a slide in the deck,
+context-sensitive needs a call graph the attachment does not contain, and demand-driven gets six
+slides and still stops one rule short of the rule that would determine it.
+
+### MEASURED
+
+The full release gate on this release's tree: **122 rows, 121 True, 1 False**, and the one red
+row is the long-standing `per-function census control` (the toolchain's `moon` cannot type-check
+the pinned core). Diffed against the previous release's gate log with the timings stripped, the
+two are identical line for line except the commit hash.
+
+The cross-check against `riantr/LunaFlow` **0.1.5**, on this repository's own tree:
+
+    LunaFlow 0.1.5    dead_code 0   unreachable 0   infinite_loop 0
+    this analyzer    module view actionable 0, per-function view actionable 0
+
+and 0.1.5's own report now DISCLOSES its CFG coverage ("600 of 2417 — the first 600 in file
+order; 1817 functions had no CFG and can carry no CFG finding"), which is the kind of limitation
+a cross-check is worth more for.
+
 ## 0.4.45 — the async runtime moved into the toolchain, and the dependency is gone
 
 This release has one subject and three consequences, and the consequences are the point:

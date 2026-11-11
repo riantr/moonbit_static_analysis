@@ -63,14 +63,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.45
+moon add riantr/moonbit_static_analysis@0.4.46
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.45",
+  "riantr/moonbit_static_analysis@0.4.46",
 }
 ```
 
@@ -106,7 +106,7 @@ extern——所以宿主提供的还是同一个模块。变的是集合：**90 
 93 个里的 **89** 个——它有 `stdio/get_stdio_handle`，但四个 `thread_pool` 新增的一个都没有。
 工具链自带的 `moonbitlang/core` **0.10.20+65efd5b93** 声明了 215 个 extern，93 个全覆盖。所以：
 
-> **0.4.45 需要自带 `moonbitlang/core` 0.10.20+65efd5b93（或更新）的 MoonBit 工具链**——
+> **0.4.45 及以后需要自带 `moonbitlang/core` 0.10.20+65efd5b93（或更新）的 MoonBit 工具链**——
 > 也就是 moon 0.1.20261104 或更新。还在自带独立 `moonbitlang/async` 的工具链无法实例化
 > 这个产物，而只升级这个包本身改变不了这一点：导入面是发布出去的字节的属性。
 
@@ -120,7 +120,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 被升到了 0.22.6，而 0.22.6 多声明了三个必须由宿主提供的符号——同样那三个 console job。
 自带 0.22.5 的工具链提供不出它们。0.4.45 又要了那三个，外加两个新的，因为它用的运行时
 就是随工具链一起发的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.4.45**。
+你的 MoonBit 工具链，或者换到 **0.4.46**。
 
 升级前还有一件事要知道：`moonbitlang/core/async` 目前仍被 core 团队标为 **experimental**，
 所以用到它的那些包在自己的 `moon.pkg` 里明确写了出来。随工具链一起发、但还没稳定——这
@@ -275,7 +275,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.45_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.46_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
 tree_unknown_0.1.20260920_20261009T051511Z.mmd     # 版本没定下来
 ```
