@@ -51,6 +51,8 @@ pub fn metrics_lines(Array[Verdict], Summary, Int32) -> Array[String]
 
 pub fn moon_mod_version(String) -> String
 
+pub fn newest_version(Array[String]) -> String
+
 pub fn notice_lines(Int32, Int32, Array[@report.Report], Bool) -> Array[String]
 
 pub fn parse_moon_mod_imports(String) -> Array[String]

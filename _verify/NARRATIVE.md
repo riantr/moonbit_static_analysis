@@ -9473,7 +9473,7 @@ against this tree, so it cannot rot without the gate saying so.
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
     row 3  src/sa/profile.mbt:341       fn stale_report
-    row 3  src/sa/main.mbt:1288         fn filtered_reports
+    row 3  src/sa/main.mbt:1292         fn filtered_reports
     --- END TRANSFER MAP ---
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
 and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
@@ -14267,3 +14267,165 @@ made without one, and a graph defect that the layer's own requirements exposed.
   * PHI ELIMINATION. The copies are COUNTED (1,749 over this project's own source) and
     not removed: removing them is a machine-code lowering, and the deck's p.37 only
     claims they cost something. The count is the claim's number.
+
+## 0554: THE NEWEST VERSION, BY THE NUMBERS -- A DEFECT NO GATE COULD SEE
+
+### HOW IT WAS FOUND, AND IT WAS NOT BY LOOKING AT THE CODE
+
+It was found by RUNNING the published analyzer the way the README says to run
+it, against a registry coordinate rather than a path:
+
+```
+moonx riantr/moonbit_static_analysis@latest riantr/moonbit_static_analysis@latest
+```
+
+The output said it fetched 0.4.45:
+
+```
+Latest version of riantr/moonbit_static_analysis is 0.4.45
+Fetching riantr/moonbit_static_analysis@0.4.45
+```
+
+And then it said:
+
+```
+TARGET   riantr/moonbit_static_analysis@latest   .repos/riantr/moonbit_static_analysis/0.4.7
+SCANNED  46 files under .repos/riantr/moonbit_static_analysis/0.4.7
+SUMMARY  files=46  parsed=46  actionable=1  notices=381  ...  total=382
+```
+
+It fetched 0.4.45 and analysed 0.4.7. Thirty-eight releases behind, and a
+different codebase: the SUMMARY it printed was a fact about 0.4.7, presented
+as a fact about the newest release. A tool that reports on the wrong version
+without saying so is worse than a tool that fails.
+
+### THE DEFECT, IN ONE LINE
+
+`locate` resolved a bare coordinate to a directory by taking the LAST entry of
+`readdir`:
+
+```moonbit
+return base + "/" + versions[versions.length() - 1]
+```
+
+`readdir` does NOT sort: the toolchain's own signature is
+`readdir(path, include_hidden?, include_special?, sort?)` with `sort` defaulting
+to FALSE, so the order is the one the filesystem hands over. MEASURED on the
+directories the real fetches left behind on this machine, that order was
+ascending BY NAME:
+
+```
+.repos/riantr/moonbit_static_analysis/  ->  0.3.4 0.3.5 0.4.27 0.4.45 0.4.5 0.4.7
+```
+
+So the last entry was the LEXICOGRAPHIC maximum -- and the lexicographic
+maximum is not the numeric maximum. "0.4.7" sorts above "0.4.45" because '7'
+sorts above '4', while 7 is BELOW 45 as a number. "The last entry" was being
+read as "the newest version", and what it actually selected was the newest
+version BY NAME.
+
+And the order is not even guaranteed to be sorted: `readdir` was asked not to
+sort, so on another machine -- or with another set of names -- the last entry
+could be a different version again. "The last one" was never a rule about
+versions at all.
+
+### WHY NO GATE IN THIS TREE COULD SEE IT
+
+Every gate in this repository scans PATHS. The corpora are directories under
+`.repos/`, named by the corpus, and they are handed to the scanner as paths.
+The resolver only runs for a COORDINATE -- `author/module[@version]` -- and no
+gate ever resolved one. So the defect sat in the one part of the analyzer that
+no gate exercised, and every gate was green while it was there.
+
+That is not an argument for adding a gate that fetches from the network: this
+repository's release gate is deliberately network-free ("a release gate that
+can reach the network is a release gate whose result depends on the network"),
+and `locate` fetches before it resolves. The gate for this is the TEST SUITE,
+which the release gate runs on three targets -- so the resolver's decision is
+pinned by tests that are themselves gate rows, and a regression in it turns
+the `moon test` rows red.
+
+### THE FIX, AND WHY A LEXICOGRAPHIC SORT WOULD ALSO HAVE BEEN WRONG
+
+The newest version is now chosen BY THE NUMBERS. `src/sa/version.mbt` compares
+the components one at a time as integers, and the longer version wins a tie.
+A name that is not a version at all contributes -1, so a stray directory
+inside `.repos` cannot win.
+
+The tempting one-word fix is `readdir(base, sort=true)`, and the toolchain's
+own `readdir` does have a `sort` parameter. It would have been WRONG, and for
+a sharper reason than "it is not a version comparison": `sort` sorts by NAME,
+so it produces exactly the LEXICOGRAPHIC maximum -- which is the very thing
+that was wrong. MEASURED: the order this directory was already in IS the
+sorted order, so `sort=true` would have changed NOTHING here, and the defect
+would have survived the fix. The numbers have to be compared as numbers, and
+the test pins that case on its own.
+
+### THE NEGATIVE CONTROL, WHICH IS THE ONLY THING THAT PROVES THE TEST
+
+The expectation was broken ON PURPOSE: the test that pins the resolver was
+changed to expect the OLD answer, `0.4.7`, and the suite went red and printed
+
+```
+-"0.4.45"  +"0.4.7"
+```
+
+A test that has never been seen to fail is a comment.
+
+### THE END-TO-END PROOF, AND IT IS THE SAME COMMAND
+
+The local build, run against the same coordinate, now says:
+
+```
+TARGET   riantr/moonbit_static_analysis@latest   .repos/riantr/moonbit_static_analysis/0.4.45
+SCANNED  203 files under .repos/riantr/moonbit_static_analysis/0.4.45
+SUMMARY  files=203  parsed=203  actionable=0  notices=1679  ...  total=1679
+```
+
+Same coordinate, same machine, same registry: 0.4.7 and 46 files before,
+0.4.45 and 203 files after. The resolver was the only thing that changed.
+
+### WHAT MOVED, AND WHAT DID NOT
+
+    own-source files            215 -> 217     (+2: version.mbt, version_test.mbt)
+    own-source notices          1739 -> 1745   (+6: the six new test declarations)
+    own-source printed          138 -> 138     (unchanged)
+    own-source aggregated       1601 -> 1607   (+6)
+    eight-tree notices          19676 -> 19682
+    eight-tree split            3407 + 16269 -> 3407 + 16275
+    suppression-off UnusedLocal 587 -> 587     (unchanged)
+    suppression-off UnusedParam 1152 -> 1152   (unchanged)
+    tests wasm                  1499 -> 1505   (+6)
+    tests js / wasm-gc          1363 -> 1363   (UNCHANGED, and that is not a typo)
+
+The js and wasm-gc counts do not move because `src/sa` declares
+`supported_targets = "+wasm+native"`: those two backends SKIP the package, so
+the six new tests never run there. A test that lives in a package the backend
+does not build cannot raise that backend's count, and the release gate knows
+this -- it expects the js and wasm-gc counts to be what they are.
+
+The seven corpora do not move by one notice: the resolver is about WHICH
+DIRECTORY a target names, and the corpora are named by path and never went
+through it.
+
+The SSA cost moves because the tree it is measured over grew:
+
+    files=197 -> 199   functions=898 -> 901   instructions=7051 -> 7069
+    variables=788 -> 793   versions=1955 -> 1962   phis=707 -> 708
+    copies=1749 -> 1751   declined=4869 -> 4880
+
+### WHAT IS NOT HERE, AND WHY
+
+  * NO NEW GATE STAGE, and the reason is not tidiness. A stage that resolved a
+    coordinate would have to fetch one, and the fetch is the network. The
+    resolver is pinned by the test suite instead, and the test suite is three
+    gate rows.
+  * NO CHANGE TO THE SEVEN CORPORA, and no change to any corpus pin.
+  * NO CHANGE TO THE PUBLISHED VERSION. This is an increment, and an increment
+    does not move the version.
+  * NO FIX FOR THE SIBLING PACKAGE. `riantr/LunaFlow` 0.1.3 declares
+    `supported_targets = +native` and ships no prebuilt wasm, so `moonx`
+    (which runs the wasm backend) cannot run it: `Error: Prebuilt wasm asset
+    does not exist`. That is a property of THAT package, not of this one, and
+    the analyzer here scanned LunaFlow 0.1.3 perfectly well AS A TARGET:
+    `files=26 parsed=25 actionable=1 notices=189 unreliable=11 ... total=201`.

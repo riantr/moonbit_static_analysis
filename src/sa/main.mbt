@@ -1093,7 +1093,11 @@ async fn locate(target : String) -> String {
     if versions.length() == 0 {
       return ""
     }
-    return base + "/" + versions[versions.length() - 1]
+    // 0554. The newest version is chosen BY ITS NUMBERS. The last entry of
+    // `readdir` is not the newest version: it is whatever order the filesystem
+    // handed the entries over, and on this machine that order put 0.4.7 last
+    // -- so the analyzer fetched 0.4.45 and analysed 0.4.7. See `version.mbt`.
+    return base + "/" + newest_version(versions)
   }
   let _ = @fs.readdir(target) catch { _ => return "" }
   target

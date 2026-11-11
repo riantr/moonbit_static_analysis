@@ -386,7 +386,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19676'
+$NOTICE_TOTAL = '19682'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -433,7 +433,7 @@ $NOTICE_TOTAL = '19676'
 # read: the false positive is gone rather than re-pinned, and the own-source
 # tree is one `if expression` notice lighter than the draft had it.
 $NOTICE_SPLIT_PRINTED = '3407'
-$NOTICE_SPLIT_AGGREGATED = '16269'
+$NOTICE_SPLIT_AGGREGATED = '16275'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -452,10 +452,10 @@ $NOTICE_SPLIT_AGGREGATED = '16269'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '215'
-$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1499|try expression=1|type declaration=3'
+$SELF_FILES = '217'
+$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1505|try expression=1|type declaration=3'
 $SELF_PRINTED = '138'
-$SELF_AGGREGATED = '1601'
+$SELF_AGGREGATED = '1607'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -515,7 +515,7 @@ $SUPPOFF_PARAM = '1152'
 #                 files read, the functions measured, and the statements the
 #                 lowering declined. A number without its coverage is half a
 #                 number, and the coverage moves with every increment.
-$SSA_COST = 'files=197|unreadable=0|functions=898|converted=3|partial=895|declined=4869|instructions=7051|variables=788|versions=1955|phis=707|copies=1749|undef_operands=143|dead_blocks=357|undef_uses=876'
+$SSA_COST = 'files=199|unreadable=0|functions=901|converted=3|partial=898|declined=4880|instructions=7069|variables=793|versions=1962|phis=708|copies=1751|undef_operands=143|dead_blocks=358|undef_uses=883'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
