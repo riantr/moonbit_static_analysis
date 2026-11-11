@@ -9582,6 +9582,7 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
     published 0.4.43  wasm 7665CD576ED23CE612BA9E708E3F361E42EEA99B2A87FA199A33040E652A76EC  567971 bytes  checksum bb9ff103099571a9ade23d4c7fea7e3570a9cb7dd8b158992695562a00b1e8fa  2026-11-07T05:06:05.793040+00:00
     published 0.4.44  wasm A5C3200DE17EF9030DBE72B3CAD022D9C60391B4927B2F21703DB5D6AD2086DB  586411 bytes  checksum ffdf45a53c89af1aabc0e81f206285a8c0ea71bde7c79588fb224d717bc46540  2026-11-08T16:21:48.730202+00:00
     published 0.4.45  wasm 131112DF5666C18DD1DB2C5C412600A950AF782AA1C3B79B02DEFEE2975E64FA  628777 bytes  checksum 81d0a4db66a300e90b5547555bc547b5f87bd44258908b3db43559694ff3a800  2026-11-09T16:25:03.671513+00:00
+    published 0.4.46  wasm 53A24C3E2775E5F793A20215793622C2D222A7C3AD6F40B1F3E175C43CF86954  660472 bytes  checksum aa43ce37d3887dedecc237ab44823771894488c2dd6618adf5a9ea750408c20f  2026-11-11T13:43:21.732369+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -15342,3 +15343,66 @@ after it.
   * **NO CHANGE TO ANY CORPUS NUMBER.** Every corpus is byte-identical to 0.4.45's measurement.
   * **NO ANSWER TO THE TAINT FINDINGS.** There is no taint lens here, so `TAINT-INDEX` and
     `TAINT-INDEX-RANGE` are recorded as a gap in THIS tool and not as defects in the code.
+
+## 0560: 0.4.46 SHIPPED, AND THE PUBLISHED BYTES WERE CHECKED AGAINST THE CONTRACT
+
+### WHAT WAS PUSHED, AND WHAT THE REGISTRY SAYS
+
+    tag        v0.4.46  ->  7d0ba68  on BOTH remotes
+    CI         gate     43031640600  (master push)  success
+               gate     43031632666  (tag push)     success
+               publish  43031640525                   success, all nine steps
+    registry   latest_version = 0.4.46   build_status = success
+               checksum    aa43ce37d3887dedecc237ab44823771894488c2dd6618adf5a9ea750408c20f
+               created_at  2026-11-11T13:43:21.732369+00:00
+
+The publish job's steps are the chain, and each one can fail on its own: `moon.mod must agree
+with the tag`, `There must be exactly one module`, `Gate`, `Publish to Mooncakes`, `Create
+GitHub Release`.
+
+### THE PUBLISHED BYTES, AND THE HOST CONTRACT AGAINST THEM
+
+    published 0.4.46  wasm 53A24C3E2775E5F793A20215793622C2D222A7C3AD6F40B1F3E175C43CF86954  660472 bytes  checksum aa43ce37...  2026-11-11T13:43:21.732369+00:00
+
+`selfscan_published.ps1` asked the registry for 0.4.46, read the tree the registry actually
+serves, and ran the analyzer over THAT:
+
+    scanned 217 files under .repos/riantr/moonbit_static_analysis/0.4.46
+    ok  the tree scanned is 0.4.46
+    ok  parsed 217/217 files
+    SUMMARY  files=217  parsed=217  actionable=0  notices=1751  unchecked=3236
+    ok  it requires exactly the 93 contracted symbols
+    ok  moon.mod imports no `moonbitlang/async` (it imports 0 path(s) in total)
+    ok  the toolchain bundles core 0.10.20+65efd5b93, the contracted floor
+    ok  the bundled core declares 215 host externs and covers all 93 of them
+    GATE OK: the published bytes satisfy the host contract
+
+That is a stronger claim than any local stage can make: the local gate reads the wasm THIS
+repository built, and this read the wasm the REGISTRY compiled and serves, which is what a user
+actually instantiates. The hash was taken from the download URL and from the local registry
+cache, and the two are the same file byte for byte -- 660,472 bytes, SHA256 `53A24C3E...`.
+
+### THE THREE FALSE POSITIVES ARE GONE FROM THE BYTES A USER GETS
+
+This is the measurement 0559 made, run against the SHIPPED artifacts instead of against a local
+build, over the same clean worktree and with the same harness:
+
+    published 0.4.45   module view        actionable 0   notices 1751
+    published 0.4.45   per-function view  actionable 3   notices 1751
+                       1733:5   src/sa/main.mbt
+                       95:5     src/sa/version.mbt
+                       4221:3   src/parser/parser.mbt
+    published 0.4.46   module view        actionable 0   notices 1751
+    published 0.4.46   per-function view  actionable 0   notices 1751
+
+So the release that was decided by the cross-check carries the fix in the artifact the registry
+serves, and the three findings that were false positives on this project's own source are not in
+it any more.
+
+### AND THE PACKAGE RUNS
+
+`moonx riantr/moonbit_static_analysis@0.4.46` over a one-file target: `SCANNED 1 files`,
+`parsed 1/1`, `actionable=1` -- the unused binding in the fixture. The local build over the same
+target prints the SAME finding, so the shipped artifact and the tree it came from agree. The
+failure mode 0.4.38 had -- an artifact that could not even be INSTANTIATED -- is impossible here
+by construction rather than by luck.

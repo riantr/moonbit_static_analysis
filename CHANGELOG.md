@@ -254,6 +254,18 @@ and 0.1.5's own report now DISCLOSES its CFG coverage ("600 of 2417 — the firs
 order; 1817 functions had no CFG and can carry no CFG finding"), which is the kind of limitation
 a cross-check is worth more for.
 
+### PUBLISHED
+
+0.4.46 is tagged at `7d0ba68` on both remotes, CI's `gate` and `publish` are green on that
+commit, the GitHub release is published, and the registry serves it with `latest_version =
+0.4.46`.
+
+    published 0.4.46  wasm 53A24C3E...  660472 bytes  checksum aa43ce37...  2026-11-11T13:43:21Z
+
+The published bytes were checked against the host contract — 93 symbols, the toolchain's bundled
+core at the contracted floor — and the shipped artifact over this project's own source reports
+**ZERO** unreachable-code findings where 0.4.45 reported three.
+
 ## 0.4.45 — the async runtime moved into the toolchain, and the dependency is gone
 
 This release has one subject and three consequences, and the consequences are the point:
