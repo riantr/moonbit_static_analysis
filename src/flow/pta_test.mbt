@@ -259,6 +259,25 @@ test "0547: the two readings of one program disagree on exactly one pointer" {
 test "0547: an object is named by its allocation site's line, not by its order (p.45-47, p.77)" {
   // p.77's program, with the deck's own line numbers. `z` is on LINE 4 and the
   // deck prints o4; ranking sites in order of appearance would print o2.
+  //
+  // THE EXPECTED STRING BELOW IS THE DECK'S WHOLE-PROGRAM COLUMN. p.74 and p.77
+  // print exactly these three points-to sets for this program -- `x -> {o1}`,
+  // `y -> {o1}`, `z -> {o4}` -- and p.72-77 give the OTHER analysis scope as a
+  // strict SUBSET of it: p.76's demand-driven column prints only `z -> {o4}`,
+  // because the site of interest there is line 5 (`z.bar()`) and only `z` can
+  // affect it.
+  //
+  // THIS TREE DOES NOT BUILD THE DEMAND-DRIVEN READING, and the reason is the
+  // deck's, not the tree's. p.72 defines that scope with "the pointers that may
+  // affect specific sites of interest" and never says WHAT MAKES A POINTER
+  // AFFECT A SITE, which is the whole content of a demand-driven analysis --
+  // compare the flow-sensitivity factor, which gave a definition AND two printed
+  // tables (p.61-64 against p.68) and could therefore be built and pinned. Its
+  // client, p.75-76's "call graph construction", is the section this attachment
+  // does not contain. And p.77's "Chosen in this course" is on whole-program. So
+  // the row pins the whole-program reading, and the boundary is stated here
+  // rather than in a row that could not fail. NARRATIVE.md, 0558, has the
+  // comparison and the measurement behind it.
   let g = @flow.cfg_of([
     p_let(1, "x", p_struct("A")),
     p_let(2, "y", p_name("x")),

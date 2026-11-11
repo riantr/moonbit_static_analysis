@@ -14950,3 +14950,250 @@ over-report and said the day the row goes red the defect is fixed. They now say 
     increment does not make.
   * NO NEW GATE STAGE. The fix is pinned by the test suite, and the measurement above is
     the record.
+
+## 0558: THE DECK'S OWN CONFIGURATION TABLE, ALL EIGHT CELLS, AND THE ONE READING THIS TREE DOES NOT BUILD
+
+THE ASK for this cycle was to read the attachment and improve the project on it. The
+audit re-read all 104 pages and found the work landed: 0547 built the rule system out
+of p.97-98, 0550 the flow-sensitive arm out of p.61-64, 0551-0553 the basic blocks,
+the three-address code and the SSA the deck's arrows sit on. What the record did NOT
+have is the deck's own SUMMARY of what a pointer analysis is -- the four factors and
+their eight options, p.78 -- printed against this tree cell by cell, with the row that
+pins each cell. It did not have that, and it did not have a single word about the one
+option the deck prints at length and this project has not built.
+
+This chapter is both, and it is the closing of the attachment.
+
+### THE TABLE, AS THE DECK PRINTS IT
+
+p.78 prints the summary, and the SAME slide is recurred eight times in the file: p.34,
+p.35, p.36, p.37 and p.38 (a build), p.48 (before the heap factor), p.54 (before the
+context factor) and p.71 (before the flow factor). Measured: those eight pages carry
+537 characters of text each, identical apart from the page number, and p.78 carries 430.
+The table is:
+
+    Factor              Problem                                 Choice
+    ------------------  --------------------------------------  ----------------------------
+    Heap abstraction    How to model heap memory?               • Allocation-site  • Storeless
+    Context sensitivity How to model calling contexts?          • Context-sensitive
+                                                                • Context-insensitive
+    Flow sensitivity    How to model control flow?              • Flow-sensitive  • Flow-insensitive
+    Analysis scope      Which parts of program should be
+                        analyzed?                               • Whole-program  • Demand-driven
+
+EIGHT cells: four factors, two options each. Every cell is either BUILT in this tree
+or absent from it, and the table is small enough that "which one" deserves an answer
+rather than an impression.
+
+### THE FOUR MARKS, MEASURED RATHER THAN READ
+
+Three of the four factors carry an explicit mark on their own slide, and a mark on a
+two-column slide is a PHYSICAL POSITION, so it was measured -- PyMuPDF word boxes, page
+width 720.0.
+
+  * **HEAP ABSTRACTION -- p.44-47. NO MARK.** There is no "chosen" on this factor.
+    The string "Chosen in this course" occurs on exactly TWO of the 104 pages, p.70 and
+    p.77, and "We start with this" on exactly ONE, p.53. What p.44-47 carry instead is
+    the subtitle "The most commonly-used heap abstraction", and the slides develop ONLY
+    allocation-site: "Model concrete objects by their allocation sites" and "One
+    abstract object per allocation site to represent all its allocated concrete
+    objects". So this factor's choice is not marked; it is IMPLIED by which of the two
+    options was given slides.
+  * **CONTEXT SENSITIVITY -- p.53. "We start with this", at x = 465.2 .. 610.0.** The
+    column headers are "Context-sensitive" at x = 58.2 .. 187.1 and "Context-insensitive"
+    at x = 371.0 .. 514.0, so the mark is in the RIGHT column: CONTEXT-INSENSITIVE.
+  * **FLOW SENSITIVITY -- p.70. "Chosen in this course", "Chosen" at
+    x = 480.5 .. 540.6 and "course" at x = 599.7 .. 654.5.** The headers are
+    "Flow-sensitive" at x = 58.2 .. 164.9 and "Flow-insensitive" at x = 371.0 .. 491.6,
+    so the mark is in the RIGHT column: FLOW-INSENSITIVE.
+  * **ANALYSIS SCOPE -- p.77. "Chosen in this course", "Chosen" at x = 92.9 .. 152.9 and
+    "course" at x = 212.0 .. 266.9.** The headers are "Whole-program" at
+    x = 58.2 .. 176.4 and "Demand-driven" at x = 380.4 .. 496.7, so the mark is in the
+    LEFT column: WHOLE-PROGRAM.
+
+THE MEASUREMENT IS NOT A FORMALITY. The text layer of a two-column slide does not come
+in column order: p.77's extraction prints "Chosen in this course" BEFORE either
+column's points-to sets, so a reader taking the order of the text for the order of the
+slide puts the mark on the demand-driven side. That reading is wrong, and the word
+boxes say so.
+
+### THE EIGHT CELLS, AND THE ROW THAT PINS EACH ONE
+
+    id  factor / option                     state    pinned by
+    --  -----------------------------------  -------  --------------------------
+    H1  heap / allocation-site              BUILT    R1, R2
+    H2  heap / storeless                    ABSENT   --
+    C1  context / context-sensitive         ABSENT   --
+    C2  context / context-insensitive       BUILT    R3
+    F1  flow / flow-sensitive               BUILT    R4, R5
+    F2  flow / flow-insensitive             BUILT    R6
+    S1  scope / whole-program               BUILT    R2
+    S2  scope / demand-driven               ABSENT   --
+
+    R1  pta_test.mbt    "0547: one abstract object per allocation site, even inside a
+                         loop (p.45-47)"
+    R2  pta_test.mbt    "0547: an object is named by its allocation site's line, not by
+                         its order (p.45-47, p.77)"
+    R3  pta_test.mbt    "0547: two functions keep their same-named locals apart"
+    R4  pta_test.mbt    "0547: flow-sensitively on the same program, `s` holds only
+                         \"x\" -- p.61-64"
+    R5  pta_flow_test.mbt   ten rows, 0550; the first of them is "0550: the map at each
+                         location is the deck's p.61-64 table"
+    R6  pta_test.mbt    "0547: flow-insensitively, `s` holds both strings -- p.68, and
+                         p.69's false positive"
+
+Two of these cells are marked BUILT beyond what the deck chose, and one is built in a
+form that is DEGENERATE, and both of those are decisions rather than accidents:
+
+  * **F1, FLOW-SENSITIVE, IS NOT THE COURSE'S CHOICE.** p.70 marks flow-INsensitive.
+    This tree builds the flow-sensitive reading anyway, because the deck PRINTS both
+    answers for one program -- p.61-64 against p.68 -- and a tool that answered only
+    the marked one could not tell a reader which of the two numbers is the false
+    positive p.69 names. 0547 pinned the straight-line control (`pta_run_ordered`) and
+    0550 built the general one (`pta_run_flow_sensitive`, over a map lattice with a
+    strong-update transfer).
+  * **C2, CONTEXT-INSENSITIVE, IS DEGENERATE HERE.** The deck's factor is about
+    METHOD CALLS: p.49-54 show `a.foo(x); b.foo(y);` reaching one `foo` in two
+    contexts, and the two options are "Analyze each method multiple times, once for
+    each context" against "Analyze each method once". This tree's pointer analysis has
+    no call graph at all -- `pta_run` takes a list of per-function CFGs and returns one
+    map per function, and the row "0547: a call's result contributes no objects
+    (p.90-91, out of this attachment)" pins that a call contributes NOTHING. So
+    CONTEXT-SENSITIVE has nothing here to distinguish, and CONTEXT-INSENSITIVE is what
+    the tree does: every function is analysed exactly once. R3 is the row that holds
+    it, and it holds it in the form that matters -- one map per function, and neither
+    map contains the other's local.
+
+### THE THREE EMPTY CELLS, AND WHY THEY ARE NOT THE SAME KIND OF ABSENCE
+
+This is the part the record did not have, and the three absences are NOT alike.
+
+  * **H2, STORELESS: THE DECK NEVER DEFINES IT.** The word "storeless" occurs on NINE
+    of the 104 pages -- p.34, p.35, p.36, p.37, p.38, p.48, p.54, p.71, p.78 -- and on
+    every one of them it is a BULLET IN THE SAME TABLE. There is no slide for it, no
+    example, no rule, and no line anywhere in the file that says what a storeless heap
+    abstraction IS. A cell whose entire content is one bullet in a list of two cannot
+    be implemented from this attachment, and implementing it anyway would mean
+    inventing the option and then claiming the deck had it.
+  * **C1, CONTEXT-SENSITIVE: THE CLIENT IS NOT IN THE FILE.** p.49-54 need a call
+    graph to have two contexts at all, and the attachment defers the call graph: the
+    `Foundations (I)` contents (p.94) list "4 With Method Calls", the FILE CONTAINS
+    ONLY SECTION 1, and p.96 says of the fifth statement kind "Will come back to this
+    in pointer analysis with method calls".
+  * **S2, DEMAND-DRIVEN: THE DECK DEVELOPS IT FOR SIX SLIDES AND STILL STOPS ONE RULE
+    SHORT.** This is the interesting one, and it is NOT the same absence as H2.
+    p.72-77 is a SECTION: one program --
+
+        1 x = new A();
+        2 y = x;
+        3 ...
+        4 z = new T();
+        5 z.bar();
+
+    -- and the two scopes. p.72 gives the definition, "Only compute points-to
+    information for the pointers that may affect specific sites of interest (on
+    demand)", and p.73-77 give ONE example with TWO answers:
+
+        whole-program (p.74, p.77)   x -> {o1}   y -> {o1}   z -> {o4}
+        demand-driven (p.76)                        z -> {o4}
+
+    The demand-driven column is a STRICT SUBSET of the whole-program one: the site of
+    interest is line 5, `z.bar()`, so only `z` survives. That is a real and OBSERVABLE
+    difference between the two scopes, and it is also everything the deck says about
+    how to compute it.
+
+### WHY THE DEMAND-DRIVEN READING IS NOT BUILT HERE
+
+Three reasons, and every one of them is the deck's own rather than the tree's.
+
+  1. **THE DECK DOES NOT SAY WHAT "MAY AFFECT" MEANS, AND THE OTHER FACTOR SHOWS WHAT
+     IT WOULD HAVE LOOKED LIKE.** The flow-sensitivity factor gave a definition AND two
+     printed tables -- p.61-64 (flow-sensitive) and p.68 (flow-insensitive) -- and
+     those tables were enough to DETERMINE the analysis, which is why 0550 could build
+     it and why 0547 could pin both readings as rows. The demand-driven section gives a
+     definition and one example, and the example does not say WHICH pointers "may
+     affect" a site of interest. That question -- what makes a pointer relevant to a
+     site -- IS the content of a demand-driven analysis, and the attachment does not
+     answer it.
+  2. **ITS CLIENT IS THE SECTION THAT IS NOT IN THE FILE.** p.75-76 print the labels
+     "Client: call graph construction" and "Site of interest: line 5". The
+     demand-driven column exists to answer a client, and the client it names is a CALL
+     GRAPH -- the very thing the attachment defers (C1 above). So the section builds a
+     scope whose client is not in the material.
+  3. **IT IS NOT THE COURSE'S CHOICE.** p.77's mark is on whole-program, measured at
+     x = 92.9 .. 152.9 and x = 212.0 .. 266.9, the LEFT column.
+
+=> 判据: A READING OF THE DECK THAT THE DECK NEVER WRITES DOWN IS NOT A READING OF THE
+DECK. p.76's demand-driven column IS printed, so this tree knows what the answer looks
+like; but the RULE that would decide it is not printed anywhere, and an analysis whose
+rule is not written down cannot be pinned by a row, because the row would have to
+assert the analysis and the analysis does not exist. The symmetry that makes the
+absence visible is the measured one: STORELESS got ZERO slides and DEMAND-DRIVEN got
+SIX. So the honest sentence is not "the deck defines neither" -- it is "the deck
+tries to define demand-driven, and stops one rule short of it".
+
+### THE ONE FILE THAT CHANGED, AND IT IS A COMMENT
+
+`src/flow/pta_test.mbt`'s row R2 asserts
+
+    "x -> {o1}; y -> {o1}; z -> {o4}"
+
+and that string IS the deck's WHOLE-PROGRAM column: p.74 and p.77 print exactly those
+three points-to sets for that program. The comment above the assertion now says so, and
+says that p.76's demand-driven column is the strict subset `z -> {o4}`, and gives the
+three reasons above.
+
+NO ROW WAS ADDED, and that is a decision rather than an omission. A row for the
+demand-driven reading would have to assert the ABSENCE of an analysis: it could not
+fail, so it could only rot. The project's rule is that a POSITIVE fact gets a row and
+the boundaries live in the prose, pointing at the row that holds the positive -- and
+0550 is the precedent in the other direction, where a reading with TEN observable
+answers got TEN rows and the boundaries around it stayed in the prose.
+
+AND NOTHING ELSE MOVED, and that is mechanical rather than lucky:
+
+  * a comment adds no declaration, so the own-source notice count, the printed /
+    aggregated split and the kind table are unchanged;
+  * it adds no function, so the SSA cost -- functions, partial, declined -- is
+    unchanged;
+  * the seven corpora are scanned, not this tree, so no corpus pin can move;
+  * the settle scripts read NARRATIVE.md with ANCHORED patterns -- `^\s*0505 <name>:`
+    and `^\s*0507 <name>:` and `^\s*0508 <name>:`, each against its own name table --
+    and no line of this chapter begins with one of those three numbers.
+
+### AND THE GATE CONFIRMS IT, MEASURED RATHER THAN ARGUED
+
+The full gate on this tree: **122 rows, 121 True, 1 False** -- and the one red row is
+the `per-function census control`, which is red in 0556 and 0557 too, for the same
+reason (the toolchain's `moon` cannot type-check the pinned core: abort/pkg.mbti:4).
+
+Everything else is digit for digit what it was, and each of these is the gate's own
+line rather than a number carried over from 0557:
+
+    the seven corpora, module view     [MATCH ] on all seven, digit for digit
+    this repository's own source       218 files, 1,751 notices
+                                       1,751 = 138 printed + 1,613 aggregated
+    the per-function census            TOTAL 28 (core 27, labeler 1)
+                                       DEMOTED 22 (core 20, proton 2)
+    the suppression-off pair           UnusedLocal 587, UnusedParam 1,152
+    the `raise?` reach                 188 return-position sites in 33 files (core),
+                                       0 in the other six corpora and in this tree
+    the SSA cost                       "the SSA cost matches the pin (14 numbers)"
+
+AND THE WHOLE LOG, NORMALIZED AND DIFFED AGAINST 0557'S, IS THE STRONGER STATEMENT.
+Strip the stage timings and the summary table's seconds column, and the two logs are
+1,426 lines each with FOUR differences between them: the commit hash, and one line
+saying how many tasks the build had cached. Every measurement line is byte-identical.
+A chapter and a comment cannot move a number, and this is what that looks like when
+it is checked rather than asserted.
+
+### WHAT IS NOT HERE
+
+  * **NO DEMAND-DRIVEN ANALYSIS, NO STORELESS HEAP ABSTRACTION, NO CONTEXT-SENSITIVE
+    ANALYSIS.** Three of the eight cells are empty, and the reasons are the deck's
+    own, printed above.
+  * **NO NEW TEST ROW**, and no change to any of the thirteen rows' expectations.
+  * **NO NEW FINDING FAMILY**, so no corpus SUMMARY moves.
+  * **NO CHANGE TO THE PUBLISHED VERSION.** This is an increment, and an increment does
+    not move the version.
+  * **NO CHANGE TO THE TWO READMEs.**
