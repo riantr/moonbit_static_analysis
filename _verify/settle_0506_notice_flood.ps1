@@ -86,7 +86,7 @@ $WANT_CORE_FILES   = 1029    # files in the pinned corpus
 # same measurement: the settle scans the corpus the way the release gate
 # scans it, so these numbers and the gate's corpus pins are one number each,
 # not two that have to be kept in step by hand.
-$WANT_CORE_ACTIONABLE = 10
+$WANT_CORE_ACTIONABLE = 33
 $WANT_CORE_PARSED    = 984
 
 $fail = 0

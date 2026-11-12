@@ -741,7 +741,7 @@ pub fn Family::reach(self : Family) -> String {
     FRedundantGuard =>
       "has never produced a finding on the pinned corpora or on this tree (measured, 0534); it fires on hand-written implication fixtures, so this is a statement about REACH on real code and not about the emitter"
     FDeadStore =>
-      "29 findings across the corpora before its first audit, of which 20 were ONE defect in the CFG rather than in this family (0531), leaving 9; those nine were then measured one by one (0532) and all nine are gone: eight were a read inside a region the frontend declared outside its subset, and the ninth was the index of a place-store not counted as a read (0542). The family now reports ZERO across the pinned corpora, and a scan without its findings is not evidence that no store is dead"
+      "29 findings across the corpora before its first audit, of which 20 were ONE defect in the CFG rather than in this family (0531), leaving 9; those nine were then measured one by one (0532) and all nine are gone: eight were a read inside a region the frontend declared outside its subset, and the ninth was the index of a place-store not counted as a read (0542). The family then reported ZERO across the pinned corpora. 0565 taught it about DECLARATIONS -- a `let` whose value is overwritten before any read -- and it now reports 23 findings across the pinned corpora, all of them on moonbitlang/core, and every one of them was measured against its source and is a true positive. A scan without its findings is not evidence that no write is dead"
   }
 }
 
@@ -769,7 +769,7 @@ pub fn Family::property(self : Family) -> String {
     FRedundantGuard =>
       "the guards before this test already force its outcome, so the test cannot decide anything"
     FDeadStore =>
-      "the value this store wrote is read on no path before the name is written again or the function exits"
+      "the value this write put in the name is read on no path before the name is written again or the function exits -- and a DECLARATION is one write: the value the initialiser bound is dead in exactly the same way"
   }
 }
 
@@ -810,7 +810,7 @@ pub fn Family::assumption(self : Family) -> String {
     FRedundantGuard =>
       "the same fragment: an immutable binding against a literal, with integer comparisons that do not wrap and no reassignment between the two guards"
     FDeadStore =>
-      "a BACKWARD MAY analysis over this function body's control-flow graph: not-live is the trustworthy direction, so a read the graph does not model can only make this report wrong, and every such case is named in excluded"
+      "a BACKWARD MAY analysis over this function body's control-flow graph: not-live is the trustworthy direction, so a read the graph does not model can only make this report wrong, and every such case is named in excluded. A DECLARATION is reported only when the name is read SOMEWHERE -- that second half is what keeps this family off the lines `UnusedLocal` owns, whose claim is 'never read anywhere'"
   }
 }
 
@@ -852,7 +852,7 @@ pub fn Family::excluded(self : Family) -> String {
     FRedundantGuard =>
       "the same fragment; a test whose operand was mutated after the binding carries no fact, so it is undecided rather than reported"
     FDeadStore =>
-      "reads this graph does not model: a break or continue edge is a Stop, a nested function body is its own graph, and a read through a field or index alias is not tracked -- so the store is a candidate rather than a proof of uselessness, and a right-hand side with effects is unaffected by the finding. A FUNCTION THAT HOLDS A REGION THE FRONTEND DID NOT READ IS NOT ANALYSED AT ALL: an if used as a value, an anonymous function literal and a try expression each leave a hole in the function that contains them, and a read inside such a hole is a path this graph never saw (0542)"
+      "reads this graph does not model: a break or continue edge is a Stop, a nested function body is its own graph, and a read through a field or index alias is not tracked -- so the store is a candidate rather than a proof of uselessness, and a right-hand side with effects is unaffected by the finding. A FUNCTION THAT HOLDS A REGION THE FRONTEND DID NOT READ IS NOT ANALYSED AT ALL: an if used as a value, an anonymous function literal and a try expression each leave a hole in the function that contains them, and a read inside such a hole is a path this graph never saw (0542). A DECLARATION WHOSE NAME IS NEVER READ ANYWHERE IS `UnusedLocal`'s FINDING, not this one, and the 'read somewhere' that decides it is the GRAPH's -- so a read the graph does not model makes a declaration look unread as well as a store (0565)"
   }
 }
 

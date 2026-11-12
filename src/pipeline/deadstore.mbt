@@ -7,6 +7,35 @@
 // two claims are different, and a reader who is handed the wrong one is told the
 // binding is useless when only this write was.
 //
+// 0565. AND A DECLARATION IS A WRITE TOO. The rule above is about ONE write, and
+// `let mut x = 0` is one: the value 0 is written into `x`. It used to be
+// INVISIBLE here, because the graph keeps a declaration and a re-assignment
+// apart (`Assign` vs `Store`, src/flow/cfg.mbt:324 and :339) -- and the reason
+// the graph keeps them apart was an assumption this increment MEASURED to be
+// false. "A `let` whose value is never read" and "a binding that is never read"
+// are NOT the same claim: a binding can be read LATER and its INITIALIZER's
+// value still be dead, and then `FUnusedLocal` does not fire (its claim is
+// "never read anywhere") and this family did not fire either (a declaration was
+// not a `Store`), so the value was reported by NOBODY.
+//
+// THE SECOND HALF OF THE RULE IS WHAT KEEPS THE TWO FAMILIES APART. A
+// declaration whose name is never read anywhere is `FUnusedLocal`'s finding, and
+// reporting it here too would put two families on one line for one fact. So a
+// declaration is reported here only when its name IS read somewhere: the
+// binding is used, and the VALUE it was initialised with is not.
+//
+// MEASURED, the shape the course's own first example has (the lecture's p.40-43:
+// `if (input) x = 1; else x = 0` -- in the only shape MoonBit allows for it,
+// `let mut x = 0` before the two branches):
+//
+//     let mut x = 0
+//     if input { x = 1 } else { x = 0 }
+//     x
+//
+// reported NOTHING before this increment. It reports ONE finding now, and it is
+// on the DECLARATION: the two branch stores are not dead, because on each path
+// the value the branch wrote IS the one the tail reads.
+//
 // THE TWO GUARDS THAT MATTER, AND WHY THEY ARE BOTH `skipped`-SHAPED.
 //
 // 1. THE CFG counts the statements it did not convert (`Cfg.skipped`): a nested
@@ -148,6 +177,31 @@ fn declared(stmts : Array[@ast.Stmt], out : Map[String, Bool]) -> Unit {
 }
 
 ///|
+/// The names this function READS, over the graph's own node kinds.
+///
+/// WHY IT IS THE GRAPH'S ANSWER AND NOT A SECOND WALK. The declaration rule
+/// below has to AGREE with `FUnusedLocal` about what a read is -- the second
+/// half of that rule exists so the two families cannot report one line -- and
+/// `node_uses` is the definition of a read the liveness pass already uses. A
+/// second walk here would be a second definition of the same thing, and the two
+/// would drift apart.
+///
+/// WHY IT IS THE WHOLE FUNCTION AND NOT "AFTER THE DECLARATION". A name cannot
+/// be read before the `let` that binds it -- that is a use of no visible binding
+/// and `FUndefinedName` owns it -- so "read somewhere in this function" and
+/// "read somewhere after this declaration" are the same set of names for a name
+/// this function declares.
+fn read_names(g : @flow.Cfg) -> Map[String, Bool] {
+  let out : Map[String, Bool] = Map([])
+  for k in g.kinds {
+    for name in @flow.node_uses(k).keys() {
+      out.set(name, true)
+    }
+  }
+  out
+}
+
+///|
 fn one_body(
   params : Array[@ast.Param],
   fbody : Array[@ast.Stmt],
@@ -166,6 +220,7 @@ fn one_body(
   declared(fbody, mine)
   let ins = @flow.live_in(g)
   let outs = @flow.live_out(g, ins)
+  let reads = read_names(g)
   let mut v = 0
   while v < g.kinds.length() {
     match g.kinds[v] {
@@ -175,6 +230,20 @@ fn one_body(
             family: @core.FDeadStore,
             lenses: [@core.LStructural],
             message: "the value stored in '\{x}' is read on no path before the name is written again",
+            span: g.spans[v],
+            vst: [],
+          })
+        }
+      // 0565. THE DECLARATION. The same claim, one write earlier: the value the
+      // initialiser put into the name is read on no path before the name is
+      // written again. The second half -- the name is read SOMEWHERE -- is what
+      // keeps this off the lines `FUnusedLocal` owns.
+      @flow.Assign(x, _) =>
+        if outs[v].contains(x) == false && mine.contains(x) && reads.contains(x) {
+          out.push(@report.Report::{
+            family: @core.FDeadStore,
+            lenses: [@core.LStructural],
+            message: "the value bound to '\{x}' is read on no path before the name is written again",
             span: g.spans[v],
             vst: [],
           })

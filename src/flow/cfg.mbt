@@ -382,9 +382,44 @@ fn build_one(b : Builder, s : @ast.Stmt, next : Int32) -> Int32 {
       n
     }
     @ast.SBlock(inner) => build_seq(b, inner, next)
+    // 0565. THE LOOP RUNS FIRST, AND THE `nobreak` BLOCK RUNS AFTER IT.
+    //
+    // THIS ARM HAD THE ORDER INVERTED, and the inversion was invisible until a
+    // finding depended on it. It built the LOOP first and then the BLOCK with
+    // the loop's entry as its continuation -- so the block's code sat BEFORE
+    // the loop's in the graph, and the loop was reachable only THROUGH the
+    // block. When the block ended in a terminator, the loop became UNREACHABLE,
+    // and everything the loop read stopped being a read.
+    //
+    // MEASURED, moonbitlang/core 0.1.20260920+7d59c7ec9 `diff/diff.mbt:668`:
+    //
+    //     let matches = collect_matches(cutoff, old, new, algorithm)
+    //     ...
+    //     for pair in matches {   // the only read of `matches`
+    //       ...
+    //     } nobreak {
+    //       ...
+    //       return { old, new, edits: result, }   // the block's last statement
+    //     }
+    //
+    // reported `the value bound to 'matches' is read on no path before the name
+    // is written again` -- a FALSE POSITIVE, because the loop reads `matches`
+    // on its first iteration. The `return` ends the block, so the graph never
+    // reached the loop, so the loop's read of the iterable was not a read.
+    //
+    // THE ORDER THAT MATCHES THE LANGUAGE: the loop's exit is the block, and
+    // the block's exit is `next`. The block is built FIRST because its
+    // continuation does not depend on the loop, and the loop is built with the
+    // block's entry as its exit -- so the two are wired the way they run, and
+    // the loop is reachable from the statement that owns it.
+    //
+    // AND A `break` STILL SKIPS THE BLOCK: `break` is a `Stop` with no
+    // successor, so the break's path ends inside the loop and never reaches
+    // the block. That is what `nobreak` means.
     @ast.SNoBreak(inner, body) => {
-      let after_inner = build_one(b, inner, next)
-      build_seq(b, body, after_inner)
+      let block_entry = build_seq(b, body, next)
+      let after_inner = build_one(b, inner, block_entry)
+      after_inner
     }
     @ast.SReturn(e) | @ast.SRaise(e) =>
       // THE EXPRESSION IS A READ, AND DISCARDING IT WAS A MEASURED FALSE

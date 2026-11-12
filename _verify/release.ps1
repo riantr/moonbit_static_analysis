@@ -386,7 +386,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19690'
+$NOTICE_TOTAL = '19694'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -433,7 +433,7 @@ $NOTICE_TOTAL = '19690'
 # read: the false positive is gone rather than re-pinned, and the own-source
 # tree is one `if expression` notice lighter than the draft had it.
 $NOTICE_SPLIT_PRINTED = '3407'
-$NOTICE_SPLIT_AGGREGATED = '16283'
+$NOTICE_SPLIT_AGGREGATED = '16287'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -453,9 +453,9 @@ $NOTICE_SPLIT_AGGREGATED = '16283'
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
 $SELF_FILES = '218'
-$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1513|try expression=1|type declaration=3'
+$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1517|try expression=1|type declaration=3'
 $SELF_PRINTED = '138'
-$SELF_AGGREGATED = '1615'
+$SELF_AGGREGATED = '1619'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -525,7 +525,7 @@ $SUPPOFF_PARAM = '1152'
 # versions, the phis, the copies, the dead blocks and the undefined uses are
 # identical, digit for digit -- which is what says the movement is three new
 # functions and not the lowering changing its mind about the old ones.
-$SSA_COST = 'files=200|unreadable=0|functions=907|converted=3|partial=904|declined=4890|instructions=7071|variables=795|versions=1964|phis=708|copies=1751|undef_operands=143|dead_blocks=358|undef_uses=884'
+$SSA_COST = 'files=200|unreadable=0|functions=908|converted=3|partial=905|declined=4893|instructions=7080|variables=798|versions=1973|phis=712|copies=1767|undef_operands=143|dead_blocks=358|undef_uses=885'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
@@ -1892,7 +1892,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1654'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2897 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
-  'moonbit_core'    = 'files=1029 parsed=984 actionable=10 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10770'
+  'moonbit_core'    = 'files=1029 parsed=984 actionable=33 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10793'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -2066,13 +2066,13 @@ $PERFN = [ordered]@{
   'async'           = '0'
   'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '27'
+  'moonbit_core'    = '50'
 }
 # 0542. WAS 37, and the nine that left it were the `MSA-015` false positives
 # that 0532 named and did not fix. The census's own last line says it: every
 # actionable finding and every demoted finding now lands in a NAMED family, and
 # the UNCLASSIFIED bucket that held those nine is empty.
-$PERFN_TOTAL = '28'
+$PERFN_TOTAL = '51'
 # 0508. THE DEMOTED SET, pinned beside the actionable one for the same reason.
 # A finding the analyzer does not stand behind is rendered `notice:` and leaves
 # the actionable count -- and a set of findings that leaves the census is a set
@@ -2109,7 +2109,7 @@ $PERFN_DEMOTED_TOTAL = '22'
 # 0508 MOVED THIS PIN: the demotion took four files out of the actionable set --
 # they carried a low-confidence finding and nothing the analyzer stands behind --
 # so the control's file count is 16 and not 20.
-$CONTROL_N = '16'
+$CONTROL_N = '18'
 
 if ($failed.Count -eq 0) {
   $CS = Join-Path $root '_verify\census_perfunction.ps1'

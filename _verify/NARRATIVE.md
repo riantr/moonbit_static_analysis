@@ -15974,3 +15974,204 @@ increment that does change source runs it in full.
   * **THE BOUNDARIES ARE UNCHANGED.** The three empty cells -- storeless, context-sensitive,
     demand-driven -- are still empty, for the deck's own reasons, and the lecture's p.21-23
     is the reason they are empty rather than a gap.
+## 0565: THE LECTURE'S OWN EXAMPLE, AND TWO READS THE ANALYSIS WAS NOT SEEING
+
+### THE GAP 0564 MEASURED, AND THE RULE THAT CLOSES IT
+
+0564 recorded the gap the course's first lecture exposes, in these words: "A
+DECLARATION WHOSE INITIALIZER IS OVERWRITTEN BEFORE ANY READ IS INVISIBLE TO THIS
+TOOL", and the rule that would close it -- "report the declaration iff the name
+is not live after it AND the name is read SOMEWHERE later".
+
+THIS INCREMENT IMPLEMENTS THAT RULE. The `Assign` node -- a `let` -- is now asked
+the question the `Store` node -- a re-assignment -- was asked, with ONE extra
+condition.
+
+THE EXTRA CONDITION IS NOT A DETAIL. Without it, every local that is never read
+would be reported here as well as by `FUnusedLocal`, and the two families would
+put two findings on one line for one fact. The condition is "the name is read
+SOMEWHERE", and it is the exact complement of `FUnusedLocal`'s claim ("never read
+anywhere"), so the two cannot report one line. The read set is the GRAPH's
+(`@flow.node_uses`), not a second walk: a second definition of "read" is a
+second answer to the same question, and the two would drift.
+
+THE LECTURE'S OWN EXAMPLE (its p.40-43, `if (input) x = 1; else x = 0`), in the
+only shape MoonBit allows for it:
+
+    let mut x = 0
+    if input { x = 1 } else { x = 0 }
+    x
+
+reported NOTHING before this increment -- 0 findings, 0 notices -- and reports ONE
+now: the DECLARATION. The two branch stores are not dead, because on each path
+the value the branch wrote IS the one the tail reads.
+
+### TWO FALSE POSITIVES, AND THE TWO READS THEY NAMED
+
+The rule found 25 candidates across the pinned corpora. TWENTY-THREE ARE TRUE
+POSITIVES. The other two were false positives, and they were not findings to be
+re-pinned: they were READS THE ANALYSIS WAS NOT SEEING, and both causes are
+fixed here.
+
+**THE LEXER DROPPED EVERY NAME AFTER AN `@`-PREFIXED PATH IN AN INTERPOLATION.**
+MEASURED, moonbitlang/async 0.22.4 `examples/udp_ping_pong/main.mbt:65`:
+
+    let msg = buf.unsafe_reinterpret_as_bytes()[0:n]
+    println("client \{id} received: \{@utf8.decode(msg)}")
+
+reported `local variable 'msg' assigned but may not be used` -- a false positive
+on code `moon check` accepts, and the read was on the NEXT line. THE CAUSE is in
+`src/lexer/lexer.mbt`: the flag that says "the identifier being read is an import
+alias" WAS the flag that says "an `@` was just seen", and that flag was set when
+the `@` was seen and NEVER CLEARED -- so every identifier after the alias in the
+same interpolation was dropped as an alias. `@utf8` is the alias; `msg` is an
+ordinary argument.
+
+THE FIX is one flag's worth: the alias flag now belongs to the identifier it
+belongs to, and the "an `@` was just seen" flag is cleared as soon as that
+identifier starts. MEASURED, the same fixture is CLEAN after it.
+
+**THE CFG PUT A `nobreak` BLOCK BEFORE THE LOOP IT BELONGS TO.** MEASURED,
+moonbitlang/core 0.1.20260920+7d59c7ec9 `diff/diff.mbt:668`:
+
+    let matches = collect_matches(cutoff, old, new, algorithm)
+    ...
+    for pair in matches { ... } nobreak { ... return { old, new, edits: result, } }
+
+reported `the value bound to 'matches' is read on no path before the name is
+written again`. The `for` reads `matches` on its first iteration. THE CAUSE is in
+`src/flow/cfg.mbt`: the `SNoBreak` arm built the LOOP first and then the BLOCK
+with the loop's entry as its continuation -- so the block's code sat before the
+loop's in the graph, and the loop was reachable only THROUGH the block. When the
+block ended in a `return`, the loop became UNREACHABLE, and the loop's read of
+the iterable was not a read.
+
+THE FIX is the order the language runs in: the block is built first (its
+continuation does not depend on the loop), and the loop is built with the block's
+entry as its exit. A `break` still skips the block -- `break` is a `Stop` with no
+successor -- which is what `nobreak` means.
+
+=> 判据: A FINDING THAT IS WRONG IS FIXED, NOT PINNED. Both of these were
+reachable only through the new rule, because the old rule asked the question of a
+`Store` and neither shape had a dead `Store`; the new rule asked it of the
+`Assign` as well, and both shapes had a dead `Assign`.
+
+### THE AUDIT -- TWENTY-THREE FINDINGS, EACH ONE READ AGAINST ITS SOURCE
+
+Every one of the 23 was read against the code it names, and every one is a true
+positive. They are in four files:
+
+    moonbitlang/core  math/trig_double_nonjs.mbt            16
+    moonbitlang/core  internal/strconv/strconv_decimal.mbt   3
+    moonbitlang/core  immut/vector/tree.mbt                   4
+
+and they are the same shape in all of them: a local declared with a dummy initial
+value and then OVERWRITTEN before anything reads it. The shape is what a kernel
+ported from C looks like, and the initialiser is dead weight that `moon check`
+does not say a word about.
+
+    trig_double_nonjs.mbt:261-263   `id`, `z`, `w`    `id` is written on EVERY
+                                     path before its first read (the five
+                                     branches at 279/284/287/291/294 cover both
+                                     arms of the outer `if`); `z` and `w` are
+                                     written unconditionally at 298/299
+    trig_double_nonjs.mbt:825-827   `z`, `r`, `v`      written unconditionally at
+                                     834/835/836, before the tail reads them
+    trig_double_nonjs.mbt:853-857   `a`, `hz`, `z`,    `z` and `r` at 864/865,
+                                     `r`, `qx`          `qx` at 870 or 872 (BOTH
+                                     arms), `hz` at 874, `a` at 875 -- each
+                                     before its first read
+    trig_double_nonjs.mbt:887-891   `z`, `r`, `v`,     the early branch writes
+                                     `w`, `s`           them at 919-926 and the
+                                     late path at 936-946
+    strconv_decimal.mbt:177         `mantissa`         written at 184 on the zero
+                                     path and at 244 on the main path, before
+                                     the read at 247
+    strconv_decimal.mbt:203, 215    `n`                both arms of the `if` write
+                                     it (205/207 and 217/219) before the read
+    tree.mbt:719-720                `old_leaf_elems`,  written at the top of the
+                                     `old_leaf_len`     loop body (727/728)
+    tree.mbt:761-762                `old_node_chldrn`, written at the top of the
+                                     `old_node_len`     loop body (764/765)
+
+THE COUNT IS A COUNT AND NOT A QUALITY JUDGEMENT until it is read, which is what
+0531 and 0532 did for the nine this family produced before. The number here is
+23, and every one of them says the same thing about its own line.
+
+### THE OTHER SIX CORPORA DID NOT MOVE, AND THAT IS THE MEASUREMENT
+
+    moui            actionable=0   UNCHANGED
+    moonbit_labeler actionable=1   UNCHANGED
+    moonbit_image   actionable=0   UNCHANGED
+    async           actionable=0   UNCHANGED
+    proton          actionable=0   UNCHANGED
+    proton_contract actionable=0   UNCHANGED
+    moonbit_core    actionable=10 -> 33
+
+and the six UNCHANGED ones are the ones the two fixes touched: `async` is where
+the lexer's dropped read was, and it is back to zero.
+
+### THE NUMBERS THAT MOVED
+
+    own-source files             218 -> 218    (UNCHANGED -- no file added)
+    own-source notices           1753 -> 1757  (+4: the four new test declarations)
+    own-source printed           138 -> 138    (UNCHANGED)
+    own-source aggregated        1615 -> 1619  (+4)
+    test declarations            1513 -> 1517  (+4)
+    unchecked calls              3238 -> 3241  (+3: the calls the new rule makes)
+    eight-tree notices           19690 -> 19694
+    eight-tree split             3407 + 16283 -> 3407 + 16287
+    tests wasm                   1513 -> 1517  (+4)
+    tests js / wasm-gc           1371 -> 1375  (+4)
+    moonbit_core actionable      10 -> 33      (+23)
+    moonbit_core total           10770 -> 10793 (+23)
+
+AND THE OWN SOURCE IS STILL CLEAN: `actionable=0` over 218 files, with the new
+rule in the tree. That is not luck -- it is the same shape the 23 findings have,
+written the way a person writes it.
+
+### THE GATE, AND WHAT IT DID AND DID NOT RUN
+
+THE RELEASE GATE RAN ON THIS TREE, IN THE MODE THE GATE ITSELF DOCUMENTS FOR A TREE WHOSE
+VERSION IS NOT BEING BUMPED: `-SkipMutations`. MEASURED, on this tree: **34 stage rows, 33
+True and 1 False**, and the one red row is the KNOWN one -- the per-function census control,
+which reads "BASELINE FAILED: the corpus has errors beyond the one this control knows:
+abort/pkg.mbti:4". That row is 0566's subject.
+
+    the seven corpora, module view      [MATCH ] on all seven, digit for digit
+    the eight trees carry 19694 notices
+    the eight trees split into 3407 printed and 16287 aggregated
+    the per-function census            TOTAL 51 actionable (core 50, labeler 1)
+                                        DEMOTED 22 (core 20, proton 2)
+    moon fmt --check, moon check --deny-warn, moon test on js / wasm / wasm-gc, moon build
+                                        all True
+
+THE SIX FAST GATES ARE GREEN TOO: `settle_0505` (17 rows), `settle_0507` (19 rows),
+`settle_0508` (12 rows), `check_transfer_scope`, `check_readme_links` ("VERIFY OK") and
+`check_host_requirements`.
+
+**THE MUTATION STAGE WAS SKIPPED, AND THIS INCREMENT IS NOT THE ONE 0564 WAS.** 0564 could
+say "no mutation gate names the file this increment touched", because it touched ONE file, in
+its HEADER COMMENT only. This increment changed the analyzer's LOGIC, and the measurement is
+different: of the 87 mutation gates, **27** name one of the three source files it changed --
+`src/pipeline/deadstore.mbt` (1 gate), `src/lexer/lexer.mbt` (25 gates) and `src/flow/cfg.mbt`
+(2 gates), with `mutate_0441` naming two of the three. So the mutation stage was NOT covered
+by this run, and this chapter does not borrow 0564's sentence.
+
+=> A GATE THAT WAS SKIPPED IS NOT A GATE THAT PASSED, AND A BORROWED SENTENCE IS NOT A
+MEASUREMENT. Those 27 gates are re-measured against this tree, and the result is recorded
+where it is measured.
+
+### WHAT IS NOT HERE
+
+  * **THE OTHER TWO GAPS 0564 MEASURED ARE STILL OPEN.** A division by a literal
+    zero and a negative array index are still reported by nobody, and the
+    constant-propagation and interval domains that would answer them are still
+    silent. That is a separate increment, and 0564's text says why.
+  * **NO NEW FAMILY, AND SO NO NEW ID.** The declaration is the same claim as the
+    store -- one write whose value no path reads -- so it is `MSA-015`, with the
+    family's own `reach`, `property`, `assumption` and `excluded` re-measured
+    rather than a second family beside it.
+  * **NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
+  * **THE BOUNDARIES ARE UNCHANGED.** The three empty cells -- storeless,
+    context-sensitive, demand-driven -- are still empty.

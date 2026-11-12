@@ -15,10 +15,12 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1029 files): **984 parsed, 10 actionable** — and every one
-of the 10 is a construct this frontend does not read or an operator it does not model, not
-a defect in the analysed code. The 18 findings demoted in 0.4.38 — names the analyzer could
-not resolve — are counted as notices and are not in that 10. On that same tree
+Measured on `moonbitlang/core` (1029 files): **984 parsed, 33 actionable** — 10 of them are
+constructs this frontend does not read or an operator it does not model, and the other 23 are
+`MSA-015` dead stores on declarations: a `let` whose value is overwritten before anything reads
+it. That is dead weight in the analysed code rather than a reader gap, and every one of the
+23 was measured against the source it names. The 18 findings demoted in 0.4.38 — names the
+analyzer could not resolve — are counted as notices and are not in that 33. On that same tree
 `moon check --target all` reports exactly **one** error, in a `.mbt.md` doc file.
 
 ## Contents
@@ -495,6 +497,13 @@ asserts that the set of families each table names is the set `all_families()` re
 a family that exists in the code and is missing from the table is a **gate failure**, not
 a reader's discovery.
 
+**`MSA-015` COVERS THE DECLARATION TOO.** A `let` is a write, and a `let` whose value is
+overwritten before anything reads it is as dead as a re-assignment that is: `let mut x = 0`
+followed by `x = 1` before any read of `x` is reported **on the declaration**. The two are
+told apart by their own wording — *the value bound to 'x'* and *the value stored in 'x'* —
+and a declaration is reported only when the name is read somewhere, so it never doubles up
+with `MSA-003` (`UnusedLocal`), whose claim is the opposite one.
+
 **THE PROFILE SELECTS FAMILIES BY ID**, and it is checked before the scan runs: an id this
 version does not know is a `WARNING` and the scan still runs; an id that is both included
 and excluded is an `ERROR` and the scan does not run at all. The filter is applied to the
@@ -591,7 +600,7 @@ whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1513 | | `const` declaration | 7 |
+| `test` declaration | 1517 | | `const` declaration | 7 |
 | `if` expression | 95 | | `short lambda` | 8 |
 | `struct` declaration | 70 | | `type` declaration | 3 |
 | `anonymous function literal` | 34 | | `try` expression | 1 |
@@ -600,7 +609,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **138** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1615** sit outside every function's
+audit off, so they are printed one per line; the other **1619** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -633,10 +642,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,690** notices —
+per-file printing cap lifted so the count is the whole finding set: **19,694** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,407** of them as printed per line and
-**16,283** as aggregated — which is 3,407 + 16,283 = 19,690, the same number — and the 3,407
+**16,287** as aggregated — which is 3,407 + 16,287 = 19,694, the same number — and the 3,407
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -698,10 +707,11 @@ numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** It is measured
 > across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and the release
-> gate **pins** the number. Today it reports **28** `actionable` findings — 27 of them on
-> `moonbitlang/core` and one on `moonbit_labeler` — where the module view reports 10 and 1.
+> gate **pins** the number. Today it reports **51** `actionable` findings — 50 of them on
+> `moonbitlang/core` and one on `moonbit_labeler` — where the module view reports 33 and 1.
 > The census classifies them: **27** are constructs this frontend does not read or operators
-> it does not model, and one — a local assigned and never read in `moonbit_labeler` — is still
+> it does not model, **23** are dead stores — a value nobody reads, and the lens's own claim
+> about the code — and one — a local assigned and never read in `moonbit_labeler` — is still
 > the first true defect this tool has published on any corpus.
 >
 > **Every one of them is in a NAMED family.** The census keeps a bucket for findings it
@@ -720,6 +730,7 @@ numbers with and without the flag.
 > | I | 1 | `abs` on a `Double` |
 > | J | 1 | `*` on two function values |
 > | K | 3 | a local call with a named argument |
+> | M | 23 | a dead store — a value nobody reads — the lens's own claim about the code |
 >
 > **AND 22 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
 > rendered `notice:` and counted as a notice rather than as actionable, and the census keeps
@@ -731,7 +742,7 @@ numbers with and without the flag.
 > analyses — this one takes every function as an entry point, the module view takes the
 > module — so they do not find the same names: in `moonbit_core` this view reports 20 and
 > the module view 18, and only **15** of those are the same site. That is the same difference
-> as the 27 against the 10 above, and the two views stay separate, not additive.
+> as the 50 against the 33 above, and the two views stay separate, not additive.
 >
 > | demoted family | n | what the lens claimed |
 > |---|---:|---|
@@ -742,10 +753,10 @@ numbers with and without the flag.
 >
 > **"Accepted" is measured, not assumed.** `moon check --target all` on `moonbitlang/core`
 > reports exactly **one** error, in `json/README.mbt.md`, and it is not one of the
-> **sixteen** files that carry a finding. That is only half of it: a file with no
+> **eighteen** files that carry a finding. That is only half of it: a file with no
 > diagnostic is indistinguishable from a file nobody opened, so
 > `_verify/control_perfunction_census.ps1` appends a deliberate type error to each of those
-> files **in a copy** and requires the error back — **16 of 16**.
+> files **in a copy** and requires the error back — **18 of 18**.
 >
 > **The two in family L are the documented limit rather than a defect**: a cross-package
 > `#doc(hidden)` function cannot be indexed from the dependency's *source* — only from its
@@ -929,14 +940,14 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 200 files, 907 functions, 7,071
-instructions of 3AC — the same measurement gives **795** variables becoming **1,964** versions,
-**708** phi-functions and **1,751** copies. The claim is not a figure of speech.
+would need **16** copies. Over this project's own source — 200 files, 908 functions, 7,080
+instructions of 3AC — the same measurement gives **798** variables becoming **1,973** versions,
+**712** phi-functions and **1,767** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=200	unreadable=0	functions=907	converted=3	partial=904	declined=4890	…
+SSA-COST	files=200	unreadable=0	functions=908	converted=3	partial=905	declined=4893	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
@@ -947,7 +958,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1513/1513 on wasm; 1371/1371 on js and wasm-gc
+moon test --deny-warn                # 1517/1517 on wasm; 1375/1375 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

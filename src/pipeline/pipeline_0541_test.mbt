@@ -173,9 +173,14 @@ test "0541: a read inside a string interpolation is not a dead store" {
   // overwritten before any read. (The `let` initializer above is NOT the shape
   // to test with -- an unread `let` is `FUnusedLocal`'s business, which is why
   // the first version of this control measured zero.)
+  //
+  // 0565. AND THE INITIALIZER IS DEAD IN ITS OWN RIGHT: `let mut s = "n/a"` is
+  // overwritten by `s = "si"` before anything reads it. The family says so now,
+  // so this control measures TWO -- the declaration and the first store -- and
+  // the two are told apart by their own wording.
   let dead = "fn e() -> String {\n  let mut s = \"n/a\"\n  s = \"si\"\n  s = \"no\"\n  s\n}\nlet z = e()\n"
   let r3 = @pipeline.run(dead, "u.mbt", empty_iface())
-  assert_eq(count_0541(r3.reports, "MSA-015"), 1)
+  assert_eq(count_0541(r3.reports, "MSA-015"), 2)
 }
 
 ///|

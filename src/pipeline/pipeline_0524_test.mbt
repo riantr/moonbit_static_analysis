@@ -74,19 +74,30 @@ test "0524: a caller's argument no longer makes MSA-011 over-report (FIXED in 05
 }
 
 ///|
-/// THE SECOND CASE IS NOBODY'S. "Dead code" in the deck's sense -- executed, but
-/// its result is overwritten before any read -- is reported by no family:
+/// THE SECOND CASE IS NOBODY'S -- AND THAT IS NO LONGER TRUE. "Dead code" in the
+/// deck's sense -- executed, but its result is overwritten before any read --
+/// was reported by no family:
 ///
 ///     fn g() -> Int { let mut x = 1 ; x = 7 ; x + 1 }
 ///
 /// The first value of `x` is dead. `UnusedLocal` does not fire, because `x` IS
-/// read; `Unreachable` does not fire, because every statement runs. Pinning the
-/// ZERO is what stops a future reader from assuming one of the twelve families
-/// covers it.
-test "0524: dead code, in the deck's sense, is reported by no family" {
+/// read; `Unreachable` does not fire, because every statement runs.
+///
+/// 0565 CLOSED THE GAP, and this row is the one that says so. It was a GAP ROW:
+/// it pinned the ZERO on purpose, so that a reader could not assume one of the
+/// families covered the case. The zero is now a FINDING -- `MSA-015`, on the
+/// declaration, because the value the declaration wrote is the one that is
+/// overwritten before any read -- and the row is INVERTED rather than deleted,
+/// for the reason the row above gives: a regression here is silent, and a
+/// deleted test cannot catch it.
+test "0524: dead code, in the deck's sense, is reported by MSA-015 (CLOSED in 0565)" {
   let src = "fn g() -> Int {\n  let mut x = 1\n  x = 7\n  x + 1\n}\nlet y = g()\n"
   let r = @pipeline.run(src, "u.mbt", empty_iface())
-  assert_eq(r.reports.length(), 0)
+  // ONE finding, and it is the dead INITIALISER -- `x = 7` overwrites the value
+  // the declaration wrote, and nothing reads it in between.
+  assert_eq(count0524(r.reports, "MSA-015"), 1)
+  assert_eq(count0524(r.reports, "MSA-011"), 0)
+  assert_eq(count0524(r.reports, "MSA-003"), 0)
 }
 
 ///|

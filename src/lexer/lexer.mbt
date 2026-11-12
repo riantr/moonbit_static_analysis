@@ -1003,6 +1003,27 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
   let mut cur = ""
   // True when the identifier currently being read directly follows a `.`.
   let mut cur_is_member = false
+  // True when the identifier currently being read IS the import alias -- the
+  // name right after an `@`.
+  //
+  // 0565. THIS IS A PER-IDENTIFIER FLAG, AND IT WAS NOT. The alias flag used to
+  // BE the `after_at` flag, and `after_at` was set when an `@` was seen and
+  // NEVER CLEARED -- so every identifier after the alias in the same
+  // interpolation was flushed with "this is an alias" and DROPPED.
+  //
+  // MEASURED, moonbitlang/async 0.22.4
+  // `examples/udp_ping_pong/main.mbt:65`:
+  //
+  //     let msg = buf.unsafe_reinterpret_as_bytes()[0:n]
+  //     println("client \{id} received: \{@utf8.decode(msg)}")
+  //
+  // The read of `msg` inside the interpolation was LOST -- `@utf8` is the alias
+  // and `msg` is an ordinary argument -- so the name looked unread, and TWO
+  // families said so: `UnusedLocal` on the declaration ("assigned but may not
+  // be used"), and, once 0565 taught the dead-store family about declarations,
+  // `DeadStore` on the same line. The flag is now taken by the identifier it
+  // belongs to: the alias is dropped and the argument is not.
+  let mut cur_is_alias = false
   // True immediately after a `.`, before the member name starts.
   let mut after_dot = false
   // True immediately after an `@`, before the alias name starts.
@@ -1017,15 +1038,15 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
     } else if c == '}' {
       depth -= 1
       if depth == 0 {
-        self.flush_interp_name(cur, cur_is_member, after_at)
+        self.flush_interp_name(cur, cur_is_member, cur_is_alias)
         return
       }
     } else if c == '"' {
-      self.flush_interp_name(cur, cur_is_member, after_at)
+      self.flush_interp_name(cur, cur_is_member, cur_is_alias)
       cur = ""
       self.copy_nested_string(buf)
     } else if c == '\'' {
-      self.flush_interp_name(cur, cur_is_member, after_at)
+      self.flush_interp_name(cur, cur_is_member, cur_is_alias)
       cur = ""
       self.copy_nested_char(buf)
     } else if c == '@' {
@@ -1037,7 +1058,7 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       // Measured on riantr/pyroduct 0.1.29: 6 `no visible binding for 'sm'` /
       // `'multi'` findings on `\{@sm.all_states()}`, manufactured by the
       // interpolation support itself.
-      self.flush_interp_name(cur, cur_is_member, after_at)
+      self.flush_interp_name(cur, cur_is_member, cur_is_alias)
       cur = ""
       after_at = true
     } else if is_ident_char(c) && !(is_digit(c) && cur == "") {
@@ -1051,13 +1072,18 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       if cur == "" {
         cur_is_member = after_dot
         after_dot = false
+        // 0565. THE ALIAS FLAG BELONGS TO THIS IDENTIFIER AND NOT TO THE REST
+        // OF THE INTERPOLATION: it is taken here, and `after_at` is cleared, so
+        // the name AFTER the alias is an ordinary name again.
+        cur_is_alias = after_at
+        after_at = false
       }
       cur = cur + Char::to_string(c)
     } else if c == '.' {
       // `a.b.c`: `a` is the binding and every later head is a member, so
       // flush the identifier that just ended with ITS OWN member flag —
       // `a` records, `b` does not — then mark the next one as a member.
-      self.flush_interp_name(cur, cur_is_member, after_at)
+      self.flush_interp_name(cur, cur_is_member, cur_is_alias)
       cur = ""
       cur_is_member = false
       after_dot = true
@@ -1084,7 +1110,7 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       // its USES inside the lambda's body are not recorded either -- a use of a
       // name the lambda itself binds is a read of the lambda's parameter, not
       // of the frame around it.
-      if cur != "" && !cur_is_member && !after_at {
+      if cur != "" && !cur_is_member && !cur_is_alias {
         if !self.interp_bound.contains(cur) {
           self.interp_bound.push(cur)
         }
@@ -1132,11 +1158,11 @@ fn Lexer::copy_interp(self : Lexer, buf : StringBuilder) -> Unit {
       // `==` is a comparison, and a comparison READS its operands.
       cur = ""
     } else {
-      self.flush_interp_name(cur, cur_is_member, after_at)
+      self.flush_interp_name(cur, cur_is_member, cur_is_alias)
       cur = ""
     }
   }
-  self.flush_interp_name(cur, cur_is_member, after_at)
+  self.flush_interp_name(cur, cur_is_member, cur_is_alias)
 }
 
 ///|

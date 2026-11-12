@@ -14,7 +14,7 @@
 #     async               printed  250  total 1654   behavior 0
 #     proton              printed  497  total 1799   behavior 0
 #     proton_contract     printed    0  total   29   behavior 0
-#     moonbit_core        printed 1172  total 10770  behavior 5  only 3
+#     moonbit_core        printed 1195  total 10793  behavior 5  only 3
 #
 # WHY THE OLD TABLE WAS WRONG, AND WHY IT WAS WRONG QUIETLY. It said "7493 findings" in
 # total and gave per-corpus numbers (moui 4152, async 1677, proton 959, ...) that matched

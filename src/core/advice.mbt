@@ -97,8 +97,8 @@ pub fn Family::advice(self : Family) -> Advice {
       }
     FDeadStore =>
       Advice::{
-        why: "The value this store wrote is read on no path: every way out of here either writes the name again before reading it or leaves the function. The binding itself may be used elsewhere -- this is about ONE store, which is why the finding is a liveness result and not an unused-local one.",
-        how: "Delete the store, or move it to where its value is actually wanted. If the right-hand side has effects you need, keep those and drop only the binding. Reported as a finding because a store nobody reads is dead weight the reader is paying for at runtime and, more importantly, it usually means the value they expected to be there came from somewhere else.",
+        why: "The value this write put in the name is read on no path: every way out of here either writes the name again before reading it or leaves the function. The binding itself may be used elsewhere -- this is about ONE write, which is why the finding is a liveness result and not an unused-local one. A DECLARATION is one write too, and it is reported here only when the name IS read somewhere, so this family and `UnusedLocal` cannot report one line for one fact.",
+        how: "Delete the write, or move it to where its value is actually wanted. If the right-hand side has effects you need, keep those and drop only the binding. For a declaration the fix is the same: the initialiser is overwritten before anything reads it, so the initialiser can go -- but keep the binding itself if the name is read later. Reported as a finding because a value nobody reads is dead weight the reader is paying for at runtime and, more importantly, it usually means the value they expected to be there came from somewhere else.",
       }
   }
 }

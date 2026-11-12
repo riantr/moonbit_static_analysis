@@ -39,10 +39,29 @@ test "0528: a store in an if whose variable the tail reads is not dead" {
 test "0528: the first of two stores to one name is dead, the last is live" {
   // `e = 1` is overwritten by `e = 2` before anything reads it; `e = 2` is the
   // value the tail reads. Exactly ONE dead store, and it is the FIRST.
+  //
+  // 0565. AND THE DECLARATION IS DEAD TOO. `let mut e = 0` writes a value that
+  // `e = 1` overwrites before anything reads it, so the family now says TWO
+  // things about this program -- and both are true, which is why the row is
+  // widened rather than the rule narrowed.
   let src = "fn f() -> int {\n  let mut e = 0\n  e = 1\n  e = 2\n  e\n}\n"
   let reps = dead_of(src)
-  assert_eq(reps.length(), 1)
+  assert_eq(reps.length(), 2)
   assert_true(reps[0].message.contains("'e'"))
+  assert_true(reps[1].message.contains("'e'"))
+  // AND THE TWO ARE ON THE TWO LINES THEY CLAIM: the declaration (line 2) and
+  // the first store (line 3). The last store is live and is not reported.
+  let mut decl_line = 0
+  let mut store_line = 0
+  for r in reps {
+    if r.message.contains("bound to") {
+      decl_line = r.span.start.line
+    } else {
+      store_line = r.span.start.line
+    }
+  }
+  assert_eq(decl_line, 2)
+  assert_eq(store_line, 3)
 }
 
 ///|
@@ -127,4 +146,56 @@ test "0542: a store nothing reads is still reported" {
   let reps = dead_of(src)
   assert_eq(reps.length(), 1)
   assert_true(reps[0].message.contains("'bi'"))
+}
+
+///|
+/// 0565. THE DECLARATION, IN THE SHAPE THE COURSE'S OWN FIRST EXAMPLE HAS.
+///
+/// The lecture's p.40-43 puts `if (input) x = 1; else x = 0` in front of the
+/// reader, and in the only shape MoonBit allows for it -- `let mut x = 0` before
+/// the two branches -- the INITIALISER's value is dead: both branches write the
+/// name again before anything reads it.
+///
+/// It reported NOTHING before this increment. The two branch stores are not dead
+/// (on each path the value the branch wrote IS the one the tail reads), and the
+/// value the declaration wrote was reported by nobody: `FUnusedLocal` does not
+/// fire, because `x` IS read, and the dead store did not fire either, because a
+/// declaration was not a `Store`.
+test "0565: a declaration overwritten before any read is reported" {
+  let src = "fn f(input: bool) -> int {\n  let mut x = 0\n  if input {\n    x = 1\n  } else {\n    x = 0\n  }\n  x\n}\n"
+  let reps = dead_of(src)
+  assert_eq(reps.length(), 1)
+  assert_true(reps[0].message.contains("'x'"))
+  // it is the DECLARATION that is reported, not the branch stores
+  assert_true(reps[0].message.contains("bound to"))
+  assert_eq(reps[0].span.start.line, 2)
+}
+
+///|
+/// 0565. AND THE LINE `FUnusedLocal` OWNS IS NOT THIS FAMILY'S.
+///
+/// A binding whose name is never read anywhere is `FUnusedLocal`'s finding --
+/// "never read anywhere" -- and this family's second half is exactly that
+/// condition's complement, so the two cannot report one line for one fact. The
+/// STORE is still dead, and the pre-existing rule is what says so.
+test "0565: a declaration whose name is never read is not this family's" {
+  let src = "fn f() -> int {\n  let mut x = 0\n  x = 5\n  0\n}\n"
+  let reps = dead_of(src)
+  assert_eq(reps.length(), 1)
+  assert_true(reps[0].message.contains("stored in 'x'"))
+}
+
+///|
+/// 0565. AND THE CONTROL: a declaration whose value IS read on a path is not
+/// reported, whatever the other half of the rule says.
+test "0565: a declaration read on one path is not reported" {
+  let src = "fn f(c: bool) -> int {\n  let mut x = 0\n  if c {\n    x = 1\n  }\n  x\n}\n"
+  assert_eq(dead_of(src).length(), 0)
+}
+
+///|
+/// 0565. AND A DECLARATION WHOSE VALUE IS READ AT ONCE IS NOT REPORTED.
+test "0565: a declaration whose value is read is not reported" {
+  let src = "fn f() -> int {\n  let mut x = 0\n  x + 1\n}\n"
+  assert_eq(dead_of(src).length(), 0)
 }

@@ -99,6 +99,9 @@ $FAMILIES = @(
   @{ Name = 'L  the documented #doc(hidden) limit'
      Then = "^undefined function '@.*::"
      What = 'a cross-package #doc(hidden) function cannot be indexed from the dependency''s SOURCE, only from its .mbti' }
+  @{ Name = 'M  a dead store -- a value nobody reads'
+     Then = "^the value (bound to|stored in) '.*' is read on no path"
+     What = 'the value the write put in the name is read on no path: dead weight, and the lens''s own claim about the code -- the same claim the module view makes (0565)' }
 )
 
 function Classify([string]$msg) {
