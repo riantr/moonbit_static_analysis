@@ -16175,3 +16175,146 @@ where it is measured.
   * **NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
   * **THE BOUNDARIES ARE UNCHANGED.** The three empty cells -- storeless,
     context-sensitive, demand-driven -- are still empty.
+## 0566: THE CONTROL'S OWN PIN, MEASURED AGAIN, AND THE ROW THAT NOW SAYS WHY IT IS RED
+
+This increment was found by running the gate on 0565, not by reading the code. It is
+about one instrument, and the instrument's own claim was the thing that was wrong.
+
+### WHAT THE GATE SAID, AND WHY IT WAS NOT THE TREE'S FAULT
+
+0565's gate run (increment mode, `-SkipMutations`) produced **34 stage rows, 33 True,
+1 False**. The one red row was
+
+    per-function census control (the files are READ by moon check)          False
+
+and the control's own message was
+
+    BASELINE FAILED: the corpus has errors beyond the one this control knows: abort/pkg.mbti:4
+
+**THAT MESSAGE IS FALSE, AND IT IS FALSE ABOUT THE CORPUS.** It says the corpus has
+errors beyond the one the control knows. Measured, the pinned corpus has EXACTLY ONE
+error, and the control knows a DIFFERENT one. The instrument's knowledge was stale;
+the corpus was not accused correctly, and the corpus has not moved.
+
+### THE MEASUREMENT, DONE FROM SCRATCH
+
+`moon check --target all` on a CLEAN COPY of the pinned core
+(`moonbitlang/core 0.1.20260920+7d59c7ec9`, `_build` excluded):
+
+    exit=1
+    Error: [4032]
+       [ .../abort/pkg.mbti:4:13 ]
+     4 | fn[T] abort(String) -> T
+                            ───┬──
+                               ╰──── The type String is undefined.
+    Failed with 0 warnings, 1 errors.
+
+ONE error, and it is `abort/pkg.mbti:4`. There is NO `json/README.mbt.md` diagnostic
+at all — not a second one, not a different one. The corpus is self-hosted and this
+toolchain type-checks interface files, so `String` is out of scope in that one
+`.mbti`. 0519 and 0539 recorded the toolchain's move; what they did NOT record is
+that the pin the control carries was left behind by it.
+
+### AND THE PROBE, WHICH THE STALE PIN HAD NEVER REACHED
+
+The control's baseline block runs BEFORE the probe, so a stale pin means the probe
+never ran. Run with the pin set to the measured error (a SCRATCH COPY of the script,
+not the repo), the baseline now passes and the probe runs:
+
+    baseline is exactly the one known error (abort/pkg.mbti:4), which is not one of the files that carries a finding.
+    read by moon check: 0 of 18
+    NOT READ queue/quickcheck_test.mbt      errors=1  abort/pkg.mbti:4
+    NOT READ priority_queue/priority_queue.mbt  errors=1  abort/pkg.mbti:4
+    ... (all eighteen)
+    after restore: exit=1  errors=1  abort/pkg.mbti:4
+
+and the same bail-out, seen from the other side: a deliberate type error planted in
+`math/trig_double_nonjs.mbt` on a copy of the corpus is NOT reported by the
+corpus-wide check (`PROBE_REPORTED=False`, exit=1, the one `abort` diagnostic only).
+The `abort` package is FOUNDATIONAL, so the checker bails on it before it type-checks
+any other package. That is why the probe reads nothing, and it is why the corpus-wide
+check cannot be the thing that proves these files carry no diagnostic.
+
+### THE ROW IS STILL RED, AND NOW IT SAYS WHY
+
+The row does not turn green. It turns LEGIBLE. Three things changed in the
+instrument, and none of them is the corpus:
+
+  * `$KNOWN_ERROR` now names the diagnostic the corpus actually has
+    (`abort/pkg.mbti:4`), with the date and the reason in the comment above it.
+  * The header comment no longer says the corpus-wide check reports its one error in
+    `json/README.mbt.md`. It says what the check reports.
+  * The comment block's "twenty-four" is gone. The file list is 18, and the number
+    lives in ONE place: `$CONTROL_N` in `release.ps1`, which the README gate derives
+    its expectation from. A number written down twice is a number that will disagree
+    with itself.
+
+WHAT DID NOT CHANGE: the corpus pin, the toolchain, the 18-file list, and the fact
+that the probe reads 0 of 18.
+
+AND THE CONTROL STILL REFUSES TO ABSORB A SECOND ERROR. The baseline demands
+EXACTLY ONE error (`$base.Count -ne 1`), so a corpus that grows one more still
+fails the stage — the pin was never the thing that absorbed the change.
+
+### THE PUBLISHED RECORD WAS WRONG, AND IS CORRECTED IN PLACE
+
+Both READMEs said the corpus "reports exactly **one** error, in
+`json/README.mbt.md`". Measured, the corpus's one error is in `abort/pkg.mbti`, and
+the `.mbt.md` file produces no diagnostic at all. Both READMEs also presented the
+positive control as "**18 of 18**" — which is the REQUIREMENT, and was read as a
+RESULT. Measured today, the control reads **0 of 18**.
+
+So both READMEs now name the measured diagnostic, keep the requirement where the
+README gate can still check it, and put the measured result next to it. The gate
+derives "18 of 18" from `$CONTROL_N`; that is why the requirement had to STAY and
+the result had to be ADDED.
+
+### WHY THIS WAS NOT ABSORBED, AND WHY IT IS NOT THE TWO REPAIRS 0519 REVERTED
+
+0519 tried two repairs — dropping `abort/pkg.mbti` from the copy, and qualifying
+the type as `@builtin.String` — and reverted both, because each turned a red row
+into a quieter number with no diagnosis. Both are still reverted. This is a THIRD
+thing, and it is not a repair of the corpus: the corpus has not moved. It is the
+instrument's KNOWLEDGE that moved, and the record's own judgement says which of the
+two needs the increment:
+
+    => 判据: WHEN A TOOLCHAIN UPGRADE BREAKS A CONTROL, THE CONTROL IS THE THING THAT NEEDS THE
+    INCREMENT -- not the corpus, which has not moved, and not the pin, which is doing its job by
+    refusing to absorb the change.
+
+and, in the same voice,
+
+    => 判据: A REPAIR THAT MAKES A CONTROL QUIERTER IS NOT A REPAIR.
+
+This change makes the control LOUDER: eighteen `NOT READ` lines where there were
+none, and a TRUE baseline statement where there was a false accusation.
+
+### THE GATE ON THIS TREE
+
+THE RELEASE GATE RAN AGAIN, INCREMENT-MODE, ON THE TREE THAT HAS THE REPAIRED CONTROL:
+**34 stage rows, 33 True and 1 False** -- the same row as before, and now with a
+DIAGNOSIS instead of a false accusation:
+
+    read by moon check: 0 of 18
+    FAIL: the control read 0 of 18 files.
+    [DRIFT ] the control read 0 files, pinned 18.
+    GATE FAILED.
+
+Every other stage is green, digit for digit as in 0565's run: the seven corpora MATCH,
+the eight trees carry 19694 notices split 3407 + 16287, the per-function census reads
+TOTAL 51 actionable and DEMOTED 22, and the six fast gates pass.
+
+THE ROW IS STILL RED, AND THAT IS THE POINT. A control that cannot establish its claim
+under this toolchain says so; a green row that measured nothing says nothing at all.
+
+### WHAT IS NOT HERE
+
+  * **THE ROW IS STILL RED.** The census control cannot establish its claim under
+    this toolchain, and the next corpus pin is still release-sized: it moves the
+    notices, the parsed count, the actionable count, the 18-file list, the
+    behavior-lens row and the eight-tree total at once.
+  * **THE CORPUS PIN IS UNTOUCHED.** Nothing about `moonbitlang/core` moved.
+  * **0565 IS UNCHANGED BY THIS CHAPTER.** The dead-initializer rule, the two
+    read-loss fixes, the 23-finding audit and every number 0565 re-pinned are as
+    they were.
+  * **NO NEW FAMILY, NO NEW ID, NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.**

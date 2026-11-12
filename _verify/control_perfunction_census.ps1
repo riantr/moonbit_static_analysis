@@ -21,14 +21,16 @@
 #      NEVER COMPILES `bigint/bigint_default.mbt` ("not","js","wasm","native"
 #      -- that is the wasm-gc target), `bigint/bigint_wide.mbt` ("native",
 #      "wasm"), `bigint/decimal_wide.mbt`, `builtin/double_scalbn.mbt` and
-#      `math/algebraic_double_nonjs.mbt` ("not","js"). Five of the twenty-four
-#      files therefore produced NO probe error under `--target js` -- which
+#      `math/algebraic_double_nonjs.mbt` ("not","js"). Five of the files that
+#      carry a finding therefore produced NO probe error under `--target js` -- which
 #      reads exactly like "the file is not read", and is not. Under
-#      `--target all` all twenty-four are reported.
+#      `--target all` every one of them is reported.
 #   2. A FILE WITH NO DIAGNOSTIC IS NOT EVIDENCE. The corpus-wide check
-#      reports exactly ONE error, in `json/README.mbt.md` -- a `.mbt.md`
-#      literate file, and not one of the twenty-four. So the twenty-four
-#      carry nothing, and the control proves they are read.
+#      reports exactly ONE error, in `abort/pkg.mbti` -- the pinned core is
+#      self-hosted and this toolchain type-checks interface files, so the
+#      `String` in that one is out of scope -- and it is not one of the files
+#      that carry a finding. So those files carry nothing, and the control
+#      proves they are read.
 #
 # The corpus is COPIED, never edited: the probe is written into the copy and
 # the copy is thrown away. The pinned corpus directory is never touched.
@@ -42,10 +44,16 @@ $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $coreRel = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
 $core = Join-Path $repos $coreRel
 
-# The one diagnostic the corpus has on its own. It is a `.mbt.md` doc file,
-# and it is the CONTROL for this control: if the corpus ever grows a real
-# error, this control must notice rather than absorb it silently.
-$KNOWN_ERROR = 'json/README.mbt.md:48'
+# The one diagnostic the corpus has on its own. MEASURED 2026-11-13 on the
+# pinned core: `abort/pkg.mbti:4` -- `fn[T] abort(String) -> T`, where
+# `String` is out of scope because the core is self-hosted and this toolchain
+# type-checks interface files. It was `json/README.mbt.md:48` until the
+# toolchain moved, and this pin moved with it.
+#
+# It is the CONTROL for this control: if the corpus ever grows a SECOND error,
+# this control must notice rather than absorb it silently -- and it still does,
+# because the baseline demands EXACTLY ONE error (`$base.Count -ne 1`).
+$KNOWN_ERROR = 'abort/pkg.mbti:4'
 
 $BOX = [regex]::Escape(([string][char]0x256D) + ([string][char]0x2500))
 $enc = New-Object System.Text.UTF8Encoding($false)
@@ -169,6 +177,13 @@ if ($base.Count -ne 1) {
 Write-Output ('baseline is exactly the one known error (' + $KNOWN_ERROR + '), which is not one of the files that carries a finding.')
 
 # --- 4  the positive control: one probe per file, one file at a time -----------
+#
+# 0566: THE PIN ABOVE IS MEASURED, SO THIS BLOCK RUNS -- AND IT READS 0 FILES.
+# The `abort` diagnostic is FOUNDATIONAL: the checker bails on it before it
+# type-checks any other package, so every probe comes back carrying that one
+# error and the probe's own error never appears. The stage stays RED, and it
+# now says WHY, instead of dying at the baseline with a message that accused
+# the corpus of an error it does not have.
 Write-Output ''
 Write-Output '=== the positive control: a deliberate type error, one file at a time ==='
 $probe = "`nconst __probe_xyz_0496 : Int = `"not an int`"`n"

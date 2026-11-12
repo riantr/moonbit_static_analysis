@@ -752,11 +752,15 @@ numbers with and without the flag.
 > | L | 2 | the documented `#doc(hidden)` limit |
 >
 > **"Accepted" is measured, not assumed.** `moon check --target all` on `moonbitlang/core`
-> reports exactly **one** error, in `json/README.mbt.md`, and it is not one of the
-> **eighteen** files that carry a finding. That is only half of it: a file with no
-> diagnostic is indistinguishable from a file nobody opened, so
+> reports exactly **one** error, in `abort/pkg.mbti` — the pinned core is self-hosted and the
+> toolchain now type-checks interface files, so the `String` in that one is out of scope — and
+> it is not one of the **eighteen** files that carry a finding. That is only half of it: a file
+> with no diagnostic is indistinguishable from a file nobody opened, so
 > `_verify/control_perfunction_census.ps1` appends a deliberate type error to each of those
-> files **in a copy** and requires the error back — **18 of 18**.
+> files **in a copy** and requires the error back — the requirement is **18 of 18**, and the
+> control reads **0 of 18** today, because that one diagnostic is foundational and the checker
+> bails before it type-checks any other package. The row stays red on purpose; it turns green
+> with the next corpus pin.
 >
 > **The two in family L are the documented limit rather than a defect**: a cross-package
 > `#doc(hidden)` function cannot be indexed from the dependency's *source* — only from its
