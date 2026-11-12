@@ -12931,8 +12931,9 @@ attachment is 104 pages and it is TWO DECKS, which matters for what can be claim
               summary table at p.104.
 
 So the attachment supports the RULE SYSTEM: the domain and four rules (p.97-98), the
-configuration (p.44/53/70/77), the statement kinds (p.85-91), and two worked programs whose
-answers are printed (p.57-69 and p.28-29). It does not contain the algorithm, and it does not
+configuration (p.44/53/70/77), the statement kinds (p.85-91), and SIX worked programs whose
+answers are printed (p.19-26, p.28-29, p.45-47, p.57-69, p.77 and p.86). It does not contain the
+algorithm, and it does not
 contain method calls: p.96 says of the fifth statement kind "will come back to this in pointer
 analysis with method calls", and that section is not in the file. Three of the four sections
 of `Foundations (I)` are absent, so "implement the algorithm next" is not a plan this
@@ -12964,12 +12965,12 @@ p.57-69 contrast is a test rather than a sentence. `pta_alias` derives alias inf
 points-to, which is what p.29 says is available, and is why there is no second pass.
 `pta_text` is the dump the rows assert on.
 
-`src/flow/pta_test.mbt` is thirteen rows, and every one of them pins a number the deck prints:
+`src/flow/pta_test.mbt` is fifteen rows, and every one of them pins a number the deck prints:
 the four-statement program read two ways (p.68's `s -> {"x","y"}` and p.61-64's
 `s -> {"x"}`), the alias pair that aliases and the pair that does not (p.28-29), `o2` for a
-site on line 2 (p.45-47), `o1`/`o4` for sites on lines 1 and 4 (p.77), and the array whose two
-element writes land in one field (p.86). The graphs come from `cfg_of`, never from a
-hand-built node list, because `cfg_of` allocates nodes back to front and a test that built
+site on line 2 (p.45-47), `o1`/`o4` for sites on lines 1 and 4 (p.77), the array whose two
+element writes land in one field (p.86), and the deck's FIRST WORKED example, in the
+form this attachment can compute (p.19-26). The graphs come from `cfg_of`, never from a
 them in source order would never exercise the ordering trap.
 
 ### SIX CORRECTIONS, AND THE DECK SETTLED FIVE OF THEM
@@ -13013,8 +13014,9 @@ rule system being implemented is defined for ONE method; the cross-method versio
 section that is not in the attachment. So one map per function is the deck's map taken once
 per method, not a simplification of the deck's whole-program map.
 
-**5. `Array[String].sort()` IS SHORTLEX, NOT ALPHABETICAL.** Six of the thirteen rows failed
-on nothing but the ORDER of the entries in a dump, having got every points-to set right.
+**5. `Array[String].sort()` IS SHORTLEX, NOT ALPHABETICAL.** Six of the thirteen rows THAT
+INCREMENT ADDED failed on nothing but the ORDER of the entries in a dump, having got every
+points-to set right.
 `Array::sort` uses `Compare for String`, which this toolchain's stdlib defines and documents
 in `core/builtin/string.mbt:408-428` as "shortlex order by their charcodes": LENGTH first,
 code units only as the tie-break. Measured to be sure -- `["aa","b"].sort()` gives `["b","aa"]`,
@@ -15538,3 +15540,66 @@ not.
   * **NO CHANGE TO THE PUBLISHED VERSION.** This is an increment, and an increment does not
     move the version.
   * **NO CHANGE TO THE TWO READMEs' PROSE.** Only the counts they publish.
+
+## 0562: A COUNT IN THE 0547 CHAPTER THAT CONTRADICTED THE CHAPTER'S OWN LIST
+
+THE SENTENCE WAS WRONG, and it was wrong in a way its own chapter could have told us. Thirty-
+five lines below it, the same chapter lists FIVE programs the deck prints an answer for; the
+sentence above said two.
+
+    So the attachment supports the RULE SYSTEM: the domain and four rules (p.97-98), the
+    configuration (p.44/53/70/77), the statement kinds (p.85-91), and two worked programs whose
+    answers are printed (p.57-69 and p.28-29).
+
+### THE COUNT, MEASURED OVER ALL 104 PAGES
+
+Every page of the attachment was classified by the answer notation it carries, because the deck
+prints its answers in FIVE NOTATIONS and a search for any ONE of them misses the others. The
+programs are:
+
+    p.19-26  the deck's FIRST WORKED example                  a TABLE       0561's two rows
+    p.28-29  `p = new C(); q = p; x = new X(); ...`         in PROSE      0547's alias row
+    p.45-47  the allocation site inside a loop              an OBJECT     0547's o2 row
+    p.57-69  the four-statement program                     an ARROW      0547's flow rows
+    p.77     `1 x = new A(); 2 y = x; ... 4 z = new T();`   an ARROW      0547's naming row
+    p.86     `array[0] = "x"; array[1] = "y"; ...`           a PERSPECTIVE 0547's array row
+
+SIX, then. The exact pages each answer is PRINTED on are: the table on p.20-26, the alias
+verdict in prose on p.28-29, the abstracted object on p.46-47, the flow program's arrows on
+p.58-70 (p.70 is the slide that carries the course's choice), the scope program's arrows on
+p.74-77, and the perspective on p.86. NO PAGE OF p.93-104 CARRIES AN ANSWER: that half of the
+file is the rule system, and a rule is not a worked program.
+
+FOUR of the six are the four FACTORS' own illustrations: p.45-47 is the heap abstraction's
+example (the factor page is p.44), p.57-69 is the flow sensitivity's (p.70), p.77 is the
+analysis scope's (the factor page IS p.77), and p.86 is the statement kinds' (p.85-91). The
+other two are not factor examples at all: p.19-26 is the deck's OPENING worked example, and
+p.28-29 introduces alias analysis.
+
+### THE ONE THAT WAS MISSING, AND WHY IT WAS MISSED
+
+0561 found it: p.19-26 is the only worked program in the whole file that had NO row, and the
+only example whose answer carries a FIELD POINTER. Three of its five steps need the method
+bodies, which are the deck's section 4 and are not in this attachment, so what is pinnable is
+the example with the method indirection removed.
+
+### WHAT WAS CORRECTED IN PLACE, AND WHERE
+
+  * The 0547 sentence above: "two worked programs" -> SIX, with the six page references.
+  * The 0547 sentence below it: "`src/flow/pta_test.mbt` is thirteen rows" -> fifteen, and the
+    list of what the rows pin now names p.19-26.
+  * The 0547 correction 5: "Six of the thirteen rows failed" -> "Six of the thirteen rows THAT
+    INCREMENT ADDED failed", so the two numbers in the chapter do not collide.
+  * `src/flow/pta_test.mbt`'s own header listed five of the six programs; p.19-26 is now in
+    it, with the deck's site names and this tree's line names side by side.
+
+### WHAT IS NOT HERE
+
+  * NO NEW ROW. This is a count of the DECK's programs, and a row asserting it could not fail:
+    it does not depend on anything this tree computes, so it would only rot. 0558's rule.
+  * NO PIN MOVED. `_verify/` is excluded from the own-source scan, and a comment is not a
+    notice, so neither edit moves a count.
+  * NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+  * THE BOUNDARY IS UNCHANGED: three of the five steps of p.19-26 still need the method bodies
+    this attachment does not carry, so the second 0561 row still pins the deck's program AS
+    WRITTEN.

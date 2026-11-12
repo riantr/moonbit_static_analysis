@@ -27,6 +27,20 @@
 //
 //   p.86     `array[0] = "x"; array[1] = "y"; s = array[0];`
 //            -> in the deck's perspective `array.arr` holds both, so s gets both.
+//   p.19-26  THE DECK'S FIRST WORKED EXAMPLE, and the only one whose answer carries
+//            POINTER:
+//              void foo() {
+//                A a = new A();
+//                B x = new B();
+//                a.setB(x);
+//                B y = a.getB();
+//              }
+//            -> a -> new A, x -> new B, new A.b -> new B, y -> new B. The deck names the
+//            objects by their allocation SITE there, and this tree names them by the
+//            site's LINE (o1, o2), so the deck's `new A.b` is `o1.b` under those names.
+//            THREE of the five steps need the method BODIES, which are the deck's section
+//            4 and are not in this attachment, so one row pins the computable form and a
+//            second row pins the boundary.
 //
 // TWO OF THOSE TABLES ARE ABOUT NAMING, AND THEY ARE WHY THE OBJECT NAMES ARE
 // ASSERTED AND NOT NORMALISED. p.45-47 prints `o2` for a site on line 2 and p.77
