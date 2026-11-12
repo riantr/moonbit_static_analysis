@@ -15406,3 +15406,135 @@ it any more.
 target prints the SAME finding, so the shipped artifact and the tree it came from agree. The
 failure mode 0.4.38 had -- an artifact that could not even be INSTANTIATED -- is impossible here
 by construction rather than by luck.
+
+## 0561: THE DECK'S FIRST EXAMPLE, AND THE THREE OF ITS FIVE STEPS THAT NEED THE PART OF THE DECK THIS FILE DOES NOT CARRY
+
+### THE ASK, AND THE AUDIT THAT ANSWERED IT
+
+THE ASK was to read the attachment and improve the project on it. The record already carried the
+deck's RULES (p.97-98), its heap factor (p.44-47), its array field (p.86), its alias example
+(p.28-29), both flow readings (p.61-64 and p.68), the whole-program scope (p.77), the
+four-factor table (p.78), and the eight cells that table resolves into.
+
+THE AUDIT THIS TIME ASKED A DIFFERENT QUESTION, and it is the question a reader of the deck
+would ask FIRST: THE DECK'S FIRST WORKED EXAMPLE. p.19-26 is the first program the deck
+works through, and it is the only example in the whole file whose ANSWER carries a FIELD
+POINTER.
+
+MEASURED, the deck's 104 pages were mapped section by section -- the contents slides at
+p.3, p.14, p.32 and p.79 give the four sections -- and each page's subject was read against
+the record. The example was there, on five slides, and NO ROW PINNED IT.
+
+### THE EXAMPLE, SLIDE BY SLIDE
+
+p.19 prints the program:
+
+    void foo() {
+      A a = new A();
+      B x = new B();
+      a.setB(x);
+      B y = a.getB();
+    }
+    class A {
+      B b;
+      void setB(B b) { this.b = b; }
+      B getB() { return this.b; }
+    }
+
+and then the answer arrives in five steps, one slide each:
+
+    p.20   a -> new A          x -> new B         (the New rule, twice)
+    p.22   this -> new A       b -> new B         (a method body's receiver and parameter)
+    p.23   new A.b -> new B                        (the Store rule, inside `setB`)
+    p.24   y                                        (the variable, still with no value)
+    p.25   y -> new B                              (the Load rule, out of `getB`)
+
+p.26 prints the whole table at once.
+
+### WHY THREE OF THE FIVE STEPS ARE OUT OF THIS FILE
+
+p.22's `this` and `b` are the RECEIVER and the PARAMETER of `setB`. p.23's `new A.b` is the
+store inside `setB`'s BODY. p.25's `y` is the load out of `getB`'s body. ALL THREE ARE A
+METHOD BODY, and a method body is the deck's section 4, "Pointer Analysis with Method
+Calls" -- which p.94's contents LISTS and this file DOES NOT CARRY: the file holds sections
+1 to 3 plus the `Foundations (I)` part, and p.96 says of the fifth statement kind "Will come
+back to this in pointer analysis with method calls".
+
+SO THE DECK'S FIRST EXAMPLE IS THE SAME KIND OF ABSENCE AS THE TWO EMPTY CELLS 0558 NAMED,
+and the deck says so ITSELF, in its INTRODUCTION: the first program pointer analysis is
+shown on is already one that needs method calls. C1 (context-sensitive) needs a call graph
+to have two contexts at all; S2 (demand-driven) needs a call graph as its client; and this
+example needs the method BODIES. ONE BOUNDARY, THREE PLACES IT SHOWS UP.
+
+### WHAT IS DERIVABLE, AND THE TWO ROWS THAT NOW PIN IT
+
+What the attachment DOES carry is the deck's own four rules, and the example's FIELD FORM is
+those rules with the method indirection removed:
+
+    1  A a = new A();      -> o1 in pt(a)        (p.98 New)
+    2  B x = new B();      -> o2 in pt(x)        (p.98 New)
+    3  a.b = x;            -> o2 in pt(o1.b)      (p.98 Store)
+    4  B y = a.b;          -> o2 in pt(y)        (p.98 Load)
+
+and p.23's `new A.b -> new B` and p.25's `y -> new B` ARE the last two lines of it. The
+object is named by its allocation site's LINE, so `a`'s object is `o1` and the field pointer
+is `o1.b` -- the deck's `new A.b` under this tree's naming.
+
+THE EXPECTED ANSWER WAS DERIVED BY HAND FROM p.98 BEFORE ANYTHING WAS RUN, and the two rows
+are in `src/flow/pta_test.mbt`:
+
+    "0561: the deck's introductory example, in the form this attachment can compute (p.19-26)"
+    "0561: the deck's introductory example AS WRITTEN stops at the two allocations (p.19-26)"
+
+THE SECOND ROW IS THE BOUNDARY, PINNED AS A POSITIVE FACT rather than as a row that asserts
+an absence -- 0558's rule, in the other direction. For the deck's program AS WRITTEN, with
+`a.setB(x)` and `a.getB()`, the answer is `a -> {o1}; x -> {o2}` and nothing else: the two
+allocations are named, and a method call is not a field WRITE, and a call's result is not an
+object. That row CAN fail -- if the analysis ever started inventing a field store for a
+method call, or an object for a call's result, it would go red.
+
+### WHAT MOVED, AND WHAT DID NOT
+
+The two rows are two test declarations and one helper function, and the counts say exactly
+that and nothing else:
+
+    own-source files             218 -> 218    (UNCHANGED -- a comment and two rows, no file)
+    own-source notices           1751 -> 1753  (+2: the two new test declarations)
+    own-source printed           138 -> 138    (UNCHANGED)
+    own-source aggregated        1613 -> 1615  (+2)
+    test declarations            1511 -> 1513  (+2)
+    unchecked calls              3236 -> 3238  (+2)
+    eight-tree notices           19688 -> 19690
+    eight-tree split             3407 + 16281 -> 3407 + 16283
+    tests wasm                   1511 -> 1513  (+2)
+    tests js / wasm-gc           1369 -> 1371  (+2)
+
+AND THE SSA COST MOVED BY EXACTLY THE ONE FUNCTION:
+
+    functions   906 -> 907
+    partial     903 -> 904
+    declined   4889 -> 4890
+
+and NOTHING else moved: the instructions (7,071), the variables (795), the versions (1,964),
+the phis (708), the copies (1,751), the dead blocks (358) and the undefined uses (884) are
+identical, digit for digit. That is what says the movement is ONE FUNCTION and not a change
+in the lowering -- a helper that builds a method-call expression, which the SSA form carries
+as one more function to decline.
+
+THE js AND wasm-gc COUNTS MOVE BY TWO AS WELL, because these rows live in `src/flow`, which
+every backend builds -- the same reason 0555's rows moved those two counts and 0554's did
+not.
+
+### WHAT IS NOT HERE
+
+  * **NO DEMAND-DRIVEN ANALYSIS, NO STORELESS HEAP ABSTRACTION, NO CONTEXT-SENSITIVE
+    ANALYSIS.** The three empty cells are still empty, for the deck's own reasons, and this
+    increment added a THIRD place the same boundary shows up -- the deck's own first
+    example.
+  * **NO METHOD-CALL ANALYSIS.** The deck's section 4 is not in the attachment. The row
+    that says a method call is not a field write is a BOUNDARY, not a claim that this tool
+    could do it and chooses not to.
+  * **NO NEW FINDING FAMILY**, so no corpus SUMMARY moves and no corpus number moves.
+  * **NO CHANGE TO THE PUBLISHED VERSION.** This is an increment, and an increment does not
+    move the version.
+  * **NO CHANGE TO THE TWO READMEs' PROSE.** Only the counts they publish.

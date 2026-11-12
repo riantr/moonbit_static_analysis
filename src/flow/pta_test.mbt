@@ -442,3 +442,81 @@ test "0547: two allocation sites on one line are disambiguated, and the fallback
   ])
   assert_eq(pta_one_text(g), "a -> {o1}; b -> {o1_2}")
 }
+
+///|
+fn p_method_call(
+  recv : @ast.Expr,
+  name : String,
+  args : Array[@ast.Expr],
+) -> @ast.Expr {
+  { span: p_span(0), kind: @ast.EMethodCall(recv, name, args, []), }
+}
+
+///|
+test "0561: the deck's introductory example, in the form this attachment can compute (p.19-26)" {
+  // p.19-26 is the deck's FIRST worked example, and it is a five-slide derivation:
+  //
+  //   p.20   a -> new A          x -> new B              (the New rule, twice)
+  //   p.22   this -> new A       b -> new B              (a method body's receiver and parameter)
+  //   p.23   new A.b -> new B                            (the Store rule, inside `setB`)
+  //   p.24   y                                            (the variable, still with no value)
+  //   p.25   y -> new B                                  (the Load rule, out of `getB`)
+  //
+  // THREE OF THOSE FIVE STEPS ARE THE METHOD BODY, and the method body is the deck's
+  // section 4 ("Pointer Analysis with Method Calls"), which this attachment DEFERS:
+  // p.94's contents lists it, the file carries only section 1, and p.96 says of the
+  // fifth statement kind "Will come back to this in pointer analysis with method
+  // calls". So the deck's p.22, p.23 and p.25 facts are not derivable from here --
+  // the same boundary that leaves context-sensitivity and demand-driven unbuilt.
+  //
+  // WHAT IS DERIVABLE IS THE FIELD FORM of the same program, and it is the deck's
+  // own two rules with the method indirection removed:
+  //
+  //   1  A a = new A();      -> o1 in pt(a)        (p.98 New)
+  //   2  B x = new B();      -> o2 in pt(x)        (p.98 New)
+  //   3  a.b = x;            -> o2 in pt(o1.b)      (p.98 Store)
+  //   4  B y = a.b;          -> o2 in pt(y)        (p.98 Load)
+  //
+  // and p.23's `new A.b -> new B` and p.25's `y -> new B` are exactly the last two
+  // lines of it. The object is named by its allocation site's LINE, so `a`'s object
+  // is `o1` and the field pointer is `o1.b` -- the deck's `new A.b` under this
+  // tree's naming.
+  let g = @flow.cfg_of([
+    p_let(1, "a", p_struct("A")),
+    p_let(2, "x", p_struct("B")),
+    p_assign(3, p_field(p_name("a"), "b"), p_name("x")),
+    p_let(4, "y", p_field(p_name("a"), "b")),
+  ])
+  assert_eq(pta_one_text(g), "a -> {o1}; x -> {o2}; y -> {o2}; o1.b -> {o2}")
+}
+
+///|
+test "0561: the deck's introductory example AS WRITTEN stops at the two allocations (p.19-26)" {
+  // The deck's program, with the method calls the deck actually writes:
+  //
+  //   1  A a = new A();
+  //   2  B x = new B();
+  //   3  a.setB(x);
+  //   4  B y = a.getB();
+  //
+  // The answer is the deck's p.20 row and NOTHING ELSE, and that is the honest
+  // answer rather than a shortfall: the three facts p.22, p.23 and p.25 add all
+  // come from the bodies of `setB` and `getB`, which are the deferred section 4.
+  // A call contributes no objects -- the row that already pins that -- and a
+  // method call's receiver is not a field WRITE either, so `o1.b` stays unknown.
+  //
+  // SO THIS ROW IS THE BOUNDARY, PINNED AS A POSITIVE FACT: the two allocations are
+  // named and nothing else is. It can fail -- if the analysis ever started
+  // inventing a field store for a method call, or an object for a call's result,
+  // this row would go red.
+  let g = @flow.cfg_of([
+    p_let(1, "a", p_struct("A")),
+    p_let(2, "x", p_struct("B")),
+    {
+      span: p_span(3),
+      kind: @ast.SExpr(p_method_call(p_name("a"), "setB", [p_name("x")])),
+    },
+    p_let(4, "y", p_method_call(p_name("a"), "getB", [])),
+  ])
+  assert_eq(pta_one_text(g), "a -> {o1}; x -> {o2}")
+}

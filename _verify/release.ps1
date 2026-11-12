@@ -386,7 +386,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19688'
+$NOTICE_TOTAL = '19690'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -433,7 +433,7 @@ $NOTICE_TOTAL = '19688'
 # read: the false positive is gone rather than re-pinned, and the own-source
 # tree is one `if expression` notice lighter than the draft had it.
 $NOTICE_SPLIT_PRINTED = '3407'
-$NOTICE_SPLIT_AGGREGATED = '16281'
+$NOTICE_SPLIT_AGGREGATED = '16283'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -453,9 +453,9 @@ $NOTICE_SPLIT_AGGREGATED = '16281'
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
 $SELF_FILES = '218'
-$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1511|try expression=1|type declaration=3'
+$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1513|try expression=1|type declaration=3'
 $SELF_PRINTED = '138'
-$SELF_AGGREGATED = '1613'
+$SELF_AGGREGATED = '1615'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -525,7 +525,7 @@ $SUPPOFF_PARAM = '1152'
 # versions, the phis, the copies, the dead blocks and the undefined uses are
 # identical, digit for digit -- which is what says the movement is three new
 # functions and not the lowering changing its mind about the old ones.
-$SSA_COST = 'files=200|unreadable=0|functions=906|converted=3|partial=903|declined=4889|instructions=7071|variables=795|versions=1964|phis=708|copies=1751|undef_operands=143|dead_blocks=358|undef_uses=884'
+$SSA_COST = 'files=200|unreadable=0|functions=907|converted=3|partial=904|declined=4890|instructions=7071|variables=795|versions=1964|phis=708|copies=1751|undef_operands=143|dead_blocks=358|undef_uses=884'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
