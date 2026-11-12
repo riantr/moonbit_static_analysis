@@ -4,8 +4,12 @@
 // Tan, Nanjing University, 2021) works small programs through the analysis and
 // prints every points-to set:
 //
-//   p.57-69  ONE four-statement program, TWO answers:
+//   p.5-13   `Number n = new One(); int x = n.get();` -- the CHA motivation. Its
+//            answer is printed on p.11-13 in prose ("n points to new One"); the
+//            call-target counts that make it interesting need a call graph, so no
+//            row pins it.
 //
+//   p.57-69  ONE four-statement program, TWO answers:
 //              1 c = new C();
 //              2 c.f = "x";
 //              3 s = c.f;
@@ -27,8 +31,8 @@
 //
 //   p.86     `array[0] = "x"; array[1] = "y"; s = array[0];`
 //            -> in the deck's perspective `array.arr` holds both, so s gets both.
-//   p.19-26  THE DECK'S FIRST WORKED EXAMPLE, and the only one whose answer carries
-//            POINTER:
+//   p.19-26  THE DECK'S FIRST WORKED EXAMPLE, and the only one whose answer carries a
+//            FIELD POINTER in the deck's own `Field | Object` answer row (p.23-26):
 //              void foo() {
 //                A a = new A();
 //                B x = new B();

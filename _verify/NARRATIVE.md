@@ -12931,8 +12931,8 @@ attachment is 104 pages and it is TWO DECKS, which matters for what can be claim
               summary table at p.104.
 
 So the attachment supports the RULE SYSTEM: the domain and four rules (p.97-98), the
-configuration (p.44/53/70/77), the statement kinds (p.85-91), and SIX worked programs whose
-answers are printed (p.19-26, p.28-29, p.45-47, p.57-69, p.77 and p.86). It does not contain the
+configuration (p.44/53/70/77), the statement kinds (p.88-91), and SEVEN worked programs whose
+answers are printed (p.5-13, p.19-26, p.28-29, p.45-47, p.57-69, p.77 and p.86). It does not contain the
 algorithm, and it does not
 contain method calls: p.96 says of the fifth statement kind "will come back to this in pointer
 analysis with method calls", and that section is not in the file. Three of the four sections
@@ -15409,7 +15409,7 @@ target prints the SAME finding, so the shipped artifact and the tree it came fro
 failure mode 0.4.38 had -- an artifact that could not even be INSTANTIATED -- is impossible here
 by construction rather than by luck.
 
-## 0561: THE DECK'S FIRST EXAMPLE, AND THE THREE OF ITS FIVE STEPS THAT NEED THE PART OF THE DECK THIS FILE DOES NOT CARRY
+## 0561: THE DECK'S FIRST WORKED EXAMPLE, AND THE THREE OF ITS FIVE STEPS THAT NEED THE PART OF THE DECK THIS FILE DOES NOT CARRY
 
 ### THE ASK, AND THE AUDIT THAT ANSWERED IT
 
@@ -15419,9 +15419,15 @@ deck's RULES (p.97-98), its heap factor (p.44-47), its array field (p.86), its a
 four-factor table (p.78), and the eight cells that table resolves into.
 
 THE AUDIT THIS TIME ASKED A DIFFERENT QUESTION, and it is the question a reader of the deck
-would ask FIRST: THE DECK'S FIRST WORKED EXAMPLE. p.19-26 is the first program the deck
-works through, and it is the only example in the whole file whose ANSWER carries a FIELD
-POINTER.
+would ask FIRST: THE DECK'S FIRST WORKED EXAMPLE. p.19-26 is the first program the deck works
+through into a printed POINTS-TO TABLE, and it is the only example in the whole file whose
+answer names a FIELD POINTER in that table's own `Field | Object` row.
+
+THE FIELD-POINTER CLAIM IS NARROW ON PURPOSE, and it used to be WIDER AND FALSE. It said "the
+only example in the whole file whose ANSWER carries a FIELD POINTER", and MEASUREMENT refutes
+that: the flow program's arrow answers on p.59-70 name the field pointer `o1.f`, and p.86's
+perspective names `array.arr`. What IS unique to p.19-26 is the TABLE -- the `Field | Object`
+row is printed on p.23-26 and on no other page of the 104. See 0563.
 
 MEASURED, the deck's 104 pages were mapped section by section -- the contents slides at
 p.3, p.14, p.32 and p.79 give the four sections -- and each page's subject was read against
@@ -15457,15 +15463,17 @@ p.26 prints the whole table at once.
 
 p.22's `this` and `b` are the RECEIVER and the PARAMETER of `setB`. p.23's `new A.b` is the
 store inside `setB`'s BODY. p.25's `y` is the load out of `getB`'s body. ALL THREE ARE A
-METHOD BODY, and a method body is the deck's section 4, "Pointer Analysis with Method
-Calls" -- which p.94's contents LISTS and this file DOES NOT CARRY: the file holds sections
-1 to 3 plus the `Foundations (I)` part, and p.96 says of the fifth statement kind "Will come
-back to this in pointer analysis with method calls".
+METHOD BODY, and a method body is what the SECOND deck's section 4, "Pointer Analysis with
+Method Calls", is ABOUT -- which p.94's contents LISTS and this file DOES NOT CARRY: the file
+holds ALL FOUR sections of the FIRST deck (its contents are on p.3, p.14, p.32 and p.79) and
+section 1 of the second, and p.96 says of the fifth statement kind "Will come back to this in
+pointer analysis with method calls".
 
-SO THE DECK'S FIRST EXAMPLE IS THE SAME KIND OF ABSENCE AS THE TWO EMPTY CELLS 0558 NAMED,
-and the deck says so ITSELF, in its INTRODUCTION: the first program pointer analysis is
-shown on is already one that needs method calls. C1 (context-sensitive) needs a call graph
-to have two contexts at all; S2 (demand-driven) needs a call graph as its client; and this
+SO THE DECK'S FIRST WORKED EXAMPLE IS THE SAME KIND OF ABSENCE AS THE TWO EMPTY CELLS 0558
+NAMED, and the deck says so ITSELF, in its INTRODUCTION: the first program the deck works
+through into a points-to TABLE is already one that needs method calls. C1 (context-sensitive)
+needs a call graph to have two contexts at all; S2 (demand-driven) needs a call graph as its
+client; and this
 example needs the method BODIES. ONE BOUNDARY, THREE PLACES IT SHOWS UP.
 
 ### WHAT IS DERIVABLE, AND THE TWO ROWS THAT NOW PIN IT
@@ -15533,7 +15541,7 @@ not.
     ANALYSIS.** The three empty cells are still empty, for the deck's own reasons, and this
     increment added a THIRD place the same boundary shows up -- the deck's own first
     example.
-  * **NO METHOD-CALL ANALYSIS.** The deck's section 4 is not in the attachment. The row
+  * **NO METHOD-CALL ANALYSIS.** The second deck's section 4 is not in the attachment. The row
     that says a method call is not a field write is a BOUNDARY, not a claim that this tool
     could do it and chooses not to.
   * **NO NEW FINDING FAMILY**, so no corpus SUMMARY moves and no corpus number moves.
@@ -15543,9 +15551,11 @@ not.
 
 ## 0562: A COUNT IN THE 0547 CHAPTER THAT CONTRADICTED THE CHAPTER'S OWN LIST
 
-THE SENTENCE WAS WRONG, and it was wrong in a way its own chapter could have told us. Thirty-
-five lines below it, the same chapter lists FIVE programs the deck prints an answer for; the
+THE SENTENCE WAS WRONG, and it was wrong in a way its own chapter could have told us. The same
+chapter's own list, a few lines below, names FIVE programs the deck prints an answer for; the
 sentence above said two.
+
+    (the sentence as it stood BEFORE this chapter corrected it:)
 
     So the attachment supports the RULE SYSTEM: the domain and four rules (p.97-98), the
     configuration (p.44/53/70/77), the statement kinds (p.85-91), and two worked programs whose
@@ -15554,9 +15564,10 @@ sentence above said two.
 ### THE COUNT, MEASURED OVER ALL 104 PAGES
 
 Every page of the attachment was classified by the answer notation it carries, because the deck
-prints its answers in FIVE NOTATIONS and a search for any ONE of them misses the others. The
+prints its answers in SIX NOTATIONS and a search for any ONE of them misses the others. The
 programs are:
 
+    p.5-13   `Number n = new One(); int x = n.get();`          in PROSE      no row (call targets)
     p.19-26  the deck's FIRST WORKED example                  a TABLE       0561's two rows
     p.28-29  `p = new C(); q = p; x = new X(); ...`         in PROSE      0547's alias row
     p.45-47  the allocation site inside a loop              an OBJECT     0547's o2 row
@@ -15564,34 +15575,47 @@ programs are:
     p.77     `1 x = new A(); 2 y = x; ... 4 z = new T();`   an ARROW      0547's naming row
     p.86     `array[0] = "x"; array[1] = "y"; ...`           a PERSPECTIVE 0547's array row
 
-SIX, then. The exact pages each answer is PRINTED on are: the table on p.20-26, the alias
-verdict in prose on p.28-29, the abstracted object on p.46-47, the flow program's arrows on
-p.58-70 (p.70 is the slide that carries the course's choice), the scope program's arrows on
-p.74-77, and the perspective on p.86. NO PAGE OF p.93-104 CARRIES AN ANSWER: that half of the
-file is the rule system, and a rule is not a worked program.
+SEVEN, then -- and the seventh is the one this chapter's own classification MISSED, because the
+deck's answers come in SIX NOTATIONS and this chapter enumerated five of them. The CHA
+motivation example (p.5-13) prints its answer on p.11-13 in the sixth notation, a PROSE
+points-to statement: "n points to new One". The exact pages each answer is PRINTED on are:
+that prose statement on p.11-13, the table on p.20-26, the alias verdict in prose on p.28-29,
+the abstracted object on p.46-47, the flow program's arrows on p.58-70 (p.70 is the slide that
+carries the course's choice), the scope program's arrows on p.74-77, and the perspective on
+p.86. NO PAGE OF p.93-104 CARRIES AN ANSWER: that half of the file is the rule system, and a
+rule is not a worked program.
 
-FOUR of the six are the four FACTORS' own illustrations: p.45-47 is the heap abstraction's
-example (the factor page is p.44), p.57-69 is the flow sensitivity's (p.70), p.77 is the
-analysis scope's (the factor page IS p.77), and p.86 is the statement kinds' (p.85-91). The
-other two are not factor examples at all: p.19-26 is the deck's OPENING worked example, and
-p.28-29 introduces alias analysis.
+THREE of the seven are FACTORS' own illustrations: p.45-47 is the heap abstraction's example
+(the factor page is p.44), p.57-69 is the flow sensitivity's (p.70), and p.77 is the analysis
+scope's (the factor page IS p.77). THE FOURTH FACTOR HAS NO EXAMPLE WITH AN ANSWER: the
+context sensitivity's factor page is p.53 and its illustration runs p.49-53, and MEASURED, not
+one of those five pages carries an answer in ANY notation -- which is why the count of factor
+illustrations is three and not four. p.86 is NOT a factor illustration either: it belongs to
+"Pointers in Java" (p.82-87), NOT to the pointer-affecting statements, which are p.88-91. The
+other four are not factor examples at all: p.5-13 is the CHA MOTIVATION, p.19-26 is the deck's
+OPENING worked example, p.28-29 introduces alias analysis, and p.86 is the array PERSPECTIVE.
 
 ### THE ONE THAT WAS MISSING, AND WHY IT WAS MISSED
 
-0561 found it: p.19-26 is the only worked program in the whole file that had NO row, and the
-only example whose answer carries a FIELD POINTER. Three of its five steps need the method
-bodies, which are the deck's section 4 and are not in this attachment, so what is pinnable is
+0561 found it: p.19-26 was the only worked program in the whole file that had NO row AND no
+computable half left over. (p.5-13 has no row either, but its computable half -- the
+allocation -- is already pinned by the allocation-site rows, and its meaningful half -- the
+call-target counts -- needs a call graph.) What is unique to p.19-26's ANSWER is the
+`Field | Object` row of the deck's own table. Three of its five steps need the method bodies,
+which are the SECOND deck's section 4 and are not in this attachment, so what is pinnable is
 the example with the method indirection removed.
 
 ### WHAT WAS CORRECTED IN PLACE, AND WHERE
 
-  * The 0547 sentence above: "two worked programs" -> SIX, with the six page references.
+  * The 0547 sentence above: "two worked programs" -> SIX, with the six page references. (0563
+    takes that SIX to SEVEN: the seventh program's answer is printed on p.11-13.)
   * The 0547 sentence below it: "`src/flow/pta_test.mbt` is thirteen rows" -> fifteen, and the
     list of what the rows pin now names p.19-26.
   * The 0547 correction 5: "Six of the thirteen rows failed" -> "Six of the thirteen rows THAT
     INCREMENT ADDED failed", so the two numbers in the chapter do not collide.
-  * `src/flow/pta_test.mbt`'s own header listed five of the six programs; p.19-26 is now in
-    it, with the deck's site names and this tree's line names side by side.
+  * `src/flow/pta_test.mbt`'s own header listed five of the deck's programs; p.19-26 is now in
+    it, with the deck's site names and this tree's line names side by side. (0563 adds the
+    seventh, p.5-13, and says why it has no row.)
 
 ### WHAT IS NOT HERE
 
@@ -15603,3 +15627,125 @@ the example with the method indirection removed.
   * THE BOUNDARY IS UNCHANGED: three of the five steps of p.19-26 still need the method bodies
     this attachment does not carry, so the second 0561 row still pins the deck's program AS
     WRITTEN.
+
+## 0563: FOUR FALSE CLAIMS AND ONE FRAGILE LOCATOR IN 0561 AND 0562, CORRECTED IN PLACE
+
+THE HOST PAUSED this goal's verification, and the re-check was right to be strict: it found FOUR
+statements in this record that the attachment does not support, and a FIFTH that is true but
+fragile. All of them are corrected IN PLACE, and this chapter records what was measured,
+because a correction without its measurement is the same defect one level down.
+
+### 1. THE FIELD-POINTER CLAIM WAS FALSE, AND THE DECK PRINTS IT ON THREE PAGES
+
+0561 wrote: "it is the only example in the whole file whose ANSWER carries a FIELD POINTER".
+MEASURED over all 104 pages, that is FALSE:
+
+    p.59-70   the flow program's arrow answers name the field pointer `o1.f`, as the
+              LEFT-HAND SIDE of the arrow (p.61, p.64 and p.68 all print it)
+    p.86      the array perspective names `array.arr`
+
+WHAT IS TRUE, and what 0561 was reaching for, is NARROWER: p.19-26 is the only example whose
+answer names a field pointer in the deck's own ANSWER TABLE. MEASURED, the `Field | Object` row
+is printed on p.23, p.24, p.25 and p.26 and on NO OTHER PAGE of the 104; the `Variable |
+Object` row is printed on p.20-26. The TABLE form of a field pointer is unique to p.19-26; the
+arrow form is not.
+
+THE RULE THAT CAUGHT IT. "Unique" is a claim about the WHOLE file, and a claim about the whole
+file has to survive a notation sweep that covers every way the file can print the thing. 0562's
+sweep covered five notations; the field pointer appears in a sixth place -- inside the arrow
+notation, on the LEFT of the arrow -- and a sweep that looks for an answer's RIGHT-HAND side
+misses it.
+
+### 2. THE COUNT WAS SIX, AND IT IS SEVEN
+
+0562 counted the deck's worked programs by the notation their answer is printed in, and got six.
+MEASURED, there is a SEVENTH: the CHA motivation example, p.5-13, prints its answer on p.11-13
+in a notation the sweep did not look for -- a PROSE points-to statement:
+
+    p.11-13   "n points to new One"
+
+and p.11-13 put the two analyses side by side over it -- CHA: "3 call targets", "2 false
+positives"; pointer analysis: "1 call target", "0 false positive". The sweep searched for the
+alias verdict's PROSE ("are aliases") and for the arrow, the table, the object and the
+perspective; it never searched for "points to", which is the SIXTH notation, and the one the
+CHA answer uses.
+
+SO THE LIST IS p.5-13, p.19-26, p.28-29, p.45-47, p.57-69, p.77, p.86 -- SEVEN.
+
+AND THE SEVENTH IS ALSO THE FIRST, which refutes 0561's "the first program the deck works
+through". p.5-13 is worked through FIRST; p.19-26 is the first program the deck works through
+into a printed POINTS-TO TABLE, and the first whose answer is built up slide by slide.
+
+### 3. p.86 IS "POINTERS IN JAVA", NOT THE STATEMENT KINDS
+
+0562 said "FOUR of the six are the four FACTORS' own illustrations" and counted p.86 as the
+statement kinds' illustration. MEASURED, the section headings run:
+
+    p.80-81  "What Do We Analyze?"
+    p.82-87  "Pointers in Java"                 <- p.86 is HERE
+    p.88-91  "Pointer-Affecting Statements"     <- the five kinds (New/Assign/Store/Load/Call)
+
+so p.86 is the array PERSPECTIVE inside "Pointers in Java", and it is not a factor's
+illustration at all. The factor illustrations are p.45-47 (heap abstraction, factor page p.44),
+p.57-69 (flow sensitivity, p.70) and p.77 (analysis scope, p.77) -- THREE, not four. The
+FOURTH factor, context sensitivity, has an example (p.49-53) that PRINTS NO ANSWER AT ALL:
+MEASURED, not one of those five pages carries an arrow, a table, an alias verdict, an abstract
+object or a perspective. That is why the count of factor illustrations is three.
+
+The 0547 chapter's own section list already had it right -- "pointers in Java (p.82-87), and the
+FIVE pointer-affecting statements (p.88)" -- while the sentence 0562 edited said "(p.85-91)".
+That sentence now says "(p.88-91)".
+
+### 4. A LINE-OFFSET LOCATOR: TRUE TODAY, AND TRUE BY ACCIDENT
+
+0562 located the 0547 chapter's list by LINE OFFSET ("Thirty-five lines below it"). MEASURED
+against the two trees: the offset was 34 in the tree 0562 wrote that sentence in, and 35 in the
+tree 0562 produced -- 0562's own edit to that list moved it one line down, so the sentence
+became exact by the act of being written. An offset that MOVES under the increment's own edit
+is a fact about ONE VERSION of a file, not about the file, and a reader who follows it after
+the next increment is off by one for a reason nobody can see. The sentence now names the list
+instead of counting lines to it.
+
+### 5. "THE DECK'S SECTION 4", AND WHAT THE FILE ACTUALLY HOLDS
+
+0561 said "a method body is the deck's section 4, 'Pointer Analysis with Method Calls'". The
+FIRST deck's section 4 is "Concerned Statements" (its contents are on p.3, p.14, p.32 and
+p.79), and it is p.79-91 -- IN the file. "Pointer Analysis with Method Calls" is the SECOND
+deck's section 4, from the `Foundations (I)` contents on p.94, and it is NOT in the file. The
+same sentence also said "the file holds sections 1 to 3 plus the `Foundations (I)` part", which
+is FALSE: the file holds ALL FOUR sections of the FIRST deck, and section 1 of the second. Both
+sentences now say "the SECOND deck's section 4", and the file's contents are stated as they
+MEASURE.
+
+### THE SEVENTH PROGRAM, AND THE BOUNDARY IT STANDS BEHIND
+
+p.5-13 is the deck's own first program, and it is NOT pinnable here, for the reason 0561 found
+for p.19-26 and the reason 0558 recorded for the empty cells: its meaningful half is the
+CALL-TARGET COUNT, and a call target needs a call graph. Its computable half -- the allocation
+`new One` -- is already pinned by the allocation-site rows, and a second row for it would put
+one fact in two places. So NO ROW WAS ADDED for p.5-13, and the boundary is the ONE 0561 named:
+C1 and S2 need a call graph, and this needs the method bodies.
+
+### WHAT MOVED, AND WHAT DID NOT
+
+    own-source files             218 -> 218    (UNCHANGED -- a comment, no file)
+    own-source notices           1753 -> 1753  (UNCHANGED)
+    own-source printed           138 -> 138    (UNCHANGED)
+    own-source aggregated        1615 -> 1615  (UNCHANGED)
+    test declarations            1513 -> 1513  (UNCHANGED)
+    unchecked calls              3238 -> 3238  (UNCHANGED)
+    eight-tree notices           19690 -> 19690
+    eight-tree split             3407 + 16283 -> 3407 + 16283
+    SSA cost                     14 numbers, UNCHANGED
+
+AND NOTHING ELSE CHANGED: no version, no CHANGELOG entry, no README number, no corpus pin.
+This increment corrects the RECORD; the tree's behaviour is the same tree.
+
+### WHAT IS NOT HERE
+
+  * **NO NEW ROW.** Every claim corrected here is a fact about the DECK, not about this tree's
+    behaviour, and a row asserting a fact about the deck could not fail. 0562's rule, applied to
+    0562.
+  * **NO NEW ANALYSIS.** The three empty cells -- storeless, context-sensitive, demand-driven
+    -- are still empty, for the deck's own reasons.
+  * **NO METHOD-CALL ANALYSIS.** The second deck's section 4 is still not in the attachment.
