@@ -624,6 +624,57 @@ if (-not $rosterM.Success) {
 }
 
 Write-Output ''
-if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts and family tables all check out.'; exit 0 }
+Write-Output '=== 8. the NARRATIVE course map names only what this tree has ==='
+# WHY THIS CHECK EXISTS. Chapter 0564 of `_verify/NARRATIVE.md` maps the course's own
+# assignment list (the lecture's p.73) onto this tree: for each assignment it names
+# the MODULE that implements it and the FAMILY it speaks for. That map is a claim
+# ABOUT THE TREE, and a claim about the tree that only prose carries is a claim
+# that rots -- rename a module, drop a family, and the map goes on saying the tree
+# has it.
+#
+# So the map is read here, and every path and every family id it names is checked
+# against the tree: the paths must exist, and the ids must be in the CODE's roster
+# -- read in section 7 out of `src/core/core.mbt`, not written down a second time.
+$narrPath2 = Join-Path $root '_verify\NARRATIVE.md'
+$narrTxt2 = [System.IO.File]::ReadAllText($narrPath2, [System.Text.Encoding]::UTF8)
+$chapM = [regex]::Match($narrTxt2, '(?ms)^## 0564:.*\z')
+if (-not $chapM.Success) {
+  Write-Output '  FAIL: the NARRATIVE has no chapter 0564, so the course map cannot be checked.'
+  $fail++
+} else {
+  $chap = $chapM.Value
+  $paths = @()
+  foreach ($pm in [regex]::Matches($chap, 'src/[A-Za-z0-9_/]+\.mbt')) {
+    $p2 = $pm.Value -replace '/', '\'
+    if ($paths -notcontains $p2) { $paths += $p2 }
+  }
+  $badPaths = @()
+  foreach ($p2 in $paths) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root $p2))) { $badPaths += $p2 }
+  }
+  $ids = @()
+  foreach ($im in [regex]::Matches($chap, 'MSA-\d{3}')) {
+    if ($ids -notcontains $im.Value) { $ids += $im.Value }
+  }
+  $knownIds = @($idOf.Values | Sort-Object -Unique)
+  $badIds = @($ids | Where-Object { $knownIds -notcontains $_ })
+  if ($badPaths.Count -eq 0 -and $badIds.Count -eq 0) {
+    Write-Output ("  the 0564 course map names {0} file(s) and {1} family id(s), and every one of them exists  OK" -f $paths.Count, $ids.Count)
+  } else {
+    if ($badPaths.Count -gt 0) {
+      Write-Output ("  the 0564 course map names {0} file(s) that do not exist:" -f $badPaths.Count)
+      foreach ($b in $badPaths) { Write-Output ('      ' + $b) }
+      $fail += $badPaths.Count
+    }
+    if ($badIds.Count -gt 0) {
+      Write-Output ("  the 0564 course map names {0} family id(s) the code does not have:" -f $badIds.Count)
+      foreach ($b in $badIds) { Write-Output ('      ' + $b) }
+      $fail += $badIds.Count
+    }
+  }
+}
+
+Write-Output ''
+if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables and the course map all check out.'; exit 0 }
 Write-Output ("VERIFY FAILED: " + $fail + " problem(s).")
 exit 1

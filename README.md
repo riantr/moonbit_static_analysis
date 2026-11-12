@@ -556,6 +556,31 @@ and parses **984 of 1029** files (95.6%); `.mbti` and `.mbt.md` are 100%.
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
 
+### What a finding is worth: sound, complete, useful
+
+No static analyzer is exact. **Rice's theorem** says a non-trivial property of a program's
+behaviour cannot be decided in general, so every analyzer gives something up, and the only
+question is *what*. The standard vocabulary:
+
+- **sound** — it reports no false negative: everything it reports is really there;
+- **complete** — it reports no false positive: everything that is really there is reported;
+- **useful** — sound *or* complete, but never both.
+
+**This tool is useful, not perfect, and it says which side it is on.** It does not claim to be
+complete: a finding can be a false positive, and the parts of the language it cannot read are
+reported as notices rather than as defects. It does not claim to be sound either: the dead-code
+and unreachable-code families decide over an approximation of the program's control flow and
+values, and the [`--per-function`](#--per-function-the-behavioral-lens-at-each-function) view
+says in its own words that it is not yet sound. What it does promise is narrower, and it is
+promised per finding: **a finding the analyzer does not stand behind is rendered a notice**
+(see [Confidence, ids, profiles and `nosec`](#confidence-ids-profiles-and-nosec)), and every
+notice says what the tool could not read.
+
+The lecture series this tool's analyses follow is Nanjing University's *Static Program
+Analysis* (Yue Li, Fall 2026); the full map — which of the course's own analyses this tree
+implements, and the one place where the framework and this tree disagree — is in
+`_verify/NARRATIVE.md` §0564.
+
 ### The constructs the frontend reads past
 
 Every declaration or expression form it reads past **without analysing** is reported as a
@@ -1132,3 +1157,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 - [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct) — the reference consumer of
   the machine-table audit
 - [skills.mooncakes.io](https://skills.mooncakes.io) — the published skill
+- Nanjing University, *Static Program Analysis* (Yue Li, Fall 2026) — the lecture series this
+  tool's analyses follow; the map of what this tree implements is in `_verify/NARRATIVE.md`
+  §0564

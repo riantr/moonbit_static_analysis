@@ -15749,3 +15749,228 @@ This increment corrects the RECORD; the tree's behaviour is the same tree.
   * **NO NEW ANALYSIS.** The three empty cells -- storeless, context-sensitive, demand-driven
     -- are still empty, for the deck's own reasons.
   * **NO METHOD-CALL ANALYSIS.** The second deck's section 4 is still not in the attachment.
+## 0564: THE COURSE'S OWN INTRODUCTION, AND WHERE THIS TOOL SITS IN IT
+
+### THE ATTACHMENT, AND WHERE IT SITS IN THE COURSE
+
+The attachment is the course's FIRST lecture -- "Static Program Analysis", Nanjing University,
+Yue Li, Fall 2026 (p.2) -- and its p.4 gives the six sections: PL and Static Analysis, Why
+We Learn Static Analysis?, What is Static Analysis?, Static Analysis Features and Examples,
+Teaching Plan, Evaluation Criteria.
+
+IT IS NOT THE POINTER-ANALYSIS LECTURE the previous increments used, and its own p.72 says
+where that one is: the sixteen-lecture plan lists "9. Pointer Analysis", "10. Pointer
+Analysis - Foundations", "11. Context Sensitivity" and "12. Modern Pointer Analysis". This
+lecture is the frame all of them assume, and it is the frame this tree is built in.
+
+WHAT IT TEACHES, IN FOUR PLACES:
+
+    p.21-23  RICE'S THEOREM: a non-trivial property of the behaviour of programs in a
+              recursively-enumerable language is undecidable
+    p.31-35  the four quadrants: Sound and Complete is TRUTH, and Rice says Truth is out
+              of reach; a USEFUL analysis is sound OR complete, and p.35 recommends
+              "Mostly compromising completeness: Sound but not fully-precise"
+    p.40-43  the precision/cost trade-off: one result per PATH (sound, precise,
+              expensive) or one per POINT (sound, imprecise, cheap)
+    p.44-45  TWO WORDS: Abstraction + Over-approximation; and the four ingredients --
+              Abstraction, Over-approximation, Transfer functions, Control flows
+
+### WHAT THE RECORD DID NOT CARRY, MEASURED
+
+MEASURED over this record before this increment: the word "Rice" appears ZERO times, and so
+does "undecidab"; "the lecture" appears ONCE, at 0547, and it means the pointer-analysis
+lecture. The theorem that explains every boundary in this file was never named -- and the
+READMEs had no sentence about soundness, completeness, false negatives or false positives,
+which is the lecture's own p.74 takeaway, the second of its four.
+
+=> A TOOL THAT REPORTS DEFECTS HAS TO SAY WHAT ONE OF ITS FINDINGS IS WORTH. A reader who
+cannot tell whether a finding can be a false positive has no way to read the output, and
+this tool's own record says its findings HAVE been false positives: the dead-store family
+produced nine findings that were measured one by one (0532) and all nine are gone -- eight
+were a read inside a region the frontend had declared outside its subset, and the ninth was
+a place-store's index not counted as a read (0542).
+
+### THE FOUR INGREDIENTS, AND WHERE EACH ONE LIVES IN THIS TREE
+
+    p.45   Abstraction, Over-approximation, Transfer functions, Control flows
+
+    ABSTRACTION           src/flow/lattice.mbt, src/flow/interval.mbt, src/flow/cprop.mbt,
+                          src/flow/pta.mbt -- four abstract domains over four carriers
+    OVER-APPROXIMATION    the JOIN in each: Interval::join, cpv_join, the points-to union
+                          in src/flow/pta.mbt, and the must-analysis's INTERSECTION
+                          lattice in src/flow/avail.mbt, which is the same carrier
+                          ordered the other way
+    TRANSFER FUNCTIONS    one per statement kind: cprop_node_transfer, avail_transfer,
+                          the per-EDGE transfer in src/flow/worklist.mbt, and the
+                          pointer-analysis lecture's own four rules as four arms of pta_step
+    CONTROL FLOWS         src/flow/cfg.mbt (intraprocedural), src/flow/icfg.mbt
+                          (interprocedural), src/flow/bb.mbt, src/flow/ir_cfg.mbt
+
+### THE COURSE'S OWN LADDER (p.73), AND WHERE THIS TREE STANDS ON IT
+
+p.73 is the course's EVALUATION CRITERIA: eight assignments. MEASURED against this tree:
+
+    A1  live variable analysis + iterative solver    PRESENT, and it SPEAKS
+        src/flow/live.mbt + src/flow/worklist.mbt; MSA-015 DeadStore is its output
+    A2  constant propagation + worklist solver       PRESENT as a library
+        src/flow/cprop.mbt + src/flow/worklist.mbt; NO family speaks for it
+    A3  dead code detection                           PRESENT, and it SPEAKS
+        MSA-011 Unreachable, MSA-013 InfeasibleBranch, MSA-014 RedundantGuard,
+        MSA-015 DeadStore
+    A4  CHA + interprocedural constant propagation  ABSENT -- no call graph
+    A5  context-insensitive pointer/alias analysis   PRESENT as a library
+        src/flow/pta.mbt (pta_run) + pta_alias; NO family speaks for it
+    A6  context-sensitive pointer/alias analysis     ABSENT -- the C1 empty cell
+    A7  taint analysis                                ABSENT
+    A8  alias-aware interprocedural constant prop.   ABSENT -- no call graph
+
+FOUR OF THE EIGHT ARE PRESENT. THE TWO THAT ARE PRESENT BUT SILENT ARE A MEASURED FACT AND
+NOT A MISSING PIECE: they are implemented and pinned by their own tests, and the pointer
+analysis in particular was built by 0547 on the strength of the pointer-analysis lecture,
+with the finding family deliberately left to an increment of its own -- 0547's own words:
+"NO FINDING FAMILY ... the family mechanism costs nine arms in `core.mbt`, a roster pin,
+both README family tables, the census list and a re-pin of every corpus".
+
+AND TWO OF THE FOUR ABSENCES ARE THE SAME BOUNDARY 0558 NAMED: A4 and A8 need a call graph
+to resolve a call target, which is the same absence as C1 (context sensitivity) and S2
+(demand-driven) -- the pointer-analysis lecture defers the method bodies to a section THAT
+lecture does not carry (its p.94 and p.96).
+
+### THE PRECISION-COST TRADE-OFF, AND THE TWO READINGS THIS TREE ALREADY HAS
+
+p.40-43 puts the same program in front of the reader twice: one answer per path, or one per
+point. MEASURED, this tree carries BOTH readings of the pointer analysis -- `pta_run` is the
+flow-INsensitive one, which is the reading the pointer-analysis lecture marks as chosen (its
+p.70), and `pta_run_ordered` and `pta_run_flow_sensitive` are the flow-sensitive ones -- and
+the trade-off is a test (src/flow/pta_flow_test.mbt) rather than a sentence.
+
+### THE THREE THINGS THE LECTURE'S EXAMPLES SAY ABOUT THIS TREE
+
+THE LECTURE'S p.45 NAMES TWO APPLICATIONS of its example -- "To check divided by zero error"
+and "To check negative array indices" -- and both were MEASURED, on a fixture written in
+MoonBit and scanned with this tool's own scanner:
+
+    w / 0        a division by a literal zero         NOTHING REPORTED
+    w / w        a division by a possibly-zero value   NOTHING REPORTED
+    arr[-1]      a negative array index               NOTHING REPORTED
+
+THE TOOL IS SILENT ON BOTH, and the reason is not that the domains are missing: the constant
+propagation and the interval domain are both here, and both compute the value. The reason is
+that only ONE analysis SPEAKS -- liveness, through MSA-015 -- and the two applications the
+lecture names are exactly the two the constant and interval domains would answer.
+
+AND THE LECTURE'S OWN FIRST EXAMPLE (p.40-43) IS SILENT TOO. In the only shape MoonBit
+allows for it -- `let mut x = 0` before the two branches -- the initializer's value is dead,
+and NO family reports it:
+
+    let mut x = 0
+    if input { x = 1 } else { x = 0 }
+    x
+
+THE REASON IS THE CFG'S DELIBERATE SPLIT, AND THE SPLIT RESTS ON AN ASSUMPTION THIS
+INCREMENT MEASURED TO BE TOO STRONG. A `let` declaration is an `Assign` node and a
+re-assignment is a `Store` node (src/flow/cfg.mbt:324 and :339), and the NodeKind comment
+gives the reason (src/flow/cfg.mbt:52): "A dead store is a claim about ONE write; a `let`
+whose value is never read is a different claim about a binding, and this tree already has a
+family for it (`FUnusedLocal`)".
+
+THE ASSUMPTION IS THAT "A `let` WHOSE VALUE IS NEVER READ" AND "A BINDING THAT IS NEVER
+READ" ARE THE SAME CLAIM. THEY ARE NOT. A binding can be read LATER and its INITIALIZER's
+value still be dead -- written, and never read -- and then `FUnusedLocal` does not fire
+(its claim is "never read anywhere") and the dead store does not fire either (a
+declaration is not a `Store`). The value is reported by NOBODY. (MEASURED: the scan of that
+fixture reports 0 findings and 0 notices, while the tool's own sample `structure.mbt` --
+where the dead store is an assignment to a PARAMETER, which IS a `Store` -- does report
+it.)
+
+=> A DECLARATION WHOSE INITIALIZER IS OVERWRITTEN BEFORE ANY READ IS INVISIBLE TO THIS TOOL.
+The rule that would close it is precise: report the declaration iff the name is not live
+after it AND the name is read SOMEWHERE later -- and the second half is what keeps it from
+double-reporting with `FUnusedLocal`, whose claim is "never read anywhere". The cost is that
+every finding it adds has to be audited one by one, which is what 0531 and 0532 did for the
+nine this family produced before, and the corpus numbers move with it. That is an increment
+of its own, and it is recorded here so that the next one does not have to rediscover it.
+
+### THE ONE PLACE THE LECTURE AND THIS TREE DISAGREE
+
+p.49 maps `v = w / 0` to "undefined" -- the abstract domain's BOTTOM, the value no
+expression ever produces.
+
+THIS TREE ANSWERS `full()` INSTEAD, and the reason is written where the decision is made:
+src/flow/interval.mbt:328 -- "A DIVISOR THAT CONTAINS ZERO IS NOT AN EMPTY IMAGE ...
+`⊥` would claim the expression never produces a value -- a claim strong enough to make a
+later branch look infeasible".
+
+THE TWO ANSWERS AGREE FOR A RANGE AND DIFFER FOR A LITERAL. MEASURED at
+src/flow/interval.mbt:341, `eval_div` answers `interval_full()` whenever the divisor's
+interval CONTAINS zero -- and [0,0] contains zero. For a divisor that MAY be zero the
+lecture's answer would be UNSOUND (the concrete semantics produces a value for every
+non-zero divisor), and this tree says so. For a divisor that is EXACTLY zero the concrete
+semantics produces NO value, so the lecture's bottom is right and this tree's `full()` is
+the imprecise answer.
+
+### WHAT THE INCREMENT CHANGED, AND THE CHECK THAT KEEPS THE MAP HONEST
+
+THE MAP ABOVE IS A CLAIM ABOUT THIS TREE, and a claim about the tree that only prose carries
+is a claim that rots -- rename a module, drop a family, and the map goes on saying the tree
+has it. So `_verify/check_readme_links.ps1` grew a section 8 that reads this chapter out of
+the NARRATIVE and checks every path and every family id it names against the tree: the paths
+must EXIST, and the ids must be in the CODE's roster -- read out of `src/core/core.mbt` by
+the section above it, and not written down a second time.
+
+MEASURED, on the tree as it stands: the map names 12 files and 4 family ids, and every one
+of them exists. AND THE CHECK WAS SHOWN TO GO RED, because a gate that has never gone red is
+a comment: with one file name and one family id planted in this chapter, the gate exits 1 and
+says "the 0564 course map names 1 file(s) that do not exist" and "the 0564 course map names
+1 family id(s) the code does not have". The chapter was put back byte-for-byte afterwards --
+the same SHA-256 before and after.
+
+AND THE READMEs NOW SAY WHAT A FINDING IS WORTH. The lecture's p.74 takeaway, the second of
+its four, is "Understand soundness, completeness, false negatives, and false positives", and
+neither README said a word about any of the four. Each now carries a subsection under
+"Coverage and limits" that states this tool's own position in that vocabulary -- sound,
+complete, useful -- says which side it is on, and points at the sections that carry the
+evidence; and the course is named in "References", because the analyses here were built from
+that course's lectures and a reader could not tell.
+
+### THE GATE, AND WHAT IT DID AND DID NOT RUN
+
+THE RELEASE GATE RAN ON THIS TREE, IN THE MODE THE GATE ITSELF DOCUMENTS FOR A TREE WHOSE
+VERSION IS NOT BEING BUMPED: `-SkipMutations`. `release.ps1` says so in its own release
+order -- "the local gate -- and `-SkipMutations` runs the corpus pins and the own-source
+self-scan, which is what has to be green BEFORE the version is bumped" -- and it prints, at
+the end, "NOTE: the mutation gates were SKIPPED. This is not a release-grade run."
+
+MEASURED, on this tree: 34 stage rows, 33 True and 1 False, and the one red row is the
+KNOWN one -- the per-function census control, which reads "BASELINE FAILED: the corpus has
+errors beyond the one this control knows: abort/pkg.mbti:4". The same gate on the previous
+tree (0562) was 121 rows, 120 True and that same 1 False, and the 87 rows between the two
+counts ARE the mutation gates. So every stage this increment can affect ran, and every one
+of them is green except the row that was already red before this increment.
+
+THE MUTATION STAGE WAS NOT RE-RUN, AND THE REASON IS MEASURED RATHER THAN ASSUMED. The 87
+mutation gates name 35 source files between them, and `src/flow/pta_test.mbt` -- the only
+source file this increment touched, and it is touched in its HEADER COMMENT only -- is not
+among them: zero hits for "pta_test" across all 87 scripts. The last full measurement of
+that stage is the 0562 run's 87 of 87 green, on a tree whose source is identical to this
+one's apart from that comment; and 27 of the 87 gates were re-measured on this tree's
+source before that run was stopped, with identical verdicts and no restore failure.
+
+=> A GATE THAT WAS SKIPPED IS NOT A GATE THAT PASSED, AND THE LOG SAYS WHICH ONE IT WAS.
+This increment changes no source logic, so that stage has nothing to bite on; the next
+increment that does change source runs it in full.
+
+### WHAT IS NOT HERE
+
+  * **NO NEW ANALYSIS.** The lecture teaches the framework, and this tree has every
+    ingredient of it. What the lecture adds is a way to NAME where this tree stands, and
+    that is what this increment is.
+  * **NO NEW FINDING FAMILY**, and so no roster pin, no README family table and no corpus
+    re-pin. The two capability gaps above are named together with the rule that would close
+    them, and both need an audit of their own findings before they are published.
+  * **NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
+  * **NO CHANGE TO ANY COUNT.** `_verify/` is excluded from the own-source scan, and a
+    comment and a chapter are not notices, so no pin moves.
+  * **THE BOUNDARIES ARE UNCHANGED.** The three empty cells -- storeless, context-sensitive,
+    demand-driven -- are still empty, for the deck's own reasons, and the lecture's p.21-23
+    is the reason they are empty rather than a gap.

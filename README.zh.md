@@ -487,6 +487,26 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 本工具能做而编译器不能做的：编译器**根本不审**的那三种文件——`.mbti`、`.mbt.md`、
 `.mbtp`——以及跨包语义。
 
+### 一条 finding 值多少：sound、complete、useful
+
+没有哪个静态分析是精确的。**Rice 定理**说，程序行为的非平凡性质在一般情况下不可判定，
+所以任何分析器都必须放弃点什么，唯一的区别是**放弃哪一头**。标准词汇是这样的：
+
+- **sound** —— 不报漏报（false negative）：报出来的都真的存在；
+- **complete** —— 不报错报（false positive）：真的存在的都报出来了；
+- **useful** —— sound 或 complete 之一，但不可能两者兼得。
+
+**这个工具是有用的，不是完美的，而且它说清了自己站在哪一边。** 它不声称完备：一条 finding
+可能是误报，而它读不懂的语言构造会报成 notice，而不是报成缺陷。它也不声称 sound：死代码
+那几个家族是对程序控制流与取值的近似做出的判断，而
+[`--per-function`](#--per-function让行为透镜在每个函数上入口) 视图自己就写着它「还没有
+sound」。它承诺的东西更窄，而且是逐条 finding 承诺的：**分析器自己站不住脚的 finding 会被
+渲染成 notice**（见[置信度、id、profile 与 `nosec`](#置信度idprofile-与-nosec)），每条
+notice 都写明工具没读懂什么。
+
+本工具的分析所依据的讲义系列是南京大学《静态程序分析》（李樾，2026 秋季）；完整对照——本
+仓库实现了课程自己的哪些分析、框架与本仓库在哪里不一致——见 `_verify/NARRATIVE.md` §0564。
+
 ### 前端读过去、但没有分析的构造
 
 每一个它读过去**却没有分析**的声明或表达式形式都会报成一条 notice，而那条 notice 说的是
@@ -973,3 +993,5 @@ MIT License。详见 [LICENSE](LICENSE)。
   —— 工具链自己的文法，对照用
 - [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct) —— 机器表审计的参考消费方
 - [skills.mooncakes.io](https://skills.mooncakes.io) —— 已发布的 skill
+- 南京大学《静态程序分析》（李樾，2026 秋季）—— 本工具的分析所依据的讲义系列；本仓库实现了
+  课程自己的哪些分析，对照见 `_verify/NARRATIVE.md` §0564
