@@ -16318,3 +16318,45 @@ under this toolchain says so; a green row that measured nothing says nothing at 
     read-loss fixes, the 23-finding audit and every number 0565 re-pinned are as
     they were.
   * **NO NEW FAMILY, NO NEW ID, NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.**
+
+## 0567: THE 27 MUTATION GATES THAT NAME WHAT 0565 CHANGED, RE-MEASURED
+
+0565's gate run skipped the mutation stage, and its chapter said so with a measurement
+instead of borrowing 0564's sentence: of the 87 mutation gates, **27** name one of the
+three source files 0565 changed. This chapter is that re-measurement.
+
+### THE 27 GATES, AND WHY THESE 27
+
+    src/pipeline/deadstore.mbt     1 gate   (mutate_0507)
+    src/lexer/lexer.mbt           25 gates  (mutate_0413 ... mutate_0500)
+    src/flow/cfg.mbt               2 gates  (mutate_0441, mutate_0495)
+
+`mutate_0441` names two of the three, so the count of GATES is 27 and not 28. The
+count was taken by searching the 87 scripts for the three file names, not by reading a
+list this chapter wrote down.
+
+### MEASURED, ONE GATE AT A TIME, ON THE COMMITTED TREE
+
+    gates run: 27   failed: 0   dirty trees: 0
+
+Every one of them exited 0, and the tree came back CLEAN after every single one:
+`git status --short --untracked-files=no` was empty 27 times out of 27, and each gate
+reported its own restores as verified byte-identical.
+
+THE ONE THAT MATTERS MOST IS `mutate_0507`: it is the gate that mutates the DEAD-STORE
+code, and it reads "14 killed, 1 expected survivor(s), of 15" -- so the code this
+increment rewrote still has its defects caught when it is broken.
+
+### WHAT THIS DOES NOT CLAIM
+
+The 60 gates that name NEITHER of the three files were NOT re-run in this pass. Their
+last full measurement is the 0562 run's 87 of 87 green. The four test rows this
+increment added can only add kills and not remove them -- but that is an ARGUMENT, and
+a release-grade run still runs all 87.
+
+And the stage the 27 gates belong to is still not part of an increment's gate run:
+`release.ps1 -SkipMutations` is the mode the gate documents for a tree whose version
+is not being bumped, and this increment does not bump the version.
+
+=> A GATE THAT WAS SKIPPED IS NOT A GATE THAT PASSED -- AND THE SKIP IS CLOSED BY MEASURING
+THE GATES THAT COULD HAVE BITE, NOT BY REUSING THE SENTENCE.
