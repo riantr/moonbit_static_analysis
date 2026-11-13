@@ -134,3 +134,34 @@ test "0506: a region in each of two functions is hiding in both" {
   let out = @walk.hiding_spans(fns, [ra, rb])
   assert_eq(out.length(), 2)
 }
+
+///|
+/// An integer literal, as an expression the folder can be handed.
+fn int_e0568(i : Int32) -> @ast.Expr {
+  { span: mk_span(1, 1), kind: @ast.EInt(i), }
+}
+
+///|
+/// 0568. A MODULO BY ZERO IS NOT FOLDED, because folding it KILLED THE SCAN.
+///
+/// MEASURED: this folder used to answer `Some(CInt(1 % 0))` -- and `1 % 0` is a
+/// RUNTIME ERROR in MoonBit (measured by running it: exit 1, "remainder by
+/// zero"), so the analyzer died with "RuntimeError: remainder by zero" inside
+/// this very function, and the death took the whole scan with it.
+///
+/// The answer is "unknown", which is what the interp gives the same shape.
+test "0568: a modulo by zero is not folded" {
+  // the shape that killed the scan
+  let zero : @ast.Expr = {
+    span: mk_span(1, 1),
+    kind: @ast.EBin(@ast.OpMod, int_e0568(1), int_e0568(0)),
+  }
+  assert_true(@walk.const_eval(zero) == None)
+  // THE CONTROL: a modulo by a NON-zero divisor still folds. The fix switched
+  // off exactly the one shape that dies -- not the folding.
+  let two : @ast.Expr = {
+    span: mk_span(1, 1),
+    kind: @ast.EBin(@ast.OpMod, int_e0568(7), int_e0568(2)),
+  }
+  assert_true(@walk.const_eval(two) == Some(@walk.Const::CInt(1)))
+}

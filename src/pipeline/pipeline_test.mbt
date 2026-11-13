@@ -1593,3 +1593,47 @@ test "every accepted integer literal form leaves no fragment behind" {
   )
   assert_eq(count_family(r, "UndefinedName"), 0)
 }
+
+///|
+/// 0568. A MODULO BY ZERO IS NOT FOLDED, AND THE SCAN SURVIVES IT.
+///
+/// MEASURED: before the fix this source made the analyzer die with "RuntimeError:
+/// remainder by zero" inside `@walk.const_eval` -- and the death took the whole
+/// scan with it: a directory of two files, one good and one with this shape,
+/// produced NO findings at all, because the process was gone before the good
+/// file was reported.
+///
+/// The shape and the assertion are the ones this file already uses for the
+/// folding it prunes with ("a branch keyed on a readable literal is still
+/// pruned"): a name inside the branch is seen only when the branch is walked.
+/// Here the condition CANNOT be folded -- `1 % 0` is a runtime error in
+/// MoonBit, and a folder that folded it would die -- so the answer is
+/// "unknown" and the branch IS walked, exactly as it is for a condition the
+/// folder cannot read.
+test "0568: a modulo by zero does not kill the scan" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  if 1 % 0 == 0 {\n    return not_a_name\n  }\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  // The branch is walked, so the name inside it is found -- and the analyzer is
+  // still alive to say so.
+  assert_eq(count_family_in(r, "UndefinedName", @core.LStructural), 1)
+}
+
+///|
+/// THE CONTROL, and it differs from the row above by ONE CHARACTER: the divisor
+/// is 2 instead of 0. The folder CAN fold this one, so the condition is false,
+/// so the branch is pruned, and the name inside it is never looked at.
+///
+/// Without this row the fix above would pass with the folding switched off
+/// entirely -- and a folder that folds nothing is a folder that has stopped
+/// doing its job, silently.
+test "0568: a modulo by a non-zero divisor still prunes the dead branch" {
+  let r = @pipeline.run(
+    "fn f() -> Int {\n  if 1 % 2 == 0 {\n    return not_a_name\n  }\n  1\n}\n",
+    "x.mbt",
+    @core.IfaceSymTab::empty(),
+  )
+  assert_eq(count_family_in(r, "UndefinedName", @core.LStructural), 0)
+}

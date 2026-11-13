@@ -112,7 +112,28 @@ pub fn const_eval(e : @ast.Expr) -> Const? {
             OpAdd => Some(CInt(i + j))
             OpSub => Some(CInt(i - j))
             OpMul => Some(CInt(i * j))
-            OpMod => Some(CInt(i % j))
+            // 0568. A MODULO BY ZERO IS A RUNTIME ERROR, AND FOLDING IT KILLED
+            // THE SCAN. MEASURED: a file whose only oddity is `if 1 % 0 == 0 {..}`
+            // made the analyzer die with "RuntimeError: remainder by zero" inside
+            // THIS function -- and the death took the whole scan with it: two
+            // files, one good and one with this shape, produced NO findings at
+            // all, because the process was gone before the good file was
+            // reported.
+            //
+            // THE ANSWER IS "UNKNOWN", and it is the answer the INTERP already
+            // gives this exact shape (interp.mbt:2347): "An analyzer that dies on
+            // one line is worse than one that says 'unknown'". So the folder
+            // refuses to fold a zero divisor and the condition stays unknown --
+            // the only answer that cannot be wrong, and the only one that does
+            // not invent a value the program never computes.
+            //
+            // MEASURED IN MOONBIT ITSELF, because the semantics decide which
+            // shapes are this one: `1 % 0` and `1 / 0` are runtime errors (exit
+            // 1), `1.0 % 0.0` is NaN and `1.0 / 0.0` is Infinity -- so the FLOAT
+            // zero is not this shape at all -- and integer arithmetic WRAPS
+            // rather than trapping (2000000000 + 2000000000 is -294967296), so
+            // the three folds above this one cannot panic.
+            OpMod => if j == 0 { None } else { Some(CInt(i % j)) }
             // Int/Int is INTEGER division in MoonBit — `7 / 2` is 3, verified
             // by running it, not 3.5. So the comment that used to sit here
             // ("`/` widens to Float at runtime") was simply wrong.

@@ -16360,3 +16360,140 @@ is not being bumped, and this increment does not bump the version.
 
 => A GATE THAT WAS SKIPPED IS NOT A GATE THAT PASSED -- AND THE SKIP IS CLOSED BY MEASURING
 THE GATES THAT COULD HAVE BITE, NOT BY REUSING THE SENTENCE.
+
+## 0568: THE ANALYZER DIED ON THE SHAPE THE LECTURE NAMES, AND THE FOLDER THAT DID IT
+
+### THE ATTACHMENT'S FIRST NAMED APPLICATION, AND WHAT THE TOOL DID WITH IT
+
+The lecture's p.45 names two applications of its own example -- "To check divided by
+zero error" and "To check negative array indices" -- and 0564 measured both as
+silent. This increment took the FIRST one seriously enough to look for it, and
+found that the tool did not answer it. It CRASHED.
+
+MEASURED, on a file whose only oddity is a modulo by zero in a condition:
+
+    fn f(x : Int) -> Int {
+      if 1 % 0 == 0 {
+        x
+      }
+      x
+    }
+
+scanned with this tool's own scanner:
+
+    RuntimeError: remainder by zero
+        at @riantr/moonbit_static_analysis/src/walk.const_eval
+        at @riantr/moonbit_static_analysis/src/walk.Walker::walk_stmt
+        at @riantr/moonbit_static_analysis/src/pipeline.run_core
+
+### AND THE BLAST RADIUS IS THE WHOLE SCAN
+
+The death is not one file's finding lost. It is the SCAN. MEASURED: a directory of
+TWO files -- one good (`let unused = 1`, a real finding) and one with the shape
+above -- produced NO findings at all, and the process exited 1:
+
+    SCANNED  2 files under ...
+    (no finding lines at all)
+    RuntimeError: remainder by zero
+
+So one line in one file cost every other file its findings. THAT is the defect
+class the project calls the worst one, and the interp says so in its own words
+about this very shape (interp.mbt:2345): "An analyzer that dies on one line is
+worse than one that says 'unknown'".
+
+### THE FOLDER, AND WHY IT WAS THE FOLDER
+
+`@walk.const_eval` folds a constant condition so that a false one PRUNES the
+branch. Its `OpMod` arm was `Some(CInt(i % j))`, with no guard -- and `1 % 0` is a
+RUNTIME ERROR in MoonBit, MEASURED by running it: exit 1, "remainder by zero".
+
+THE SWEEP: every constant folder in the tree, checked one at a time.
+
+    src/walk/walk.mbt:115       OpMod => Some(CInt(i % j))            THE DEFECT
+    src/interp/interp.mbt:2347  OpMod => if j == 0 { ABottom } else    guarded
+    src/interp/interp.mbt:2367  OpDiv => if j == 0 { ABottom } else    guarded
+    src/flow/cprop.mbt:243      folds + - * only -- division and modulo are
+                                deliberately OUTSIDE its window
+    src/flow/interval.mbt       does not model OpMod at all
+
+ONE site, and the other four were already right.
+
+### THE SEMANTICS, MEASURED IN MOONBIT ITSELF, BECAUSE THEY DECIDE WHICH SHAPES ARE THIS ONE
+
+    1 / 0                     exit 1   a runtime error
+    1 % 0                     exit 1   a runtime error
+    1.0 / 0.0                 Infinity not an error
+    1.0 % 0.0                 NaN      not an error
+    2000000000 + 2000000000   -294967296   integer arithmetic WRAPS
+    100000 * 100000           1410065408   and does not trap
+    -(-2147483648)            -2147483648
+    1 << 32                   1
+
+So the FLOAT zero is not this shape at all, and the three folds above the modulo
+cannot panic: only the zero divisor can. (The one arithmetic trap MoonBit has is
+`-2147483648 / -1` -- "divide result unrepresentable" -- and the folder never
+folds a division.)
+
+### THE FIX, AND WHAT IT ANSWERS
+
+    OpMod => if j == 0 { None } else { Some(CInt(i % j)) }
+
+The folder answers "UNKNOWN", which is the answer the interp already gives this
+exact shape. The condition stays unknown, so the branch is walked exactly as it
+is for any condition the folder cannot read.
+
+THE TWO ROWS THAT PIN IT, and they differ by ONE CHARACTER:
+
+    if 1 % 0 == 0 { return not_a_name }    the branch IS walked: the name is found
+    if 1 % 2 == 0 { return not_a_name }    the branch is PRUNED: the name is not
+
+The first is the crash row: before the fix it killed the scan. The second is the
+CONTROL: without it, the first would pass with the folding switched off entirely
+-- and a folder that folds nothing is a folder that has stopped doing its job,
+silently. The shape and the assertion are the ones this tree already uses for
+the folding it prunes with (pipeline_test.mbt's "a branch keyed on a readable
+literal is still pruned").
+
+And a third row, in the package that owns the folder: `const_eval` of `1 % 0` is
+`None`, and `const_eval` of `7 % 2` is `Some(CInt(1))`.
+
+### THE NUMBERS THAT MOVED
+
+    own-source files        218 -> 218    (UNCHANGED -- no file added)
+    own-source notices      1757 -> 1760  (+3: the three new test declarations)
+    own-source printed      138 -> 138    (UNCHANGED)
+    own-source aggregated   1619 -> 1622 (+3)
+    unchecked calls         3241 -> 3243 (+2)
+    SSA cost functions      908 -> 909    (+1: the helper the walk row needs)
+    SSA cost partial        905 -> 906    (+1: the same function -- its ONE
+                                             statement is a record literal the
+                                             lowering declines)
+    SSA cost declined       4893 -> 4894  (+1: that statement)
+    SSA cost instructions   7080 -> 7080  (UNCHANGED -- the new function's body
+                                             was wholly declined)
+    tests wasm              1517 -> 1520  (+3)
+    tests js / wasm-gc      1375 -> 1378  (+3)
+    the eight trees         19694 -> 19697 (+3 -- the eighth tree IS this
+                                                repository's own source)
+    the eight-tree split    3407 + 16287 -> 3407 + 16290
+    the notice table        test declaration 1517 -> 1520, and the other eight
+                             kinds did not move
+
+AND THE OWN SOURCE IS STILL CLEAN: `actionable=0` over 218 files, with the new
+rows in the tree. The three new test declarations are notices, not defects, and
+the notice table's other four kinds did not move.
+
+### WHAT IS STILL OPEN, AND WHAT IS NOT HERE
+
+**THE TOOL STILL SAYS NOTHING ABOUT THE DIVISION ITSELF.** `w / 0` is still
+reported by NOBODY: the folder no longer dies on it, and that is ALL this
+increment does. Reporting it is the lecture's application, and it needs a FAMILY
+of its own -- a claim ("this expression cannot produce a value") that none of the
+fifteen families makes -- with an id that is never renumbered, both README
+tables, the census list, and an audit of every finding it adds, one at a time.
+That is an increment of its own, and 0564's text says why.
+
+The negative array index is the other half of the lecture's pair, and it is
+untouched here.
+
+**NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
