@@ -266,6 +266,91 @@ The published bytes were checked against the host contract — 93 symbols, the t
 core at the contracted floor — and the shipped artifact over this project's own source reports
 **ZERO** unreachable-code findings where 0.4.45 reported three.
 
+## 0.4.48 — the pointer analysis gets its picture, its call graph, its heap and its three abstractions; and the release gate that had been red at 0.4.47
+
+**WHAT THIS RELEASE CARRIES.** Five increments. Four of them finish the lecture's pointer
+analysis — the four cells that were ABSENT when the two decks were re-read against this
+tree — and the fifth repairs the release gate itself.
+
+| increment | what it is | reaches a user's report? |
+|---|---|---|
+| 0579 | the pointer flow graph — the deck's own picture, edge for edge, and its own trace | no — a library-level measurement |
+| 0580 | the interprocedural algorithm, with the call graph built on the fly | no |
+| 0581 | the context-sensitive heap — both of the deck's columns, row for row | no |
+| 0582 | the three abstractions compared, and the type variant | no |
+| 0583 | the four mutation gates that had been red since 0570, re-pointed and measured | no — but it is why this release exists |
+
+### THE HEADLINE: FOUR ABSENT CELLS, NOW PRESENT
+
+The two lecture decks were re-read against this tree: `9-10_PTA-FD.pdf` (153 pages) and
+`11-12_PTA-CS.pdf` (178 pages). Thirteen cells were checked, and the audit's answer was
+**5 present, 4 partial, 4 absent**. The four absent ones are what this release adds:
+
+| the deck's cell | where it lives now | increment |
+|---|---|---|
+| the pointer flow graph, and the differential propagation over it | `src/flow/pfg.mbt` | 0579 |
+| the interprocedural algorithm, with the call graph built on the fly | `src/flow/pta_inter.mbt` | 0580 |
+| the context-sensitive heap — both of the deck's p.56 columns | `src/flow/pta_heap_ctx.mbt` | 0581 |
+| the type variant, and the relation among the three abstractions | `src/flow/pta_variants.mbt` | 0582 |
+
+None of them reports a finding: they are measurements with public APIs and their own test
+rows, and the report pipeline calls none of them. That is the same split 0.4.47 made
+plainly — *built* and *visible* are different claims — repeated here on purpose.
+
+### THE DECK'S OWN EXAMPLES ARE REPRODUCED, NOT DESCRIBED
+
+The pointer flow graph prints the deck's own picture: the same edges, the same points-to
+sets, and the deck's own trace. The context-sensitive heap reproduces **both** of the
+deck's p.56 columns, row for row, and the deck's own measurement of three allocations
+collapsing to one context. The type variant reproduces the deck's relationship — a type
+context is a coarser abstraction over an object context, and the call-site and object
+abstractions are incomparable — and says so where the deck's own ordering is NOT reproduced,
+because that ordering is an empirical result on ten Java programs and this tree analyses
+MoonBit.
+
+TWO BOUNDARIES ARE STATED RATHER THAN GLOSSED, because a measurement that pretends to be
+more than it is is worse than one that says "unknown":
+
+  * the deck's `InType(o_i)` is the type CONTAINING the allocation site, and this tree's
+    AST HAS NO METHOD BODIES, so the type context here is the receiver's **declared**
+    type — the same kind of abstraction, and the deck's own measurement reproduced;
+  * the deck's `ProcessCall(x, o_i)` is receiver-driven, so a call to a top-level function
+    is processed ONCE, when its caller becomes reachable.
+
+### THE FIFTH INCREMENT IS THE ONE THAT MAKES THE RELEASE WORTHY OF THE NAME
+
+The release gate was RED, and it had been red at four of its 87 mutation gates. The cause
+is not a bad gate: **a mutation gate anchors on the exact text of a source site**, and 0570
+and 0571 moved those sites without moving the anchors, so the four gates' pre-flight
+aborted with *"N pattern(s) absent. No suite was run."* and the gates did not test
+anything at all.
+
+MEASURED over every release tag, per anchor: the four gates are **green at every tag from
+v0.4.30 through v0.4.46** and **red at v0.4.47** — so 0.4.47 is the one release that was
+cut with the local release gate red. The gate's own last line said *"Nothing was published
+and no tag should be pushed."* and something was published anyway. That is recorded here
+because the tool did its job and the process did not.
+
+THE FIX IS A RE-ANCHOR AND NOT A RETIREMENT: the code those mutations test is ALIVE, so
+each anchor is re-pointed at the current code and every replacement keeps everything except
+the one thing its mutation is about. 0507's anchor is made future-proof while it is at it —
+it now names the map's DEFAULT, which no new family can displace, instead of the last
+family id, which the next family would break.
+
+MEASURED, each gate on its own: 0439 **7 of 7 killed**, 0442 **5 of 5**, 0467 **7 killed
+and 1 expected survivor**, 0507 **14 killed and 1 expected survivor** — every restore
+verified byte-identical by the harness, and every tracked file under `src/` hashed before
+and after each of the four runs by an independent check.
+
+### WHAT THIS RELEASE DOES NOT CHANGE
+
+The analyzer's verdicts on other people's code are unchanged: the four new modules are
+library-level and the report pipeline calls none of them, the seven pinned corpora still
+MATCH their baselines, and the self-scan is still **0 actionable**.
+
+Tests: 1,607 → **1,625** on wasm, 1,465 → **1,483** on js and wasm-gc. No new finding
+family: the roster stays at 17, and no family id was renumbered.
+
 ## 0.4.47 — the course's own analyses, and the two findings that reach a user
 
 **WHAT THIS RELEASE CARRIES.** Six increments, and they are one subject: the analyses a

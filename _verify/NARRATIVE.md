@@ -18740,3 +18740,91 @@ pin -- the own-source file count, the notice table, the eight-tree total and spl
 suppression pair, the SSA cost, the test counts -- is the tree's, unchanged. MEASURED by the
 release gate on this tree: every one of them still MATCHes its pinned baseline, and the
 seven corpora still MATCH theirs.
+
+
+## 0584: THE RELEASE -- 0.4.48, AND THE GATE THAT HAD BEEN RED AT 0.4.47
+
+FIVE INCREMENTS, and they are two subjects: the lecture's pointer analysis, finished against
+the decks' own cells, and the release gate itself.
+
+### THE AUDIT, AND THE FOUR CELLS THAT WERE ABSENT
+
+THE TWO DECKS WERE RE-READ against this tree: `9-10_PTA-FD.pdf` (153 pages) and
+`11-12_PTA-CS.pdf` (178 pages). Thirteen cells were checked, and the answer was **5 present,
+4 partial, 4 absent**. The four absent ones are what 0579 through 0582 add:
+
+    0579  the pointer flow graph, and the differential propagation over it   src/flow/pfg.mbt
+    0580  the interprocedural algorithm, call graph built on the fly         src/flow/pta_inter.mbt
+    0581  the context-sensitive heap -- both of the deck's p.56 columns      src/flow/pta_heap_ctx.mbt
+    0582  the type variant, and the three abstractions compared              src/flow/pta_variants.mbt
+
+NONE OF THEM REPORTS A FINDING. They are measurements with public APIs and their own test
+rows, and the report pipeline calls none of them -- the same split 0.4.47 made plainly.
+*BUILT* AND *VISIBLE* ARE DIFFERENT CLAIMS, and this release repeats the distinction on
+purpose.
+
+### THE DECK'S OWN MEASUREMENTS ARE REPRODUCED, AND ITS OWN ORDERING IS NOT
+
+The pointer flow graph prints the deck's own picture: the same edges, the same points-to
+sets, the deck's own trace. The context-sensitive heap reproduces BOTH of the deck's p.56
+columns, row for row, including its measurement of three allocations collapsing into one
+context. The type variant reproduces the deck's RELATIONSHIP -- a type context is a coarser
+abstraction over an object context, and the call-site and object abstractions are
+incomparable -- and says so where the deck's own ordering is NOT reproduced, because that
+ordering is an empirical result on ten Java programs and this tree analyses MoonBit.
+
+TWO BOUNDARIES ARE STATED RATHER THAN GLOSSED, because a measurement that pretends to be
+more than it is is worse than one that says "unknown":
+
+  * the deck's `InType(o_i)` is the type CONTAINING the allocation site, and this tree's AST
+    HAS NO METHOD BODIES, so the type context here is the receiver's DECLARED type;
+  * the deck's `ProcessCall(x, o_i)` is receiver-driven, so a call to a top-level function
+    is processed ONCE, when its caller becomes reachable.
+
+### THE RELEASE GATE, WHICH HAD BEEN RED AT 0.4.47
+
+The gate was red at four of its 87 mutation gates, and the cause was not a bad gate: a
+mutation gate anchors on the exact text of a source site, and 0570 and 0571 moved those
+sites without moving the anchors. Their pre-flight aborted with "N pattern(s) absent. No
+suite was run." and the four gates tested NOTHING.
+
+MEASURED over every release tag, per anchor: green at every tag from v0.4.30 through
+v0.4.46, red at v0.4.47. And the gate's own last line said "Nothing was published and no
+tag should be pushed." AND SOMETHING WAS -- which is recorded here because the tool did its
+job and the process did not.
+
+THE FIX IS A RE-ANCHOR AND NOT A RETIREMENT -- the code those mutations test is alive -- and
+every replacement keeps everything except the one thing its mutation is about. MEASURED, each
+gate on its own: 0439 7 of 7 killed, 0442 5 of 5, 0467 7 killed and 1 expected survivor, and
+the fourth, 0507, 14 killed and 1 expected survivor; every restore byte-identical, checked
+twice.
+
+### THE DEPENDENCIES ARE MEASURED, NOT ASSUMED
+
+`moon.mod` has no import block, so there is no third-party version to upgrade and no pin to
+re-measure. MEASURED, not asserted: the only `import { ... }` blocks in the tree are the
+`moon.pkg` files' imports of this package's OWN sub-packages, and every `import` hit in a
+`.mbt` source is inside a comment, a doc string or a test fixture -- none of them is an
+import. The host contract is unchanged.
+
+### THE ORDER WAS THE POLICY'S, AND IT IS LOAD-BEARING
+
+The full gate was green BEFORE a single version reference was touched -- 87 of 87 mutation
+gates and 122 of 122 stages, `RELEASE GATE PASSED` -- then the version, then the documents,
+then the tag. No local publish: the tag push is what publishes.
+
+AND THE ORDER IS NOT A FORMALITY, and MEASURED: the PUBLISHED-PACKAGE STAGE scans the
+version `moon.mod` names and ASSERTS that the tree it read is that version -- "A scan of a
+DIFFERENT package would still be able to print actionable=0." On this tree `moon.mod` says
+0.4.48 and the registry's `latest_version` is 0.4.47, so the stage asks the registry for an
+asset that does not exist yet; the fetch prints `Prebuilt wasm asset does not exist` and the
+stage ABORTS: "the scan produced no output. That is not a clean scan."
+
+THE STAGE IS HEALTHY, and that is MEASURED too: against the advertised latest, `@latest`
+resolved to 0.4.47, 235/235 files parsed, `actionable=0`, GATE OK.
+
+SO THE GATE RUNS ON THE TREE THAT STILL NAMES THE PUBLISHED VERSION, and only then does the
+version move. Run on the bumped tree, the gate STOPS at that stage -- 117 stages green, that
+one red, and the four stages behind it SKIPPED by the gate's own fail-fast rule -- while all
+87 of the mutation gates are green on it too. A gate that had to pass on the bumped tree
+would be a gate that cannot exist before its own release.
