@@ -177,6 +177,8 @@ pub fn pta_alias(Map[String, Map[String, Bool]], String, String) -> Bool
 
 pub fn pta_alloc_of(NodeKind) -> Array[(String, @ast.Expr)]?
 
+pub fn pta_alloc_type(NodeKind) -> String
+
 pub fn pta_bound_name(NodeKind) -> String
 
 pub fn pta_ctx_contexts(PtaCtxResult, String) -> Array[String]
@@ -196,6 +198,12 @@ pub fn pta_demand_site(Array[CgFn], String, Int32) -> PtaDemandQuery?
 pub fn pta_empty() -> Map[String, Map[String, Bool]]
 
 pub fn pta_fs_transfer_of(Cfg) -> (Int32, Map[String, Map[String, Bool]]) -> Map[String, Map[String, Bool]]
+
+pub fn pta_inter_cg_text(PtaInterResult) -> String
+
+pub fn pta_inter_run(String, Array[CgFn], TraitTable) -> PtaInterResult
+
+pub fn pta_inter_text(PtaInterResult) -> String
 
 pub fn pta_join(Map[String, Map[String, Bool]], String, Map[String, Bool]) -> Bool
 
@@ -570,6 +578,19 @@ pub(all) struct PtaDemandResult {
   values : Map[String, Map[String, Bool]]
   demanded : Map[String, Bool]
   steps : Int32
+}
+
+pub(all) struct PtaInterResult {
+  graph : Pfg
+  pts : Map[String, Map[String, Bool]]
+  edges : Array[CgEdge]
+  reachable : Array[String]
+  trace : Array[String]
+  propagated : Int32
+  skipped : Int32
+  no_body : Int32
+  unresolved : Int32
+  analyzed : Int32
 }
 
 pub(all) struct Redundant {

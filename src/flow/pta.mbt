@@ -245,6 +245,25 @@ pub fn pta_alloc_of(kind : NodeKind) -> Array[(String, @ast.Expr)]? {
 }
 
 ///|
+/// The TYPE of the object an allocation node creates: the `EStruct`'s name.
+///
+/// 0580: the interprocedural reading dispatches on the RECEIVER'S OBJECT, and the
+/// object's type is what the dispatch resolves on -- so the type has to be
+/// readable from the SAME node `pta_alloc_of` accepts. A second answer to "which
+/// node allocates" would be a second definition of an allocation site.
+pub fn pta_alloc_type(kind : NodeKind) -> String {
+  let e = match kind {
+    Assign(_, e) => e
+    Store(_, e) => e
+    _ => return ""
+  }
+  match e.kind {
+    @ast.EStruct(ty, _) => ty
+    _ => ""
+  }
+}
+
+///|
 /// The object key of an allocation site; `""` when the site was not ranked, which
 /// cannot happen because `pta_site_names` names exactly the nodes this reads.
 ///

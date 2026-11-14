@@ -17231,7 +17231,9 @@ every path it names has to exist in the tree -- which is what
     9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4    §3 (p.43-92) is the POINTER FLOW GRAPH and the
                                 with method calls                         differential propagation -- 0579 (pfg.mbt); §4 (p.95-153)
                                                                           is the client for the CALL rule's Dispatch and for the
-                                                                          call graph -- 0574 (callgraph.mbt), 0575 (pta_ctx.mbt)
+                                                                          call graph -- 0574 (callgraph.mbt), 0575 (pta_ctx.mbt),
+                                                                          0580 (pta_inter.mbt -- the INTERPROCEDURAL cell, with the
+                                                                          call graph built on the fly)
     11-12_PTA-CS.pdf (178p)     context sensitivity: the Select variants,      0575 (pta_ctx.mbt --
                                  k-limiting, the call rule                     the CONTEXT cell's client)
 
@@ -18306,3 +18308,107 @@ THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
                            copies 2,081 -> 2,093, undef_operands 177 -> 178,
                            dead_blocks 392 -> 393, undef_uses 1,055 -> 1,060
     the test counts        1,600 -> 1,607 on wasm, 1,458 -> 1,465 on js and wasm-gc
+
+
+## 0580: THE INTERPROCEDURAL ALGORITHM, WITH THE CALL GRAPH BUILT ON THE FLY
+
+THE SECOND ABSENT CELL, and it is the same deck: 9-10's section 4 is the client for the CALL
+rule. p.115 states the shape of the thing -- "Run together with call graph construction", "Call
+graph forms a 'reachable world'", "Entry methods (e.g., the main method) are reachable from the
+beginning", "The other reachable methods are gradually discovered during analysis", "Only
+reachable methods and statements are analyzed" -- and the last line is a diagram of two boxes
+reading **"Mutually dependent"**.
+
+### THE PSEUDOCODE, AND THE FOUR PIECES
+
+p.116 prints `Solve(main)` and `AddReachable(m)`; p.117-119 print `AddReachable` again with its
+notes, and `AddEdge(s, t)`:
+
+    Solve(main)                        AddReachable(m)                AddEdge(s, t)
+    WL=[], PFG={}, S={}, RM={}, CG={} if m not in RM then              if s -> t not in PFG then
+    AddReachable(main)                   add m to RM                    add s -> t to PFG
+    while WL is not empty do              S += S_m                       if pts(s) is not empty then
+    remove n, pts(n) from WL             foreach i: x = new T() in S_m     add t, pts(s) to WL
+    Delta = pts - pt(n)                    add x, {o_i} to WL
+    Propagate(n, Delta)                 foreach x = y in S_m
+    if n represents a variable x then    AddEdge(y, x)
+    foreach o_i in Delta do
+    foreach x.f = y in SS do AddEdge(y, o_i.f)
+    foreach y = x.f in SS do AddEdge(o_i.f, y)
+    ProcessCall(x, o_i)
+    foreach l: r = x.k(a1,...,an) in SS do
+      m = Dispatch(o_i, k)
+      add m, {o_i} to WL
+      if l -> m not in CG then add l -> m to CG
+      AddReachable(m)
+      foreach parameter p_j of m do AddEdge(a_j, p_j)
+      AddEdge(m_ret, r)
+
+AND THE DECK'S OUTPUT IS **TWO** THINGS (p.125): "Algorithms Output: Points-to Relations (pt),
+Call Graph (CG)".
+
+### THE HEADLINE IS A DISAGREEMENT, AND THE DECK BUILT THE EXAMPLE TO MAKE IT VISIBLE
+
+On the deck's own example (p.126-152) -- `A b = new B(); b.foo(a);` -- THE TWO GRAPHS DISAGREE:
+
+    the call graph built ON THE FLY     main -> B::foo
+    the call graph built SEPARATELY     main -> A::foo
+
+THE REASON IS THE DISPATCH. The on-the-fly graph dispatches on the receiver's **OBJECT**, and
+the object is a `B`. The separately built graph dispatches on the receiver's **DECLARED TYPE**
+(deck 7's CHA, p.33-39), and the declared type is an `A`. The deck's example is built to make
+that difference visible, and it is visible.
+
+AND THE TWO GRAPHS ARE ALSO REQUIRED TO **AGREE** on a program whose only call names its
+callee, and to reach the same reachable world -- so the disagreement cannot spread into
+"the on-the-fly reading is a different analysis".
+
+### THE CALL RULE CROSSES THE CALL BOUNDARY
+
+The deck's Call rule is a pair of PFG edges (p.121-124): `a1 -> m_p1` and `r <- m_ret`. The
+tree's reading prints them:
+
+    main|x -> id|n; id|r -> id|result; id|result -> main|y
+
+and the points-to relations that come with them: `id|n -> {o1}`, `id|r -> {o3}`,
+`main|x -> {o1}`, `main|y -> {o3}`, `id|result -> {o3}`.
+
+### THE REACHABLE WORLD, COUNTED
+
+p.115's "Only reachable methods and statements are analyzed" is a claim about a SET, and the
+set is measured: on the tree's own program the reachable world is `main, id` -- an unreached
+function is **not** in it, and its allocation never enters the work list.
+
+### THE BOUNDARY, COUNTED
+
+This tree's AST HAS NO METHOD BODIES -- the parser reads past `impl`, `trait`, `struct` and
+`enum` declarations whole -- so a target like `B::foo` is an EDGE and not a source of
+statements. The count is carried (`no_body`), and on the deck's own example it is **one**.
+
+### ONE EXTENSION, AND IT IS NAMED AS THIS TREE'S
+
+The deck's `ProcessCall(x, o_i)` is RECEIVER-DRIVEN, so a call to a top-level function -- which
+has no receiver -- is processed ONCE, when its caller becomes reachable. That is this tree's
+extension and not the deck's, and it is stated here rather than left to be discovered.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: the interprocedural analysis and its test file.
+The seven corpora did not move at all -- each one still MATCHes its pinned baseline,
+MEASURED -- and the movement is therefore this tree's own code getting bigger.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        238 -> 240      (the interprocedural analysis and its test file)
+    own-source notices    1,890 -> 1,900   (printed 157 -> 157, aggregated 1,733 -> 1,743)
+    the notice table       one `enum` declaration, three `struct` declarations and six `test` declarations
+    the eight-tree total  23,235 -> 23,245  (the seven corpora did not move)
+    the eight-tree split   3,971 + 19,264 -> 3,971 + 19,274
+    the suppression pair     694 / 1343 -> 694 / 1343
+    the SSA cost            files 220 -> 222, functions 1,109 -> 1,136,
+                           partial 1,104 -> 1,131, declined 5,494 -> 5,589,
+                           instructions 8,042 -> 8,179, variables 945 -> 969,
+                           versions 2,364 -> 2,424, phis 866 -> 886,
+                           copies 2,093 -> 2,133, undef_operands 178 -> 181,
+                           dead_blocks 393 -> 397, undef_uses 1,060 -> 1,093
+    the test counts        1,607 -> 1,613 on wasm, 1,465 -> 1,471 on js and wasm-gc

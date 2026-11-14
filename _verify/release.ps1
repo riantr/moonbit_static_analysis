@@ -411,13 +411,13 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # are the storeless model's two files, and the own-source table below says which
 # kinds they are: ten `test` declarations, two `struct` declarations and one
 # `type` declaration.
-# 0579. THE PIN MOVED, 23,226 -> 23,235, and THE MOVEMENT IS THIS INCREMENT'S
+# 0580. THE PIN MOVED, 23,235 -> 23,245, and THE MOVEMENT IS THIS INCREMENT'S
 # OWN SOURCE: the seven corpora carry 21,345 notices, exactly what they
 # carried before -- each one still MATCHes its pinned baseline, MEASURED --
-# and this repository's own source carries 1,890 (it carried 1,881). The
-# 9 notices are the pointer flow graph and its test file, and the own-source table
-# below says which kinds they are: two `struct` declarations and seven `test` declarations.
-$NOTICE_TOTAL = '23235'
+# and this repository's own source carries 1,900 (it carried 1,890). The
+# 10 notices are the interprocedural analysis and its test file, and the own-source table
+# below says which kinds they are: one `enum` declaration, three `struct` declarations and six `test` declarations.
+$NOTICE_TOTAL = '23245'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -490,13 +490,13 @@ $NOTICE_TOTAL = '23235'
 # the ten new `test` declarations, the two new `struct` declarations and the
 # one new `type` declaration all sit OUTSIDE every function's extent, so they
 # are counted by shape. The corpora did not move.
-# 0579. THE SPLIT MOVED WITH THE OWN SOURCE: 3,971 + 19,255 ->
-# 3,971 + 19,264. The PRINTED half did not move AT ALL, and the aggregated half grew by 9, and
-# the two `struct` declarations and seven `test` declarations are the own-source table's
+# 0580. THE SPLIT MOVED WITH THE OWN SOURCE: 3,971 + 19,264 ->
+# 3,971 + 19,274. The PRINTED half did not move AT ALL, and the aggregated half grew by 10, and
+# the one `enum` declaration, three `struct` declarations and six `test` declarations are the own-source table's
 # movements: the new declarations all sit OUTSIDE every function's
 # extent, so they are counted by shape. The corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19264'
+$NOTICE_SPLIT_AGGREGATED = '19274'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -546,15 +546,15 @@ $NOTICE_SPLIT_AGGREGATED = '19264'
 # `SsPts` alias). The PRINTED half did not move, at 157, because every one of
 # the thirteen new declarations sits OUTSIDE every function's extent. Every
 # other row is where it was.
-# 0579. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
-# source again: 236 -> 238 files (the pointer flow graph and its test file),
-# 1,724 -> 1,733 aggregated, and 1,881 -> 1,890 notices. The notice table's
-# moving rows are two `struct` declarations and seven `test` declarations.
+# 0580. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source again: 238 -> 240 files (the interprocedural analysis and its test file),
+# 1,733 -> 1,743 aggregated, and 1,890 -> 1,900 notices. The notice table's
+# moving rows are one `enum` declaration, three `struct` declarations and six `test` declarations.
 # The PRINTED half did not move, at 157.
-$SELF_FILES = '238'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=25|if expression=100|short lambda=8|struct declaration=87|test declaration=1607|try expression=1|type declaration=7'
+$SELF_FILES = '240'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=26|if expression=100|short lambda=8|struct declaration=90|test declaration=1613|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1733'
+$SELF_AGGREGATED = '1743'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -630,7 +630,7 @@ $SELF_AGGREGATED = '1733'
 # seven reads exactly what it read before 0572, which is what says the movement
 # is this package's own source and not the lint changing its mind about other
 # people's code.
-# 0579. THE SUPPRESSION-OFF PINS DID NOT MOVE, and that is the
+# 0580. THE SUPPRESSION-OFF PINS DID NOT MOVE, and that is the
 # interesting part: 694 / 1343 is exactly what they were, and this
 # increment's own source grew. The measurement was re-run on this
 # tree and it reads the same pair, because this increment's code has
@@ -693,21 +693,21 @@ $SUPPOFF_PARAM = '1343'
 # mutant applied and the tree rebuilt, EVERY SSA field was IDENTICAL, digit for
 # digit, including `undef_uses`; the mutant moves none of them. So the pin is
 # the clean tree's number, and the mutant moved nothing here.
-# 0579. THE PIN MOVED AGAIN, and the movement is the SAME KIND: this
+# 0580. THE PIN MOVED AGAIN, and the movement is the SAME KIND: this
 # increment's own source grew.
-# files 218 -> 220,
-# functions 1,085 -> 1,109,
-# partial 1,080 -> 1,104,
-# declined 5,430 -> 5,494,
-# instructions 8,017 -> 8,042,
-# variables 934 -> 945,
-# versions 2,346 -> 2,364,
-# phis 862 -> 866,
-# copies 2,081 -> 2,093,
-# undef_operands 177 -> 178,
-# dead_blocks 392 -> 393,
-# undef_uses 1,055 -> 1,060,
-$SSA_COST = 'files=220|unreadable=0|functions=1109|converted=5|partial=1104|declined=5494|instructions=8042|variables=945|versions=2364|phis=866|copies=2093|undef_operands=178|dead_blocks=393|undef_uses=1060'
+# files 220 -> 222,
+# functions 1,109 -> 1,136,
+# partial 1,104 -> 1,131,
+# declined 5,494 -> 5,589,
+# instructions 8,042 -> 8,179,
+# variables 945 -> 969,
+# versions 2,364 -> 2,424,
+# phis 866 -> 886,
+# copies 2,093 -> 2,133,
+# undef_operands 178 -> 181,
+# dead_blocks 393 -> 397,
+# undef_uses 1,060 -> 1,093,
+$SSA_COST = 'files=222|unreadable=0|functions=1136|converted=5|partial=1131|declined=5589|instructions=8179|variables=969|versions=2424|phis=886|copies=2133|undef_operands=181|dead_blocks=397|undef_uses=1093'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
