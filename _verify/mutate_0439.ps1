@@ -106,12 +106,19 @@
 # `_verify/census_catch.ps1` counts 9 block-bodied against 45 expression-bodied
 # handler sites in moui, and 29 against 273 in proton.
 
+# RE-ANCHORED (0583). This gate's pre-flight has said "ABORT: N pattern(s)
+# absent. No suite was run" ever since 0570, which taught the catch-pattern
+# reader to break at the guard's `if` and taught the walker to walk the arm's
+# guard. The code these mutations target is ALIVE and every one of them still
+# means something, so the anchors are RE-POINTED at the current code rather than
+# retired: each replacement keeps the guard, because the guard is not what any
+# of these mutations is about. 0.4.47 shipped with this gate red.
+#
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
 $PARSE_PATTERN_HEAD = @'
-  while !self.at(TEOF) {
-    if self.at_fat_arrow() {
+    if depth == 0 && self.at_name("if") {
       break
     }
     if self.at(TLBrace) && depth == 0 {
@@ -127,6 +134,15 @@ $WALK_ARMS = @'
           if b != "" {
             self.bind_pattern(b, arm.span)
           }
+        }
+        // THE GUARD IS WALKED BEFORE THE BODY, for the reason the match arm's
+        // guard is: it comes first in the source and it READS the arm's own
+        // bindings and the enclosing scope. `catch { Err(e) if e.code == 0 => .. }`
+        // reads `e`; an arm whose guard was not walked would report a live
+        // binding as dead.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
         }
         for st in arm.body {
           self.walk_stmt(st)
@@ -158,8 +174,7 @@ fn Parser::at_fat_arrow(self : Parser) -> Bool {
     File = 'src\parser\parser.mbt'
     Find = $PARSE_PATTERN_HEAD
     Repl = @'
-  while !self.at(TEOF) {
-    if self.at_fat_arrow() {
+    if depth == 0 && self.at_name("if") {
       break
     }
     if self.at(TLBrace) {
@@ -182,6 +197,15 @@ fn Parser::at_fat_arrow(self : Parser) -> Bool {
             self.bind_pattern(b, arm.span)
           }
         }
+        // THE GUARD IS WALKED BEFORE THE BODY, for the reason the match arm's
+        // guard is: it comes first in the source and it READS the arm's own
+        // bindings and the enclosing scope. `catch { Err(e) if e.code == 0 => .. }`
+        // reads `e`; an arm whose guard was not walked would report a live
+        // binding as dead.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
+        }
       }
     }
 '@.Replace("`r`n", "`n")
@@ -196,6 +220,15 @@ fn Parser::at_fat_arrow(self : Parser) -> Bool {
     ECatch(base, arms) => {
       self.walk_expr(base)
       for arm in arms {
+        // THE GUARD IS WALKED BEFORE THE BODY, for the reason the match arm's
+        // guard is: it comes first in the source and it READS the arm's own
+        // bindings and the enclosing scope. `catch { Err(e) if e.code == 0 => .. }`
+        // reads `e`; an arm whose guard was not walked would report a live
+        // binding as dead.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
+        }
         for st in arm.body {
           self.walk_stmt(st)
         }

@@ -18626,3 +18626,117 @@ THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
                            versions 2,431 -> 2,432, phis 886 -> 885,
                            copies 2,133 -> 2,131, undef_uses 1,111 -> 1,117
     the test counts        1,619 -> 1,625 on wasm, 1,477 -> 1,483 on js and wasm-gc
+
+
+## 0583: THE FOUR GATES THAT WERE RED AT 0.4.47 -- stale anchors, re-pointed, and measured
+
+THE RELEASE GATE WAS RED, and the run on the 0582 tree said so in its own last lines:
+
+    RELEASE GATE FAILED: mutate:0439, mutate:0442, mutate:0467, mutate:0507
+    Nothing was published and no tag should be pushed.
+
+Every other stage was green. The four failures have ONE cause, and it is NOT a defect of the
+0579-0582 increments: a MUTATION GATE anchors on the exact text of a source site, and the
+source at that site moved without the anchor moving with it. The harness says so in the
+first line of its own report:
+
+    ABORT: N pattern(s) absent. No suite was run.
+
+### WHICH RELEASES WERE CUT WITH IT RED: EXACTLY ONE
+
+MEASURED over all 62 release tags, per ANCHOR -- the harness's own pre-flight test, applied
+to each tag's own tree:
+
+    v0.4.30 .. v0.4.46   GREEN at all four gates
+    v0.4.47               RED at all four gates
+
+(The tags before v0.4.30 carry none of these four gate files, and the fourth arrives at
+v0.4.37, so the question does not arise there.) SO 0.4.47 IS THE ONE RELEASE THAT WAS CUT
+WITH THE LOCAL RELEASE GATE RED, and it was red at FOUR gates at once.
+
+THE TWO INCREMENTS THAT DID IT ARE ANCESTORS OF THAT RELEASE -- MEASURED with
+`git merge-base --is-ancestor`, exit 0 for both:
+
+    7176ce6  0570  taught the walker to walk a `catch`/`noraise` arm's GUARD
+    9c153cc  0571  added two families to the id map
+
+and the 0.4.47 tree is measured to carry the moved code: `git show
+bd69624:src/walk/walk.mbt` prints the `noraise` arm WITH the guard block already in it.
+
+### THE FOUR ANCHORS, AND WHAT MOVED EACH ONE
+
+    the catch-pattern reader's brace break   gate 0439   7176ce6 (0570)
+    the walker's `ECatch` arm                 gate 0439   7176ce6 (0570)
+    the walker's `ENoRaise` arm               gate 0442   7176ce6 (0570)
+    the binding collector's two arms          gate 0467   7176ce6 (0570)
+    the family id map                         gate 0507   9c153cc (0571)
+
+### THE MECHANISM, MEASURED: A MOVED SOURCE DOES NOT MOVE ITS ANCHOR
+
+`7176ce6` touched NINE source files and ONE mutation gate -- `mutate_0503.ps1` -- and that
+one change was a corpus version number in a comment, not an anchor. It moved the code that
+0439, 0442 and 0467 anchor on and re-anchored NONE of them. `9c153cc` touched THIRTEEN
+source files and NO mutation gate at all.
+
+So the defect is not that a gate was written badly. It is that a gate is written ONCE and
+never revisited, and it stops testing the moment the source moves -- SILENTLY, because the
+harness's abort is one line in a log that nobody reads unless they are already reading that
+log.
+
+### AND THE RED VERDICT WAS OVERRIDDEN, WHICH IS THE PART THAT MATTERS
+
+The gate's own last line says `Nothing was published and no tag should be pushed.` AND
+SOMETHING WAS: `v0.4.47` is on both remotes and its tree carries the stale anchors. A gate
+that says RED and a release that goes out anyway is a process failure wearing a tool's
+clothes, and it is worth naming because the tool did its job.
+
+### WHY THE FIX IS A RE-ANCHOR AND NOT A RETIREMENT
+
+The house rule in `mutate_lib.ps1` says to mark a mutation `Retired = "<reason>"` when the
+code it targeted has since changed shape. That rule is for code that is GONE. Here the code
+is ALIVE and every one of these mutations still means something: each removes ONE thing
+from a live arm, and the suite must still go red when it does. So the anchors are
+RE-POINTED at the current code, and every replacement keeps everything except the one thing
+its mutation is about -- the guard walk STAYS IN, because the guard is not what any of these
+mutations is testing.
+
+0507's anchor is made FUTURE-PROOF while it is at it. The old one named the LAST family id,
+so the first family added after it broke the gate, and the next one will break it too. The
+map's DEFAULT is the one line the mutation actually changes, and no new family can displace
+it:
+
+    _ => None          ->          _ => Some(FParse)
+
+### EVERY ANCHOR IS COUNTED BEFORE IT IS WRITTEN
+
+The harness removes the FIRST literal match, so an anchor that occurs twice silently
+targets the wrong site while the gate reports a clean kill -- a green result that means
+nothing. Every new anchor here was counted in the tree it points at before it was written,
+and all four gates now say it themselves:
+
+    Pre-flight: all 7 live patterns present and UNIQUE.     (0439)
+    Pre-flight: all 5 live patterns present and UNIQUE.     (0442)
+    Pre-flight: all 8 live patterns present and UNIQUE.     (0467)
+    Pre-flight: all 15 live patterns present and UNIQUE.    (0507)
+
+### THE FOUR GATES, MEASURED
+
+    gate 0439   7 of 7 killed                  every restore verified byte-identical
+    gate 0442   5 of 5 killed                  every restore verified byte-identical
+    gate 0467   7 killed, 1 expected survivor  every restore verified byte-identical
+    gate 0507   14 killed, 1 expected survivor  every restore verified byte-identical
+
+The two survivors are the two these gates have always declared, each with its proof: the
+`async` lookahead, which the toolchain itself makes unreachable, and the CLI flag, which
+the root package's missing test file cannot observe.
+
+AND, INDEPENDENTLY of the harness's own SHA256 check, every tracked file under `src/` was
+hashed before and after each of the four runs: byte-identical, all four times.
+
+### THE PINS THAT MOVED
+
+NOTHING MOVED, and that is the point: this increment changed no file under `src/`, so every
+pin -- the own-source file count, the notice table, the eight-tree total and split, the
+suppression pair, the SSA cost, the test counts -- is the tree's, unchanged. MEASURED by the
+release gate on this tree: every one of them still MATCHes its pinned baseline, and the
+seven corpora still MATCH theirs.

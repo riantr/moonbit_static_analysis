@@ -24,6 +24,14 @@
 #     g : bogus (Int) -> Unit REJECT(3002)                   -- the head is a KEYWORD
 #
 # => the first is why M5's lookahead exists and the second is what makes M3 killable.
+# RE-ANCHORED (0583). This gate's pre-flight has said "ABORT: N pattern(s)
+# absent. No suite was run" ever since 0570, which taught the binding
+# collector to collect the catch arm's guard as well as its body. The code
+# these mutations target is ALIVE and both still mean something, so the
+# anchors are RE-POINTED at the current code rather than retired: the guard
+# collection stays in the Find text, and the mutations still delete the whole
+# arm. 0.4.47 shipped with this gate red.
+#
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
@@ -149,6 +157,13 @@ Invoke-MutationGate -Name '0467' -Target 'js' -Mutations @(
     Find = @'
     ECatch(_, arms) =>
       for arm in arms {
+        // The GUARD's bindings, for the same reason the match arm's are: a
+        // `let` inside a catch guard is a real binding, and the pre-pass is what
+        // fills the frame.
+        match arm.cond {
+          Some(g) => collect_expr_bindings(bs, g)
+          None => ()
+        }
         collect_stmt_bindings(bs, arm.body)
       }
 '@
@@ -165,6 +180,10 @@ Invoke-MutationGate -Name '0467' -Target 'js' -Mutations @(
     Find = @'
     ENoRaise(_, arms) =>
       for arm in arms {
+        match arm.cond {
+          Some(g) => collect_expr_bindings(bs, g)
+          None => ()
+        }
         collect_stmt_bindings(bs, arm.body)
       }
 '@

@@ -55,6 +55,14 @@
 #   M5  the statement-level skip loop is deleted -- the defect that was ACTUALLY
 #       costing the four corpus findings, and the one M1..M4 cannot see.
 
+# RE-ANCHORED (0583). This gate's pre-flight has said "ABORT: N pattern(s)
+# absent. No suite was run" ever since 0570, which taught the walker's
+# `noraise` arm to walk the arm's guard. The code these mutations target is
+# ALIVE and every one of them still means something, so the anchors are
+# RE-POINTED at the current code rather than retired: each replacement keeps
+# the guard, because the guard is not what any of these mutations is about.
+# 0.4.47 shipped with this gate red.
+#
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
@@ -66,6 +74,12 @@ $WALK = @'
           if b != "" {
             self.bind_pattern(b, arm.span)
           }
+        }
+        // The guard, for the reason `ECatch` walks it: a `noraise` arm's guard
+        // is the same kind of code, and its reads are the same reads.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
         }
         for st in arm.body {
           self.walk_stmt(st)
@@ -108,6 +122,12 @@ Invoke-MutationGate -Name 'M1..M5' -Target 'js' -Mutations @(
     ENoRaise(base, arms) => {
       self.walk_expr(base)
       for arm in arms {
+        // The guard, for the reason `ECatch` walks it: a `noraise` arm's guard
+        // is the same kind of code, and its reads are the same reads.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
+        }
         for st in arm.body {
           self.walk_stmt(st)
         }
@@ -130,6 +150,12 @@ Invoke-MutationGate -Name 'M1..M5' -Target 'js' -Mutations @(
             self.bind_pattern(b, arm.span)
           }
         }
+        // The guard, for the reason `ECatch` walks it: a `noraise` arm's guard
+        // is the same kind of code, and its reads are the same reads.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
+        }
       }
     }
 '@.Replace("`r`n", "`n")
@@ -147,6 +173,12 @@ Invoke-MutationGate -Name 'M1..M5' -Target 'js' -Mutations @(
           if b != "" {
             self.bind_pattern(b, arm.span)
           }
+        }
+        // The guard, for the reason `ECatch` walks it: a `noraise` arm's guard
+        // is the same kind of code, and its reads are the same reads.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
         }
         for st in arm.body {
           self.walk_stmt(st)

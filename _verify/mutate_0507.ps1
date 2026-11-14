@@ -43,6 +43,15 @@
 # `js` and `wasm-gc` targets (MEASURED: js 1196 tests, wasm-gc 1196, wasm
 # 1316 -- the 120-test difference is the async packages), so a gate run on `js`
 # would report SURVIVED for every mutation in this file that touches `src/sa`.
+# RE-ANCHORED (0583). This gate's pre-flight has said "ABORT: N pattern(s)
+# absent. No suite was run" since 0571, which added two families to the id map
+# and so moved the line this gate's M5 anchored on. The code is ALIVE and the
+# mutation still means something -- an unknown family id must name NO family --
+# so the anchor is RE-POINTED at the map's DEFAULT, which is the one line the
+# mutation actually changes and which no new family can displace. That makes
+# the anchor future-proof: MSA-018 will not break it. 0.4.47 shipped with this
+# gate red.
+#
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'mutate_lib.ps1')
 
@@ -148,11 +157,9 @@ pub fn Report::confidence(self : Report) -> @core.Confidence {
     Name = 'M5 an unknown family id names a family'
     File = $CORE
     Find = @'
-    "MSA-015" => Some(FDeadStore)
     _ => None
 '@.Replace("`r`n", "`n")
     Repl = @'
-    "MSA-015" => Some(FDeadStore)
     _ => Some(FParse)
 '@.Replace("`r`n", "`n")
     MustRed = 'an unknown family id names no family'

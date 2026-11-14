@@ -1455,6 +1455,16 @@ something was. All three numbers are **computed** by the README gate from the ga
 sources themselves — a published count that no gate checks is a count that goes missing
 quietly.
 
+Four of those 87 gates had been **red since 0570 and 0571** — not failing, but *not running*.
+Each mutation gate anchors on the exact text of a source site; 0570 taught the walker to
+walk a `catch`/`noraise` arm's guard and 0571 added two families to the id map, and both
+moved those sites without moving the anchors, so their pre-flight aborted with
+*"N pattern(s) absent. No suite was run."* **0.4.47 was cut with the local release gate
+red** — measured over every release tag, not guessed: the four gates are green at every tag
+from v0.4.30 through v0.4.46 and red at v0.4.47. They are now **re-pointed at the current
+code, not retired** — the code they test is alive and each mutation still has to go red —
+and each of the four is measured green with every restore byte-identical.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
