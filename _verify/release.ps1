@@ -404,7 +404,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # two files, and the own-source table below says which kinds they are: six
 # `test` declarations, four anonymous function literals and one `type`
 # declaration.
-$NOTICE_TOTAL = '23162'
+$NOTICE_TOTAL = '23171'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -471,8 +471,8 @@ $NOTICE_TOTAL = '23162'
 # extent, so they are printed one per line, while the six new `test`
 # declarations and the new `DefSet` alias sit outside every function's extent
 # and are counted by shape. The corpora did not move.
-$NOTICE_SPLIT_PRINTED = '3967'
-$NOTICE_SPLIT_AGGREGATED = '19195'
+$NOTICE_SPLIT_PRINTED = '3968'
+$NOTICE_SPLIT_AGGREGATED = '19203'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -514,10 +514,10 @@ $NOTICE_SPLIT_AGGREGATED = '19195'
 # `anonymous function literal` is 41 -> 45 (the four closures the set lattice
 # and the transfer build), and `type declaration` is 4 -> 5 (the `DefSet`
 # alias). Every other row is where it was.
-$SELF_FILES = '226'
-$SELF_NOTICES = 'anonymous function literal=45|const declaration=7|enum declaration=23|if expression=99|short lambda=8|struct declaration=70|test declaration=1559|try expression=1|type declaration=5'
-$SELF_PRINTED = '153'
-$SELF_AGGREGATED = '1664'
+$SELF_FILES = '228'
+$SELF_NOTICES = 'anonymous function literal=46|const declaration=7|enum declaration=23|if expression=99|short lambda=8|struct declaration=71|test declaration=1566|try expression=1|type declaration=5'
+$SELF_PRINTED = '154'
+$SELF_AGGREGATED = '1672'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -594,7 +594,7 @@ $SELF_AGGREGATED = '1664'
 # is this package's own source and not the lint changing its mind about other
 # people's code.
 $SUPPOFF_LOCAL = '694'
-$SUPPOFF_PARAM = '1342'
+$SUPPOFF_PARAM = '1343'
 
 #   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
 #                 own source, measured by the scanner's own `--ssa-cost` mode
@@ -635,7 +635,7 @@ $SUPPOFF_PARAM = '1342'
 # reaching-definitions analysis and its test file are the new source, and the
 # corpus is not part of this measurement at all -- it is over THIS repository's
 # own source, so the whole movement is this tree's own code getting bigger.
-$SSA_COST = 'files=208|unreadable=0|functions=961|converted=5|partial=956|declined=5080|instructions=7487|variables=837|versions=2087|phis=756|copies=1860|undef_operands=153|dead_blocks=383|undef_uses=986'
+$SSA_COST = 'files=210|unreadable=0|functions=975|converted=5|partial=970|declined=5117|instructions=7556|variables=847|versions=2125|phis=776|copies=1900|undef_operands=156|dead_blocks=383|undef_uses=991'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

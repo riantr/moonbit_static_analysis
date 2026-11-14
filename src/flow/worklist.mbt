@@ -221,3 +221,85 @@ pub fn[T, L] solve_edges(
   }
   before
 }
+
+///|
+/// The FORWARD WORK-LIST solver -- deck 5-6 §11, p.258.
+///
+/// THE DECK'S OWN WORDS: "Worklist Algorithm, an optimization of Iterative
+/// Algorithm" (p.256). The algorithm it optimizes is the one on p.257:
+///
+///     OUT[entry] = ∅
+///     for each basic block B: OUT[B] = ∅
+///     while changes to any OUT occur:
+///         for each basic block B:
+///             IN[B]  = ⊔ over the predecessors P of B of OUT[P]
+///             OUT[B] = gen_B ∪ (IN[B] - kill_B)
+///
+/// and the optimization is the work list of p.258: a block is put back on the
+/// list only when its OUT changed, and the slide names why in one line -- "OUT
+/// will not change if IN does not change" (p.259).
+///
+/// WHY THIS IS A THIRD SHAPE AND NOT A NEW SPELLING OF THE FIRST. This package
+/// already ships `solve_round_robin`, whose state is the abstract state AFTER a
+/// node and whose input is the join of the predecessors' after-states -- the same
+/// equation system as this one, evaluated in a different ORDER. It also ships
+/// `solve_edges`, which is that one plus the edge transfers 7_Inter's p.105
+/// needs, and `solve_propagation`, which IS a work list but keeps the state
+/// BEFORE a node and PUSHES the transfer's output along the edges. The deck's
+/// §11 is the forward work list with the after-state, and it is the third SHAPE
+/// of solver this package has: the state is `OUT[B]`, the input is read back
+/// from the predecessors, and a block is revisited only when its OUT moved.
+///
+/// IT COMPUTES THE SAME LEAST FIXED POINT, and `flow_worklist_test.mbt`'s
+/// doctrine applies to it as to the others: one solver is the test of the
+/// next. `cprop_intra_test.mbt` pins this one against `solve_round_robin` on the
+/// deck's own graph.
+///
+/// THE WORK LIST IS A SET, NOT A QUEUE, for the reason `solve_propagation` gives:
+/// `pending[v]` says "v is on the list", and the order the list is drained in
+/// does not change the answer, which is the point of chaotic iteration.
+pub fn[T] solve_worklist(
+  lat : Lattice[T],
+  n : Int32,
+  preds : Array[Array[Int32]],
+  succs : Array[Array[Int32]],
+  transfer : (Int32, T) -> T,
+) -> Array[T] {
+  // OUT[B] = ⊥ for every block, and the work list starts with all of them.
+  let out : Array[T] = []
+  let mut i = 0
+  while i < n {
+    out.push((lat.bot)())
+    i = i + 1
+  }
+  let pending : Array[Bool] = Array::make(n, true)
+  let mut any = true
+  while any {
+    any = false
+    let mut v = 0
+    while v < n {
+      if pending[v] {
+        pending[v] = false
+        // IN[B] = ⊔ over the predecessors' OUT, and OUT[B] = F(IN[B]).
+        let y = transfer(v, join_of_nodes(lat, out, preds[v]))
+        if (lat.eq)(out[v], y) == false {
+          out[v] = y
+          // THE OPTIMIZATION: the OUT moved, so every successor has to look at
+          // the new value. A block whose OUT did not move is NOT put back on the
+          // list, because "OUT will not change if IN does not change".
+          let mut k = 0
+          while k < succs[v].length() {
+            let s = succs[v][k]
+            if pending[s] == false {
+              pending[s] = true
+              any = true
+            }
+            k = k + 1
+          }
+        }
+      }
+      v = v + 1
+    }
+  }
+  out
+}

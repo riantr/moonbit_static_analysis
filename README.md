@@ -597,21 +597,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (226 files), with the per-file printing cap lifted so the count is the
+project's own source (228 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1559 | | `const` declaration | 7 |
+| `test` declaration | 1566 | | `const` declaration | 7 |
 | `if` expression | 99 | | `short lambda` | 8 |
-| `struct` declaration | 70 | | `type` declaration | 5 |
-| `anonymous function literal` | 45 | | `try` expression | 1 |
+| `struct` declaration | 71 | | `type` declaration | 5 |
+| `anonymous function literal` | 46 | | `try` expression | 1 |
 | `enum` declaration | 23 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **153** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1664** sit outside every function's
+**position**: **154** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1672** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -644,10 +644,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,162** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,171** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,967** of them as printed per line and
-**19,195** as aggregated — which is 3,967 + 19,195 = 23,162, the same number — and the 3,967
+says so itself: its `NOTICES` table counts **3,968** of them as printed per line and
+**19,203** as aggregated — which is 3,968 + 19,203 = 23,171, the same number — and the 3,968
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -670,12 +670,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **694** `UnusedLocal` and **1,342** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 226 files the notice table
+the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 228 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **693** locals and **1,342** parameters, and the per-binding
+suppression is hiding **693** locals and **1,343** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -805,11 +805,14 @@ The full taxonomy is in [EXTENSIONS.md](EXTENSIONS.md).
 ```
 src/core      Span/Severity/Lens/Family(merge_group contract)/Frame + Family::advice
 src/report    Report struct and rendering (union lens tags, vst frames)
-src/flow      data-flow framework: CFG + two solvers (round-robin and work-list, run
-              against each other in tests), basic blocks and the CFG over them,
+src/flow      data-flow framework: CFG + four solvers (round-robin, the
+              edge-transfer variant, and the before-node and forward work lists,
+              run against each other in tests),
+              basic blocks and the CFG over them,
               live variables (may, backward), the
-              interval domain with widening, and available expressions (must,
-              forward — the dual reading of the same solver)
+              interval domain with widening, available expressions (must,
+              forward — the dual reading of the same solver), and constant
+              propagation (the same lattice, read over a CFG)
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
@@ -833,7 +836,7 @@ runtime; the other backends SKIP those two packages instead of failing.
 
 ### The data-flow framework carries both directions
 
-`src/flow` has a `Lattice` of `bot`/`join`/`eq` and two fixed-point solvers, and for three
+`src/flow` has a `Lattice` of `bot`/`join`/`eq` and four fixed-point solvers, and for three
 increments every analysis built on it was a **may** analysis: live variables is may-and-backward,
 and the interval domain widens up an ascending chain. Available expressions is the other
 direction — `IN[B] = ∩ over P OUT[P]`, a **must** analysis whose safe answer is an
@@ -855,6 +858,50 @@ binding is private to the variable, and a field pointer is named by its **object
 so there is exactly one pointer per (object, field) pair and nothing else can hold a
 different opinion about that field. `src/flow/pta_flow_test.mbt` pins the tables the source
 deck prints for one program, in both readings, and checks the two solvers agree on it.
+
+**AND A FIFTH KIND: A THREE-VALUED DOMAIN READ OVER A CFG.** Constant propagation
+(`src/flow/cprop.mbt`) asks what a variable's value is at each program point, and its domain
+is three-valued: `Undef` (no value yet), `C(n)` (the constant `n`) and `Nac` (not a
+constant). The domain and the rules were already in this tree, and so was the
+*interprocedural* reading of them -- but that reading has no frame: no CFG to run over, no
+confluence to meet at, no fixed point to reach. `src/flow/cprop_intra.mbt` supplies the frame
+the lecture states (*Data Flow Analysis -- Foundations*, Nanjing University): a CFG, the meet
+at every confluence, and the fixed point. **Nothing is re-implemented.** The lecture's four
+meet rules -- `NAC ⊓ v = NAC`, `UNDEF ⊓ v = v`, `c ⊓ c = c`, `c₁ ⊓ c₂ = NAC` -- are exactly
+this domain's existing join, and the three transfer rules -- `x = c`, `x = y`, `x = y op z` --
+are the rules the module already had, now shared by both readings through one function
+(`cprop_assign`). The two readings differ at exactly **one node kind**: at a call, the
+interprocedural rule answers the identity and the intraprocedural one answers `Nac`. What is
+new is the frame, and the third solver that runs it.
+
+**THE THIRD SOLVER IS A DIFFERENT SHAPE, NOT A NEW ALGORITHM.** `solve_worklist` in
+`src/flow/worklist.mbt` is the forward work list the lecture's §11 prints: the state is
+`OUT[B]`, each node's input is read back from its predecessors, and a successor is re-queued
+only when the OUT of its predecessor moved. The package already had a round-robin solver
+(the same equation system, a different visit order) and a work list that carried the state
+*before* the node; this is the third shape. The lecture calls the work list "an optimization
+of Iterative Algorithm" (p.256), which is a claim that the two compute the **same** fixed
+point -- so a test runs the constant propagation through the new solver and through the
+round-robin one and requires them to agree **node for node**, and a second test requires the
+work list to **join** two predecessors rather than overwrite them, which is the meet and the
+one thing a work list gets wrong silently.
+
+**THE ANALYSIS IS NOT DISTRIBUTIVE, AND THE TREE SAYS SO.** The lecture prints its own
+counterexample (p.249-252): on the graph `Entry → X(a=1,b=9) / Y(a=9,b=1) → Z(c=a+b)`,
+joining first and transforming after gives `c = NAC`, while transforming first and joining
+after gives `c = 10` -- the sum is 10 either way, but the meet has already thrown the
+constants away. This tree's analysis joins first, so it answers `NAC`, the safe answer, and
+the test pins **both** orders, so the difference between them is a fact in the tree rather
+than a remark on a slide. The domain's order (`cpv_leq`) is published rather than kept
+private, because the lecture's last task -- *"Show our constant propagation analysis is
+monotonic"* (p.254) -- is a claim about a function that has to be reachable to be tested, and
+monotonicity is the precondition the fixed-point theorem needs.
+
+**AND IT SPEAKS NO NEW FAMILY.** The class this analysis could report -- a branch whose
+outcome is decided before the program runs -- is already spoken by `MSA-013`
+(`InfeasibleBranch`) and `MSA-014` (`RedundantGuard`). So `cprop_const_branches` is a
+**measurement**, not a report: it names the branches the analysis can decide, and it adds no
+family, because the family that would carry those findings already exists.
 
 ### And under the CFG there are basic blocks
 
@@ -975,7 +1022,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1559/1559 on wasm; 1417/1417 on js and wasm-gc
+moon test --deny-warn                # 1566/1566 on wasm; 1424/1424 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

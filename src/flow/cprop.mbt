@@ -255,6 +255,41 @@ fn cprop_fold(op : @ast.BOp, x : Int32, y : Int32) -> Cpv {
 }
 
 ///|
+/// The node rules that do NOT depend on whether the analysis is intraprocedural
+/// or interprocedural.
+///
+/// THIS IS THE SHARED PART, and it is shared on purpose. 7_Inter's p.105 makes
+/// the node transfer at a CALL node the IDENTITY -- "leave the handling of the
+/// LHS variable to edge transfer" (p.87) -- because the interprocedural
+/// framework has an edge that carries the returned value. 5-6's p.240-245 has
+/// no such edge, so a call's result is not a constant and the answer is `NAC`.
+/// The two rules are the same rules; they differ at exactly one node kind.
+///
+/// THE RULES ARE THE DECK'S p.242-245:
+///
+///   `x = e`         the name takes the value of the expression
+///   `let (a,b) = e`   every name it binds takes `NAC` -- the analysis has no
+///                     way to say which part of the value is in which name
+///   anything else     nothing changes, which is the deck's "if s is not an
+///                     assignment statement, F is the identity function"
+pub fn cprop_assign(st : State, kind : NodeKind) -> State {
+  match kind {
+    Assign(x, e) => cprop_set(st, x, cprop_eval(st, e))
+    Store(x, e) => cprop_set(st, x, cprop_eval(st, e))
+    AssignMulti(names, _) => {
+      let mut out = st
+      let mut i = 0
+      while i < names.length() {
+        out = cprop_set(out, names[i], Nac)
+        i = i + 1
+      }
+      out
+    }
+    _ => st
+  }
+}
+
+///|
 /// The node transfer of p.105.
 ///
 /// THE FIRST LINE IS THE ONE THAT LOOKS LIKE AN OMISSION AND IS NOT: at a call
@@ -269,24 +304,11 @@ pub fn cprop_node_transfer(kinds : Array[NodeKind]) -> (Int32, State) -> State {
     match call_shape(kind) {
       // a call node: identity, whatever its left-hand side says
       Some(_) => st
-      None =>
-        match kind {
-          Assign(x, e) => cprop_set(st, x, cprop_eval(st, e))
-          Store(x, e) => cprop_set(st, x, cprop_eval(st, e))
-          // A destructuring let binds several names to parts of one value, and
-          // this analysis has no way to say which part is which.
-          AssignMulti(names, _) => {
-            let out = st
-            let mut i = 0
-            let mut acc = out
-            while i < names.length() {
-              acc = cprop_set(acc, names[i], Nac)
-              i = i + 1
-            }
-            acc
-          }
-          _ => st
-        }
+      // EVERY OTHER NODE IS THE SHARED RULE, and it is shared on purpose:
+      // the intraprocedural transfer of 5-6 §10 differs from this one at
+      // exactly one node kind -- the call -- and two copies of the rest
+      // would be two definitions of "what an assignment does".
+      None => cprop_assign(st, kind)
     }
   }
 }

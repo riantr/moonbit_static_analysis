@@ -31,11 +31,21 @@ pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
 
 pub fn cprop_after(Icfg, Array[Map[String, Cpv]], Int32) -> Map[String, Cpv]
 
+pub fn cprop_assign(Map[String, Cpv], NodeKind) -> Map[String, Cpv]
+
+pub fn cprop_const_branches(Cfg, Array[Map[String, Cpv]]) -> Array[ConstBranch]
+
 pub fn cprop_edge_transfer(EdgeKind, Int32, Int32, Map[String, Cpv]) -> Map[String, Cpv]
 
 pub fn cprop_eval(Map[String, Cpv], @ast.Expr) -> Cpv
 
 pub fn cprop_get(Map[String, Cpv], String) -> Cpv
+
+pub fn cprop_intra_in(Cfg, Array[Map[String, Cpv]]) -> Array[Map[String, Cpv]]
+
+pub fn cprop_intra_run(Cfg) -> Array[Map[String, Cpv]]
+
+pub fn cprop_intra_transfer(Array[NodeKind]) -> (Int32, Map[String, Cpv]) -> Map[String, Cpv]
 
 pub fn cprop_kill(Map[String, Cpv], String) -> Map[String, Cpv]
 
@@ -47,7 +57,11 @@ pub fn cprop_run(Icfg) -> Array[Map[String, Cpv]]
 
 pub fn cprop_set(Map[String, Cpv], String, Cpv) -> Map[String, Cpv]
 
+pub fn cprop_state_leq(Map[String, Cpv], Map[String, Cpv]) -> Bool
+
 pub fn cprop_text(Map[String, Cpv]) -> String
+
+pub fn cpv_leq(Cpv, Cpv) -> Bool
 
 pub fn cpv_text(Cpv) -> String
 
@@ -205,6 +219,8 @@ pub fn[T] solve_round_robin(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -
 
 pub fn[T] solve_widening(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T, (Int32, T, T) -> T, (Int32) -> Bool, Int32) -> WidenResult[T]
 
+pub fn[T] solve_worklist(Lattice[T], Int32, Array[Array[Int32]], Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
+
 pub fn source_after(Int32, Int32, Int32, Int32) -> Bool
 
 pub fn ssa_check(SsaIr) -> SsaCheck
@@ -268,6 +284,11 @@ pub(all) struct Cfg {
 pub fn Cfg::dump(Self) -> String
 pub fn Cfg::kind_label(Self, Int32) -> String
 pub fn Cfg::source_order(Self) -> Array[Int32]
+
+pub(all) struct ConstBranch {
+  node : Int32
+  value : Int32
+}
 
 #derive(Eq)
 pub(all) enum Cpv {

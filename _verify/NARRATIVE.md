@@ -17208,7 +17208,10 @@ every path it names has to exist in the tree -- which is what
                                 available expressions                         0545 (live.mbt, avail.mbt)
     5-6_DFA-FD.pdf (262p)       partial order, lattices, the DFA framework,   0545 (lattice.mbt,
                                 §10 constant propagation, §11 worklist       worklist.mbt, interval.mbt),
-                                                                          0546 (cprop.mbt)
+                                                                          0546 (cprop.mbt),
+                                                                          0573 (cprop_intra.mbt,
+                                                                          worklist.mbt's
+                                                                          solve_worklist)
     7_Inter.pdf (108p)          §2 call graph (CHA), §3 ICFG, §4 interproc.   0546 (icfg.mbt, cprop.mbt,
                                 dataflow                                     worklist.mbt's solve_edges);
                                                                           the CALL GRAPH is ABSENT --
@@ -17264,3 +17267,188 @@ abstraction -- the one cell NO available deck defines, whose resolution is to PI
 BOUNDARY rather than invent the option.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0573: THE FRAME THE CONSTANT PROPAGATION WAS MISSING, AND THE THIRD SOLVER
+
+THE OPEN ITEM 0572 LEFT WAS NAMED: "THE CALL GRAPH (7_Inter §2), the context-sensitive and
+demand-driven pointer analyses (8_PTA's cells C1 and S2, with their client in 9-10 §4), and
+the storeless heap abstraction". But 0572's MAP ALSO NAMED A FOURTH THING, and it named it
+inside a row that said it was already done: `5-6_DFA-FD.pdf` -- "§10 constant propagation,
+§11 worklist" -- against chapters 0545 and 0546. THIS CHAPTER IS THE PART OF THAT ROW THAT
+WAS NOT TRUE.
+
+### THE DECK, AND THE TWO SECTIONS THAT WERE OPEN
+
+`Data Flow Analysis -- Foundations` (Yue Li, Nanjing University, 2026) is 262 pages. Its
+contents are on p.3-4 and name eleven sections; the last three are
+
+    9.  MOP and Distributivity
+    10. Constant Propagation
+    11. Worklist Algorithm
+
+§10 IS p.226-255 AND §11 IS p.256-260. MEASURED, NOT ASSUMED: p.2 carries the deck's title
+and its author, p.3-4 its contents, and the file is `5-6_DFA-FD.pdf` in the course's `done/`
+directory.
+
+### WHAT WAS ALREADY HERE, AND WHAT WAS NOT
+
+`src/flow/cprop.mbt` (0546) IS A CONSTANT PROPAGATION, and it is not a sketch: the
+three-valued domain (`Cpv` = `Undef` / `C(n)` / `Nac`), the state lattice, the evaluator, the
+setter and the fold are all there, and the fold is bounded on purpose (inside ±46340) so it
+can never report a constant the program does not compute.
+
+BUT IT IS NOT §10. IT IS THE OTHER DECK'S. 0546 built the reading that 7_Inter (Tian Tan's
+*Interprocedural Analysis*) states -- p.105's six rules, two about nodes and four about
+edges, over an ICFG, with an edge that carries the returned value. §10 asks for the
+INTRAPROCEDURAL reading: the analysis over a function's OWN control-flow graph, with the
+meet at a path confluence and a fixed point to reach. THIS TREE HAD THE DOMAIN AND THE
+RULES AND NOT THE FRAME, and a value domain without a frame is a set of rules with nothing
+to run them over.
+
+### THE MEET IS NOT A NEW OPERATOR, AND THE TRANSFER IS NOT A NEW FUNCTION
+
+THE MEET, p.236-238, in the deck's own notation:
+
+    NAC  ⊓ v = NAC
+    UNDEF ⊓ v = v
+    c    ⊓ c  = c
+    c1   ⊓ c2 = NAC      (c1 ≠ c2)
+
+IT IS `cpv_join`, UNCHANGED SINCE 0546. The deck's diagram draws the arrow the way the meet
+COARSENS a value, so `UNDEF` sits at the top of the drawing and `NAC` at the bottom -- the
+reverse of the usual way a lattice is drawn -- and the operator that diagram labels `⊓` is
+this lattice's JOIN. The four rules above are the whole operator, and they were already
+here. They are NOT re-implemented: a second copy of the meet is how two definitions of "the
+value of a name" start to disagree, which is 0545's lesson about the set operations.
+
+THE TRANSFER, p.240-245:
+
+    F: OUT[s] = gen ∪ (IN[s] - {(x, _)})
+
+    s: x = c;          // c is a constant      gen = {(x, c)}
+    s: x = y;                                 gen = {(x, val(y))}
+    s: x = y op z;                            gen = {(x, f(y,z))}
+
+    f(y,z) = val(y) op val(z)   if val(y) and val(z) are constants
+            = NAC               if val(y) or val(z) is NAC
+            = UNDEF             otherwise
+
+    and "if s is not an assignment statement, F is the identity function"
+
+THAT IS `cprop_eval` AND `cprop_set` IN `cprop.mbt`, ALREADY. The evaluator answers
+`val(y)` for a name, the constant for a literal, the fold for an operator and `NAC` for
+every shape the model does not cover; and `cprop_set` is the kill-and-generate of the
+deck's formula. So this increment adds the FRAME -- the CFG, the meet at the confluence,
+the fixed point -- and not a second value domain.
+
+**AND THE TWO DECKS DIFFER AT EXACTLY ONE NODE KIND.** 7_Inter's p.105 makes the node
+transfer at a CALL node the IDENTITY, because its framework has an edge that carries the
+returned value; §10 has no such edge, so a call's result is simply not a constant and the
+answer is `NAC`. The two rules are the same rules, and they now live in ONE function
+(`cprop_assign` in `cprop.mbt`), so the difference between the two decks is one line
+rather than two copies of the transfer function. THAT IS THE WHOLE REASON
+`src/flow/cprop_intra.mbt` EXISTS.
+
+### THE CONFLUENCE, AND THE TWO ANSWERS THE DECK PRINTS
+
+p.238: "At each path confluence PC, we should apply 'meet' for all variables in the incoming
+data-flow values at that PC". The deck's own graph (p.249-252) is
+
+    Entry
+      |    \
+      v      v
+     X        Y          X: a = 1; b = 9      Y: a = 9; b = 1
+      \      /
+       v    v
+        Z                 Z: c = a + b
+
+and it prints BOTH ORDERS:
+
+    F(X ⊓ Y)          = {(a, NAC), (b, NAC), (c, NAC)}
+    F(X) ⊓ F(Y)       = {(a, NAC), (b, NAC), (c, 10)}
+
+so the analysis is IMPRECISE at the join: the sum is 10 on either branch, but the meet has
+already thrown the constants away. THIS TREE JOINS FIRST, so it answers `c = NAC` -- the
+safe direction -- and the test pins BOTH orders, so the difference between them is a fact in
+the tree rather than a remark on a slide. `cprop_intra_in` is where the meet happens: it is
+the join of the PREDECESSORS' OUT states, pointwise.
+
+### THE LAST TASK: MONOTONICITY
+
+p.254 asks for one thing: "Show our constant propagation analysis is monotonic". A claim
+about monotonicity cannot be tested without the ORDER it is a claim about, so the order is
+published (`cpv_leq`, `cprop_state_leq`) rather than kept private. `Undef` is the bottom,
+`Nac` is the top, `C(n)` is in between, `C(n) ≤ C(n)` and `C(n) ≤ Nac` and `Undef ≤`
+everything. The test walks the order up one name at a time -- `b` from a constant to `NAC`,
+then `a` -- and requires the OUTPUT to follow: a coarser input gives a coarser output. That
+is the precondition the fixed-point theorem needs, and the one property a lattice's three
+closures cannot guarantee.
+
+### THE THIRD SOLVER, AND WHY IT IS A THIRD SHAPE
+
+§11 (p.256-260) prints the forward work list: `OUT[entry] = ∅`, the work list starts as all
+the blocks, `IN[B] = ⊔ OUT[P]` over the predecessors, `OUT[B] = gen ∪ (IN - kill)`, and a
+successor is re-queued only when the OUT of its predecessor moved. p.259's note is why the
+shape matters: "OUT will not change if IN does not change".
+
+THE PACKAGE ALREADY HAD THREE SOLVERS, AND THIS IS A FOURTH FUNCTION AND A THIRD SHAPE:
+
+  * `solve_round_robin` -- the same equation system, a different visit order, the state
+    AFTER the node;
+  * `solve_edges` -- that one plus the edge transfers 7_Inter's p.105 needs (0546);
+  * `solve_propagation` -- a work list that carried the state BEFORE the node;
+  * `solve_worklist` -- NEW: the state is `OUT[B]`, each node's input is read back from its
+    predecessors, and a successor is re-queued only when the predecessor's OUT moved.
+
+The deck calls the work list "an optimization of Iterative Algorithm" (p.256), which is a
+claim that the two compute the SAME fixed point and differ only in how much work they do. A
+claim like that is a theorem until it is a COMPARISON, and this package's own doctrine is
+that one solver is the test of the next: a test runs the constant propagation through
+`solve_worklist` and through `solve_round_robin` on the deck's own graph and requires them
+to agree NODE FOR NODE. A second test requires the work list to JOIN two predecessors
+rather than overwrite them -- the meet, and the one thing a work list gets wrong silently.
+
+### WHY IT SPEAKS NO NEW FAMILY
+
+0546's precedent, not an omission: a library analysis may be built and pinned without a
+family when no class is free. The class a constant propagation could report -- a branch whose
+outcome is decided before the program runs -- is ALREADY SPOKEN by MSA-013 `InfeasibleBranch`
+and MSA-014 `RedundantGuard`. So `cprop_const_branches` is a MEASUREMENT, not a report: it
+names the `Test` nodes whose condition evaluates to a constant in the state before the test,
+and a caller can compare that answer with what the two families report. The comparison is a
+number rather than an opinion.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: two files and seven test rows.
+The corpora did not move at all -- the eight-tree total and the seven corpora's share of it
+are exactly what they were -- and the one number that is not about this tree's size is the
+suppression-off `UnusedParam` count, which moved for the reason 0545, 0546 and 0571 all
+measured: `cprop_intra_transfer`'s `kinds` is a PARAMETER read only inside the closure it
+returns, which the lint cannot see with the region suppression off.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        226 -> 228      (the analysis and its test file)
+    own-source notices    1,817 -> 1,826   (printed 153 -> 154, aggregated 1,664 -> 1,672)
+    the notice table       `test` declaration 1559 -> 1566, `anonymous function
+                           literal` 45 -> 46, `struct` declaration 70 -> 71
+    the eight-tree total  23,162 -> 23,171  (the seven corpora did not move)
+    the eight-tree split   3,967 + 19,195 -> 3,968 + 19,203
+    the suppression pair     694 / 1,342 -> 694 / 1,343
+    the SSA cost           208 files -> 210, 961 functions -> 975, 7,487
+                           instructions -> 7,556, 837 variables -> 847,
+                           2,087 versions -> 2,125, 756 phis -> 776,
+                           1,860 copies -> 1,900
+    the test counts        1,559 -> 1,566 on wasm, 1,417 -> 1,424 on js and wasm-gc
+
+### WHAT IS STILL OPEN
+
+THE CALL GRAPH (7_Inter §2), the context-sensitive and demand-driven pointer analyses
+(8_PTA's cells C1 and S2, with their client in 9-10 §4), and the storeless heap
+abstraction -- the one cell NO available deck defines, whose resolution is to PIN THE
+BOUNDARY rather than invent the option.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
