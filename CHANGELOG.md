@@ -266,6 +266,60 @@ The published bytes were checked against the host contract — 93 symbols, the t
 core at the contracted floor — and the shipped artifact over this project's own source reports
 **ZERO** unreachable-code findings where 0.4.45 reported three.
 
+## 0.4.47 — the course's own analyses, and the two findings that reach a user
+
+**WHAT THIS RELEASE CARRIES.** Six increments, and they are one subject: the analyses a
+compiler course asks for, built from that course's own slides. Two of them are visible in a
+report; four are library-level, and this release says which is which.
+
+| increment | what it is | reaches a user's report? |
+|---|---|---|
+| 0571 | the sign analysis — the sign of every variable — and the two checks it buys | **yes** — `MSA-016` and `MSA-017` |
+| 0572 | reaching definitions (may, forward) | no — a library-level measurement |
+| 0573 | intraprocedural constant propagation over the CFG, and the work-list reading of the solver | no |
+| 0574 | the call graph: whole-program, resolved over the trait hierarchy | no |
+| 0575 | the context-sensitive and the demand-driven readings of the pointer analysis | no |
+| 0576 | the storeless heap abstraction, on the survey the lecture itself cites | no |
+
+### THE HEADLINE: TWO NEW FINDINGS, AND THE COMPILER SAYS NEITHER SHAPE
+
+`MSA-016` (`DivisionByZero`) and `MSA-017` (`NegativeIndex`) are new in this release. They are
+the course's own two applications of one analysis: determine the **sign** (`+`, `-`, `0`) of
+every variable, so that a division by zero and a negative array index can be caught.
+
+MEASURED against the compiler: `moon check` on a probe holding `1 / 0`, `10 / y`, `arr[-1]`,
+`arr[0 - 1]` and `arr[0]` exits 0 and says nothing about either shape. So a finding here is
+not a duplicate of what the compiler already says — it is the only thing in the toolchain that
+says it.
+
+The answer is in the **must** direction, which is the only safe direction for a claim about a
+crash: a divisor whose sign is unknown is **not** reported, because the tool says *this
+division **does** divide by zero* only when it can prove it. The two are separate families
+because they are claims about separate operands — `MSA-016` is about the divisor (`/` and `%`),
+`MSA-017` about the index — and one line can carry both.
+
+### THE OTHER FOUR ARE MEASUREMENTS, AND THE REPORT SAYS SO BY SAYING NOTHING
+
+Reaching definitions, intraprocedural constant propagation, the call graph, the
+context-sensitive and demand-driven readings of the pointer analysis, and the storeless heap
+abstraction are **library-level**: each is a measurement with a public API and its own test
+rows, and none of them reports a finding. The report pipeline calls five things from the
+data-flow package, and these are not among them.
+
+That split is deliberate, and it is worth stating plainly, because *built* and *visible* are
+different claims. A user of this tool sees **two new findings** from these six increments and
+nothing else. A reader of the source sees six analyses the course asks for, each with its own
+rows and its own boundaries.
+
+MEASURED, by running the published artifact and the current tree over the same file: the
+published **0.4.46** reports `actionable=0` where this release reports two findings
+(`MSA-016`, `MSA-017`). That gap is why this release exists.
+
+### WHAT IS NOT HERE
+
+The course has four more lectures, and none of them has been read, so nothing in this release
+claims to cover them.
+
 ## 0.4.45 — the async runtime moved into the toolchain, and the dependency is gone
 
 This release has one subject and three consequences, and the consequences are the point:

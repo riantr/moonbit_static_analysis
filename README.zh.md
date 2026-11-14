@@ -64,14 +64,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.46
+moon add riantr/moonbit_static_analysis@0.4.47
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.46",
+  "riantr/moonbit_static_analysis@0.4.47",
 }
 ```
 
@@ -121,7 +121,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 被升到了 0.22.6，而 0.22.6 多声明了三个必须由宿主提供的符号——同样那三个 console job。
 自带 0.22.5 的工具链提供不出它们。0.4.45 又要了那三个，外加两个新的，因为它用的运行时
 就是随工具链一起发的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.4.46**。
+你的 MoonBit 工具链，或者换到 **0.4.47**。
 
 升级前还有一件事要知道：`moonbitlang/core/async` 目前仍被 core 团队标为 **experimental**，
 所以用到它的那些包在自己的 `moon.pkg` 里明确写了出来。随工具链一起发、但还没稳定——这
@@ -276,7 +276,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.4.46_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.47_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # 版本没定下来
 ```
@@ -446,6 +446,21 @@ NOTICES	count=7947	test declaration is outside the analyzed subset; its body was
 被覆盖掉的重赋值一样死：`let mut x = 0` 后面接 `x = 1`（中间没有对 `x` 的读），报在**声明那一行**上。
 两者靠各自的措辞区分——*the value bound to 'x'* 和 *the value stored in 'x'*——而且声明只有在
 这个名字在别处被读过时才报，所以它绝不会和 `MSA-003`（`UnusedLocal`，说法正相反）重复。
+
+**`MSA-016` 和 `MSA-017` 是讲义自己的两个应用，而工具链这两种形状都抓不到。** 这棵树的符号
+分析出自的那一页幻灯片标题是 *Static Analysis — An Example*，它点名了一个分析的两个应用：
+*「判定给定程序里所有变量的符号（+、− 或 0）」*——*「检查除以零的错误」*、*「检查数组的负下标」*。
+这个分析是一个**符号**定义域（`+`、`−`、`0`、`unknown`），而且它回答的方向是**必然**：符号未知的
+除数**不报**——工具只在能证明的时候说「这次除法**就是**除以零」，而一句「可能」的崩溃断言就是
+一个等着出现的假阳性。
+
+对着编译器实测：`moon check` 跑一份同时装着 `1 / 0`、`10 / y`、`arr[-1]`、`arr[0 - 1]` 和
+`arr[0]` 的探针，退出码 0，对这两种形状一个字都不说。所以这里的一条发现**不是**编译器已经说过
+的重复项——它是工具链里唯一会说这件事的东西。
+
+两条断言是两个家族，因为它们是关于**不同操作数**的两条断言：`MSA-016` 关于**除数**（`/` 与 `%`——
+取余在运行时同样失败；而浮点被除数不是崩溃，所以不报），`MSA-017` 关于**下标**。一行可以同时
+带上两者（`a / b[0]`），而只给一个家族的读者就得猜这条发现说的是哪个操作数。
 
 **profile 按 id 选家族**，而且在扫描开始前就被检查过：这个版本不认识的 id 只是一条 `WARNING`，
 扫描照跑；一个既被包含又被排除的 id 是 `ERROR`，扫描根本不跑。这个过滤作用在整份发现列表上、

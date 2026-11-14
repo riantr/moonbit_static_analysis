@@ -18088,3 +18088,65 @@ THE OTHER DECKS ARE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf an
 16_Soundiness.pdf are in the same directory as 9-10 and 11-12 and have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+## 0577: THE RELEASE -- 0.4.47, AND THE MEASUREMENT THAT SAYS WHAT A USER GETS
+
+THE ASK WAS ONE QUESTION: "when I use `moonx riantr/moonbit_static_analysis@latest`, is any of
+this used?" AND THE ANSWER WAS NO, AND IT WAS TWO ANSWERS AT ONCE, and neither of them was
+guessable.
+
+### WHAT `@latest` WAS, MEASURED
+
+`@latest` resolved to 0.4.46, published 2026-11-11, and the tag `v0.4.46` points at
+`7d0ba68`. EVERY increment since came after that tag -- 0570 through 0576 -- so none of them
+was in the published tree. MEASURED, by listing the published tree's `src/flow`: it carries
+`pta.mbt`, `pta_flow.mbt`, `cprop.mbt`, `live.mbt`, `avail.mbt`, `interval.mbt`, `ir.mbt`,
+`ssa.mbt`, `bb.mbt` and the solver, and it carries NO `sign.mbt`, NO `reaching.mbt`, NO
+`cprop_intra.mbt`, NO `callgraph.mbt`, NO `pta_ctx.mbt`, NO `pta_demand.mbt` and NO
+`pta_storeless.mbt`. The published family roster is FIFTEEN ids, `MSA-001`..`MSA-015`, where
+this tree's is SEVENTEEN.
+
+AND THE A/B, ON ONE FILE. A probe holding a division by a zero-valued local and a subscript by
+a negative-valued local:
+
+    the current tree      actionable=2   MSA-016, MSA-017
+    the published 0.4.46  actionable=0   "CLEAN .mbt"
+
+### AND THE PART THAT WAS NOT OBVIOUS
+
+THE OBVIOUS ANSWER WAS "the code is not published yet". THE INTERESTING ANSWER WAS THAT
+PUBLISHING IT WOULD NOT HAVE HELPED MOST OF IT, and that is a property of the TREE and not of
+the release. MEASURED, by reading every NON-TEST caller of `@flow.*` in the whole tree: the
+report pipeline uses exactly FIVE things from `src/flow` -- `cfg_of`, `live_in`/`live_out` (the
+dead-store family), `node_uses`, `names_of_expr` (in the behavior lens), and the SIGN DOMAIN
+(via `src/pipeline/signcheck.mbt`). Every other analysis's callers live in `_test.mbt` files
+and nowhere else.
+
+So the six increments split like this: 0571 is WIRED -- two families, a real change for a user
+-- and 0572 through 0576 are LIBRARY-LEVEL: public API, pinned by their own test rows, and
+REPORTING NOTHING. A context, a scope, a heap abstraction, a call graph and a constant
+propagation are MEASUREMENTS, and this tree's report pipeline reports FINDINGS, not
+measurements. That is a fact about the shape of the tree, and it is why the release notes say
+"two new findings" and not "six new analyses".
+
+### THE RELEASE
+
+0.4.47 is those six increments, and the version moved for the reason a version moves: the tree
+grew and the published artifact did not. THE DEPENDENCIES ARE MEASURED, NOT ASSUMED:
+`moon.mod` has no import block and no file under `src/` has an `import { ... }` line, so there
+is no version to upgrade and no pin to re-measure. The host contract is unchanged.
+
+THE ORDER WAS THE POLICY'S. The full gate was green BEFORE a single version reference was
+touched, then the version, then the documents, then the tag. No local publish: the tag push is
+what publishes.
+
+### WHAT IS NOT HERE
+
+NOTHING IN DECKS 1-8. Every cell of the course's four-factor pointer-analysis table is built:
+allocation-site, context-insensitive, flow-insensitive and whole-program (0547), flow-sensitive
+(0548), context-sensitive and demand-driven (0575), storeless (0576).
+
+THE OTHER DECKS ARE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
+16_Soundiness.pdf sit in the same directory as the ones this series read, and they have not
+been read.
+

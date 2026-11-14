@@ -70,14 +70,14 @@ analyzer could not resolve — are counted as notices and are not in that 30. On
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.46
+moon add riantr/moonbit_static_analysis@0.4.47
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.46",
+  "riantr/moonbit_static_analysis@0.4.47",
 }
 ```
 
@@ -133,7 +133,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 symbols — the same three console jobs. A toolchain bundling 0.22.5 cannot supply them.
 0.4.45 asks for those three again, plus two more, because the runtime it uses is the one
 that ships with the toolchain. If you hit that error on 0.4.38: use **0.4.37**, or
-upgrade your MoonBit toolchain, or move to **0.4.46**.
+upgrade your MoonBit toolchain, or move to **0.4.47**.
 
 One more thing to know before you upgrade: `moonbitlang/core/async` is still marked
 **experimental** by the core team, so the packages that use it say so explicitly in their
@@ -301,7 +301,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.46_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.47_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # version not determined
 ```
@@ -504,6 +504,26 @@ followed by `x = 1` before any read of `x` is reported **on the declaration**. T
 told apart by their own wording — *the value bound to 'x'* and *the value stored in 'x'* —
 and a declaration is reported only when the name is read somewhere, so it never doubles up
 with `MSA-003` (`UnusedLocal`), whose claim is the opposite one.
+
+**`MSA-016` AND `MSA-017` ARE THE DECK'S OWN TWO APPLICATIONS, AND THE TOOLCHAIN CATCHES
+NEITHER SHAPE.** The slide this tool's sign analysis comes from is titled *Static Analysis — An
+Example*, and it names two applications of one analysis: *"Determine the sign (+, -, or 0) of
+all the variables of a given program"* — *to check divided by zero error*, *to check negative
+array indices*. The analysis is a **sign** domain (`+`, `-`, `0`, `unknown`), and it answers in
+the **must** direction: a divisor whose sign is unknown is **not** reported, because the tool
+says *this division **does** divide by zero* only when it can prove it, and a crash claim that
+is "maybe" is a false positive waiting to happen.
+
+MEASURED against the compiler: `moon check` on a probe holding `1 / 0`, `10 / y`, `arr[-1]`,
+`arr[0 - 1]` and `arr[0]` exits 0 and says nothing about either shape. So a finding here is
+not a duplicate of what the compiler already says — it is the only thing in the toolchain that
+says it.
+
+THE TWO CLAIMS ARE SEPARATE FAMILIES, because they are separate claims about separate
+operands: `MSA-016` is about the **divisor** (`/` and `%` — the remainder fails the same way at
+run time, and a float dividend is not a crash and is not reported), and `MSA-017` is about the
+**index**. One line can carry both (`a / b[0]`), and a reader given one family for both would
+have to guess which operand the finding was about.
 
 **THE PROFILE SELECTS FAMILIES BY ID**, and it is checked before the scan runs: an id this
 version does not know is a `WARNING` and the scan still runs; an id that is both included
