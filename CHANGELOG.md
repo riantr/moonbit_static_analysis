@@ -320,6 +320,23 @@ published **0.4.46** reports `actionable=0` where this release reports two findi
 The course has four more lectures, and none of them has been read, so nothing in this release
 claims to cover them.
 
+### PUBLISHED
+
+0.4.47 is tagged at `bd69624` on both remotes, CI's `gate` and `publish` are green on that
+commit, the GitHub release is published, and the registry serves it with `latest_version =
+0.4.47`.
+
+    published 0.4.47  wasm 5144FE0F...  685218 bytes  checksum dc340827...  2026-11-14T12:31:08Z
+
+AND THE PUBLISHED BYTES DO WHAT THIS RELEASE PROMISED. MEASURED on the same file, with the
+published coordinates: **0.4.46** reported `actionable=0` and **0.4.47** reports two findings
+— `MSA-016` (the divisor is definitely zero) and `MSA-017` (the index is definitely negative).
+The gap is closed IN THE BYTES A USER GETS, not in a local build.
+
+Scanned over its own shipped source, the artifact the registry serves is clean: **235/235**
+files parsed, `actionable=0`, and it requires exactly the 93 contracted host symbols with no
+`moonbitlang/async` dependency.
+
 ## 0.4.45 — the async runtime moved into the toolchain, and the dependency is gone
 
 This release has one subject and three consequences, and the consequences are the point:

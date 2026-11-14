@@ -9599,6 +9599,7 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
     published 0.4.44  wasm A5C3200DE17EF9030DBE72B3CAD022D9C60391B4927B2F21703DB5D6AD2086DB  586411 bytes  checksum ffdf45a53c89af1aabc0e81f206285a8c0ea71bde7c79588fb224d717bc46540  2026-11-08T16:21:48.730202+00:00
     published 0.4.45  wasm 131112DF5666C18DD1DB2C5C412600A950AF782AA1C3B79B02DEFEE2975E64FA  628777 bytes  checksum 81d0a4db66a300e90b5547555bc547b5f87bd44258908b3db43559694ff3a800  2026-11-09T16:25:03.671513+00:00
     published 0.4.46  wasm 53A24C3E2775E5F793A20215793622C2D222A7C3AD6F40B1F3E175C43CF86954  660472 bytes  checksum aa43ce37d3887dedecc237ab44823771894488c2dd6618adf5a9ea750408c20f  2026-11-11T13:43:21.732369+00:00
+    published 0.4.47  wasm 5144FE0F499D509F6C60CAFD0AED2C77B73ABDC4632E735A10EF6591ED34F6CD  685218 bytes  checksum dc34082714f87daaef728ab2a35be0e2a482f8716502ee78fe07b36a4362c107  2026-11-14T12:31:08.501333+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -18149,4 +18150,59 @@ allocation-site, context-insensitive, flow-insensitive and whole-program (0547),
 THE OTHER DECKS ARE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
 16_Soundiness.pdf sit in the same directory as the ones this series read, and they have not
 been read.
+
+## 0578: 0.4.47 SHIPPED, AND THE PUBLISHED BYTES NOW REPORT WHAT THE RELEASE PROMISED
+
+### WHAT WAS PUSHED, AND WHAT THE REGISTRY SAYS
+
+    tag        v0.4.47  ->  bd69624  on BOTH remotes
+    CI         gate     43595178058  (master push)  success
+               gate     43595187989  (tag push)     success
+               publish  43595187951                   success
+    registry   latest_version = 0.4.47   build_status = success
+               checksum    dc34082714f87daaef728ab2a35be0e2a482f8716502ee78fe07b36a4362c107
+               created_at  2026-11-14T12:31:08.501333+00:00
+
+### THE PUBLISHED BYTES, AND THE HOST CONTRACT AGAINST THEM
+
+    published 0.4.47  wasm 5144FE0F499D509F6C60CAFD0AED2C77B73ABDC4632E735A10EF6591ED34F6CD  685218 bytes  checksum dc34082714f87daaef728ab2a35be0e2a482f8716502ee78fe07b36a4362c107  2026-11-14T12:31:08.501333+00:00
+
+`selfscan_published.ps1` asked the registry for the advertised latest, read the tree the
+registry actually serves, and ran the analyzer over THAT:
+
+    scanned 235 files under .repos/riantr/moonbit_static_analysis/0.4.47
+    ok  @latest resolved to 0.4.47 and its tree is 0.4.47
+    ok  parsed 235/235 files
+    SUMMARY  files=235  parsed=235  actionable=0  notices=1881  unchecked=3649
+    ok  actionable = 0
+    ok  it requires exactly the 93 contracted symbols
+    ok  moon.mod imports no `moonbitlang/async` (it imports 0 path(s) in total)
+    ok  the toolchain bundles core 0.10.20+65efd5b93, the contracted floor
+    ok  the bundled core declares 215 host externs and covers all 93 of them
+    GATE OK: the published bytes satisfy the host contract
+
+235 files, not 236, and the difference is the stub this repository keeps UNTRACKED on purpose
+(`src/lexer/lexer_0488_test.mbt`): the published tree does not carry it, and the own-source
+count here does. The published `notices=1881` is the own-source notice count this tree pins.
+
+### THE A/B, RUN AGAINST THE PUBLISHED ARTIFACTS
+
+THE CLAIM 0577 MADE WAS "the published 0.4.46 reports actionable=0 where the current tree
+reports two findings", and it was MEASURED when @latest still was 0.4.46. MEASURED AGAIN, now
+that @latest IS 0.4.47, over the same file and through the same published coordinate:
+
+    published 0.4.46  actionable=0   "CLEAN .mbt"
+    published 0.4.47  actionable=2   MSA-016  the divisor 'z' is definitely zero
+                                     MSA-017  the index 'i' is definitely negative
+
+So the gap is closed, and it is closed IN THE BYTES A USER GETS. That is the claim that
+mattered, and it is the one a local build could not have made.
+
+### WHAT IS STILL NOT IN THE REPORT
+
+The other five increments of this series are STILL library-level, and publishing them did not
+change that: they are public API with their own test rows, and they report nothing. The
+report pipeline still calls five things from `src/flow` and these are not among them. A
+context, a scope, a heap abstraction, a call graph and a constant propagation are
+MEASUREMENTS, and a report reports FINDINGS.
 
