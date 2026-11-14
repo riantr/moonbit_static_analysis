@@ -449,6 +449,17 @@ pub(all) struct CgCall {
   /// name. Empty when the receiver is an expression, which has no declared
   /// type this tree can read.
   receiver : String
+  /// The ARGUMENTS of the call, in order.
+  ///
+  /// 0575: the context-sensitive pointer analysis needs them -- the deck's call
+  /// rule moves the arguments to the callee's parameters -- and a call site
+  /// that cannot say what it passes cannot be propagated.
+  args : Array[@ast.Expr]
+  /// The name the call's RESULT is bound to; empty when the result is
+  /// discarded.
+  ///
+  /// 0575: the same rule moves the callee's result to this name.
+  lhs : String
 }
 
 ///|
@@ -560,31 +571,37 @@ pub fn call_sites_of(f : CgFn) -> Array[CgCall] {
 /// ONLY A PAYLOAD THAT IS ITSELF A CALL COUNTS, the same rule `icfg.mbt`'s
 /// `call_shape` uses and for the same reason: the deck's node and edge split
 /// needs a node that IS the call.
-fn cg_node_call(kind : NodeKind) -> CgCall? {
+///
+/// THE LEFT-HAND SIDE IS PART OF THE CALL SITE, because the deck's call rule
+/// (11-12 p.67-71) has two halves: the arguments go to the parameters, and the
+/// result comes back to a NAME. A call whose result is discarded has no such
+/// name, and its `lhs` is empty.
+pub fn cg_node_call(kind : NodeKind) -> CgCall? {
   match kind {
-    Assign(_, e) => cg_expr_call(e)
-    Store(_, e) => cg_expr_call(e)
-    Eval(e) => cg_expr_call(e)
+    Assign(x, e) => cg_expr_call(e, x)
+    Store(x, e) => cg_expr_call(e, x)
+    Eval(e) => cg_expr_call(e, "")
     _ => None
   }
 }
 
 ///|
-/// The call an expression carries, if it is one.
-fn cg_expr_call(e : @ast.Expr) -> CgCall? {
+/// The call an expression carries, if it is one, bound to the name that
+/// receives its result.
+fn cg_expr_call(e : @ast.Expr, lhs : String) -> CgCall? {
   match e.kind {
-    @ast.ECall(name, _, _) =>
+    @ast.ECall(name, args, _) =>
       if name.contains("::") {
-        Some({ kind: Special, name, receiver: "", })
+        Some({ kind: Special, name, receiver: "", args, lhs, })
       } else {
-        Some({ kind: Static, name, receiver: "", })
+        Some({ kind: Static, name, receiver: "", args, lhs, })
       }
-    @ast.EMethodCall(recv, name, _, _) => {
+    @ast.EMethodCall(recv, name, args, _) => {
       let r = match recv.kind {
         @ast.EName(n) => n
         _ => ""
       }
-      Some({ kind: Virtual, name, receiver: r, })
+      Some({ kind: Virtual, name, receiver: r, args, lhs, })
     }
     _ => None
   }

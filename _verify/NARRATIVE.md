@@ -17217,22 +17217,32 @@ every path it names has to exist in the tree -- which is what
                                                                           0574 (callgraph.mbt -- the
                                                                           CALL GRAPH is BUILT)
     8_PTA.pdf (104p)            pointer analysis: rules, factors, statements  0547 (pta.mbt), 0548
-                                                                          (pta_flow.mbt)
-    9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4 with    the CLIENT for the
-                                method calls                                 context-sensitive and
-                                                                          demand-driven cells is
-                                                                          ABSENT -- it is the increment
-                                                                          after that
+                                                                          (pta_flow.mbt), 0575
+                                                                          (pta_ctx.mbt,
+                                                                          pta_demand.mbt -- the
+                                                                          CONTEXT and the SCOPE
+                                                                          cells are BUILT)
+    9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4 with    §4 (p.95-153) is the
+                                method calls                                 client for the CALL rule's
+                                                                          Dispatch and for the
+                                                                          call graph -- 0574
+                                                                          (callgraph.mbt), 0575
+                                                                          (pta_ctx.mbt)
+    11-12_PTA-CS.pdf (178p)     context sensitivity: the Select variants,      0575 (pta_ctx.mbt --
+                                k-limiting, the call rule                     the CONTEXT cell's client)
 
 THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
 lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
 whose contents are "1 Rules, 2 How to Implement, 3 Algorithms, 4 With Method Calls" --
 and it carries only section 1. 9-10's p.1-12 is the same content with the page numbers
 shifted by 92, and its §4 is the client 8_PTA's own lecture defers to (its p.94 and
-p.96). MEASURED: "storeless", "demand-driven" and "context sensitive" appear on ZERO
-pages of both files, so the cells 0558's table leaves empty are empty in the DECKS, not
-only in this tree -- which is what makes the boundary a measurement rather than an
-excuse.
+p.96). MEASURED, AND CORRECTED BY 0575: "storeless", "demand-driven" and "context
+sensitive" do NOT appear on zero pages of 8_PTA.pdf -- they appear on NINE, FIFTEEN
+and FOURTEEN pages of it -- and they appear on ZERO pages of 9-10_PTA-FD.pdf, whose
+section 4 is about DISPATCH and not about contexts. The cells 0558's table leaves empty
+are therefore the deck's own OPTIONS: 8_PTA.pdf p.34 prints all three of them in its
+KEY FACTORS table, p.49-53 develops the context one and p.72-77 the scope one. The
+storeless cell is the only one the deck NAMES and never DEFINES.
 
 ### THE PINS THAT MOVED
 
@@ -17262,7 +17272,8 @@ THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
 ### WHAT IS STILL OPEN
 
 THE CALL GRAPH (7_Inter §2), the context-sensitive and demand-driven pointer analyses
-(8_PTA's cells C1 and S2, with their client in 9-10 §4), and the storeless heap
+(8_PTA's cells C1 and S2, with their clients in 9-10 §4 and 11-12), and the
+storeless heap
 abstraction -- the one cell NO available deck defines, whose resolution is to PIN THE
 BOUNDARY rather than invent the option.
 
@@ -17272,7 +17283,8 @@ BOUNDARY rather than invent the option.
 ## 0573: THE FRAME THE CONSTANT PROPAGATION WAS MISSING, AND THE THIRD SOLVER
 
 THE OPEN ITEM 0572 LEFT WAS NAMED: "THE CALL GRAPH (7_Inter §2), the context-sensitive and
-demand-driven pointer analyses (8_PTA's cells C1 and S2, with their client in 9-10 §4), and
+demand-driven pointer analyses (8_PTA's cells C1 and S2, with their clients in 9-10 §4
+and 11-12), and
 the storeless heap abstraction". But 0572's MAP ALSO NAMED A FOURTH THING, and it named it
 inside a row that said it was already done: `5-6_DFA-FD.pdf` -- "§10 constant propagation,
 §11 worklist" -- against chapters 0545 and 0546. THIS CHAPTER IS THE PART OF THAT ROW THAT
@@ -17446,7 +17458,8 @@ THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
 ### WHAT IS STILL OPEN
 
 THE CALL GRAPH (7_Inter §2), the context-sensitive and demand-driven pointer analyses
-(8_PTA's cells C1 and S2, with their client in 9-10 §4), and the storeless heap
+(8_PTA's cells C1 and S2, with their clients in 9-10 §4 and 11-12), and the
+storeless heap
 abstraction -- the one cell NO available deck defines, whose resolution is to PIN THE
 BOUNDARY rather than invent the option.
 
@@ -17632,9 +17645,211 @@ is itself a notice -- and the count moved exactly because the increment declares
 ### WHAT IS STILL OPEN
 
 THE CONTEXT-SENSITIVE AND DEMAND-DRIVEN POINTER ANALYSES (8_PTA's cells C1 and S2,
-with their client in 9-10 §4), and the storeless heap abstraction -- the one cell NO
+with their clients in 9-10 §4 and 11-12), and the storeless heap abstraction -- the one cell NO
 available deck defines, whose resolution is to PIN THE BOUNDARY rather than invent the
 option.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
+## 0575: THE CONTEXT AND THE SCOPE -- 8_PTA's TWO EMPTY CELLS, AND THE ONE THAT IS STILL EMPTY
+
+THE OPEN ITEM 0574 LEFT WAS NAMED: "THE CONTEXT-SENSITIVE AND DEMAND-DRIVEN POINTER ANALYSES
+(8_PTA's cells C1 and S2, with their clients in 9-10 §4 and 11-12), and the storeless heap
+abstraction -- the one cell NO available deck defines". THIS CHAPTER BUILDS THE FIRST TWO OF
+THOSE THREE. AND IT CORRECTS 0572 IN PLACE, BECAUSE THE REASON 0572 GAVE FOR LEAVING THEM
+OPEN WAS FALSE.
+
+### THE SENTENCE 0572 WROTE, AND WHY IT WAS WRONG
+
+    (the sentence as it stood BEFORE this chapter corrected it:)
+
+    MEASURED: "storeless", "demand-driven" and "context sensitive" appear on ZERO
+    pages of both files, so the cells 0558's table leaves empty are empty in the DECKS, not
+    only in this tree -- which is what makes the boundary a measurement rather than an
+    excuse.
+
+IT WAS REFUTED BY MEASUREMENT, PAGE BY PAGE, OVER BOTH FILES:
+
+    8_PTA.pdf (104p)          "storeless"             9 pages: p.34, 35, 36, 37, 38, 48, 54, 71, 78
+                              "demand-driven"        15 pages: p.34-38, 48, 54, 71-78
+                              "context-sensitive"    14 pages: p.34-38, 48, 49-54, 71, 78
+    9-10_PTA-FD.pdf (153p)    "storeless"             0 pages
+                              "demand-driven"         0 pages
+                              "context"               0 pages
+                              "heap"                  0 pages
+                              "dispatch"             34 pages: p.99-147
+
+THE HALF THAT WAS TRUE IS STILL TRUE: 9-10_PTA-FD.pdf names none of the three, and it does
+not name a heap abstraction at all. AND THE REASON IS NOT THAT THE IDEA IS MISSING BUT THAT
+THE DECK IS ABOUT SOMETHING ELSE. Its §4 (p.95-153) is titled "Pointer Analysis in the
+Presence of Method Invocations", and its own sentences are "Inter-procedural pointer analysis
+requires call graph" (p.96), "CHA: imprecise, introduce spurious call graph edges and
+points-to relations" (p.97) and "Pointer analysis: resolve call targets based on pt(a), a.k.a
+on-the-fly call graph construction" (p.98). Its Rule: Call (p.99-100) is the one deck 8
+withholds at p.96, and it needs a DISPATCH, not a context.
+
+WHAT 0572 GOT WRONG WAS THE FILE IT LOOKED IN. The three cells are not absent from the
+DECKS; they are 8_PTA.pdf's OWN FOUR-FACTOR TABLE. MEASURED, p.33-38 is a section titled
+"Key Factors in Pointer Analysis", and its table is:
+
+    Factor              Problem                          Choice
+    Heap abstraction    How to model heap memory?       Allocation-site | Storeless
+    Context sensitivity How to model calling contexts?   Context-sensitive | Context-insensitive
+    Flow sensitivity    How to model control flow?       Flow-sensitive | Flow-insensitive
+    Analysis scope      Which parts of program should   Whole-program | Demand-driven
+                        be analyzed?
+
+and the table is RE-PRINTED at the head of every factor's own section: p.48 before "Context
+Sensitivity" (p.49-53), p.54 before "Flow Sensitivity" (p.55-70), p.71 before "Analysis Scope"
+(p.72-77), and p.78 as "Pointer Analysis in This Course". THAT IS WHY "storeless" IS ON NINE
+PAGES -- every one of them is the TABLE.
+
+SO THE THREE CELLS ARE THE DECK'S OWN OPTIONS, AND TWO OF THEM ARE NOW BUILT.
+
+### THE THREE CLIENTS, AND WHICH DECK ANSWERS WHICH CELL
+
+  * 8_PTA.pdf p.49-53 ANSWERS THE CONTEXT CELL'S QUESTION: "How to model calling contexts?",
+    CONTEXT-SENSITIVE "Distinguish different calling contexts of a method / Analyze each
+    method multiple times, once for each context" against CONTEXT-INSENSITIVE "Merge all
+    calling contexts of a method / Analyze each method once". p.53 marks the merged column
+    "We start with this", and the slide's own note says "Very useful technique /
+    Significantly improve precision / More details in later lectures".
+  * 11-12_PTA-CS.pdf ANSWERS THE CONTEXT CELL'S MACHINERY. MEASURED, it is 178 pages and it
+    is titled "Pointer Analysis -- Context Sensitivity (I)" (Tian Tan, 2021). p.99 prints
+    "Context Sensitivity Variants: Call-site sensitivity / Object sensitivity / Type
+    sensitivity". p.102 prints "Select _, _, _ = [ ]" and says the insensitive reading "Can be
+    seen as a special case of context sensitivity in C.S. analysis framework". p.103 prints
+    "Select(c, l, _) = [l_1, ..., l_k]", says "Each context consists of a list of call sites
+    (call chain)" and calls it "call-string sensitivity, or k-CFA" (Shivers 1991). p.110-111
+    print the k-limiting: "set an upper bound for length of contexts, denoted by k" and "For
+    call-site sensitivity, each context consists of the last k call sites of the call
+    chains". p.112 prints "Select _, l, _ = [ l ]" for 1-CFA. p.67-71 print the CALL RULE
+    with "m = Dispatch o_i, k" and "c' = Select(c, l, c: o_i)".
+  * 8_PTA.pdf p.72-77 ANSWERS THE SCOPE CELL'S QUESTION: "Which parts of program should be
+    analyzed?", WHOLE-PROGRAM "Compute points-to information for all pointers in the program
+    / Provide information for all possible clients" against DEMAND-DRIVEN "Only compute
+    points-to information for the pointers that may affect specific sites of interest (on
+    demand) / Provide information for specific clients". p.75 gives the client -- "Client:
+    call graph construction", "Site of interest: line 5", "What points-to information do we
+    need" -- and p.77 marks the whole-program column "Chosen in this course".
+
+### WHAT WAS BUILT: THE CONTEXT CELL
+
+`src/flow/pta_ctx.mbt` analyses a method ONCE PER CONTEXT, which is the deck's own
+definition of the sensitive column. THREE things are modelled and they are the deck's three
+things:
+
+  * THE CONTEXT IS THE CALL CHAIN'S LABELS, and THE LABEL OF A CALL SITE IS ITS LINE. That
+    is the deck's own labelling: 11-12's worked example (p.104-115) labels its three call
+    sites 3, 9 and 15 and prints the contexts as "[]", "[3]" and "[3,9]". Where ONE LINE
+    carries more than one call site the label becomes "line:column", so two calls on one
+    line do not silently share a context.
+  * THE SELECT FUNCTION IS THE DECK'S, AND ALL THREE VARIANTS ARE BUILT: `Insensitive`
+    (p.102's "Select _, _, _ = [ ]"), `CallSite(k)` (p.103's last-k call sites, so k=1 is
+    the deck's 1-CFA) and `Object` (p.100's receiver object with a heap context, where the
+    call string is dropped at k=0 because an unbounded call string does not terminate --
+    p.110-111's own reason).
+  * THE CALL RULE IS NEW, because deck 8's file does not contain it (p.96) and this one
+    does: the arguments flow to the parameters, and the result flows back to the caller's
+    left-hand side through the pseudo-variable `result`.
+
+THE FOUR RULES ARE NOT REWRITTEN. They are `pta.mbt`'s, reached through one function
+(`pta_sweep`), once per (function, context): A CONTEXT IS A DIFFERENT MAP, not a different
+set of rules. One rule, one place.
+
+### WHAT WAS BUILT: THE SCOPE CELL
+
+`src/flow/pta_demand.mbt` is the deck's p.76 COLUMN, reproduced: the same program, the same
+rules, the same object naming, and a map that is ONE LINE LONG because only `z` was
+demanded. THE DECK'S DEFINITION IS "the pointers that may affect specific sites of interest",
+and the word that does the work is AFFECT -- a pointer affects a site if a value can flow
+from it to that site. So the rules are run BACKWARD from the demand: "which statements write
+this pointer, and what do they read?" The answer is a work list of (function, pointer) pairs,
+and each pair's value is computed from the pairs it reads.
+
+THE SCOPE CHANGES HOW MUCH IS COMPUTED, NEVER WHAT IS TRUE. For a pointer that is demanded,
+the demand-driven answer IS the whole-program answer; what changes is the set of pointers
+computed at all. A TEST REQUIRES EXACTLY THAT EQUALITY, so the second reading cannot quietly
+become a different analysis.
+
+### THE BOUNDARIES, WHICH ARE COUNTED AND NOT HIDDEN
+
+  * A CALL'S RESULT IS NOT A SOURCE IN THE DEMAND-DRIVEN ARM. A pointer that is only ever
+    written by a call has NO value there, because the deck's own file withholds the call
+    rule. The direction is the tree's: a value the analysis does not model contributes
+    NOTHING rather than an invented object.
+  * A DEMANDED PARAMETER DOES CROSS THE CALL BOUNDARY, to the caller's argument -- and that
+    is what the deck's client needs, because a call graph is built from the receiver at a
+    call site and that receiver is often a parameter.
+  * TYPE SENSITIVITY IS NOT BUILT, AND THE REASON IS A MEASUREMENT. The third `Select`
+    variant needs the receiver's TYPE, and a local's type is published nowhere this package
+    can read: the type lens publishes only the module frame (`src/types/infer.mbt`
+    1202-1215), so an analysis in `src/flow` cannot ask what type a receiver has. It is left
+    out rather than guessed at.
+  * A METHOD'S BODY IS NOT IN THIS TREE'S AST (the parser reads past `impl`, `trait`,
+    `struct` and `enum` declarations whole), so a target like `A::foo` is AN EDGE AND NOT A
+    STATE. Such a target is COUNTED (`no_body`), never silently skipped.
+  * THE DISPATCH IS THE CALL GRAPH'S. `resolve_call` (deck 7's CHA, p.33-39) answers "which
+    methods can this call reach" from the receiver's declared type; the deck's dispatch is by
+    the receiver's type, which the pointer analysis knows and the call graph does not. Using
+    the call graph's answer here is the CONSERVATIVE direction -- more targets, a bigger
+    points-to set -- and it keeps ONE dispatch in the tree.
+
+### WHY IT SPEAKS NO NEW FAMILY
+
+0546's and 0574's precedent, not an omission: a library analysis may be built and pinned
+without a family when no class is free. A context and a scope are MEASUREMENTS -- they say
+how much is computed and how finely, not that anything is wrong. The family roster is
+unchanged at seventeen, and the two new modules are library-level rather than part of the
+report pipeline.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: four files and fifteen test rows.
+The seven corpora did not move at all -- MEASURED, all seven still match their pinned
+SUMMARY lines exactly -- so the eight-tree total moved by exactly the own-source delta. The
+suppression-off pair did not move either, because this increment's code has no transfer
+factory whose parameters are read only inside the closure it returns.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        230 -> 234      (the two analyses and their two test files)
+    own-source notices    1,841 -> 1,868   (printed 154 -> 157, aggregated 1,687 -> 1,711)
+    the notice table       `test` declaration 1575 -> 1590, `struct` declaration
+                           76 -> 83, `anonymous function literal` 46 -> 48,
+                           `enum` declaration 24 -> 25, `if` expression 99 -> 100,
+                           `type` declaration 5 -> 6
+    the eight-tree total  23,186 -> 23,213  (the seven corpora did not move)
+    the eight-tree split   3,968 + 19,218 -> 3,971 + 19,242
+    the suppression pair     694 / 1,343 -> 694 / 1,343
+    the SSA cost           212 files -> 216, 1,003 functions -> 1,058, 7,638
+                           instructions -> 7,917, 867 variables -> 916,
+                           2,161 versions -> 2,301, 784 phis -> 843,
+                           1,916 copies -> 2,043
+    the test counts        1,575 -> 1,590 on wasm, 1,433 -> 1,448 on js and wasm-gc
+
+THE NOTICE TABLE'S SIX MOVING ROWS ARE THE INCREMENT'S OWN DECLARATIONS, and that is the
+kind of number that is easy to misread: a `struct` declaration is a DECLARED SCOPE LIMIT in
+this analyzer, so declaring a type is itself a notice. The seven new structs are `PtaCtxEdge`,
+`PtaCtxResult` and `CsSite` in `src/flow/pta_ctx.mbt`, and `PtaDemandQuery`,
+`PtaDemandResult`, `DemandState` and `DmCall` in `src/flow/pta_demand.mbt`; the one new enum
+is `CtxSelect`; the one new type is `PtaContext`; the two new anonymous function literals are
+the closures the two modules declare; and the fifteen new test rows are eight in
+`src/flow/pta_ctx_test.mbt` and seven in `src/flow/pta_demand_test.mbt`.
+
+### WHAT IS STILL OPEN
+
+THE STORELESS HEAP ABSTRACTION -- and the measurement is sharper than it was, because it now
+says WHERE the deck names it and where it does not. MEASURED, "storeless" appears on NINE
+pages of 8_PTA.pdf, and every one of them is the KEY FACTORS table (p.34-38, 48, 54, 71) or
+the final summary (p.78). The deck's heap-abstraction SECTION is p.39-43 and it leads to
+p.44-47's "Allocation-Site Abstraction", and there is NO storeless section. SO THE DECK
+NAMES THE CELL NINE TIMES AND DEFINES IT ZERO TIMES, and the resolution is still to PIN THE
+BOUNDARY rather than invent the option.
+
+THE DECK NAMES ITS OWN SURVEY, and that is where the cell's definition is: 8_PTA.pdf p.42-43
+cites Kanvar & Khedker, "Heap Abstractions for Static Analysis", ACM Computing Surveys 2016
+-- the survey that defines the storeless abstraction the deck names and never defines. That
+citation is the client for the next increment.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.

@@ -597,21 +597,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (230 files), with the per-file printing cap lifted so the count is the
+project's own source (234 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1575 | | `const` declaration | 7 |
-| `if` expression | 99 | | `short lambda` | 8 |
-| `struct` declaration | 76 | | `type` declaration | 5 |
-| `anonymous function literal` | 46 | | `try` expression | 1 |
-| `enum` declaration | 24 | | | |
+| `test` declaration | 1590 | | `const` declaration | 7 |
+| `if` expression | 100 | | `short lambda` | 8 |
+| `struct` declaration | 83 | | `type` declaration | 6 |
+| `anonymous function literal` | 48 | | `try` expression | 1 |
+| `enum` declaration | 25 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **154** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1687** sit outside every function's
+**position**: **157** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1711** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -644,10 +644,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,186** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,213** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,968** of them as printed per line and
-**19,218** as aggregated — which is 3,968 + 19,218 = 23,186, the same number — and the 3,968
+says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
+**19,242** as aggregated — which is 3,971 + 19,242 = 23,213, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -671,7 +671,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 230 files the notice table
+seven pinned corpora and this repository's own source — the same 234 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -812,8 +812,10 @@ src/flow      data-flow framework: CFG + four solvers (round-robin, the
               live variables (may, backward), the
               interval domain with widening, available expressions (must,
               forward — the dual reading of the same solver), constant
-              propagation (the same lattice, read over a CFG), and the call
-              graph (the whole-program graph, over the trait hierarchy)
+              propagation (the same lattice, read over a CFG), the call
+              graph (the whole-program graph, over the trait hierarchy),
+              and the pointer analysis read twice more: with a context
+              (call-site / object) and with a scope (on demand)
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
@@ -927,6 +929,49 @@ Two boundaries are counted rather than hidden. A **method's body is not in the t
 so the graph's edges *name* the implementations and stop there -- the calls inside an
 implementation are not visible. And a call whose receiver has **no declared type**
 resolves to nothing, and is counted as unresolved rather than connected to a guess.
+
+**AND A SEVENTH KIND: THE SAME POINTER QUESTION, ASKED WITH A CONTEXT AND WITH A SCOPE.**
+The pointer analysis above answers *"which objects can this pointer point to?"* over the whole
+program, with every calling context merged into one answer. The deck that defines the analysis
+names that merging as a **choice**, not a fact: `Pointer Analysis` (Tian Tan, Nanjing University,
+2021) p.34 prints the **Key Factors** table, and one of its four rows is *Context sensitivity —
+"how to model calling contexts?" — Context-sensitive | Context-insensitive*; p.49-53 develops
+the two readings and p.53 marks the merged one *"We start with this"*. A fourth row is *Analysis
+scope — "which parts of program should be analyzed?" — Whole-program | Demand-driven*, and p.72-77
+develops it. So the cells this tree left empty are **the deck's own options**, and two of them
+are now built.
+
+`src/flow/pta_ctx.mbt` is the context-sensitive reading: the analysis runs once **per (function,
+context) pair**, and the context is what the call site contributes. Three abstractions are
+implemented, and they are the deck's own — the follow-on lecture *Pointer Analysis — Context
+Sensitivity (I)* (`11-12_PTA-CS.pdf`, p.99-115) prints the `Select` variants: **insensitive**
+(`Select _,_,_ = []`, p.102 — one state per function), **call-site** (`Select(c,l,_) = [l_1..l_k]`,
+p.103 — the last `k` call sites, which is k-CFA, Shivers 1991), and **object** (p.100 — the
+receiver's allocation site). The **call-site label is the line number**, which is the deck's own
+labelling, and `line:col` when one line carries two call sites.
+
+**TYPE SENSITIVITY IS NOT BUILT, AND THE REASON IS A MEASUREMENT.** The third `Select` variant is
+the receiver's *type*. A local's type is published nowhere this package can read — the type lens
+publishes only the module frame, so `src/flow` cannot ask what type a receiver has, and a variant
+that asked would have to invent one. It is left out rather than guessed at.
+
+`src/flow/pta_demand.mbt` is the demand-driven reading, and it is the deck's p.76 **column**,
+reproduced: the client is *call graph construction*, the site of interest is *line 5* of the
+deck's own program (`z.bar()`), and the answer is `z ➝ {o4}`. The four rules are read
+**backward** — which statements write this pointer, and what they read — so the analysis computes
+the map of the **demanded pointers only**. Two boundaries are counted rather than hidden. A
+**call's result is not a source** in this arm: an unmodelled value contributes nothing rather
+than an invented object. And a demanded **parameter** does cross the call boundary, to the
+caller's argument — otherwise the demand would stop at the callee's door.
+
+**THE SCOPE CHANGES HOW MUCH IS COMPUTED, NEVER WHAT IS TRUE.** For a pointer that is demanded,
+the demand-driven answer is the whole-program answer; what changes is the set of pointers
+computed at all. A test requires exactly that equality, so the second reading cannot quietly
+become a different analysis.
+
+**AND IT SPEAKS NO NEW FAMILY.** Neither reading reports anything: a context and a scope are
+**measurements**, and this tree's pointer analyses are library-level rather than part of the
+report pipeline. The family roster is unchanged at seventeen.
 
 ### And under the CFG there are basic blocks
 
@@ -1047,7 +1092,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1575/1575 on wasm; 1433/1433 on js and wasm-gc
+moon test --deny-warn                # 1590/1590 on wasm; 1448/1448 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

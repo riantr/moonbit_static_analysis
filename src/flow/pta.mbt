@@ -162,7 +162,7 @@ fn pta_add(pt : Pta, key : String, obj : String) -> Bool {
 /// allocated by one site into one abstract object (p.44-47). Without that
 /// abstraction a loop that allocates could produce unboundedly many objects and
 /// this loop would not stop -- which is what p.40 says the abstraction is for.
-fn pta_join(pt : Pta, key : String, add : Map[String, Bool]) -> Bool {
+pub fn pta_join(pt : Pta, key : String, add : Map[String, Bool]) -> Bool {
   if add.length() == 0 {
     return false
   }
@@ -311,7 +311,12 @@ fn pta_after(
 /// `o<line>_<k>`, numbered in source-column order. A hand-built graph whose spans
 /// are all line 0 therefore collapses onto `o0`, `o0_2`, ... which is how that
 /// trap announces itself instead of silently aliasing two objects.
-fn pta_site_names(cfgs : Array[Cfg]) -> Map[String, String] {
+///
+/// 0575: this is PUBLIC because the context-sensitive and the demand-driven
+/// pointer analyses need the SAME naming -- an object named `o4` in one
+/// analysis and `o7` in the other would make the two columns incomparable, and
+/// the deck compares them.
+pub fn pta_site_names(cfgs : Array[Cfg]) -> Map[String, String] {
   let fi_of : Array[Int32] = []
   let node_of : Array[Int32] = []
   let line_of : Array[Int32] = []
@@ -470,6 +475,34 @@ fn pta_step(
 }
 
 ///|
+/// ONE SWEEP OF THE DECK'S FOUR RULES over ONE function's points-to map.
+///
+/// THE RULES LIVE HERE AND NOWHERE ELSE. `pta_run` is this function called in a
+/// loop until it stops changing; the context-sensitive pointer analysis (0575)
+/// calls it too, once per (function, context), because a CONTEXT IS A DIFFERENT
+/// MAP and not a different set of rules. One rule, one place -- and the two
+/// analyses can then be compared, which is what deck 8's p.74 and p.76 do.
+///
+/// A sweep is ONE PASS over the function's nodes. The fixed point is the
+/// caller's loop, and it terminates because `pta_step` only ever joins.
+pub fn pta_sweep(
+  cfgs : Array[Cfg],
+  sites : Map[String, String],
+  pt : Pta,
+  fi : Int32,
+) -> Bool {
+  let mut changed = false
+  let mut v = 0
+  while v < cfgs[fi].kinds.length() {
+    if pta_step(cfgs, sites, pt, fi, v) {
+      changed = true
+    }
+    v = v + 1
+  }
+  changed
+}
+
+///|
 /// The whole-program flow-insensitive fixpoint: ONE MAP PER FUNCTION, many sweeps.
 ///
 /// WHY THE MAPS ARE PER FUNCTION AND NOT ONE MAP FOR EVERYTHING. The 2021 deck says
@@ -499,14 +532,7 @@ pub fn pta_run(cfgs : Array[Cfg]) -> Array[Pta] {
     let pt = pta_empty()
     let mut changed = true
     while changed {
-      changed = false
-      let mut v = 0
-      while v < cfgs[fi].kinds.length() {
-        if pta_step(cfgs, sites, pt, fi, v) {
-          changed = true
-        }
-        v = v + 1
-      }
+      changed = pta_sweep(cfgs, sites, pt, fi)
     }
     out.push(pt)
     fi = fi + 1

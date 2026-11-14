@@ -35,6 +35,8 @@ pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
 
 pub fn cg_fns_of(Array[@ast.Stmt]) -> Array[CgFn]
 
+pub fn cg_node_call(NodeKind) -> CgCall?
+
 pub fn collect_trait_table(String) -> TraitTable
 
 pub fn cprop_after(Icfg, Array[Map[String, Cpv]], Int32) -> Map[String, Cpv]
@@ -157,9 +159,25 @@ pub fn pred_of(Array[Array[Int32]]) -> Array[Array[Int32]]
 
 pub fn pta_alias(Map[String, Map[String, Bool]], String, String) -> Bool
 
+pub fn pta_ctx_contexts(PtaCtxResult, String) -> Array[String]
+
+pub fn pta_ctx_key(String, String) -> String
+
+pub fn pta_ctx_of(PtaCtxResult, String, String, String) -> Map[String, Bool]
+
+pub fn pta_ctx_run(Array[CgFn], TraitTable, String, CtxSelect) -> PtaCtxResult
+
+pub fn pta_ctx_text(PtaCtxResult, String, String) -> String
+
+pub fn pta_demand_run(Array[CgFn], TraitTable, PtaDemandQuery) -> PtaDemandResult
+
+pub fn pta_demand_site(Array[CgFn], String, Int32) -> PtaDemandQuery?
+
 pub fn pta_empty() -> Map[String, Map[String, Bool]]
 
 pub fn pta_fs_transfer_of(Cfg) -> (Int32, Map[String, Map[String, Bool]]) -> Map[String, Map[String, Bool]]
+
+pub fn pta_join(Map[String, Map[String, Bool]], String, Map[String, Bool]) -> Bool
 
 pub fn pta_map_lattice() -> Lattice[Map[String, Map[String, Bool]]]
 
@@ -172,6 +190,10 @@ pub fn pta_run(Array[Cfg]) -> Array[Map[String, Map[String, Bool]]]
 pub fn pta_run_flow_sensitive(Cfg) -> Array[Map[String, Map[String, Bool]]]
 
 pub fn pta_run_ordered(Cfg) -> Map[String, Map[String, Bool]]
+
+pub fn pta_site_names(Array[Cfg]) -> Map[String, String]
+
+pub fn pta_sweep(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]], Int32) -> Bool
 
 pub fn pta_text(Map[String, Map[String, Bool]]) -> String
 
@@ -316,6 +338,8 @@ pub(all) struct CgCall {
   kind : CallKind
   name : String
   receiver : String
+  args : Array[@ast.Expr]
+  lhs : String
 }
 
 #derive(Eq)
@@ -340,6 +364,18 @@ pub(all) enum Cpv {
   Undef
   C(Int32)
   Nac
+}
+
+pub(all) struct CsSite {
+  call : CgCall
+  label : String
+  line : Int32
+}
+
+pub(all) enum CtxSelect {
+  Insensitive
+  CallSite(Int32)
+  Object
 }
 
 pub(all) struct Dom {
@@ -440,6 +476,36 @@ pub(all) enum NodeKind {
   Stop
 }
 
+#derive(Eq)
+pub(all) struct PtaCtxEdge {
+  caller_fn : String
+  caller_ctx : String
+  site : String
+  callee_fn : String
+  callee_ctx : String
+}
+
+pub(all) struct PtaCtxResult {
+  states : Map[String, Map[String, Map[String, Bool]]]
+  contexts : Map[String, Array[String]]
+  edges : Array[PtaCtxEdge]
+  unresolved : Int32
+  no_body : Int32
+  state_count : Int32
+}
+
+pub(all) struct PtaDemandQuery {
+  fn_name : String
+  pointer : String
+}
+
+pub(all) struct PtaDemandResult {
+  points_to : Map[String, Map[String, Bool]]
+  values : Map[String, Map[String, Bool]]
+  demanded : Map[String, Bool]
+  steps : Int32
+}
+
 pub(all) struct Redundant {
   node : Int32
   key : String
@@ -523,6 +589,8 @@ pub(all) struct WidenResult[T] {
 pub type DefSet = Map[String, Bool]
 
 pub type Pta = Map[String, Map[String, Bool]]
+
+pub type PtaContext = String
 
 pub type SignState = Map[String, Sign]
 

@@ -119,6 +119,8 @@ test "0574: Resolve -- a static call is the callee's own name" {
     kind: @flow.CallKind::Static,
     name: "foo",
     receiver: "",
+    args: [],
+    lhs: "",
   }
   let declared : Map[String, String] = Map([])
   let t = @flow.resolve_call(call, declared, @flow.TraitTable::empty())
@@ -136,6 +138,8 @@ test "0574: Resolve -- a special call names its type in the call" {
     kind: @flow.CallKind::Special,
     name: "A::foo",
     receiver: "",
+    args: [],
+    lhs: "",
   }
   let declared : Map[String, String] = Map([])
   let t = @flow.resolve_call(call, declared, @flow.TraitTable::empty())
@@ -161,6 +165,8 @@ test "0574: Resolve -- a virtual call is the trait and every type that implement
     kind: @flow.CallKind::Virtual,
     name: "foo",
     receiver: "x",
+    args: [],
+    lhs: "",
   }
   let t = @flow.resolve_call(call, declared, tab)
   // THE TRAIT ITSELF -- the deck's "or c itself".
@@ -184,6 +190,8 @@ test "0574: Resolve -- a virtual call through a concrete type is that type's met
     kind: @flow.CallKind::Virtual,
     name: "foo",
     receiver: "s",
+    args: [],
+    lhs: "",
   }
   let t = @flow.resolve_call(call, declared, tab)
   assert_true(t.length() == 1)
@@ -206,6 +214,8 @@ test "0574: Resolve -- a virtual call with no declared type resolves to nothing"
     kind: @flow.CallKind::Virtual,
     name: "foo",
     receiver: "x",
+    args: [],
+    lhs: "",
   }
   // NO DECLARATION AT ALL.
   let none : Map[String, String] = Map([])
