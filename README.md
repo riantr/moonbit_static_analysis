@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (242 files), with the per-file printing cap lifted so the count is the
+project's own source (244 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1619 | | `const` declaration | 7 |
+| `test` declaration | 1625 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 91 | | `type` declaration | 7 |
+| `struct` declaration | 92 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 26 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1750** sit outside every function's
+audit off, so they are printed one per line; the other **1757** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,252** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,259** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,281** as aggregated — which is 3,971 + 19,281 = 23,252, the same number — and the 3,971
+**19,288** as aggregated — which is 3,971 + 19,288 = 23,259, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -691,7 +691,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 242 files the notice table
+seven pinned corpora and this repository's own source — the same 244 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -834,11 +834,11 @@ src/flow      data-flow framework: CFG + four solvers (round-robin, the
               forward — the dual reading of the same solver), constant
               propagation (the same lattice, read over a CFG), the call
               graph (the whole-program graph, over the trait hierarchy),
-              and the pointer analysis read six more times: over a pointer flow
-              graph, with a context (call-site / object), with a scope (on demand),
-              with a context-sensitive heap, without a heap at all (access paths --
-              the storeless model), and interprocedurally with the call graph built
-              on the fly
+              and the pointer analysis read seven more times: over a pointer
+              flow graph, with a context (call-site / object / type), with a
+              scope (on demand), with a context-sensitive heap, without a heap
+              at all (access paths -- the storeless model), and interprocedurally
+              with the call graph built on the fly
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
@@ -973,10 +973,18 @@ p.103 — the last `k` call sites, which is k-CFA, Shivers 1991), and **object**
 receiver's allocation site). The **call-site label is the line number**, which is the deck's own
 labelling, and `line:col` when one line carries two call sites.
 
-**TYPE SENSITIVITY IS NOT BUILT, AND THE REASON IS A MEASUREMENT.** The third `Select` variant is
-the receiver's *type*. A local's type is published nowhere this package can read — the type lens
-publishes only the module frame, so `src/flow` cannot ask what type a receiver has, and a variant
-that asked would have to invent one. It is left out rather than guessed at.
+**TYPE SENSITIVITY IS BUILT NOW, AND THE REASON IT WAS NOT IS STILL TRUE.** The third `Select`
+variant is the receiver's *type*, and it is now implemented: the receiver's **declared** type is
+readable — it is the annotation the receiver was bound with — so the variant asks a question this
+tree can answer. What is still not readable is the deck's own `InType`, the type *containing* the
+allocation site: `11-12_PTA-CS.pdf` p.171 is emphatic about it (*"InType(o3) = X (not Y!)"*), and
+that type is the class a method's body sits in — and this tree's AST has **no method bodies**, the
+parser reads past `impl`, `trait`, `struct` and `enum` declarations whole. So the variant uses the
+receiver's declared type, which is the same *kind* of abstraction — a type instead of an object —
+and the deck's own measurement is reproduced: three receivers of one type give **one** context
+where object sensitivity gives **three** (p.174). The earlier note here said the variant was left
+out because "a local's type is published nowhere this package can read"; that was true of the
+*inferred* type and not of the *declared* one, and the reading is built on the declared one.
 
 `src/flow/pta_demand.mbt` is the demand-driven reading, and it is the deck's p.76 **column**,
 reproduced: the client is *call graph construction*, the site of interest is *line 5* of the
@@ -1119,10 +1127,18 @@ too: the context-sensitive heap takes `n` from two objects to **one** (13 pairs 
 under a context-insensitive analysis it takes it **nowhere at all** — the same answer the ordinary
 heap gives, which is what *"Without C.S., C.S. heap cannot improve precision"* means.
 
-**AND IT STILL SPEAKS NO NEW FAMILY.** A graph, a call graph built on the fly and a
-heap are **measurements**, not a report: the family roster is unchanged at seventeen,
-and the three new readings are library-level analyses beside the other pointer
-readings.
+**AND THE THREE ABSTRACTIONS ARE COMPARED, NOT JUST OFFERED.** The same deck prints the three
+variants' contexts side by side (p.174): *"Object-sensitivity: o3, o5, [o7]"* against
+*"Type-sensitivity: [X]"*, and concludes that *"Type sensitivity is a coarser abstraction over
+object sensitivity"*. `src/flow/pta_variants.mbt` is that comparison, and this tree's reading
+prints the same table — `call-site: [4, 6, 8] | object: [o3, o5, o7] | type: [Y]` — and the
+merging is measured where it costs something: under the type variant the two invocations of one
+method are **one** state, so the parameter holds both objects and the two results are the same,
+where the call-site and the object variants keep them apart.
+
+**AND IT STILL SPEAKS NO NEW FAMILY.** A graph, a call graph built on the fly, a heap and a
+context are all **measurements**, and this tree's pointer analyses are library-level rather than
+part of the report pipeline. The family roster is unchanged at seventeen.
 
 ### And under the CFG there are basic blocks
 
@@ -1243,7 +1259,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1619/1619 on wasm; 1477/1477 on js and wasm-gc
+moon test --deny-warn                # 1625/1625 on wasm; 1483/1483 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

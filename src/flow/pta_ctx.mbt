@@ -135,11 +135,14 @@ pub type PtaContext = String
 /// p.99-115).
 ///
 /// THE THREE VARIANTS ARE THE DECK'S OWN (p.99 prints the list: "Call-site
-/// sensitivity / Object sensitivity / Type sensitivity"), except that TYPE
-/// sensitivity is not built here: a type context needs the receiver's TYPE, and
-/// this tree's type lens publishes only the module frame (`src/types/infer.mbt`
-/// 1202-1215), so a local's type is not available to an analysis in this
-/// package. The two that ARE built are the two the deck gives a FORMULA for.
+/// sensitivity / Object sensitivity / Type sensitivity"), and all three are
+/// built. The type variant's context is the RECEIVER'S DECLARED TYPE, and the
+/// deck's own `InType` -- the type CONTAINING the allocation site -- is not
+/// readable here: that type is the class a method's body sits in, and this
+/// tree's AST HAS NO METHOD BODIES (the parser reads past `impl`, `trait`,
+/// `struct` and `enum` declarations whole). The boundary is stated where the
+/// variant is built, and the deck's own MEASUREMENT -- three objects of one
+/// type collapsing into ONE context -- is reproduced.
 pub(all) enum CtxSelect {
   /// p.102: "Select _, _, _ = [ ]" -- every calling context is merged, and the
   /// slide says this "Can be seen as a special case of context sensitivity".
@@ -153,6 +156,12 @@ pub(all) enum CtxSelect {
   /// unbounded call string does not terminate (p.110-111's k-limiting), so the
   /// heap context is kept at k = 1 and the call string at k = 0.
   Object
+  /// p.170-171: "Each context consists of a list of types" -- the callee's
+  /// context is the receiver's TYPE, pushed onto the caller's type list the
+  /// way the call-site variant pushes the call site's label. `k` = 1 is the
+  /// deck's own reading: `Select _, _, c: o_i = [t_1, ..., t_k, InType(o_i)]`
+  /// truncated to the last `k`.
+  Type(Int32)
 }
 
 ///|
@@ -272,11 +281,16 @@ fn cs_push(ctx : PtaContext, site : String, k : Int32) -> PtaContext {
 /// for the object-sensitive variant an empty receiver set means the call has no
 /// heap context to give, so the CALLER'S CONTEXT is inherited instead -- the
 /// same fallback the call-site variant uses.
+///
+/// `recv_ty` is the RECEIVER'S DECLARED TYPE, which the type-sensitive variant
+/// (p.170-171) needs. It is empty when the receiver has no annotation, and the
+/// same fallback applies.
 fn cs_select(
   sel : CtxSelect,
   caller_ctx : PtaContext,
   site : String,
   recv : Map[String, Bool],
+  recv_ty : String,
 ) -> Array[PtaContext] {
   match sel {
     Insensitive => [""]
@@ -285,6 +299,20 @@ fn cs_select(
       let out : Array[PtaContext] = []
       for o, _ in recv {
         out.push(o)
+      }
+      if out.length() == 0 {
+        out.push(caller_ctx)
+      }
+      out
+    }
+    Type(k) => {
+      // THE RECEIVER'S TYPE IS THE CONTEXT, and the caller's type list is
+      // pushed the way the call-site variant pushes the call site's label.
+      // The deck's p.170 formula: "Select _, _, c: o_i = [t_1, ..., t_k,
+      // InType(o_i)]".
+      let out : Array[PtaContext] = []
+      if recv_ty != "" {
+        out.push(cs_push(caller_ctx, recv_ty, k))
       }
       if out.length() == 0 {
         out.push(caller_ctx)
@@ -451,14 +479,21 @@ pub(all) struct CsSite {
 }
 
 ///|
-/// The call sites of one function, in the order the CFG numbers them, each with
-/// its label.
+/// The call sites of one function, in SOURCE order, each with its label.
 ///
 /// THE LABEL IS THE LINE, and the deck's labels ARE lines: 11-12 p.104-115 call
 /// the three call sites 3, 9 and 15. A line that carries TWO call sites gets
 /// "line:column" for both of them, because one context per call site is the
 /// whole point of the call-site abstraction and two calls that share a line
 /// would otherwise share a context.
+///
+/// THE ORDER IS SOURCE ORDER and not the CFG's node order, and this is the
+/// trap `Cfg::source_order` exists for: `cfg_of` allocates its nodes BACK TO
+/// FRONT, so reading `kinds[0], kinds[1], ...` reads the body BACKWARDS. The
+/// measurement that caught it: the deck's own three call sites (p.174's
+/// "Contexts of foo(): o3, o5, [o7]") came out as "o7, o5, o3" -- the deck's
+/// own example, in reverse. The labels were right; only the ORDER was wrong,
+/// and the order is what the printed tables and the work list both read.
 fn cs_sites_of(g : Cfg) -> Array[CsSite] {
   let out : Array[CsSite] = []
   let counts : Map[String, Int32] = Map([])
@@ -476,8 +511,7 @@ fn cs_sites_of(g : Cfg) -> Array[CsSite] {
     }
     v = v + 1
   }
-  v = 0
-  while v < g.kinds.length() {
+  for v in g.source_order() {
     match cg_node_call(g.kinds[v]) {
       Some(c) => {
         let line = g.spans[v].start.line.to_string()
@@ -494,7 +528,6 @@ fn cs_sites_of(g : Cfg) -> Array[CsSite] {
       }
       None => ()
     }
-    v = v + 1
   }
   out
 }
@@ -668,7 +701,22 @@ pub fn pta_ctx_run_heap(
       } else {
         name_set_empty()
       }
-      let cctxs = cs_select(sel, ctx, site.label, recv)
+      // THE RECEIVER'S DECLARED TYPE, which the type-sensitive variant uses
+      // (11-12 p.170-171). It is the type the ANALYSIS KNOWS at this call
+      // site: the annotation the receiver was bound with.
+      //
+      // THE `if` IS A STATEMENT AND NOT AN EXPRESSION, for the same reason as
+      // the heap contexts above: an `if` used as a value is OUTSIDE the
+      // analysed subset, so the read of `declared` inside one is a read the
+      // analyzer never sees. New code does not introduce a new unread region.
+      let mut recv_ty = ""
+      if site.call.receiver != "" {
+        recv_ty = match declared.get(site.call.receiver) {
+          Some(t) => t
+          None => ""
+        }
+      }
+      let cctxs = cs_select(sel, ctx, site.label, recv, recv_ty)
       let mut t = 0
       while t < targets.length() {
         let callee = targets[t]

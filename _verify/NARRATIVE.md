@@ -17236,7 +17236,8 @@ every path it names has to exist in the tree -- which is what
                                                                           call graph built on the fly)
     11-12_PTA-CS.pdf (178p)     context sensitivity: the Select variants, 0575 (pta_ctx.mbt -- the CONTEXT cell's client), 0581
                                 k-limiting, the call rule, the CONTEXT-   (pta_heap_ctx.mbt -- the CONTEXT-SENSITIVE HEAP, both of
-                                SENSITIVE HEAP (p.28-56)                  the deck's p.56 columns)
+                                SENSITIVE HEAP (p.28-56), the TYPE        the deck's p.56 columns), 0582 (pta_variants.mbt -- the
+                                variant (p.170-176)                       TYPE variant and the three-way comparison)
 
 THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
 lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
@@ -18520,3 +18521,108 @@ THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
                            instructions 8,179 -> 8,196, variables 969 -> 976,
                            versions 2,424 -> 2,431, undef_uses 1,093 -> 1,111
     the test counts        1,613 -> 1,619 on wasm, 1,471 -> 1,477 on js and wasm-gc
+
+
+## 0582: THE THREE ABSTRACTIONS, COMPARED -- and the type variant the README said was not there
+
+THE FOURTH ABSENT CELL, and it is the other deck again: `11-12_PTA-CS.pdf` p.165-178 is about
+the RELATIONSHIP among the variants, and it says three things this tree had not measured.
+
+    p.165-166  "In theory, their precision is incomparable"  /  "In practice, object
+                sensitivity generally outperforms call-site sensitivity for OO languages"
+    p.170-171  TYPE SENSITIVITY: "Each context consists of a list of types"; "At a method
+                call, use the type containing the allocation site of the receiver object
+                with its heap context as callee context"; "A coarser abstraction over object
+                sensitivity"; "Select _, _, c: o_i = [t_1, ..., t_k, InType(o_i)]"
+    p.174-175  "Under the same k-limiting, the precision of type sensitivity is no better
+                than object sensitivity"; "Compared to object sensitivity, type sensitivity
+                trades precision for better efficiency, by merging the allocation sites in
+                the same type in contexts"
+
+### THE DECK'S OWN MEASUREMENT, AND IT IS THE CONTEXTS
+
+p.172-175 prints the deck's example -- three allocations of `Y` and three `foo()` calls -- and
+then prints the two CONTEXT SETS:
+
+    Object-sensitivity: o3, o5, [o7]
+    Type-sensitivity: [X]
+
+THAT IS A MEASUREMENT OF THE CONTEXTS, and this tree measures the same thing. The tree's
+reading prints:
+
+    call-site: [4, 6, 8] | object: [o3, o5, o7] | type: [Y]
+
+THE OBJECT COLUMN IS THE DECK'S OWN THREE OBJECTS, in the deck's own order -- `o3, o5, o7` --
+and the deck's type column is ONE context where the object column has three.
+
+### THE ORDER WAS WRONG FIRST, AND THE MEASUREMENT THAT CAUGHT IT
+
+The first run printed `object: [o7, o5, o3]` -- the deck's own example, IN REVERSE. THE CAUSE
+IS THE TRAP `Cfg::source_order` EXISTS FOR: `cfg_of` allocates a CFG's nodes BACK TO FRONT, so
+reading the nodes by index reads the body backwards, and the call sites were visited in
+descending line order. The labels were right; only the ORDER was wrong. `cs_sites_of` now
+reads the CFG through the tree's one definition of source order, and the deck's own order comes
+out.
+
+### THE MERGING IS MEASURED WHERE IT COSTS SOMETHING
+
+Three contexts and one context is a count, and a count is not a precision. THE COST IS VISIBLE
+IN THE POINTS-TO SETS: under the type variant the two invocations of one method are ONE state,
+so the parameter holds BOTH objects and the two results are THE SAME, where the call-site and
+the object variants keep them apart.
+
+    call-site reading   r1 -> {o3}    r2 -> {o6}     two states
+    object reading      r1 -> {o3}    r2 -> {o6}     two states
+    type reading        r1 -> {o3,o6} r2 -> {o3,o6} one state
+
+THAT IS THE DECK'S "merging the allocation sites in the same type in contexts" (p.175) MADE
+VISIBLE.
+
+### THE BOUNDARY OF THE TYPE CONTEXT, AND THE README CORRECTION THAT GOES WITH IT
+
+THE DECK'S CONTEXT IS `InType(o_i)` -- the type CONTAINING the allocation site -- and p.171 is
+emphatic about it: **"InType(o3) = X (not Y!)"**, where the object is a `Y` and the containing
+class is `X`.
+
+THAT TYPE IS NOT READABLE HERE, and the reason is the tree's own boundary and not a choice:
+it is the class a method's body sits in, and this tree's AST HAS NO METHOD BODIES -- the parser
+reads past `impl`, `trait`, `struct` and `enum` declarations whole. So the tree's type context
+is the RECEIVER'S DECLARED TYPE: the same KIND of abstraction -- a type instead of an object --
+and the deck's own measurement is reproduced.
+
+AND THE README SAID THE VARIANT WAS NOT BUILT, which was TRUE OF THE INFERRED TYPE AND NOT OF
+THE DECLARED ONE. That paragraph is corrected in place, in both languages, and the correction
+says which of the two it was.
+
+### WHAT IS NOT REPRODUCIBLE HERE, AND SAID SO
+
+The deck's p.177 ordering -- "Precision: object > type > call-site" and "Efficiency: type >
+object > call-site" -- is an EMPIRICAL finding on ten Java programs, measured in seconds of
+analysis time and in the number of may-fail casts and call-graph edges (Yue Li, Tian Tan, Anders
+Moller and Yannis Smaragdakis, "A Principled Approach to Selective Context Sensitivity for
+Pointer Analysis", TOPLAS 2020). This tree analyses MoonBit, has no Java corpus and has no
+may-fail-cast notion, so that ORDERING IS NOT REPRODUCED HERE. What IS reproduced is the
+RELATIONSHIP the ordering rests on: type sensitivity is a coarser abstraction over object
+sensitivity, and the call-site and object abstractions are incomparable in theory -- measured
+here as the two context sets being disjoint, so neither answer is a refinement of the other.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: the type-sensitivity variant and its test file.
+The seven corpora did not move at all -- each one still MATCHes its pinned baseline,
+MEASURED -- and the movement is therefore this tree's own code getting bigger.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        242 -> 244      (the type-sensitivity variant and its test file)
+    own-source notices    1,907 -> 1,914   (printed 157 -> 157, aggregated 1,750 -> 1,757)
+    the notice table       one `struct` declaration and six `test` declarations
+    the eight-tree total  23,252 -> 23,259  (the seven corpora did not move)
+    the eight-tree split   3,971 + 19,281 -> 3,971 + 19,288
+    the suppression pair     694 / 1343 -> 694 / 1343
+    the SSA cost            files 224 -> 226, functions 1,160 -> 1,174,
+                           partial 1,155 -> 1,169, declined 5,627 -> 5,650,
+                           instructions 8,196 -> 8,200, variables 976 -> 980,
+                           versions 2,431 -> 2,432, phis 886 -> 885,
+                           copies 2,133 -> 2,131, undef_uses 1,111 -> 1,117
+    the test counts        1,619 -> 1,625 on wasm, 1,477 -> 1,483 on js and wasm-gc

@@ -183,6 +183,8 @@ pub fn pta_bound_name(NodeKind) -> String
 
 pub fn pta_ctx_contexts(PtaCtxResult, String) -> Array[String]
 
+pub fn pta_ctx_contexts_text(PtaCtxResult, String) -> String
+
 pub fn pta_ctx_key(String, String) -> String
 
 pub fn pta_ctx_of(PtaCtxResult, String, String, String) -> Map[String, Bool]
@@ -242,6 +244,10 @@ pub fn pta_sweep(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]]
 pub fn pta_sweep_heap(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]], Map[String, Map[String, Bool]], Int32, Array[String]) -> Bool
 
 pub fn pta_text(Map[String, Map[String, Bool]]) -> String
+
+pub fn pta_variants_compare(Array[CgFn], TraitTable, String, CtxSelect) -> CtxVariants
+
+pub fn pta_variants_text(CtxVariants, String) -> String
 
 pub fn reaching_gen(Cfg) -> Array[Map[String, Bool]]
 
@@ -452,6 +458,13 @@ pub(all) enum CtxSelect {
   Insensitive
   CallSite(Int32)
   Object
+  Type(Int32)
+}
+
+pub(all) struct CtxVariants {
+  call_site : PtaCtxResult
+  object : PtaCtxResult
+  type_ctx : PtaCtxResult
 }
 
 pub(all) struct Dom {
