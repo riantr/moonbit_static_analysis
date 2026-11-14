@@ -51,6 +51,12 @@ pub fn cprop_text(Map[String, Cpv]) -> String
 
 pub fn cpv_text(Cpv) -> String
 
+pub fn def_key(String, Int32) -> String
+
+pub fn def_set_lattice() -> Lattice[Map[String, Bool]]
+
+pub fn def_set_text(Map[String, Bool]) -> String
+
 pub fn dominance_frontiers(Bb, Dom) -> Array[Array[Int32]]
 
 pub fn dominators(Bb) -> Dom
@@ -144,6 +150,18 @@ pub fn pta_run_flow_sensitive(Cfg) -> Array[Map[String, Map[String, Bool]]]
 pub fn pta_run_ordered(Cfg) -> Map[String, Map[String, Bool]]
 
 pub fn pta_text(Map[String, Map[String, Bool]]) -> String
+
+pub fn reaching_gen(Cfg) -> Array[Map[String, Bool]]
+
+pub fn reaching_in(Cfg, Array[Map[String, Bool]]) -> Array[Map[String, Bool]]
+
+pub fn reaching_kill(Cfg) -> Array[Map[String, Bool]]
+
+pub fn reaching_out(Cfg) -> Array[Map[String, Bool]]
+
+pub fn reaching_transfer(Array[Map[String, Bool]], Array[Map[String, Bool]]) -> (Int32, Map[String, Bool]) -> Map[String, Bool]
+
+pub fn reaching_use_defs(Cfg, Array[Map[String, Bool]]) -> Array[Array[String]]
 
 pub fn sign_add(Sign, Sign) -> Sign
 
@@ -424,6 +442,8 @@ pub(all) struct WidenResult[T] {
 }
 
 // Type aliases
+pub type DefSet = Map[String, Bool]
+
 pub type Pta = Map[String, Map[String, Bool]]
 
 pub type SignState = Map[String, Sign]

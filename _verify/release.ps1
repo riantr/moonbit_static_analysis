@@ -397,7 +397,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # source carries 1,806 (it carried 1,778). The twenty-eight notices are the
 # sign analysis's two source files and two test files, and the own-source table
 # below says which kinds they are.
-$NOTICE_TOTAL = '23151'
+# 0572. THE PIN MOVED AGAIN, 23,151 -> 23,162, and THE MOVEMENT IS AGAIN THIS
+# INCREMENT'S OWN SOURCE: the seven corpora carry 21,345 notices, exactly what
+# they carried before, and this repository's own source carries 1,817 (it
+# carried 1,806). The eleven notices are the reaching-definitions analysis's
+# two files, and the own-source table below says which kinds they are: six
+# `test` declarations, four anonymous function literals and one `type`
+# declaration.
+$NOTICE_TOTAL = '23162'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -457,8 +464,15 @@ $NOTICE_TOTAL = '23151'
 # per line, while the nineteen new `test` declarations, the new `Sign` enum and
 # the new `SignState` type sit outside every function's extent and are counted
 # by shape. The corpora did not move.
-$NOTICE_SPLIT_PRINTED = '3963'
-$NOTICE_SPLIT_AGGREGATED = '19188'
+# 0572. THE SPLIT MOVED WITH THE OWN SOURCE AGAIN: 3,963 + 19,188 ->
+# 3,967 + 19,195. The printed half grew by 4 and the aggregated half by 7, and
+# the two are the own-source table's two movements: the four CLOSURES the
+# reaching-definitions lattice and transfer build sit INSIDE a function's
+# extent, so they are printed one per line, while the six new `test`
+# declarations and the new `DefSet` alias sit outside every function's extent
+# and are counted by shape. The corpora did not move.
+$NOTICE_SPLIT_PRINTED = '3967'
+$NOTICE_SPLIT_AGGREGATED = '19195'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -493,10 +507,17 @@ $NOTICE_SPLIT_AGGREGATED = '19188'
 # lattice and the sign transfer build), `enum declaration` is 22 -> 23 (the
 # `Sign` enum) and `type declaration` is 3 -> 4 (the `SignState` alias). Every
 # other row is where it was.
-$SELF_FILES = '224'
-$SELF_NOTICES = 'anonymous function literal=41|const declaration=7|enum declaration=23|if expression=99|short lambda=8|struct declaration=70|test declaration=1553|try expression=1|type declaration=4'
-$SELF_PRINTED = '149'
-$SELF_AGGREGATED = '1657'
+# 0572. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source again: 224 -> 226 files (the reaching-definitions analysis and its
+# test file), 149 -> 153 printed, 1,657 -> 1,664 aggregated, and 1,806 -> 1,817
+# notices. The `test declaration` row is 1553 -> 1559 (the six new rows),
+# `anonymous function literal` is 41 -> 45 (the four closures the set lattice
+# and the transfer build), and `type declaration` is 4 -> 5 (the `DefSet`
+# alias). Every other row is where it was.
+$SELF_FILES = '226'
+$SELF_NOTICES = 'anonymous function literal=45|const declaration=7|enum declaration=23|if expression=99|short lambda=8|struct declaration=70|test declaration=1559|try expression=1|type declaration=5'
+$SELF_PRINTED = '153'
+$SELF_AGGREGATED = '1664'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -561,8 +582,19 @@ $SELF_AGGREGATED = '1657'
 # The corpora did not move at all: every one of the seven reads exactly what it
 # read before 0571, which is what says the movement is this package's own
 # source and not the lint changing its mind about other people's code.
+# 0572 MOVED IT AGAIN, 694/1,340 -> 694/1,342, and THE MECHANISM IS THE ONE
+# ABOVE rather than a defect: `reaching_transfer(gen, kill)` takes the two
+# arrays it is built from as PARAMETERS and reads them only inside the closure
+# it returns, which the lint cannot see with the region suppression off (+2
+# UnusedParam, both of them in `src/flow/reaching.mbt`). It is the shape 0545
+# measured for `live_transfer`, 0546 for `cprop_node_transfer` and 0571 for
+# `sign_transfer`, and it is what a transfer function that a solver takes as a
+# closure has to look like. The corpora did not move at all: every one of the
+# seven reads exactly what it read before 0572, which is what says the movement
+# is this package's own source and not the lint changing its mind about other
+# people's code.
 $SUPPOFF_LOCAL = '694'
-$SUPPOFF_PARAM = '1340'
+$SUPPOFF_PARAM = '1342'
 
 #   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
 #                 own source, measured by the scanner's own `--ssa-cost` mode
@@ -595,7 +627,15 @@ $SUPPOFF_PARAM = '1340'
 # uses. The sign domain and its emitter are the new source, and the corpus is
 # not part of this measurement at all -- it is over THIS repository's own
 # source, so the whole movement is this tree's own code getting bigger.
-$SSA_COST = 'files=206|unreadable=0|functions=947|converted=5|partial=942|declined=5039|instructions=7445|variables=827|versions=2063|phis=748|copies=1844|undef_operands=151|dead_blocks=383|undef_uses=986'
+# 0572. THE PIN MOVED AGAIN, and the movement is the SAME KIND: this
+# increment's own source grew. 206 -> 208 files, 947 -> 961 functions, 942 ->
+# 956 partial, 5,039 -> 5,080 statements the lowering declined, 7,445 -> 7,487
+# instructions, 827 -> 837 variables, 2,063 -> 2,087 versions, 748 -> 756
+# phis, 1,844 -> 1,860 copies and 151 -> 153 undefined operands. The
+# reaching-definitions analysis and its test file are the new source, and the
+# corpus is not part of this measurement at all -- it is over THIS repository's
+# own source, so the whole movement is this tree's own code getting bigger.
+$SSA_COST = 'files=208|unreadable=0|functions=961|converted=5|partial=956|declined=5080|instructions=7487|variables=837|versions=2087|phis=756|copies=1860|undef_operands=153|dead_blocks=383|undef_uses=986'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

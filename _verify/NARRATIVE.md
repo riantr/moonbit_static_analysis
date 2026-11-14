@@ -17077,3 +17077,190 @@ exists. It is updated, and the gate checks the new lines carry the named
 symbols.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0572: THE THIRD OF THE DECK'S THREE APPLICATIONS, AND THE MAP THAT NAMES EVERY DECK
+
+THE OPEN ITEM 0571 LEFT WAS NAMED: "THE OTHER DECKS ARE STILL OPEN, AND THE MAP SAYS
+WHICH. Reaching definitions (3-4) ... are all absent". This chapter is the first of
+those, and it carries the map that the record has been missing.
+
+### THE DECK, AND THE TRIO IT TEACHES
+
+`Data Flow Analysis -- Applications` (Yue Li, Nanjing University) is 302 pages and its
+contents name three applications:
+
+    1. Overview of Data Flow Analysis
+    2. Preliminaries of Data Flow Analysis
+    3. Reaching Definitions Analysis
+    4. Live Variables Analysis
+    5. Available Expressions Analysis
+
+THE OTHER TWO WERE ALREADY HERE. `src/flow/live.mbt` is the live-variables analysis
+(0545) and it SPEAKS -- MSA-015 DeadStore is its output; `src/flow/avail.mbt` is the
+available-expressions analysis (0545) and it SPEAKS too -- MSA-014 RedundantGuard is
+its output. So the trio was TWO THIRDS OF A WHOLE, and this increment is the third.
+
+### THE DEFINITION, THE GEN/KILL AND THE TRANSFER, WITH THE SLIDES THEY COME FROM
+
+p.39, verbatim:
+
+    A definition d at program point p reaches a point q if there is a path from p to q
+    such that d is not "killed" along that path.
+
+p.46, verbatim:
+
+    This statement "generates" a definition D of variable v and "kills" all the other
+    definitions in the program that define variable v, while leaving the remaining
+    incoming definitions unaffected.
+
+p.48:
+
+    OUT[B] = gen_B U (IN[B] - kill_B)
+
+It is a MAY analysis and a FORWARD one, so the join over the neighbours is a UNION and
+the neighbours are the PREDECESSORS. `src/flow/worklist.mbt`'s round-robin solver joins
+over whatever neighbours it is handed, so the forward analysis is the backward one with
+the other array -- which is what `live.mbt`'s header already says.
+
+### WHAT A DEFINITION IS, AND WHAT IT IS NOT
+
+A definition is a PAIR -- the variable and the statement -- and the sets carry it as the
+key `name@node`. The node index is what makes two definitions of the SAME variable two
+different definitions, which is the whole point of the analysis.
+
+A WRITE THROUGH A PLACE (`x.f = e`, `xs[i] = e`) is NOT a definition of the variable
+`x`: the deck's rule is stated over VARIABLES (p.40), and a field is not the variable.
+This is the same rule `node_defs` states for liveness, and for the same reason.
+
+THE KILL IS OVER THE WHOLE FUNCTION, not over the block: the deck says the statement
+kills all the other definitions IN THE PROGRAM that define variable v (p.46), and for an
+intraprocedural analysis the program is the function. So the universe is every node that
+defines the variable, and a node kills all of them but its own.
+
+### THE USE-DEF CHAIN, WHICH IS THE THING THE OTHER TWO DO NOT GIVE
+
+Liveness says whether a value is ever read. Availability says whether an expression was
+already computed. The use-def chain says WHICH WRITE a read observes, and it is the
+answer a reader asks when a value was not what they expected.
+
+THE SET OPERATIONS ARE NOT REWRITTEN. The carrier is a set of keys and the lattice is a
+powerset, so the three operations -- the empty set, the union and the equality -- are the
+three `live.mbt` already defines over `Map[String, Bool]`. They are reused rather than
+copied, because 0545's own lesson was that a second copy of the same three operations is
+how two definitions of "the set of names" start to disagree.
+
+### THE ROWS ARE THE DECK'S TWO TABLES
+
+`src/flow/reaching_test.mbt` asserts the deck's p.48 table block by block -- the four
+blocks, their gen sets and their kill sets -- and the deck's p.65 program statement by
+statement, with the eight definitions D1..D8. The p.48 rows are the stronger of the two,
+because the deck prints the BLOCK-level sets there and the block's set is the union of
+its statements' sets: the row asserts both, and the block's `kill_B1 = {d4,d5,d6,d7}`
+comes out of the three statements' kills without being written down twice.
+
+AND ONE ROW IS A TIMING CLAIM, because it is the one a reader is most likely to get
+wrong: a KILL TAKES EFFECT AFTER THE NODE. The old definition of `x` still REACHES the
+write that kills it, and the node's own definition is not in its own IN-set. Both of
+those were asserted the other way round first, and the fixed point is what refuted them.
+
+### WHY IT DOES NOT SPEAK, AND WHAT WOULD MAKE IT SPEAK
+
+IT DOES NOT SPEAK, and the reason is not that the analysis is incomplete.
+
+THE CLASS THE REACHING-DEFINITIONS ANALYSIS CLASSICALLY FEEDS IS THE DEAD STORE, and
+MSA-015 already speaks it -- through liveness, which answers the same question ("is this
+value read on any path?") with a cheaper analysis. The class that nothing else speaks,
+and that this analysis could, is A READ WITH NO REACHING DEFINITION: a name that is
+assigned somewhere in the function and read at a point where no definition of it reaches.
+
+THAT CLASS IS EMPTY IN MOONBIT, and the reason is the language's: a local must be
+initialised at its declaration, and the declaration's definition dominates every use of
+the name, so the reaching set of a local's read is never empty. What IS empty is the
+reaching set of a PARAMETER's read -- a parameter is defined by the CALLER, so no
+definition of it exists inside the function -- and that is not a defect, it is the same
+fact the sign analysis calls "unknown" (0571) and the constant propagation calls `NAC`.
+
+SO THE HONEST ANSWER IS THE ONE 0546 GAVE FOR THE INTERPROCEDURAL CONSTANT PROPAGATION:
+the analysis is built, pinned against the deck's own tables, and it emits no finding
+because there is no class here that is not already spoken and no class here that is
+not empty. The measurement that would change this is a corpus scan for the empty
+reaching set, and the analysis is now in place to run it.
+
+### THE MAP, WHICH THE RECORD DID NOT HAVE
+
+THE RECORD NAMED NO DECK FILE at all until 0570, and that is why this increment's own
+resource went stale: the deck-to-chapter map was reconstructed from page references
+rather than read from somewhere. It is here now, and it is a CLAIM ABOUT THE TREE, so
+every path it names has to exist in the tree -- which is what
+`_verify/check_readme_links.ps1` checks.
+
+    deck                        what it asks                                 where this tree has it
+    1_Intro.pdf (76p)           sound/complete/useful, the four ingredients,  0564 (the soundness
+                                precision-vs-cost, p.45's two applications     section, the four
+                                                                          ingredients), 0571 (the two
+                                                                          applications: MSA-016,
+                                                                          MSA-017)
+    2_IR.pdf (97p)              3AC, SSA, basic blocks                       src/flow/ir.mbt, ssa.mbt,
+                                                                          dom.mbt, ir_cfg.mbt, bb.mbt,
+                                                                          and the SSA-COST gate row
+    3-4_DFA-AP.pdf (302p)       reaching definitions, live variables,         0572 (reaching.mbt),
+                                available expressions                         0545 (live.mbt, avail.mbt)
+    5-6_DFA-FD.pdf (262p)       partial order, lattices, the DFA framework,   0545 (lattice.mbt,
+                                §10 constant propagation, §11 worklist       worklist.mbt, interval.mbt),
+                                                                          0546 (cprop.mbt)
+    7_Inter.pdf (108p)          §2 call graph (CHA), §3 ICFG, §4 interproc.   0546 (icfg.mbt, cprop.mbt,
+                                dataflow                                     worklist.mbt's solve_edges);
+                                                                          the CALL GRAPH is ABSENT --
+                                                                          it is the next increment
+    8_PTA.pdf (104p)            pointer analysis: rules, factors, statements  0547 (pta.mbt), 0548
+                                                                          (pta_flow.mbt)
+    9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4 with    the CLIENT for the
+                                method calls                                 context-sensitive and
+                                                                          demand-driven cells is
+                                                                          ABSENT -- it is the increment
+                                                                          after that
+
+THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
+lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
+whose contents are "1 Rules, 2 How to Implement, 3 Algorithms, 4 With Method Calls" --
+and it carries only section 1. 9-10's p.1-12 is the same content with the page numbers
+shifted by 92, and its §4 is the client 8_PTA's own lecture defers to (its p.94 and
+p.96). MEASURED: "storeless", "demand-driven" and "context sensitive" appear on ZERO
+pages of both files, so the cells 0558's table leaves empty are empty in the DECKS, not
+only in this tree -- which is what makes the boundary a measurement rather than an
+excuse.
+
+### THE PINS THAT MOVED
+
+THE OWN-SOURCE FILE COUNT, THE NOTICE TABLE AND ITS SPLIT, THE EIGHT-TREE TOTAL, THE
+SSA COST AND THE SUPPRESSION-OFF `UnusedParam` COUNT ALL MOVED, and every one of them
+moved because THIS INCREMENT'S OWN SOURCE grew: two files, six test rows, and the
+transfer factory's two parameters -- which are read only inside the closure it returns,
+so the lint cannot see them with the region suppression off. That is the mechanism 0545
+measured for `live_transfer`, 0546 for `cprop_node_transfer` and 0571 for
+`sign_transfer`, and the pin follows the measurement.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        224 -> 226      (the analysis and its test file)
+    own-source notices    1,806 -> 1,817    (printed 149 -> 153, aggregated 1,657 -> 1,664)
+    the notice table       `test` declaration 1553 -> 1559, `anonymous function
+                           literal` 41 -> 45, `type` declaration 4 -> 5
+    the eight-tree total  23,151 -> 23,162  (the seven corpora did not move)
+    the eight-tree split   3,963 + 19,188 -> 3,967 + 19,195
+    the suppression pair     694 / 1,340 -> 694 / 1,342
+    the SSA cost           206 files -> 208, 947 functions -> 961, 7,445
+                           instructions -> 7,487, 827 variables -> 837,
+                           2,063 versions -> 2,087, 748 phis -> 756,
+                           1,844 copies -> 1,860
+    the test counts        1,553 -> 1,559 on wasm, 1,411 -> 1,417 on js and wasm-gc
+
+### WHAT IS STILL OPEN
+
+THE CALL GRAPH (7_Inter §2), the context-sensitive and demand-driven pointer analyses
+(8_PTA's cells C1 and S2, with their client in 9-10 §4), and the storeless heap
+abstraction -- the one cell NO available deck defines, whose resolution is to PIN THE
+BOUNDARY rather than invent the option.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
