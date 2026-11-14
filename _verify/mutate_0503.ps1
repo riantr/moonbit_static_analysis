@@ -3,7 +3,7 @@
 # WHAT THIS INCREMENT IS. `-> Int raise?` marks a raise as OPTIONAL, and the
 # toolchain accepts it -- but the analyzer stopped at the `?` in every position
 # except the function-TYPE one. The reach was 162 return-position sites in 31
-# files, ALL of them in moonbitlang/core 0.1.20260920+7d59c7ec9, and zero in the
+# files, ALL of them in moonbitlang/core 0.1.20261105+65efd5b93, and zero in the
 # other six corpora and zero in this analyzer's own source. Three real core
 # files -- array.mbt, option.mbt, result.mbt -- scanned ALONE came back
 # `PARSED 0/3 files understood (0.0%)` with the error `unexpected token `?``.

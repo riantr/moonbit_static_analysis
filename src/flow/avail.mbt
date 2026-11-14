@@ -190,6 +190,13 @@ fn collect_avail(e : @ast.Expr, out : Array[AvailExpr]) -> Unit {
         @ast.ECatch(a, arms) | @ast.ENoRaise(a, arms) => {
           collect_avail(a, out)
           for arm in arms {
+            // The arm's GUARD, for the reason the match arm's guard is
+            // collected: it is an expression, and an expression can carry an
+            // available expression inside it.
+            match arm.cond {
+              Some(c) => collect_avail(c, out)
+              None => ()
+            }
             collect_avail_stmts(arm.body, out)
           }
         }

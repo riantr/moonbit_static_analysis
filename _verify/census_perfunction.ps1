@@ -57,15 +57,22 @@ $C = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
-  'moonbit_core'    = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
 }
 
 # --- the families, by pattern -------------------------------------------------
 # Each entry is: Name, Then (a regex on the MESSAGE), What (the claim).
 $FAMILIES = @(
+  # 0570. THIS FAMILY MUST NOT FIRE ANY MORE, and the row is KEPT so that it
+  # fires again the moment it does. The lexer reads a hex float as ONE literal
+  # now (`0x1.0p54` is a float and not an integer followed by the name `p54`),
+  # so the exponent part cannot leak a name -- and a census that deleted the row
+  # would report a hex float that leaked a name again as UNCLASSIFIED, which
+  # reads as "the census found something it could not name" rather than as the
+  # regression it is.
   @{ Name = 'A  a hex float literal is not read'
      Then = "^undefined (variable|name) '(p1023|p|P|F6A8885A308CA8A54)'"
-     What = 'the lexer reads 0x1.0p1023 as 0x1 followed by an identifier, so the exponent part is reported as an undefined name' }
+     What = 'the lexer reads 0x1.0p1023 as 0x1 followed by an identifier, so the exponent part is reported as an undefined name -- FIXED in 0570, so this row must stay empty' }
   @{ Name = 'B  a BigInt literal''s N suffix is not read'
      Then = "^undefined (variable|name) 'N'"
      What = '0N and -1N are BigInt literals; the suffix N is read as a name' }
@@ -78,9 +85,13 @@ $FAMILIES = @(
   @{ Name = 'E  a * on a struct'
      Then = "^no method matching \*\(Struct"
      What = 'the operands are a struct and the operator table has no * for it' }
+  # 0570. THE MODULE-QUALIFIER HALF OF THIS FAMILY IS FIXED: `@pkg/path` is one
+  # name now, so `undefined variable 'strconv'` -- the last segment of a package
+  # path read as a division and a name -- cannot be manufactured any more. The
+  # row stays, because the other three halves are still true.
   @{ Name = 'F  a name the analyzer cannot see'
      Then = "^undefined function '(makei|X::arbitrary|T::range|T::direction|Array::unsafe_make_uninit)'|^undefined variable 'strconv'"
-     What = 'a helper in another file of the same package, a type parameter''s method, an internal API absent from the .mbti index, or the module qualifier of @pkg.name' }
+     What = 'a helper in another file of the same package, a type parameter''s method, an internal API absent from the .mbti index, or the module qualifier of @pkg.name -- the qualifier half was FIXED in 0570' }
   @{ Name = 'G  unreachable code'
      Then = '^unreachable code'
      What = 'the lens says the statement cannot be reached' }

@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Continue'
 #
 # MEASURED, on the pinned corpus, 2026-10-24:
 #   * `-> T raise?` in a RETURN position: 162 sites in 31 files, ALL of them in
-#     moonbitlang/core 0.1.20260920+7d59c7ec9. Zero in the other six corpora and
+#     moonbitlang/core 0.1.20261105+65efd5b93. Zero in the other six corpora and
 #     zero in this analyzer's own source, so fixing it moves ONE corpus row and
 #     nothing else.
 #   * three real core files carrying it -- array.mbt, option.mbt, result.mbt --

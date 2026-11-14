@@ -78,16 +78,24 @@ if (-not (Test-Path -LiteralPath $moonrun)) {
 # PRINTED -- so the printed count is 1144 + 18 = 1162 and the aggregated count
 # is UNCHANGED, because a low-confidence finding is specific (a name, at a
 # line) and is never aggregated into a shape.
-$WANT_CORE_TOTAL   = 10114   # the notices in the pinned core corpus
-$WANT_CORE_AGGREG  = 8952    # of them, outside every function's extent
-$WANT_CORE_PRINTED = 1162    # of them, printed per line
-$WANT_CORE_FILES   = 1029    # files in the pinned corpus
+# 0570. THE CORPUS MOVED, and the flood moved with it: the re-pin to
+# `moonbitlang/core 0.1.20261105+65efd5b93` brought a corpus that is 650 files
+# larger. 10,114 -> 13,520 notices, 8,952 -> 11,815 of them outside every
+# function's extent, 1,162 -> 1,705 of them printed per line.
+$WANT_CORE_TOTAL   = 13520   # the notices in the pinned core corpus
+$WANT_CORE_AGGREG  = 11815   # of them, outside every function's extent
+$WANT_CORE_PRINTED = 1705    # of them, printed per line
+$WANT_CORE_FILES   = 1679    # files in the pinned corpus
 # The corpus SUMMARY as `_verify/release.ps1` pins it. These three are the
 # same measurement: the settle scans the corpus the way the release gate
 # scans it, so these numbers and the gate's corpus pins are one number each,
 # not two that have to be kept in step by hand.
-$WANT_CORE_ACTIONABLE = 33
-$WANT_CORE_PARSED    = 984
+# 0570. The corpus moved and these three did not move with it: 1,029 files ->
+# 1,679, 984 parsed -> 1,621, 33 actionable -> 30. They are the same three
+# numbers the release gate's corpus stage pins, read here so the settle and
+# the gate cannot drift apart.
+$WANT_CORE_ACTIONABLE = 30
+$WANT_CORE_PARSED    = 1621
 
 $fail = 0
 $rows = 0
@@ -328,7 +336,7 @@ if ($smallNotices -lt $bigNotices) {
 }
 
 # --- N9: the corpus --------------------------------------------------------
-$core = Join-Path $repos 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+$core = Join-Path $repos 'moonbitlang\core\0.1.20261105+65efd5b93'
 if ($Tree -ne '') { $core = $Tree }
 if (-not (Test-Path -LiteralPath $core)) {
   Say-Bad 'N9' 'the pinned corpus' 'absent' 'the corpus is not there'

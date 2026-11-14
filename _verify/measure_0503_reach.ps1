@@ -23,7 +23,7 @@ $ErrorActionPreference = 'Continue'
 #
 # THE RULE, precisely:
 #
-#   1. The corpus is the PINNED one: moonbitlang/core 0.1.20260920+7d59c7ec9,
+#   1. The corpus is the PINNED one: moonbitlang/core 0.1.20261105+65efd5b93,
 #      `.mbt` files only. The `.mbti` interface files carry `raise?` too (332
 #      return-position sites in 38 files) but they were CLEAN under 0.4.34 as
 #      well -- the analyzer reads an interface file's declarations without
@@ -153,7 +153,7 @@ $wantFiles = [int]$pinM.Groups[2].Value
 $wantOthers = [int]$othM.Groups[1].Value
 
 # --- the measurement ---------------------------------------------------------
-$core = Join-Path $repos 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+$core = Join-Path $repos 'moonbitlang\core\0.1.20261105+65efd5b93'
 if ($Tree -ne '') { $core = $Tree }
 if (-not (Test-Path -LiteralPath $core)) {
   Write-Output ('FAIL: the corpus is not there: ' + $core)

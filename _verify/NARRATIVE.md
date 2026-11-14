@@ -7519,22 +7519,38 @@ The measured reach, under a rule that is written down in the settle and defended
 control fixture whose answer is known by construction:
 
 ```
-    0505 the corpus reach, package-level calls   : 19843
-    0505 the corpus reach, unchecked calls        : 16250
-    0505 the corpus reach, files carrying them    : 657
-    0505 the corpus reach, unchecked share        : 81.9
-    0505 the interface population, files          : 159
-    0505 the interface population, `pub fn`       : 2116
+    0505 the corpus reach, package-level calls   : 30287
+    0505 the corpus reach, unchecked calls        : 24894
+    0505 the corpus reach, files carrying them    : 1160
+    0505 the corpus reach, unchecked share        : 82.2
+    0505 the interface population, files          : 132
+    0505 the interface population, `pub fn`       : 1407
 ```
 
-That is the pinned `moonbitlang/core 0.1.20260920+7d59c7ec9`, and the rule is: a
+That is the pinned `moonbitlang/core 0.1.20261105+65efd5b93`, and the rule is: a
 package-level call is a call to a name declared by a top-level `fn` in some `.mbt` file
 of the corpus or by a `pub fn` in some `.mbti` of it; it is CHECKED when the calling
 file itself declares that name, and UNCHECKED otherwise; declarations are not calls, and
-comments and string and character literals are not code. **81.9% of the package-level
-calls in the pinned corpus have their arity and argument types unchecked**, across 657
-files. The 159 `.mbti` files carry 2,116 `pub fn` declarations, and every one of them
+comments and string and character literals are not code. **82.2% of the package-level
+calls in the pinned corpus have their arity and argument types unchecked**, across 1,160
+files. The 132 `.mbti` files carry 1,407 `pub fn` declarations, and every one of them
 reaches the analyzer as a name and nothing else.
+
+**0570. THE TWO NUMBERS ABOVE THAT MOVED FOR A REASON THE OTHER FOUR DID NOT.** The
+reach moved because the corpus moved: the re-pin to `0.1.20261105+65efd5b93` brought a
+corpus that is 650 files larger, and every one of the first four numbers is that. The
+interface population moved for a second reason, and it is a DEFECT in this counter that
+the corpus move exposed: the count walked the corpus recursively and counted the
+`_build` directory with it, and `_build` holds a build-time COPY of every package's
+`pkg.generated.mbti`. So every interface file was counted TWICE, and the count
+depended on whether somebody had built the corpus locally -- which is not a property
+of the corpus at all. Measured on the pinned core: 263 `.mbti` files and 2,812 `pub fn`
+declarations WITH the build copies, 132 and 1,407 without them -- the same 132 files,
+counted twice. The counter now excludes `_build`, the way the analyzer's own walker
+does (`src/sa/main.mbt:1217`), so the population is the corpus's OWN interface files
+and the number is the same on a clean checkout as on a built one. The old corpus had
+the same defect: its 159 files and 2,116 declarations were 80 and 1,058 counted
+twice.
 
 **AND THE LAST CLAUSE WAS WRONG, AND IT WAS WRONG ABOUT THE ANALYZER, NOT ABOUT THE
 FORMAT.** "Reaches the analyzer as a name and nothing else" is true of the SYMBOL
@@ -7750,7 +7766,7 @@ And the first thing transfer 1 has to settle, before it settles anything else, i
 question this section has NOT answered: **what does the analyzer do about a call it
 cannot check?** Silence, a low-confidence finding, or a separate "unchecked" count are
 three different products, with three different costs, and they disagree about what a
-`CLEAN` file means. The measurement says the problem is large -- 81.9% of the
+`CLEAN` file means. The measurement says the problem is large -- 82.2% of the
 package-level calls in the pinned corpus. It does not say which of the three answers to
 build, and writing that down here would be exactly the kind of number-without-a-rule
 this project keeps correcting.
@@ -16621,5 +16637,221 @@ Reporting the division needs a family of its own -- a claim ("this expression ca
 produce a value") that none of the fifteen makes -- with an id that is never renumbered,
 both README tables, the census list, and an audit of every finding it adds, one at a time.
 The negative array index is the other half of the lecture's pair, and it is untouched.
+
+**NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
+
+## 0570: THE ROW THAT WAS RED SINCE 0.4.43, AND THE RE-PIN THAT TURNED IT GREEN
+
+THE USER PICKED THE RED ROW OUT OF THE GATE LOG AND ASKED WHETHER IT COULD BE
+FIXED. The row was the per-function census control, and it had been red since
+0.4.43. The answer was YES, and it was not the answer anybody expects: the row
+was not an analyzer defect at all. It was the CORPUS.
+
+### WHAT THE RED ROW SAID
+
+The control proves that every file carrying an actionable finding in the pinned
+core corpus is READ by `moon check`: it appends a deliberate type error to each
+of those files, one at a time, in a COPY, and requires the error back for THAT
+file. Its baseline is the corpus's own state, and the baseline failed:
+
+    BASELINE FAILED: the corpus has errors beyond the one this control knows: abort/pkg.mbti:4
+
+### AND THE CAUSE, MEASURED RATHER THAN GUESSED
+
+`moon check --target all` on a clean copy of the pinned core
+(`moonbitlang/core 0.1.20260920+7d59c7ec9`) exits in 1.2 seconds with exactly
+ONE diagnostic, and it is `abort/pkg.mbti:4`:
+
+    Error: [4032]
+       [ .../abort/pkg.mbti:4:13 ]
+     4 | fn[T] abort(String) -> T
+                               鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+                                   鈺扳攢鈹€鈹€鈹€鈹€鈹€ The type String is undefined.
+
+`abort` is the module's ROOT: `builtin/moon.pkg` imports `moonbitlang/core/abort`,
+so the module's primitive vocabulary is introduced in a file that the toolchain
+now type-checks in an environment where those primitives are not in scope. The
+checker BAILS on it before it type-checks any other package -- so every probe
+came back carrying that one error, and the probe's own deliberate error never
+appeared at all. The control was not lying. It said the corpus had an error it
+did not know about, and the corpus had one.
+
+**THE SAME CORPUS, CHECKED BY THE TOOLCHAIN'S OWN BUNDLED COPY, IS CLEAN** --
+exit 0, 27.9 seconds. So the defect was in the PINNED CORPUS, not in the
+toolchain and not in this analyzer.
+
+### THE RE-PIN
+
+`moonbitlang/core 0.1.20261105+65efd5b93` is a corpus this toolchain can check
+END TO END. Measured, on a copy:
+
+    moon check --target all      exit 0, 0 errors, 0 warnings ("ran 1337 tasks")
+
+The control was then REBUILT rather than re-pointed, because a control that
+expects "exactly one known error" is a control that will go red on the next
+corpus that has none -- which is the corpus this one is. The new baseline
+requires a CLEAN corpus (exit 0, zero attributed errors, zero unattributed
+errors), it tries ONE batched probe first and falls back to a per-file loop for
+the files the batch could not answer, and it requires the clean baseline back
+after the restore.
+
+    GATE OK -- 17 of 17 files read, corpus clean.
+
+**THE BATCH ANSWERED ONE FILE OF SEVENTEEN, AND THAT IS NOT A DEFECT IN THE
+BATCH.** `moon check` skips every package whose dependency failed, so one
+diagnostic anywhere removes most of the corpus from the run. With a CLEAN corpus
+the batch works; with a dirty one it cannot, and the per-file loop is the
+measurement. The control now says so in its own output rather than leaving a
+reader to wonder why the fast path is not used.
+
+### THE RE-PIN MOVED EVERY CORPUS NUMBER, SO EVERY ONE WAS RE-MEASURED
+
+A re-pin is not a version bump; it is a new corpus, and every number derived
+from the corpus is a new number. Nothing was carried over and nothing was
+guessed. The module view, the seven corpora:
+
+    corpus            files parsed actionable notices unreliable withheld unchecked total
+    moui                608    608          0    3457          0        0      7678  3457
+    moonbit_labeler     37     37          1     698          0        0      1340   699
+    moonbit_image       18     18          0     186          0        0       755   186
+    async              419    419          0    1656          0        0      2879  1656
+    proton             137    137          0    1799          0        0      2901  1799
+    proton_contract      4      4          0      29          0        0        12    29
+    moonbit_core      1679   1621         30   13520        816      103    14322 14366
+
+and the per-function census over the same seven:
+
+    actionable   47   (moonbit_core 46, moonbit_labeler 1)
+    demoted      17   (moonbit_core 17)
+    families     C 6, D 4, E 3, G 8, H 1, I 1, J 1, K 3, M 20
+    demoted      B 8, F 1, L 8
+    every actionable finding and every demoted finding landed in a named family
+
+The demoted set went 22 -> 17 and the actionable set 51 -> 47, and BOTH moved
+for the same reason: the corpus is a different corpus.
+
+### THE 0508 BLOCK, AND WHY IT IS NOT WHAT IT WAS
+
+The 0508 chapter's eight-tree block is a HISTORICAL record of what 0508
+measured, and it stays where it is -- a past increment's measurement is a fact
+about that increment. But the INSTRUMENT that produced it has since been
+REPAIRED, and its own-source half was wrong in a way that made the number
+irreproducible from a clean checkout.
+
+`measure_0508_unchecked.ps1` scans the repository's own source as the eighth
+tree. It scanned the WHOLE repository, `_verify` included -- and `_verify` holds
+the release gate's own scratch copies, which are not this project's source. The
+analyzer's own walker excludes `_verify` (`src/sa/main.mbt:1217`, for the reason
+recorded at 0542: the published file count has to be reproducible from a clean
+checkout), so the instrument and the gate were measuring DIFFERENT trees and
+calling them the same one. The control did not catch it: the control compares
+the split against the SUMMARY OF THE SAME TREE, and this was a different tree.
+
+With `_verify` excluded, the instrument's own-source row agrees with the gate's
+published one exactly -- 220 files, 3,257 unchecked calls -- and the eight trees
+read 33,144 rather than 35,342. The instrument's own control still holds: the
+split accounts for every unchecked call the shipped SUMMARY counted.
+
+### THE 0505 COUNTER, AND A NUMBER THAT DEPENDED ON SOMEBODY ELSE'S BUILD
+
+The 0505 reach counter walks the corpus recursively and counts the `.mbti`
+files it finds -- and it counted the `_build` directory with it. `_build` holds
+a build-time COPY of every package's `pkg.generated.mbti`, so every interface
+file was counted TWICE, and the count depended on whether somebody had built
+the corpus locally, which is not a property of the corpus at all.
+
+Measured on the pinned core: 263 `.mbti` files and 2,812 `pub fn` declarations
+WITH the build copies, 132 and 1,407 without them -- the same 132 files,
+counted twice. The OLD corpus had the same defect: its 159 files and 2,116
+declarations were 80 and 1,058 counted twice. The counter now excludes
+`_build`, the way the analyzer's own walker does, so the population is the
+corpus's OWN interface files and the number is the same on a clean checkout as
+on a built one.
+
+**A NUMBER THAT CHANGES WHEN SOMEBODY ELSE RUNS A BUILD IS NOT A NUMBER ABOUT
+THE CORPUS.** It is a number about the corpus plus the state of a build
+directory, and it was published as the first.
+
+### THE 0506 SETTLE'S OWN PINS, WHICH HAD NOT MOVED WITH THE CORPUS
+
+The 0506 settle pins the corpus's file count, its parsed count and its
+actionable count, and all three still carried the OLD corpus's values -- 1,029
+files, 984 parsed, 33 actionable -- while the corpus it scans had 1,679 files,
+1,621 parsed and 30 actionable. The settle's notice pins had been re-pointed at
+the new corpus; these three had not, and they are the ones the corpus stage
+compares the SUMMARY against. They were re-pinned from the measurement, in the
+same commit, and the settle's row N9 now reads:
+
+    the pinned corpus: 1679 files, 13520 notices, 1705 printed, 11815 aggregated (87.4%)
+
+### WHAT DID NOT MOVE
+
+    the analyzer's own source      220 files, parsed 220, actionable 0, notices 1778
+                                   (142 printed + 1636 aggregated), unchecked 3257
+    the family roster              15 families, 5 names differing from their tag
+    the confidence axis            3 values
+    the two READMEs                6 relative links each, 0 broken
+
+### AND WHAT THE RE-PIN FOUND IN THE ANALYZER, WHICH WAS NOT A RE-PIN FINDING
+
+The new corpus surfaced FIVE findings the census could not classify, and the
+rule this project has always applied is that a false positive is FIXED, never
+pinned and never catalogued away. All five were false positives, and all five
+traced to three frontend defects:
+
+  * THE LEXER read `0x1.0p54` as the integer `0x1` followed by the name
+    `p54`, so every hex float's exponent became an undefined name. It now
+    reads a hex float as ONE literal, with the value the toolchain computes
+    for it -- measured against the toolchain on ten literals, from
+    `0x1.0p54` = 18014398509481984 to `0x1.0p-1022` = 2.2250738585072014e-308.
+  * THE LEXER read `@encoding/utf8` as three tokens, so a package-qualified
+    name was reported as an undefined one. It is now ONE name token, and a `/`
+    after an `@`-name is a path separator and never division -- measured: the
+    toolchain says "package encoding/utf8 is not imported" for the call and
+    gives a parse error for `@encoding / 2`.
+  * THE PARSER did not read a catch arm's GUARD, so the handler's body was
+    skipped and the enclosing function's parameter reads were invisible. The
+    guard is now parsed as an expression, walked, and its names are collected.
+
+Measured on the core corpus, before and after: 25 findings gone, 8 new (the
+new ones are "outside the analyzed subset" notices that moved position
+because the parse changed), actionable 49 -> 46, demoted 34 -> 17. The two
+files that left the actionable set are `async/fs/file.mbt` and `math/trig.mbt`.
+
+**THE ROW THAT WAS THERE TO CATCH THE HEX FLOATS IS NOW EMPTY, AND IT STAYS IN
+THE CENSUS.** Family A is kept as a regression detector: deleting it would make
+a hex float that leaks a name again read as "the census found something it
+could not name" rather than as the regression it is.
+
+**AND EACH FIX IS PINNED BY A TEST THAT WAS SHOWN TO GO RED.** Fourteen rows
+were added (`src/lexer/lexer_0570_test.mbt`, `src/pipeline/pipeline_0570_test.mbt`).
+With the six source files reverted to their PRE-FIX blobs (`8a06e98`, the commit
+before this one), NINE of the fourteen went red; the five that stayed green are
+the negative controls and the boundary rows, which are supposed to stay green.
+The six files were then restored byte-for-byte from the committed blob and the
+suite returned to 1534/1534 on wasm, 1392/1392 on js and 1392/1392 on wasm-gc.
+
+**AND THE COUNT ABOVE WAS WRONG THE FIRST TIME IT WAS WRITTEN DOWN.** This
+section first said thirteen rows and eight red, from a measurement taken when
+the fourteenth row had not been added yet. It was re-measured against the FINAL
+tree -- fourteen rows, nine red, five green -- and the sentence was corrected in
+place, because a number written down here is a number a reader can check, and a
+stale number is worse than no number.
+
+### WHAT IS STILL OPEN
+
+**THE TWO APPLICATIONS THE LECTURE NAMES ARE STILL NOT REPORTED.** The tool no
+longer DIES on the division, and that is all 0568 did: `w / 0` and `arr[-1]`
+are still reported by NOBODY. Reporting the division needs a family of its own
+-- a claim ("this expression cannot produce a value") that none of the fifteen
+makes -- with an id that is never renumbered, both README tables, the census
+list, and an audit of every finding it adds, one at a time. The negative array
+index is the other half of the lecture's pair, and it is untouched.
+
+**AND THE ATTACHMENT'S OWN RESOURCE POINTS AT THE PREVIOUS DECK.** The goal
+this increment ran under named `8_PTA.pdf`; the deck this tree has been
+following is `1_Intro.pdf` (Nanjing University, *Static Program Analysis*, Yue
+Li, Fall 2026), and 0564's map is that deck's. Both files are on disk. The
+resource is stale, and the work is not.
 
 **NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.

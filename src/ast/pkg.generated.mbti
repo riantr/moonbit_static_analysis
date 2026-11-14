@@ -39,6 +39,7 @@ pub fn BOp::symbol(Self) -> String
 pub(all) struct CatchArm {
   span : @core.Span
   bindings : Array[String]
+  cond : Expr?
   body : Array[Stmt]
 }
 

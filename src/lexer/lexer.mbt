@@ -682,6 +682,72 @@ fn Lexer::lex_number(self : Lexer) -> Tok {
   // Checked only when digits were actually consumed, so `0.foo` is not read as
   // a float.
   let mut is_float = false
+  // A HEX FLOAT: `0x1.0p54`, `0x1.8`, `0x1.0p-1022`. It is read HERE, as ONE
+  // literal, and that is the whole fix: without it `0x1.0p54` was read as the
+  // integer `0x1`, then a field access, then the identifier `p54` -- and the
+  // analyzer reported that identifier as an undefined name.
+  //
+  // MEASURED against the toolchain (moon 0.1.20261104, 940aa18), one form per
+  // package, each value printed by the compiler itself:
+  //
+  //   0x1.0p54             ACCEPTS   18014398509481984      (= 2^54)
+  //   0x1.8p0              ACCEPTS   1.5
+  //   0x1.0p-2             ACCEPTS   0.25
+  //   0x0.8p1              ACCEPTS   1
+  //   0x1.0p+0             ACCEPTS   1
+  //   0x1.71547652b82fep+0 ACCEPTS   1.4426950408889634
+  //   0x1.0p1023           ACCEPTS   8.98846567431158e+307
+  //   0x1.0p-1022          ACCEPTS   2.2250738585072014e-308
+  //   0x1.8                ACCEPTS   1.5     <- the `p` exponent is OPTIONAL
+  //   0x1p3                REJECTS   "Parse error, unexpected token id
+  //                                      (lowercase start)"
+  //
+  // THE LAST ROW IS THE BOUNDARY, and it is the toolchain that draws it: the
+  // FRACTION is what makes a hex literal a float, and the `p` exponent may
+  // follow it. `0x1p3` is neither a float nor an integer -- it is a parse
+  // error -- so the analyzer reads it as the integer `0x1` and the name `p3`,
+  // which is honest: the file does not compile.
+  //
+  // The fraction is read only when a HEX DIGIT follows the `.`, so `0xFF.` and
+  // `0x1.to_string()` keep their field access, and only when the literal
+  // really is a hex one -- `base == 16` and digits were consumed.
+  let mut is_hex_float = false
+  if base == 16 &&
+    any &&
+    self.pos + 1 < n &&
+    self.chars[self.pos] == '.' &&
+    digit_value(self.chars[self.pos + 1], 16) >= 0 {
+    is_hex_float = true
+    is_float = true
+    self.pos += 1
+    self.col += 1
+    while self.pos < n &&
+          (
+            digit_value(self.chars[self.pos], 16) >= 0 ||
+            self.chars[self.pos] == '_'
+          ) {
+      self.pos += 1
+      self.col += 1
+    }
+    // THE `p` EXPONENT, in DECIMAL digits with an optional sign. It belongs to
+    // the literal, so it is consumed with it -- and only when digits actually
+    // follow the sign, so a `p` that is not an exponent is left alone.
+    if self.pos < n &&
+      (self.chars[self.pos] == 'p' || self.chars[self.pos] == 'P') {
+      let mut probe = self.pos + 1
+      if probe < n && (self.chars[probe] == '+' || self.chars[probe] == '-') {
+        probe += 1
+      }
+      let digits_at = probe
+      while probe < n && is_digit(self.chars[probe]) {
+        probe += 1
+      }
+      if probe > digits_at {
+        self.col += probe - self.pos
+        self.pos = probe
+      }
+    }
+  }
   if any && base == 10 && self.pos < n && self.chars[self.pos] == '.' {
     let mut probe = self.pos + 1
     while probe < n && is_digit(self.chars[probe]) {
@@ -737,7 +803,14 @@ fn Lexer::lex_number(self : Lexer) -> Tok {
   let text = self.slice(start, self.pos)
   let len = self.pos - start
   if is_float {
-    let f = parse_double(text)
+    // A HEX FLOAT is valued by its own reader, because its mantissa is a hex
+    // integer and its exponent is decimal: `parse_double` would read `0x1.8` as
+    // the decimal `0` with an `x1.8` tail.
+    let f = if is_hex_float {
+      parse_hex_double(text)
+    } else {
+      parse_double(text)
+    }
     self.emit(TFloat(f), l, c0, len)
     TFloat(f)
   } else {
@@ -1833,14 +1906,53 @@ fn Lexer::lex_name(self : Lexer) -> (Tok, Int32, Int32, Int32) {
   let l = self.line
   let c0 = self.col
   let start = self.pos
+  let mut is_alias = false
   if self.chars[self.pos] == '@' {
     self.pos += 1
     self.col += 1
+    is_alias = true
   }
   while self.pos < self.chars.length() &&
         (is_letter(self.chars[self.pos]) || is_digit(self.chars[self.pos])) {
     self.pos += 1
     self.col += 1
+  }
+  // A PACKAGE PATH: `@encoding/utf8`, `@immut/hashmap`, `@scope/name`.
+  //
+  // The whole path is ONE name token, and that is what the toolchain does.
+  // MEASURED against moon 0.1.20261104 (940aa18), one form per package:
+  //
+  //   @encoding/utf8.encode("x")
+  //       -> "Cannot use @encoding/utf8: package encoding/utf8 is not imported."
+  //
+  // The error names the WHOLE path, so the toolchain read the whole path as the
+  // qualifier -- and it read `@encoding` alone as a qualifier in the second
+  // probe, where the `/` was followed by a space and a number:
+  //
+  //   @encoding / 2
+  //       -> "Parse error, unexpected token infix 3, you may expect `.` id
+  //          (lowercase start)."
+  //
+  // So a `/` after an `@`-name is a PATH SEPARATOR and never a division: the
+  // toolchain refuses to divide by a package, and the analyzer reading it as a
+  // division is what produced `undefined variable 'utf8'` on
+  // moonbitlang/core `archive/zip/writer.mbt:194` -- the `utf8` was the last
+  // segment of a PACKAGE PATH, not a variable.
+  //
+  // A path segment starts with a letter, so a `/` that is followed by anything
+  // else is left where it is.
+  if is_alias {
+    while self.pos + 1 < self.chars.length() &&
+          self.chars[self.pos] == '/' &&
+          is_letter(self.chars[self.pos + 1]) {
+      self.pos += 2
+      self.col += 2
+      while self.pos < self.chars.length() &&
+            (is_letter(self.chars[self.pos]) || is_digit(self.chars[self.pos])) {
+        self.pos += 1
+        self.col += 1
+      }
+    }
   }
   let s = self.slice(start, self.pos)
   (TName(s), l, c0, self.pos - start)
@@ -2188,4 +2300,127 @@ fn parse_double(s : String) -> Double {
   } else {
     base
   }
+}
+
+///|
+/// The value of a HEX FLOAT literal -- `0x1.0p54`, `0x1.8` -- as the toolchain
+/// computes it.
+///
+/// THE VALUE IS `M * 2^E`, where `M` is the mantissa read as a hex INTEGER (the
+/// integer part and the fraction part concatenated) and `E` is the `p` exponent
+/// minus four times the number of fraction digits. `0x1.0p54` is therefore
+/// `0x10 * 2^(54 - 4)` = `2^54`, which is what the toolchain prints.
+///
+/// THE MANTISSA IS SPLIT IN TWO, and the split is not decoration. A Double holds
+/// 53 bits; a hex mantissa of fourteen digits is 56. Accumulating all of them
+/// into one Double rounds the last three bits away, and the corpus's own
+/// literals are exactly that wide (`0x1.71547652b82fep+0` is the natural log of
+/// two). Thirteen digits are 52 bits and a Double holds them exactly, so the
+/// mantissa is split into a high half of at most thirteen digits and a low half
+/// of at most thirteen, each scaled by its own power of two, and the two are
+/// added once. The addition is the ONLY rounding, and it is the right one.
+///
+/// The exponent is a plain decimal integer, as in C: `p` and `P` both open it,
+/// and the sign is optional.
+fn parse_hex_double(s : String) -> Double {
+  let chars = s.to_array()
+  let n = chars.length()
+  // past the "0x"
+  let mut i = 2
+  let digits : Array[Double] = []
+  let mut n_frac = 0
+  let mut seen_dot = false
+  while i < n {
+    let c = chars[i]
+    if c == '.' {
+      seen_dot = true
+      i += 1
+      continue
+    }
+    let d = digit_value(c, 16)
+    if d < 0 {
+      break
+    }
+    digits.push(d.to_double())
+    if seen_dot {
+      n_frac += 1
+    }
+    i += 1
+  }
+  let mut exp = 0
+  if i < n && (chars[i] == 'p' || chars[i] == 'P') {
+    i += 1
+    let mut neg = false
+    if i < n && (chars[i] == '+' || chars[i] == '-') {
+      neg = chars[i] == '-'
+      i += 1
+    }
+    let mut any = false
+    while i < n && is_digit(chars[i]) {
+      if exp < 100000 {
+        exp = exp * 10 + (chars[i].to_int() - '0'.to_int())
+      }
+      any = true
+      i += 1
+    }
+    if !any {
+      exp = 0
+    }
+    if neg {
+      exp = -exp
+    }
+  }
+  // THE SPLIT: the first thirteen digits, then the rest.
+  let total = digits.length()
+  let split = if total <= 13 { total } else { 13 }
+  let mut hi = 0.0
+  let mut j = 0
+  while j < split {
+    hi = hi * 16.0 + digits[j]
+    j += 1
+  }
+  let mut lo = 0.0
+  while j < total {
+    lo = lo * 16.0 + digits[j]
+    j += 1
+  }
+  let n_low = total - split
+  // `hi` carries the low digits' worth of places, so it is scaled by 16^n_low.
+  let e_hi = 4 * n_low - 4 * n_frac + exp
+  let e_lo = -4 * n_frac + exp
+  scale_pow2(hi, e_hi) + scale_pow2(lo, e_lo)
+}
+
+///|
+/// `x * 2^e`, exactly, for as long as the result is in range.
+///
+/// Multiplication by two and division by two are exact in IEEE arithmetic -- they
+/// only move the exponent -- so the value never picks up a rounding error the
+/// way `pow(2.0, e.to_double())` would. The loop is bounded at 1200 because a
+/// Double's exponent range is exhausted long before that: an `x` of 1 or more
+/// overflows to infinity above `2^1024` and underflows to zero below
+/// `2^-1074`, so the remaining steps cannot change the answer.
+///
+/// A zero `x` returns zero rather than infinity, which is the difference between
+/// `0 * 2^2000` being `0` and being `NaN` -- and a hex literal can carry a zero
+/// high half and a non-zero low one (`0x0.0000000000001p1024`).
+fn scale_pow2(x : Double, e : Int32) -> Double {
+  if x == 0.0 {
+    return 0.0
+  }
+  let mut r = x
+  let mut n = if e > 0 { e } else { -e }
+  if n > 1200 {
+    n = 1200
+  }
+  let mut i = 0
+  while i < n {
+    if e > 0 {
+      r = r * 2.0
+    } else {
+      r = r / 2.0
+    }
+    i += 1
+  }
+  r
 }

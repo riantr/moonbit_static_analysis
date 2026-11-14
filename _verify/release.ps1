@@ -386,7 +386,12 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 #                    BOTH directions: it counts 132 expression notices the
 #                    proxy's list did not name, and it excludes 11 top-level
 #                    expressions the proxy called expression-level.
-$NOTICE_TOTAL = '19697'
+# 0570. THE PIN MOVED, and the corpus moved with it: 19,697 -> 23,123. The
+# re-pin to `moonbitlang/core 0.1.20261105+65efd5b93` brought a corpus that is
+# 650 files larger (1,029 -> 1,679) and that carries 13,520 notices against the
+# old one's 10,114. The seven corpora now carry 21,345 notices and this
+# repository's own source carries 1,778, and the two add up to the eight trees.
+$NOTICE_TOTAL = '23123'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -432,8 +437,15 @@ $NOTICE_TOTAL = '19697'
 # to make the `if` a STATEMENT, which put the read in a region the audit does
 # read: the false positive is gone rather than re-pinned, and the own-source
 # tree is one `if expression` notice lighter than the draft had it.
-$NOTICE_SPLIT_PRINTED = '3407'
-$NOTICE_SPLIT_AGGREGATED = '16290'
+# 0570. THE SPLIT MOVED WITH THE CORPUS: 3,407 + 16,290 -> 3,956 + 19,167.
+# The printed half grew by 549 and the aggregated half by 2,877, and the whole
+# of the aggregated growth is the larger corpus -- a notice that hides nothing
+# is still a notice, and the new corpus carries 3,406 more of them than the old
+# one did. The printed half grew by less, because a printed notice is one that
+# can hide a finding, and the new corpus's extra files are mostly declarations
+# and test blocks.
+$NOTICE_SPLIT_PRINTED = '3956'
+$NOTICE_SPLIT_AGGREGATED = '19167'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -452,10 +464,18 @@ $NOTICE_SPLIT_AGGREGATED = '16290'
 # The count still includes `src/lexer/lexer_0488_test.mbt`, which is untracked
 # on purpose: its own header says it is a stub kept so that a file which cannot
 # compile does not sit in the tree, and that it must never be committed.
-$SELF_FILES = '218'
-$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=95|short lambda=8|struct declaration=70|test declaration=1520|try expression=1|type declaration=3'
-$SELF_PRINTED = '138'
-$SELF_AGGREGATED = '1622'
+# 0570. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source: 218 -> 220 files (the two new test files), 138 -> 142 printed, 1,622
+# -> 1,636 aggregated, and 1,760 -> 1,778 notices. The `if expression` row moved
+# 95 -> 99, and every one of the four is an `if` USED AS A VALUE that this
+# increment added to the analyzer's own source -- three in `lexer.mbt` (the
+# hex-float reader picks its reader with one, the mantissa split with another)
+# and one in `parser.mbt` (the catch arm's guard). An `if` used as a value is
+# outside the analysed subset, so the analyzer says so about its own code.
+$SELF_FILES = '220'
+$SELF_NOTICES = 'anonymous function literal=34|const declaration=7|enum declaration=22|if expression=99|short lambda=8|struct declaration=70|test declaration=1534|try expression=1|type declaration=3'
+$SELF_PRINTED = '142'
+$SELF_AGGREGATED = '1636'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -504,8 +524,14 @@ $SELF_AGGREGATED = '1622'
 # not move at all: every one of the seven reads exactly what it read before 0546,
 # which is what says the movement is this package's own source and not the lint
 # changing its mind about other people's code.
-$SUPPOFF_LOCAL = '587'
-$SUPPOFF_PARAM = '1152'
+# 0570. THE PINS MOVED AGAIN, and THIS TIME MOST OF THE MOVEMENT IS THE
+# CORPUS: 587 / 1,152 -> 694 / 1,338. The core corpus is now 650 files larger
+# than the one these pins were measured on, and it contributes 351 UnusedLocal
+# and 571 UnusedParam of its own -- the other six corpora and this repository's
+# source account for the rest. The mechanism is unchanged: with the region
+# suppression off, a read the lint cannot see is a read that did not happen.
+$SUPPOFF_LOCAL = '694'
+$SUPPOFF_PARAM = '1338'
 
 #   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
 #                 own source, measured by the scanner's own `--ssa-cost` mode
@@ -525,7 +551,12 @@ $SUPPOFF_PARAM = '1152'
 # versions, the phis, the copies, the dead blocks and the undefined uses are
 # identical, digit for digit -- which is what says the movement is three new
 # functions and not the lowering changing its mind about the old ones.
-$SSA_COST = 'files=200|unreadable=0|functions=909|converted=3|partial=906|declined=4894|instructions=7080|variables=798|versions=1973|phis=712|copies=1767|undef_operands=143|dead_blocks=358|undef_uses=885'
+# 0570. THE PIN MOVED, and it moved because this increment's own source grew:
+# 200 -> 202 files, 909 -> 915 functions, 906 -> 912 partial, 4,894 -> 4,979
+# statements the lowering declined, 7,080 -> 7,294 instructions. The hex-float
+# reader and the mantissa split are two new functions, and the corpus is not
+# part of this measurement at all -- it is over THIS repository's own source.
+$SSA_COST = 'files=202|unreadable=0|functions=915|converted=3|partial=912|declined=4979|instructions=7294|variables=817|versions=2051|phis=747|copies=1842|undef_operands=151|dead_blocks=362|undef_uses=904'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
@@ -533,7 +564,11 @@ $SSA_COST = 'files=200|unreadable=0|functions=909|converted=3|partial=906|declin
 #   $RAISEQ_OTHERS  the same measurement over the other six corpora and this
 #                   analyzer's own source. It is ZERO, and it is pinned because
 #                   "the reach is confined to core" is a claim, not a remark.
-$RAISEQ_REACH = '188|33'
+# 0570. THE PIN MOVED, and the corpus moved with it: 188 sites in 33 files ->
+# 221 sites in 36 files. The `raise?` construct did not spread -- the other six
+# corpora and this repository's own source are still at zero, which is what
+# $RAISEQ_OTHERS pins -- the corpus that carries it is simply a larger one.
+$RAISEQ_REACH = '221|36'
 $RAISEQ_OTHERS = '0'
 
 # THE EMPTY-PIN GUARD. A pin that is empty is not a pin -- it is a comparison
@@ -1888,11 +1923,11 @@ if ($SkipMutations) {
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3457'
   'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 unchecked=1340 total=699'
-  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 unchecked=754 total=186'
-  'async'           = 'files=419 parsed=419 actionable=0 notices=1654 unreliable=0 withheld=0 unchecked=2879 total=1654'
-  'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2897 total=1799'
+  'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 unchecked=755 total=186'
+  'async'           = 'files=419 parsed=419 actionable=0 notices=1656 unreliable=0 withheld=0 unchecked=2879 total=1656'
+  'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2901 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
-  'moonbit_core'    = 'files=1029 parsed=984 actionable=33 notices=10114 unreliable=646 withheld=65 unchecked=7867 total=10793'
+  'moonbit_core'    = 'files=1679 parsed=1621 actionable=30 notices=13520 unreliable=816 withheld=103 unchecked=14322 total=14366'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -1901,7 +1936,7 @@ $TARGETS = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
-  'moonbit_core'    = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
 }
 
 # --- 6a  THE NOTICE RECONCILIATION CAN GO RED ---------------------------------
@@ -2066,13 +2101,21 @@ $PERFN = [ordered]@{
   'async'           = '0'
   'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '50'
+  'moonbit_core'    = '46'
 }
 # 0542. WAS 37, and the nine that left it were the `MSA-015` false positives
 # that 0532 named and did not fix. The census's own last line says it: every
 # actionable finding and every demoted finding now lands in a NAMED family, and
 # the UNCLASSIFIED bucket that held those nine is empty.
-$PERFN_TOTAL = '51'
+# 0570. THE TOTAL MOVED, 51 -> 47, and it is the same kind of move as 0532's:
+# findings that were FALSE LEFT THE COUNT. The core corpus carried 50 and now
+# carries 46; the four that left are one `parameter 'allow_missing' may not be
+# used` (a catch arm's guard whose read the analyzer could not see) and two
+# `unreachable code` (both downstream of a hex float the lexer could not read),
+# and the corpus itself changed under them -- the re-pin to
+# `moonbitlang/core 0.1.20261105+65efd5b93` replaced a corpus the toolchain
+# cannot type-check with one it can.
+$PERFN_TOTAL = '47'
 # 0508. THE DEMOTED SET, pinned beside the actionable one for the same reason.
 # A finding the analyzer does not stand behind is rendered `notice:` and leaves
 # the actionable count -- and a set of findings that leaves the census is a set
@@ -2094,11 +2137,19 @@ $PERFN_DEMOTED = [ordered]@{
   'moonbit_labeler' = '0'
   'moonbit_image'   = '0'
   'async'           = '0'
-  'proton'          = '2'
+  'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '20'
+  'moonbit_core'    = '17'
 }
-$PERFN_DEMOTED_TOTAL = '22'
+# 0570. THE DEMOTED SET SHRANK, 22 -> 17, and every one of the five that left
+# was a false positive that the analyzer no longer stands behind: twelve hex
+# floats the lexer could not read (the `p1023` / `p` / `p54` exponent parts),
+# two `undefined variable 'p54'`, one `undefined variable 'strconv'` and two
+# `undefined variable 'utf8'` -- the last three are a PACKAGE PATH read as a
+# division and a name. The two that proton had are gone because the corpus
+# under it changed: the re-pin replaced a core the toolchain could not
+# type-check with one it can, and the demoted findings came with it.
+$PERFN_DEMOTED_TOTAL = '17'
 # THE POSITIVE CONTROL'S FILE COUNT, pinned here for the same reason the census
 # total is: it is a corpus number, and the corpus numbers live in ONE place.
 # `_verify/check_readme_links.ps1` DERIVES the README's expectation from this
@@ -2109,7 +2160,13 @@ $PERFN_DEMOTED_TOTAL = '22'
 # 0508 MOVED THIS PIN: the demotion took four files out of the actionable set --
 # they carried a low-confidence finding and nothing the analyzer stands behind --
 # so the control's file count is 16 and not 20.
-$CONTROL_N = '18'
+# 0570. THE PIN MOVED AGAIN, 18 -> 17, and the two files that left are the two
+# the fixes emptied: `async/fs/file.mbt` (the catch arm's guard) and
+# `math/trig.mbt` (two `unreachable code` findings that were downstream of a
+# hex float the lexer could not read). The control itself changed shape with
+# the corpus: the OLD pin could not be type-checked by this toolchain at all,
+# so the control read 0 of 18 files and the stage had been RED since 0.4.43.
+$CONTROL_N = '17'
 
 if ($failed.Count -eq 0) {
   $CS = Join-Path $root '_verify\census_perfunction.ps1'

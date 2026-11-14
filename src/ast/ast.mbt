@@ -507,6 +507,23 @@ pub(all) struct ElseIf {
 pub(all) struct CatchArm {
   span : @core.Span
   bindings : Array[String]
+  ///
+  /// The arm's CONDITION -- `pattern if cond => body` -- and it is None for an
+  /// arm without one.
+  ///
+  /// It is carried for the reason `MatchArm`'s `cond` is: the guard is real
+  /// code whose reads are real. `catch { OsError(NotFound, ..) if allow_missing
+  /// => () }` READS `allow_missing`, and a reader that took the guard's names
+  /// for PATTERN NAMES made the parameter look unread -- which is exactly
+  /// `parameter 'allow_missing' may not be used` on
+  /// moonbitlang/core `async/fs/file.mbt:465`, on code `moon check` compiles.
+  ///
+  /// THE DIFFERENCE FROM `MatchArm` IS IN THE READER, and it was the whole
+  /// defect: `Parser::parse_match_pattern` stops a pattern at a depth-zero
+  /// `if` and the caller parses the guard as an expression, while
+  /// `Parser::parse_catch_pattern` swept every name up to the `=>` -- so the
+  /// guard's names became bindings, and a binding is not a read.
+  cond : Expr?
   body : Array[Stmt]
 }
 

@@ -11,10 +11,10 @@
 #     moui                printed 1126  total 3457   behavior 0
 #     moonbit_labeler     printed  142  total  699   behavior 0
 #     moonbit_image       printed   93  total  186   behavior 0
-#     async               printed  250  total 1654   behavior 0
+#     async               printed  252  total 1656   behavior 0
 #     proton              printed  497  total 1799   behavior 0
 #     proton_contract     printed    0  total   29   behavior 0
-#     moonbit_core        printed 1195  total 10793  behavior 5  only 3
+#     moonbit_core        printed 1735  total 14366  behavior 7  only 6
 #
 # WHY THE OLD TABLE WAS WRONG, AND WHY IT WAS WRONG QUIETLY. It said "7493 findings" in
 # total and gave per-corpus numbers (moui 4152, async 1677, proton 959, ...) that matched
@@ -137,7 +137,7 @@ $TARGETS = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
-  'moonbit_core'    = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
 }
 $gt = 0; $gb = 0; $go = 0; $gs = 0
 $measured = [ordered]@{}

@@ -190,6 +190,12 @@ pub fn names_of_expr(out : Map[String, Bool], e : @ast.Expr) -> Unit {
     @ast.ECatch(a, arms) | @ast.ENoRaise(a, arms) => {
       names_of_expr(out, a)
       for arm in arms {
+        // The arm's GUARD reads names too, and a read the liveness pass cannot
+        // see is a read it will call dead.
+        match arm.cond {
+          Some(c) => names_of_expr(out, c)
+          None => ()
+        }
         names_of_stmts(out, arm.body)
       }
     }

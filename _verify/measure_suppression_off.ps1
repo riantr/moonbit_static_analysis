@@ -73,7 +73,7 @@ $trees = [ordered]@{
   'async'           = (Join-Path $repos 'moonbitlang\async\0.22.4')
   'proton'          = (Join-Path $repos 'moonbit-community\proton\0.3.4')
   'proton_contract' = (Join-Path $repos 'moonbit-community\proton_contract\0.3.4')
-  'moonbit_core'    = (Join-Path $repos 'moonbitlang\core\0.1.20260920+7d59c7ec9')
+  'moonbit_core'    = (Join-Path $repos 'moonbitlang\core\0.1.20261105+65efd5b93')
   'self'            = $root
 }
 

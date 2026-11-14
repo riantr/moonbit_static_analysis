@@ -992,6 +992,15 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
             self.bind_pattern(b, arm.span)
           }
         }
+        // THE GUARD IS WALKED BEFORE THE BODY, for the reason the match arm's
+        // guard is: it comes first in the source and it READS the arm's own
+        // bindings and the enclosing scope. `catch { Err(e) if e.code == 0 => .. }`
+        // reads `e`; an arm whose guard was not walked would report a live
+        // binding as dead.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
+        }
         for st in arm.body {
           self.walk_stmt(st)
         }
@@ -1018,6 +1027,12 @@ fn Walker::walk_expr(self : Walker, e : @ast.Expr) -> Unit {
           if b != "" {
             self.bind_pattern(b, arm.span)
           }
+        }
+        // The guard, for the reason `ECatch` walks it: a `noraise` arm's guard
+        // is the same kind of code, and its reads are the same reads.
+        match arm.cond {
+          Some(g) => self.walk_expr(g)
+          None => ()
         }
         for st in arm.body {
           self.walk_stmt(st)
@@ -1344,10 +1359,21 @@ fn collect_expr_bindings(bs : Array[Binding], e : @ast.Expr) -> Unit {
   match e.kind {
     ECatch(_, arms) =>
       for arm in arms {
+        // The GUARD's bindings, for the same reason the match arm's are: a
+        // `let` inside a catch guard is a real binding, and the pre-pass is what
+        // fills the frame.
+        match arm.cond {
+          Some(g) => collect_expr_bindings(bs, g)
+          None => ()
+        }
         collect_stmt_bindings(bs, arm.body)
       }
     ENoRaise(_, arms) =>
       for arm in arms {
+        match arm.cond {
+          Some(g) => collect_expr_bindings(bs, g)
+          None => ()
+        }
         collect_stmt_bindings(bs, arm.body)
       }
     // A block in EXPRESSION position, `let x = { let y = 1; y + 1 }`. The

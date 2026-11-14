@@ -99,7 +99,7 @@ $ErrorActionPreference = 'Continue'
 # is not a licence to weaken the assertions or to hardcode a replacement row.
 # The control names the other option itself: "pin a NEW corpus that still
 # contains a gap this frontend cannot read". So `moonbitlang/core` was added,
-# and it is pinned by VERSION (0.1.20260920+7d59c7ec9 -- a build-stamped
+# and it is pinned by VERSION (0.1.20261105+65efd5b93 -- a build-stamped
 # version, so it cannot drift under you the way a `@latest` would).
 #
 # MEASURED YIELD OF THE NEW CORPUS, on the 0494 tree: 74 PARTIAL files, and the
@@ -173,7 +173,7 @@ $ErrorActionPreference = 'Continue'
 # The other corpora stay in the list, in the order they were tried, because a
 # corpus that gains a gap later must be found without touching this file.
 $script:GP_CORPORA = [ordered]@{
-  'core'     = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+  'core'     = 'moonbitlang\core\0.1.20261105+65efd5b93'
   'async'    = 'moonbitlang\async\0.22.4'
   'proton'   = 'moonbit-community\proton\0.3.4'
   'moui'     = 'wzzc-dev\moui\0.1.12'

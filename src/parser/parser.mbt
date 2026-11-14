@@ -596,6 +596,23 @@ fn Parser::parse_catch_pattern(self : Parser) -> Array[String] {
     if self.at_fat_arrow() {
       break
     }
+    // A GUARD. `pattern if cond => body` -- the `if` is at pattern depth zero
+    // and no pattern contains one, so at depth zero it can only be the guard's
+    // keyword.
+    //
+    // THE MATCH READER STOPS HERE TOO (`Parser::parse_match_pattern`), and the
+    // catch reader did NOT -- so the guard's names were collected as PATTERN
+    // NAMES, and a pattern name is a BINDING, not a READ. That is how
+    // moonbitlang/core `async/fs/file.mbt:465`
+    //
+    //     @os_error.OsError(NotFound, ..) if allow_missing => ()
+    //
+    // reported `parameter 'allow_missing' may not be used`: the guard's read of
+    // the parameter had become a binding of the same name, and the parameter
+    // was left with no read at all.
+    if depth == 0 && self.at_name("if") {
+      break
+    }
     if self.at(TLBrace) && depth == 0 {
       break
     }
@@ -709,6 +726,18 @@ fn Parser::parse_catch_arms(self : Parser) -> Array[@ast.CatchArm] {
     }
     let asp = self.span()
     let bindings = self.parse_catch_pattern()
+    // THE GUARD, if the arm has one: `pattern if cond => body`. The condition
+    // is an EXPRESSION and it is parsed as one -- exactly as
+    // `Parser::parse_match_arms` does for a match arm, and for the same reason:
+    // the guard carries a LAMBDA of its own sometimes, and a reader that took
+    // the first `=>` it saw would have taken the lambda's body for the arm's.
+    let cond = if self.at_name("if") {
+      let _ = self.bump()
+      self.skip_seps()
+      Some(self.parse_expr())
+    } else {
+      None
+    }
     if self.at_fat_arrow() {
       self.eat_fat_arrow()
     }
@@ -729,7 +758,7 @@ fn Parser::parse_catch_arms(self : Parser) -> Array[@ast.CatchArm] {
       let st = self.parse_stmt()
       [st]
     }
-    arms.push({ span: asp, bindings, body, })
+    arms.push({ span: asp, bindings, cond, body, })
     self.skip_seps()
   }
   self.expect(TRBrace, "'}'")

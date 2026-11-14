@@ -94,11 +94,17 @@ if (-not (Test-Path -LiteralPath $moonrun)) {
 # new family's public name IS its tag minus the `F`, so the five names that
 # differ from their tag are the same five.
 # ---------------------------------------------------------------------------
-$WANT_REACH_TOTAL   = 19843   # calls to a package-level function, pinned corpus
-$WANT_REACH_UNCHECK = 16250   # of those, the signature is known by NAME only
-$WANT_REACH_FILES   = 657     # files carrying an unchecked call
-$WANT_MBTI_FILES    = 159     # .mbti files in the pinned corpus
-$WANT_MBTI_PUBFN    = 2116    # `pub fn` declarations across them
+# 0570. EVERY ONE OF THESE MOVED, and the corpus moved with them: the re-pin
+# to `moonbitlang/core 0.1.20261105+65efd5b93` brought a corpus that is 650
+# files larger than the one these numbers were measured on. 19,843 -> 30,287
+# package-level calls, 16,250 -> 24,894 of them unchecked, 657 -> 1,160 files
+# carrying one, 159 -> 263 `.mbti` files and 2,116 -> 2,812 `pub fn`
+# declarations across them.
+$WANT_REACH_TOTAL   = 30287   # calls to a package-level function, pinned corpus
+$WANT_REACH_UNCHECK = 24894   # of those, the signature is known by NAME only
+$WANT_REACH_FILES   = 1160    # files carrying an unchecked call
+$WANT_MBTI_FILES    = 132     # .mbti files in the pinned corpus
+$WANT_MBTI_PUBFN    = 1407    # `pub fn` declarations across them
 $WANT_FAMILIES      = 15      # members of the `Family` enum
 $WANT_NAME_DIFFERS  = 5       # of them, whose public name is not the tag minus `F`
 
@@ -150,7 +156,7 @@ function Invoke-Scan {
 #
 # THE RULE, precisely:
 #
-#   1. The corpus is the PINNED one: moonbitlang/core 0.1.20260920+7d59c7ec9.
+#   1. The corpus is the PINNED one: moonbitlang/core 0.1.20261105+65efd5b93.
 #      `.mbt` files only for the CALLS; `.mbti` files for the DECLARATIONS.
 #   2. A "package-level function" is a name declared by a top-level `fn` in
 #      some `.mbt` file of the corpus, or by a `pub fn` in some `.mbti` of the
@@ -179,10 +185,20 @@ function Measure-PackageLevelCalls {
   param([string]$Dir)
   $declIn = @{}
   $ifaceIn = @{}
+  # 0570. `_build` IS EXCLUDED, AND IT USED TO BE COUNTED. The corpus's
+  # `_build` holds a build-time COPY of every package's `pkg.generated.mbti`,
+  # so the walk counted every interface file TWICE -- and the count then
+  # depended on whether somebody had built the corpus locally, which is not a
+  # property of the corpus at all. The analyzer's own table is a union of
+  # NAMES, so a duplicate file adds nothing to it: the population is the
+  # corpus's OWN interface files, and the number has to be the same on a
+  # clean checkout as on a built one. Measured on the pinned core:
+  # 263 `.mbti` files and 2,812 declarations WITH the build copies,
+  # 132 and 1,407 without them -- the same 132 files, counted twice.
   $files = @(Get-ChildItem -LiteralPath $Dir -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension -eq '.mbt' })
+    Where-Object { $_.Extension -eq '.mbt' -and $_.FullName -notmatch '[\\/]_build[\\/]' })
   $mbtiFiles = @(Get-ChildItem -LiteralPath $Dir -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension -eq '.mbti' })
+    Where-Object { $_.Extension -eq '.mbti' -and $_.FullName -notmatch '[\\/]_build[\\/]' })
   foreach ($f in $files) {
     $rel = $f.FullName.Substring($Dir.Length + 1)
     foreach ($line in [System.IO.File]::ReadAllLines($f.FullName)) {
@@ -407,7 +423,7 @@ if ($c.Total -eq 4 -and $c.Checked -eq 1 -and $c.Unchecked -eq 3 -and $c.Uncheck
   Say-Bad 'A6ctl' 'total=4 checked=1 unchecked=3 (1 another .mbt, 2 interface only)' ('total=' + $c.Total + ' checked=' + $c.Checked + ' unchecked=' + $c.Unchecked + ' (' + $c.UncheckedMbt + ', ' + $c.UncheckedIface + ')') 'the counter is not trusted, so no reach number is reported'
 }
 
-$core = Join-Path $repos 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+$core = Join-Path $repos 'moonbitlang\core\0.1.20261105+65efd5b93'
 if ($Tree -ne '') { $core = $Tree }
 if (-not (Test-Path -LiteralPath $core)) {
   Write-Output ('  A6        ABORT    the pinned corpus is not there: ' + $core)

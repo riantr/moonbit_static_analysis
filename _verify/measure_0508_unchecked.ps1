@@ -70,29 +70,29 @@ $COUNTERS = @(
 # New    = replacement lines (replace/replaceblock)
 # Old    = the lines a 'replaceblock' must find, in order
 $edits = @(
-  @{ At = 1116; Must = '  TypeResult::{'; Mode = 'before'
+  @{ At = 1216; Must = '  TypeResult::{'; Mode = 'before'
      Add = @('  println("UNCHECKED-SPLIT n_m_known=\{inf.n_m_known} n_m_unknown=\{inf.n_m_unknown} n_m_qual=\{inf.n_m_qual} n_dd_known=\{inf.n_dd_known} n_dd_unknown=\{inf.n_dd_unknown} n_dd_qual=\{inf.n_dd_qual} n_a_value=\{inf.n_a_value} n_a_method=\{inf.n_a_method}")') }
 
-  @{ At = 401; Must = '        let bt = self.ty_of(base, TUnknown)'; Mode = 'after'
+  @{ At = 501; Must = '        let bt = self.ty_of(base, TUnknown)'; Mode = 'after'
      Add = @('        if bt is TUnknown {', '          self.n_dd_unknown += 1', '        } else {', '          self.n_dd_known += 1', '        }') }
 
-  @{ At = 394; Must = '      self.n_unchecked += 1'; Mode = 'after'
+  @{ At = 494; Must = '      self.n_unchecked += 1'; Mode = 'after'
      Add = @('      if base.is_qualifier() {', '        self.n_dd_qual += 1', '      }') }
 
-  @{ At = 360; Mode = 'replaceblock'
+  @{ At = 457; Mode = 'replaceblock'
      Old = @('      if !base.is_qualifier() {', '        ignore(self.ty_of(base, TUnknown))', '      }')
      New = @('      if base.is_qualifier() {', '        self.n_m_qual += 1', '      } else {', '        let bt = self.ty_of(base, TUnknown)', '        if bt is TUnknown {', '          self.n_m_unknown += 1', '        } else {', '          self.n_m_known += 1', '        }', '      }') }
 
-  @{ At = 323; Must = '          self.n_unchecked += 1'; Mode = 'after'
+  @{ At = 416; Must = '          self.n_unchecked += 1'; Mode = 'after'
      Add = @('          if nm.contains("::") {', '            self.n_a_method += 1', '          } else {', '            self.n_a_value += 1', '          }') }
 
-  @{ At = 314; Must = '        Some(TUnknownFn(_)) => {'; Mode = 'replace'
+  @{ At = 407; Must = '        Some(TUnknownFn(_)) => {'; Mode = 'replace'
      New = @('        Some(TUnknownFn(nm)) => {') }
 
-  @{ At = 63; Must = '    n_unchecked: 0,'; Mode = 'after'
+  @{ At = 119; Must = '    n_unchecked: 0,'; Mode = 'after'
      Add = @('    n_m_known: 0,', '    n_m_unknown: 0,', '    n_m_qual: 0,', '    n_dd_known: 0,', '    n_dd_unknown: 0,', '    n_dd_qual: 0,', '    n_a_value: 0,', '    n_a_method: 0,') }
 
-  @{ At = 29; Must = '  mut n_unchecked : Int32'; Mode = 'after'
+  @{ At = 39; Must = '  mut n_unchecked : Int32'; Mode = 'after'
      Add = @('  mut n_m_known : Int32', '  mut n_m_unknown : Int32', '  mut n_m_qual : Int32', '  mut n_dd_known : Int32', '  mut n_dd_unknown : Int32', '  mut n_dd_qual : Int32', '  mut n_a_value : Int32', '  mut n_a_method : Int32') }
 )
 
@@ -170,12 +170,25 @@ function Read-TextWhenFree {
 }
 
 function Scan-Tree {
-  param([string]$Path)
+  # 0570. THE OWN-SOURCE TREE IS THE GATE'S OWN-SOURCE TREE. The release
+  # gate's self-scan excludes `_verify` (0542): the untracked scratch copies
+  # under it are not this project's source, and the published file count has
+  # to be reproducible from a clean checkout. This instrument scanned the
+  # repository root WITHOUT that exclusion, so its own-source row was 237
+  # files -- 220 tracked ones plus the 17 scratch `.mbt` files under
+  # `_verify` -- and it reported 5,455 unchecked calls where the gate
+  # publishes 3,257. The control did not catch it: the control compares the
+  # split against the SUMMARY OF THE SAME TREE, and this tree was a different
+  # tree. The eight trees are the seven pinned corpora and THIS REPOSITORY'S
+  # OWN SOURCE, and the second one has to mean what the gate means by it.
+  param([string]$Path, [string]$Exclude = '')
   $dir = Join-Path $env:TEMP ('m0508_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $out = Join-Path $dir 'o.txt'
+  $argv = @($wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000')
+  if ($Exclude -ne '') { $argv += @('--exclude', $Exclude) }
   Start-Process -FilePath $moonrun `
-    -ArgumentList @($wasm, $Path, '--extern-iface-dir', $repos, '--no-auto-fetch-deps', '--findings-shown-per-file', '1000000') `
+    -ArgumentList $argv `
     -RedirectStandardOutput $out -RedirectStandardError (Join-Path $dir 'o.err') -NoNewWindow -Wait | Out-Null
   return Read-TextWhenFree -Path $out
 }
@@ -202,7 +215,7 @@ $TARGETS = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
-  'moonbit_core'    = 'moonbitlang\core\0.1.20260920+7d59c7ec9'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
 }
 
 $tot = @{}
@@ -226,7 +239,7 @@ foreach ($k in $TARGETS.Keys) {
   Write-Output ('  {0,-16} A={1,-6} B={2,-6} C={3,-4} | m: known={4,-5} unknown={5,-5} qual={6,-4} | a: value={7,-4} method={8,-4} | sum={9,-6} summary={10,-6} files={11}' -f `
     $k, $a, $b, $cc, $c['n_m_known'], $c['n_m_unknown'], $c['n_m_qual'], $c['n_a_value'], $c['n_a_method'], ($a + $b + $cc), $total, $s.files)
 }
-$text = Scan-Tree $root
+$text = Scan-Tree $root '_verify'
 $s = Get-Split $text
 $c = $s.counters
 foreach ($kk in $COUNTERS) { $tot[$kk] += $c[$kk] }

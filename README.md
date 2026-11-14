@@ -15,13 +15,13 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1029 files): **984 parsed, 33 actionable** — 10 of them are
-constructs this frontend does not read or an operator it does not model, and the other 23 are
+Measured on `moonbitlang/core` (1679 files): **1621 parsed, 30 actionable** — 10 of them are
+constructs this frontend does not read or an operator it does not model, and the other 20 are
 `MSA-015` dead stores on declarations: a `let` whose value is overwritten before anything reads
 it. That is dead weight in the analysed code rather than a reader gap, and every one of the
-23 was measured against the source it names. The 18 findings demoted in 0.4.38 — names the
-analyzer could not resolve — are counted as notices and are not in that 33. On that same tree
-`moon check --target all` reports exactly **one** error, in a `.mbt.md` doc file.
+20 was measured against the source it names. The 14 findings demoted in 0.4.38 — names the
+analyzer could not resolve — are counted as notices and are not in that 30. On that same tree
+`moon check --target all` reports **no** diagnostic at all.
 
 ## Contents
 
@@ -291,8 +291,8 @@ time.
 `per_file` and `max_files` cap the drawing, `0` meaning no cap. **Whatever a cap leaves out
 is stated in the diagram**, in the header and in a note on the file, so a truncated diagram
 cannot be read as a clean one. Files are ranked by descending **actionable** count, not raw
-findings: on `moonbitlang/core` the largest raw-finding file is `builtin/int64_test.mbt` at
-**1022** findings — every one of them a notice, and none of them a defect — and ranking by
+findings: on `moonbitlang/core` the largest raw-finding file is `v128/simd_float.mbt` at
+**51** findings — every one of them a notice, and none of them a defect — and ranking by
 raw count put it first in a diagram whose job is to lead with what to fix.
 
 ### Provenance — the artifact name
@@ -302,8 +302,8 @@ moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.
 
 ```
 moonbit_static_analysis_0.4.46_0.1.20261023_20261024T060000Z.mmd
-moonbitlang-core_0.1.20260920+7d59c7ec9_0.1.20260920_20261009T051925Z.mmd
-tree_unknown_0.1.20260920_20261009T051511Z.mmd     # version not determined
+moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
+tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # version not determined
 ```
 
 | field | question | source |
@@ -402,8 +402,8 @@ SUMMARY	files=107	parsed=32	actionable=56	notices=212	unreliable=15759	withheld=
   in one `NOTICES` table at the end of the scan:
 
 ```
-NOTICES	TOTAL	notices=10114	printed=1162	aggregated=8952	1162 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 8952 are counted by shape below
-NOTICES	count=6148	test declaration is outside the analyzed subset; its body was not analyzed
+NOTICES	TOTAL	notices=13520	printed=1705	aggregated=11815	1705 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 11815 are counted by shape below
+NOTICES	count=7947	test declaration is outside the analyzed subset; its body was not analyzed
 ```
 
   The table's `notices` is the SUMMARY's `notices`, its `printed` plus its `aggregated` is
@@ -551,7 +551,8 @@ said nothing about any of them, so *I could not check this* and *there is nothin
 report* were the same output — and a file with no findings and four hundred unchecked
 calls printed exactly like a clean file. Now the count is on the file's own verdict line
 (`unchecked=N`) and on the `SUMMARY`, where it is deliberately **not** part of the sum.
-Measured on the seven pinned corpora: **23,427** unchecked calls, against **28** findings.
+Measured on the seven pinned corpora: **29,887** unchecked calls, against **31** actionable
+findings.
 
 ## Coverage and limits
 
@@ -559,8 +560,8 @@ Measured on the seven pinned corpora: **23,427** unchecked calls, against **28**
 
 On `.mbt`, this tool does **not** compete with the toolchain's compiler: `moon check` has a
 real parser and reads the **whole** language. On the same `moonbitlang/core` it reports
-**one** error and 251 warnings of two kinds; this tool's `.mbt` frontend reads a **subset**
-and parses **984 of 1029** files (95.6%); `.mbti` and `.mbt.md` are 100%.
+**no** diagnostic at all; this tool's `.mbt` frontend reads a **subset**
+and parses **1621 of 1679** files (96.5%); `.mbti` and `.mbt.md` are 100%.
 
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
@@ -595,21 +596,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (218 files), with the per-file printing cap lifted so the count is the
+project's own source (220 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1520 | | `const` declaration | 7 |
-| `if` expression | 95 | | `short lambda` | 8 |
+| `test` declaration | 1534 | | `const` declaration | 7 |
+| `if` expression | 99 | | `short lambda` | 8 |
 | `struct` declaration | 70 | | `type` declaration | 3 |
 | `anonymous function literal` | 34 | | `try` expression | 1 |
 | `enum` declaration | 22 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **138** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1622** sit outside every function's
+**position**: **142** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1636** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -642,10 +643,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **19,697** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,123** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,407** of them as printed per line and
-**16,290** as aggregated — which is 3,407 + 16,290 = 19,697, the same number — and the 3,407
+says so itself: its `NOTICES` table counts **3,956** of them as printed per line and
+**19,167** as aggregated — which is 3,956 + 19,167 = 23,123, the same number — and the 3,956
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -668,12 +669,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **587** `UnusedLocal` and **1,152** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 218 files the notice table
+the tool produces **694** `UnusedLocal` and **1,338** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 220 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **586** locals and **1,152** parameters, and the per-binding
+suppression is hiding **693** locals and **1,338** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -707,10 +708,10 @@ numbers with and without the flag.
 
 > **This view is not yet sound, and the flag is opt-in for that reason.** It is measured
 > across **all seven** pinned corpora by `_verify/census_perfunction.ps1`, and the release
-> gate **pins** the number. Today it reports **51** `actionable` findings — 50 of them on
-> `moonbitlang/core` and one on `moonbit_labeler` — where the module view reports 33 and 1.
-> The census classifies them: **27** are constructs this frontend does not read or operators
-> it does not model, **23** are dead stores — a value nobody reads, and the lens's own claim
+> gate **pins** the number. Today it reports **47** `actionable` findings — 46 of them on
+> `moonbitlang/core` and one on `moonbit_labeler` — where the module view reports 30 and 1.
+> The census classifies them: **26** are constructs this frontend does not read or operators
+> it does not model, **20** are dead stores — a value nobody reads, and the lens's own claim
 > about the code — and one — a local assigned and never read in `moonbit_labeler` — is still
 > the first true defect this tool has published on any corpus.
 >
@@ -723,51 +724,62 @@ numbers with and without the flag.
 > | family | n | what the lens claimed |
 > |---|---:|---|
 > | C | 6 | `==` between two arrays |
-> | D | 3 | `Int + Char` and `List + List` |
+> | D | 4 | `Int + Char` and `List + List` |
 > | E | 3 | `*` on a struct |
-> | G | 10 | unreachable code — the lens's own claim about the code |
+> | G | 8 | unreachable code — the lens's own claim about the code |
 > | H | 1 | a local assigned and never read — the lens's own claim about the code, and the one finding in the census that is a real defect |
 > | I | 1 | `abs` on a `Double` |
 > | J | 1 | `*` on two function values |
 > | K | 3 | a local call with a named argument |
-> | M | 23 | a dead store — a value nobody reads — the lens's own claim about the code |
+> | M | 20 | a dead store — a value nobody reads — the lens's own claim about the code |
 >
-> **AND 22 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
+> **AND 17 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
 > rendered `notice:` and counted as a notice rather than as actionable, and the census keeps
 > the demoted set in its own table and its own total — a set of findings that leaves the
-> census is a set that can go missing silently. Every one of the 22 carries the confidence
+> census is a set that can go missing silently. Every one of the 17 carries the confidence
 > `low`, and every one of them is a name the analyzer could not resolve.
 >
-> **THE MODULE VIEW COUNTS 18 OF THEM, AND IT IS NOT THE SAME 18.** The two views are two
+> **THE MODULE VIEW COUNTS 14 OF THEM, AND IT IS NOT THE SAME 14.** The two views are two
 > analyses — this one takes every function as an entry point, the module view takes the
-> module — so they do not find the same names: in `moonbit_core` this view reports 20 and
-> the module view 18, and only **15** of those are the same site. That is the same difference
-> as the 50 against the 33 above, and the two views stay separate, not additive.
+> module — so they do not find the same names: in `moonbit_core` this view reports 17 and
+> the module view 14, and only **8** of those are the same site. That is the same difference
+> as the 46 against the 30 above, and the two views stay separate, not additive.
 >
 > | demoted family | n | what the lens claimed |
 > |---|---:|---|
-> | A | 13 | a hex float literal (`0x1.0p1023`) is not read, so its exponent part is reported as an undefined name |
-> | B | 5 | a BigInt literal's `N` suffix (`0N`) is not read |
-> | F | 2 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index, a module qualifier |
-> | L | 2 | the documented `#doc(hidden)` limit |
+> | B | 8 | a BigInt literal's `N` suffix (`0N`) is not read |
+> | F | 1 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index |
+> | L | 8 | the documented `#doc(hidden)` limit |
+>
+> **FAMILY A IS GONE, AND IT IS GONE BECAUSE IT WAS FIXED.** It was the hex float: the
+> lexer read `0x1.0p1023` as the integer `0x1` followed by the name `p1023`, and every
+> exponent part it could not read became an undefined name. The lexer reads a hex float as
+> ONE literal now, with the value the toolchain computes for it, so the family has no
+> members left — and the row is kept in the census, empty, so that a hex float that leaks a
+> name again is caught rather than reported as something the census could not classify.
 >
 > **"Accepted" is measured, not assumed.** `moon check --target all` on `moonbitlang/core`
-> reports exactly **one** error, in `abort/pkg.mbti` — the pinned core is self-hosted and the
-> toolchain now type-checks interface files, so the `String` in that one is out of scope — and
-> it is not one of the **eighteen** files that carry a finding. That is only half of it: a file
-> with no diagnostic is indistinguishable from a file nobody opened, so
-> `_verify/control_perfunction_census.ps1` appends a deliberate type error to each of those
-> files **in a copy** and requires the error back — the requirement is **18 of 18**, and the
-> control reads **0 of 18** today, because that one diagnostic is foundational and the checker
-> bails before it type-checks any other package. The row stays red on purpose; it turns green
-> with the next corpus pin.
+> reports **no** diagnostic at all: the pinned core is self-hosted and the toolchain
+> type-checks interface files, and this version of the core passes that check cleanly. That
+> is only half of it: a file with no diagnostic is indistinguishable from a file nobody
+> opened, so `_verify/control_perfunction_census.ps1` appends a deliberate type error to each
+> of the **seventeen** files that carry a finding **in a copy** and requires the error back —
+> the requirement is **17 of 17**, and the control reads **17 of 17** today.
 >
-> **The two in family L are the documented limit rather than a defect**: a cross-package
+> (That row was **red from 0.4.43 to 0.4.46**, and the reason was the corpus and not the
+> analyzer: the old pin carried one diagnostic of its own — `abort/pkg.mbti:4`, where the
+> `String` of `fn[T] abort(String) -> T` is out of scope — and the checker *bails* on it
+> before it type-checks anything else, so every probe came back carrying that one error and
+> the probe's own error never appeared. The re-pin to `0.1.20261105+65efd5b93` brought a
+> corpus this toolchain can check end to end, and the row turned green with it.)
+>
+> **The eight in family L are the documented limit rather than a defect**: a cross-package
 > `#doc(hidden)` function cannot be indexed from the dependency's *source* — only from its
-> `.mbti` — so `@locale.LocalePreferences::resolve` is still reported as an undefined
-> function in `proton` 0.3.4. Answering them would mean growing the analyzer into a source
-> indexer, which is a different project. **Use the view to see the lens, not to gate a
-> build on it.**
+> `.mbti` — so the `new_uninitialized` constructors of `io` are still reported as undefined
+> functions: `@io.Utf8TextView::new_uninitialized` on four sites, `@io.Utf8Writer::new_uninitialized`
+> on two and `@io.Utf8Reader::new_uninitialized` on two. Answering them would mean growing the
+> analyzer into a source indexer, which is a different project. **Use the view to see the lens,
+> not to gate a build on it.**
 >
 > (This note said **116 → 2** until 0.4.32, and the "2" was the census of **six** corpora
 > — `moonbit_core` was not in it, and it carries more findings than all six put together.
@@ -944,25 +956,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 200 files, 909 functions, 7,080
-instructions of 3AC — the same measurement gives **798** variables becoming **1,973** versions,
-**712** phi-functions and **1,767** copies. The claim is not a figure of speech.
+would need **16** copies. Over this project's own source — 202 files, 915 functions, 7,294
+instructions of 3AC — the same measurement gives **817** variables becoming **2,051** versions,
+**747** phi-functions and **1,842** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=200	unreadable=0	functions=909	converted=3	partial=906	declined=4894	…
+SSA-COST	files=202	unreadable=0	functions=915	converted=3	partial=912	declined=4979	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (4,889
+number: the files read, the functions measured, and the statements the lowering declined (4,979
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1520/1520 on wasm; 1378/1378 on js and wasm-gc
+moon test --deny-warn                # 1534/1534 on wasm; 1392/1392 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
