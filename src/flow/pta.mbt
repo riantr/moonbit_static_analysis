@@ -247,7 +247,15 @@ pub fn pta_alloc_of(kind : NodeKind) -> Array[(String, @ast.Expr)]? {
 ///|
 /// The object key of an allocation site; `""` when the site was not ranked, which
 /// cannot happen because `pta_site_names` names exactly the nodes this reads.
-fn pta_site_of(sites : Map[String, String], fi : Int32, node : Int32) -> String {
+///
+/// 0579: the pointer-flow-graph reading (deck 9-10) needs the same answer to the same
+/// question, and a second answer to it would be a second definition of what an
+/// allocation site is.
+pub fn pta_site_of(
+  sites : Map[String, String],
+  fi : Int32,
+  node : Int32,
+) -> String {
   match sites.get(fi.to_string() + ":" + node.to_string()) {
     Some(k) => k
     None => ""

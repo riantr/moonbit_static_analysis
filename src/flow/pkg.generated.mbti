@@ -155,6 +155,22 @@ pub fn node_defs(NodeKind) -> Map[String, Bool]
 
 pub fn node_uses(NodeKind) -> Map[String, Bool]
 
+pub fn pfg_add_edge(Pfg, String, String) -> Bool
+
+pub fn pfg_new() -> Pfg
+
+pub fn pfg_pts_map_text(Map[String, Map[String, Bool]]) -> String
+
+pub fn pfg_pts_text(PfgResult) -> String
+
+pub fn pfg_solve(Cfg, Map[String, String]) -> PfgResult
+
+pub fn pfg_succ(Pfg, String) -> Array[String]
+
+pub fn pfg_text(Pfg) -> String
+
+pub fn pfg_trace_text(PfgResult) -> String
+
 pub fn pred_of(Array[Array[Int32]]) -> Array[Array[Int32]]
 
 pub fn pta_alias(Map[String, Map[String, Bool]], String, String) -> Bool
@@ -196,6 +212,8 @@ pub fn pta_run_flow_sensitive(Cfg) -> Array[Map[String, Map[String, Bool]]]
 pub fn pta_run_ordered(Cfg) -> Map[String, Map[String, Bool]]
 
 pub fn pta_site_names(Array[Cfg]) -> Map[String, String]
+
+pub fn pta_site_of(Map[String, String], Int32, Int32) -> String
 
 pub fn pta_sweep(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]], Int32) -> Bool
 
@@ -508,6 +526,20 @@ pub(all) enum NodeKind {
   Eval(@ast.Expr)
   Test(@ast.Expr)
   Stop
+}
+
+pub(all) struct Pfg {
+  succ : Map[String, Array[String]]
+  pred : Map[String, Array[String]]
+}
+
+pub(all) struct PfgResult {
+  graph : Pfg
+  pts : Map[String, Map[String, Bool]]
+  propagated : Int32
+  skipped : Int32
+  expr_stores : Int32
+  trace : Array[String]
 }
 
 #derive(Eq)

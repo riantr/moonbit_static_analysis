@@ -17228,14 +17228,12 @@ every path it names has to exist in the tree -- which is what
                                                                           DEMAND-DRIVEN cells),
                                                                           0576 (pta_storeless.mbt
                                                                           -- the STORELESS cell)
-    9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4 with    §4 (p.95-153) is the
-                                method calls                                 client for the CALL rule's
-                                                                          Dispatch and for the
-                                                                          call graph -- 0574
-                                                                          (callgraph.mbt), 0575
-                                                                          (pta_ctx.mbt)
+    9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4    §3 (p.43-92) is the POINTER FLOW GRAPH and the
+                                with method calls                         differential propagation -- 0579 (pfg.mbt); §4 (p.95-153)
+                                                                          is the client for the CALL rule's Dispatch and for the
+                                                                          call graph -- 0574 (callgraph.mbt), 0575 (pta_ctx.mbt)
     11-12_PTA-CS.pdf (178p)     context sensitivity: the Select variants,      0575 (pta_ctx.mbt --
-                                k-limiting, the call rule                     the CONTEXT cell's client)
+                                 k-limiting, the call rule                     the CONTEXT cell's client)
 
 THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
 lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
@@ -18206,3 +18204,105 @@ report pipeline still calls five things from `src/flow` and these are not among 
 context, a scope, a heap abstraction, a call graph and a constant propagation are
 MEASUREMENTS, and a report reports FINDINGS.
 
+## 0579: THE POINTER FLOW GRAPH -- the deck's own picture, edge for edge, and its own trace
+
+THE AUDIT OF DECKS 9-10 AND 11-12 FOUND FOUR CELLS ABSENT, and this is the first of them. THE
+DECK IS `9-10_PTA-FD.pdf` -- *Pointer Analysis -- Flow and Dispatch*, Tian Tan, Nanjing
+University -- and p.23 prints the **pointer flow graph**'s edge table, p.24-25 prints its
+example program, and p.33 draws the finished picture.
+
+### THE EDGE TABLE, AS p.23 PRINTS IT
+
+    Kind      Statement             Rule                            PFG Edge
+    New       i: x = new T()        o_i in pts(x)                   N/A
+    Assign    x = y                 o_i in pts(y)                   o_i in pts(x)    x <- y
+    Store     x.f = y               o_i in pts(x), o_j in pts(y)    o_j in pts(o_i.f)  o_i.f <- y
+    Load      y = x.f               o_i in pts(x), o_j in pts(o_i.f) o_j in pts(y)    y <- o_i.f
+
+THREE OF THE FOUR RULES HAVE AN EDGE and **New has none**, because the object is fresh and
+nothing has to be propagated to it. The tree's four rules are the SAME four rules `pta.mbt` has
+carried since 0547; what this increment adds is the **graph** they are read over, and the
+graph's own algorithm.
+
+### THE PICTURE, AND THE MEASUREMENT THAT FIXED THE EDGE SET
+
+The deck's example program (p.24-25) is five statements:
+
+    1  a = b;
+    2  c.f = a;
+    3  d = c;
+    4  c.f = d;
+    5  e = d.f;
+
+with the annotation *(o_i in pts(c), o_i in pts(d))* -- ONE object, in both `c` and `d`, because
+`d = c`. The deck draws that object as `o_i`; this tree names every object after its
+allocation site's line, and the picture's `c` is allocated on line 1, so the same node is `o1`
+here and `o_i.f` there.
+
+THE DECK BUILDS THE PICTURE ONE STATEMENT AT A TIME over p.25-33, and p.33 is the completed
+graph. **THE EDGE SET WAS MEASURED FROM THE PDF'S OWN VECTOR GEOMETRY**, because the text layer
+of that page carries the labels but not the arrows: five arrows, `b -> a`, `a -> o_i.f`,
+`c -> d`, `d -> o_i.f`, `o_i.f -> e`. NOT SIX: there is no store into `e`, and a sixth arrow
+would be an edge the deck does not draw.
+
+### THE WORK LIST IS THE DECK'S, STEP FOR STEP
+
+The deck runs its own algorithm over a seven-line program on p.74-91, and the slides name the
+entry being processed: `b` (p.74), `c` (p.76), `a` (p.81), `d` (p.83), `o3.f` with {o1} (p.88),
+`o3.f` with {o3} (p.89), and `e` with {o1} then {o3} (p.90). That is **eight steps, in that
+order**, and the order is the deck's because p.75 prints the work list as `[<c,{o3}>, <a,{o1}>]`
+with `b` still at the head -- so the work list is a **QUEUE**.
+
+THE PROPAGATED THING IS THE **DELTA**, and that too is the deck's: p.75's work list holds
+`[<c,{o3}>, <a,{o1}>]` -- TWO entries and not three, so what travels is the difference and not
+the whole set. The deck's own section (p.58-65) says why: "existing points-to information in
+pts(n) have already been propagated to n's successors, and no need to be propagated again".
+
+    b, {o1}; c, {o3}; a, {o1}; d, {o3}; o3.f, {o1}; o3.f, {o3}; e, {o1}; e, {o3}
+
+AND THE DECK'S FINAL TABLES COME OUT OF IT (p.90-91), for the seven-line program whose
+allocations are on lines 1 and 3:
+
+    a -> {o1}; b -> {o1}; c -> {o3}; d -> {o3}; e -> {o1,o3}; o3.f -> {o1,o3}
+
+### THE ORDERING TRAP, WHICH IS THE SAME TRAP 0579'S OWN FIRST DRAFT FELL INTO
+
+`cfg_of` allocates a CFG's nodes **BACK TO FRONT**, so reading `kinds[0], kinds[1], ...` reads
+the body BACKWARDS. The first draft of the work list seeded itself in node order and produced
+`c` before `b` -- a wrong trace on the deck's own program. The fix is the tree's ONE definition
+of source order, `Cfg::source_order`, and the trace above is what it produces.
+
+### AND THE GRAPH IS COMPARED WITH THE READING, NOT ALONGSIDE IT
+
+A second implementation of a question is a second ANSWER to it, so the pointer-flow-graph
+reading is run over the same program as `pta_run` and a test requires the two printed tables to
+be **equal**. They are: `a -> {o1}; b -> {o1}; c -> {o3}; d -> {o3}; e -> {o1,o3};
+o3.f -> {o1,o3}` from both.
+
+### THE BOUNDARY IS COUNTED
+
+A store whose right-hand side is not a name -- `x.f = 3` -- has NO PFG edge, because an
+expression is not a pointer the graph can have a node for. The count is carried in the result
+(`expr_stores`), and the deck's own program has none of them: **zero**.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: the pointer flow graph and its test file.
+The seven corpora did not move at all -- each one still MATCHes its pinned baseline,
+MEASURED -- and the movement is therefore this tree's own code getting bigger.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        236 -> 238      (the pointer flow graph and its test file)
+    own-source notices    1,881 -> 1,890   (printed 157 -> 157, aggregated 1,724 -> 1,733)
+    the notice table       two `struct` declarations and seven `test` declarations
+    the eight-tree total  23,226 -> 23,235  (the seven corpora did not move)
+    the eight-tree split   3,971 + 19,255 -> 3,971 + 19,264
+    the suppression pair     694 / 1343 -> 694 / 1343
+    the SSA cost            files 218 -> 220, functions 1,085 -> 1,109,
+                           partial 1,080 -> 1,104, declined 5,430 -> 5,494,
+                           instructions 8,017 -> 8,042, variables 934 -> 945,
+                           versions 2,346 -> 2,364, phis 862 -> 866,
+                           copies 2,081 -> 2,093, undef_operands 177 -> 178,
+                           dead_blocks 392 -> 393, undef_uses 1,055 -> 1,060
+    the test counts        1,600 -> 1,607 on wasm, 1,458 -> 1,465 on js and wasm-gc
