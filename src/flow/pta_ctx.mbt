@@ -178,7 +178,17 @@ pub(all) struct PtaCtxEdge {
 /// What one context-sensitive run produced.
 pub(all) struct PtaCtxResult {
   /// (function, context) -> points-to map. The key is `pta_ctx_key`.
+  ///
+  /// THE MAP HOLDS THE FRAME'S OWN VARIABLES, and the HEAP is a separate map
+  /// below -- 0581. A field belongs to the object and not to the frame that
+  /// stores into it, so the field cells live in one heap that every frame
+  /// shares; that is what lets the caller read a field the callee wrote, which
+  /// is exactly what deck 11-12 p.56's example does (`x.f = p` inside `newX`,
+  /// `n = x1.f` in `main`).
   states : Map[String, Pta]
+  /// THE HEAP: the field cells of every object, keyed by the object's own
+  /// name -- `o8.f`, or `3:o8.f` under a context-sensitive heap.
+  heap : Pta
   /// function -> the contexts it was analysed under, in the order they appeared.
   contexts : Map[String, Array[String]]
   /// the interprocedural edges, one per (call site, target, context).
@@ -313,6 +323,62 @@ fn cs_add_caller(
       let xs : Array[String] = [caller_key]
       callers_of.set(callee_key, xs)
     }
+  }
+}
+
+///|
+/// Record the CALL SITE that entered a frame, and say whether it was new.
+///
+/// THE ENTERING CALL SITE IS THE HEAP CONTEXT OF THE FRAME (0581).  Deck
+/// 11-12 p.29: "The most common choice is to inherit contexts from the method
+/// where the object is allocated" -- the frame the object is allocated in IS
+/// the frame the call entered, so the call site is what distinguishes one
+/// frame from another when the analysis merges them.
+///
+/// Under 1-CFA the frame's own context IS the entering call site (p.112:
+/// "Select _, l, _ = [ l ]"), so the two agree; under context insensitivity the
+/// frame's context is empty and the CALL SITES are the only thing left that
+/// tells the frame apart -- which is what the deck's own "C.I. + C.S. heap"
+/// column (p.56) prints: one frame, and the objects `3:o8` AND `4:o8`.
+fn cs_add_label(
+  labels_of : Map[String, Array[String]],
+  state_key : String,
+  label : String,
+) -> Bool {
+  match labels_of.get(state_key) {
+    Some(xs) =>
+      if xs.contains(label) {
+        false
+      } else {
+        xs.push(label)
+        true
+      }
+    None => {
+      labels_of.set(state_key, [label])
+      true
+    }
+  }
+}
+
+///|
+/// THE HEAP CONTEXTS OF A FRAME -- the contexts its objects are named under.
+///
+/// THE FRAME'S OWN CONTEXT WINS when it is not empty: the frame is identified
+/// by its context, and the deck's object-sensitive variant (p.100) uses the
+/// receiver's object as that context "with heap context".
+///
+/// THE EMPTY CONTEXT IS THE CONTEXT-INSENSITIVE CASE, and there the entering
+/// call sites are what the heap context is made of -- one object per call site,
+/// which is what the deck's "C.I. + C.S. heap" column prints.
+///
+/// A FRAME WITH NO CALL SITE AT ALL -- the entry point -- HAS NO HEAP CONTEXT,
+/// and its objects keep their plain names (`o1`, `o2`), which is what the
+/// deck's own table prints for `main`'s two allocations (p.56).
+fn cs_heap_contexts(ctx : PtaContext, labels : Array[String]) -> Array[String] {
+  if ctx != "" {
+    [ctx]
+  } else {
+    labels
   }
 }
 
@@ -466,6 +532,35 @@ pub fn pta_ctx_run(
   main : String,
   sel : CtxSelect,
 ) -> PtaCtxResult {
+  pta_ctx_run_heap(fns, tab, main, sel, false)
+}
+
+///|
+/// THE CONTEXT-SENSITIVE POINTER ANALYSIS, with a CONTEXT-SENSITIVE HEAP.
+///
+/// THE ONLY DIFFERENCE FROM `pta_ctx_run` IS THE HEAP CONTEXT, and it is the
+/// deck's own (11-12 p.28-30): "The abstract objects are also qualified by
+/// contexts (called heap contexts)" and "The most common choice is to inherit
+/// contexts from the method where the object is allocated". So the object an
+/// allocation creates in the state `(newX, 3)` is `3:o8` -- the deck's own name
+/// (p.56) -- and the field keys follow: `3:o8.f`.
+///
+/// THE FOUR RULES ARE NOT REWRITTEN. `pta_sweep_heap` is `pta_sweep` with the
+/// heap context, and the rules are the same four rules over different object
+/// NAMES. One rule, one place.
+///
+/// AND THE DECK'S MEASURED CLAIM IS ABOUT THE PAIR: p.56 prints "Context-sensitive
+/// heap improves precision" AND "Without C.S., C.S. heap cannot improve precision".
+/// The second half is why the heap context is INHERITED FROM THE CALLING CONTEXT
+/// and not chosen freely: with a context-insensitive analysis every state has the
+/// empty context, the heap context is empty, and the heap is the one it was.
+pub fn pta_ctx_run_heap(
+  fns : Array[CgFn],
+  tab : TraitTable,
+  main : String,
+  sel : CtxSelect,
+  cs_heap : Bool,
+) -> PtaCtxResult {
   // The CFG of every function, PARALLEL to `fns`.
   let cfgs : Array[Cfg] = []
   let mut i = 0
@@ -485,6 +580,12 @@ pub fn pta_ctx_run(
   }
   let states : Map[String, Pta] = Map([])
   let contexts : Map[String, Array[String]] = Map([])
+  /// THE HEAP, shared by every frame.  The field cells live here and not in the
+  /// frames' own maps, because a field belongs to the OBJECT: deck 11-12 p.56
+  /// writes `x.f = p` inside `newX` and reads `n = x1.f` in `main`.
+  let heap : Pta = pta_empty()
+  /// state key -> the call sites that entered that frame.
+  let heap_labels : Map[String, Array[String]] = Map([])
   // The (caller, context, call site, target) combinations already COUNTED, so
   // that a state the work list visits twice is not counted twice.
   let counted : Map[String, Bool] = Map([])
@@ -515,12 +616,29 @@ pub fn pta_ctx_run(
       Some(p) => p
       None => continue
     }
-    // 1. THE FOUR RULES, on this state's own map.
-    let mut changed = pta_sweep(cfgs, sites, pt, fi)
+    // 1. THE FOUR RULES, on this state's own map.  THE HEAP CONTEXT IS THIS
+    // STATE'S OWN CONTEXT, which is the deck's "inherit contexts from the method
+    // where the object is allocated" (p.29) -- and, when the context is empty,
+    // the call sites that entered this frame.
+    let labels = match heap_labels.get(key) {
+      Some(xs) => xs
+      None => []
+    }
+    // THE `if` IS A STATEMENT AND NOT AN EXPRESSION: an `if` used as a value is
+    // OUTSIDE the analysed subset, so a read that happens only inside one is a
+    // read the analyzer never sees -- and then `cs_heap` and `labels` look
+    // unused. The same fix the 3AC layer's first draft needed (0552).
+    let heaps : Array[String] = []
+    if cs_heap {
+      for h in cs_heap_contexts(ctx, labels) {
+        heaps.push(h)
+      }
+    }
+    let mut changed = pta_sweep_heap(cfgs, sites, pt, heap, fi, heaps)
     // 2. THE FUNCTION'S RESULT, which is a pointer of this state's map.
     let mut res = name_set_empty()
     for e in cs_result_exprs(fns[fi]) {
-      res = name_set_union(res, pta_of_expr(pt, e))
+      res = name_set_union(res, pta_of_expr(pt, heap, e))
     }
     if pta_join(pt, "result", res) {
       changed = true
@@ -582,6 +700,10 @@ pub fn pta_ctx_run(
             None => ()
             Some(ti) => {
               let ckey = pta_ctx_key(callee, cctx)
+              // THE CALL SITE THAT ENTERED THIS FRAME IS THE HEAP CONTEXT OF
+              // THE FRAME (0581), and it is recorded even when the frame has no
+              // body in this tree -- the context is a fact about the call.
+              let grew = cs_add_label(heap_labels, ckey, site.label)
               let cpt = match states.get(ckey) {
                 Some(p) => p
                 None => {
@@ -601,11 +723,19 @@ pub fn pta_ctx_run(
               // THE ARGUMENTS -> THE PARAMETERS.
               let mut a = 0
               while a < site.call.args.length() && a < fns[ti].params.length() {
-                let objs = pta_of_expr(pt, site.call.args[a])
+                let objs = pta_of_expr(pt, heap, site.call.args[a])
                 if pta_join(cpt, fns[ti].params[a].name, objs) {
                   cchanged = true
                 }
                 a = a + 1
+              }
+              // A SECOND CALL SITE ENTERED THIS FRAME, so the frame's heap
+              // context grew and the frame owns ANOTHER OBJECT: the state is
+              // swept again, and the new object's field cells are written
+              // there. This is the deck's "C.I. + C.S. heap" column (p.56),
+              // where one frame holds `3:o8` AND `4:o8`.
+              if grew && cctx == "" {
+                wl.push(ckey)
               }
               // THE RESULT -> THE CALLER'S LEFT-HAND SIDE.
               if site.call.lhs != "" {
@@ -645,6 +775,7 @@ pub fn pta_ctx_run(
   }
   {
     states,
+    heap,
     contexts,
     edges,
     unresolved,

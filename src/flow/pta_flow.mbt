@@ -217,26 +217,26 @@ fn pta_fs_step(
       // and the deck's Store rule with the fresh object as the target.
       for pair in inits {
         let (fld, e) = pair
-        pta_map_put(out, obj + "." + fld, pta_of_expr(pt, e))
+        pta_map_put(out, obj + "." + fld, pta_of_expr(pt, pt, e))
       }
     }
     None =>
       match kind {
         // Assign, and the load form of it: `s = c.f` is the deck's Load rule, and
         // `pta_of_expr` answers the right-hand side either way.
-        Assign(x, e) => pta_map_put(out, x, pta_of_expr(pt, e))
-        Store(x, e) => pta_map_put(out, x, pta_of_expr(pt, e))
+        Assign(x, e) => pta_map_put(out, x, pta_of_expr(pt, pt, e))
+        Store(x, e) => pta_map_put(out, x, pta_of_expr(pt, pt, e))
         // Store THROUGH a place: `x.f = y` is the deck's Store rule.
         PlaceStore(target, e) => {
-          let src = pta_of_expr(pt, e)
+          let src = pta_of_expr(pt, pt, e)
           match target.kind {
             @ast.EField(b, fld) =>
-              for o, _ in pta_of_expr(pt, b) {
+              for o, _ in pta_of_expr(pt, pt, b) {
                 pta_map_put(out, o + "." + fld, src)
               }
             // p.86: indexes are ignored; the whole array is one field.
             @ast.EIndex(b, _) =>
-              for o, _ in pta_of_expr(pt, b) {
+              for o, _ in pta_of_expr(pt, pt, b) {
                 pta_map_put(out, o + ".arr", src)
               }
             _ => ()

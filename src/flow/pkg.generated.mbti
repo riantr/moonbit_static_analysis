@@ -189,6 +189,8 @@ pub fn pta_ctx_of(PtaCtxResult, String, String, String) -> Map[String, Bool]
 
 pub fn pta_ctx_run(Array[CgFn], TraitTable, String, CtxSelect) -> PtaCtxResult
 
+pub fn pta_ctx_run_heap(Array[CgFn], TraitTable, String, CtxSelect, Bool) -> PtaCtxResult
+
 pub fn pta_ctx_text(PtaCtxResult, String, String) -> String
 
 pub fn pta_demand_run(Array[CgFn], TraitTable, PtaDemandQuery) -> PtaDemandResult
@@ -198,6 +200,18 @@ pub fn pta_demand_site(Array[CgFn], String, Int32) -> PtaDemandQuery?
 pub fn pta_empty() -> Map[String, Map[String, Bool]]
 
 pub fn pta_fs_transfer_of(Cfg) -> (Int32, Map[String, Map[String, Bool]]) -> Map[String, Map[String, Bool]]
+
+pub fn pta_heap_ctx_compare(Array[CgFn], TraitTable, String, CtxSelect) -> HeapCtxCompare
+
+pub fn pta_heap_ctx_pairs(PtaCtxResult) -> Int32
+
+pub fn pta_heap_ctx_program_map(PtaCtxResult) -> Map[String, Map[String, Bool]]
+
+pub fn pta_heap_ctx_program_text(PtaCtxResult) -> String
+
+pub fn pta_heap_ctx_state_text(PtaCtxResult, String, String) -> String
+
+pub fn pta_heap_objs(String, Array[String]) -> Array[String]
 
 pub fn pta_inter_cg_text(PtaInterResult) -> String
 
@@ -211,7 +225,7 @@ pub fn pta_map_lattice() -> Lattice[Map[String, Map[String, Bool]]]
 
 pub fn pta_of(Map[String, Map[String, Bool]], String) -> Map[String, Bool]
 
-pub fn pta_of_expr(Map[String, Map[String, Bool]], @ast.Expr) -> Map[String, Bool]
+pub fn pta_of_expr(Map[String, Map[String, Bool]], Map[String, Map[String, Bool]], @ast.Expr) -> Map[String, Bool]
 
 pub fn pta_run(Array[Cfg]) -> Array[Map[String, Map[String, Bool]]]
 
@@ -223,7 +237,9 @@ pub fn pta_site_names(Array[Cfg]) -> Map[String, String]
 
 pub fn pta_site_of(Map[String, String], Int32, Int32) -> String
 
-pub fn pta_sweep(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]], Int32) -> Bool
+pub fn pta_sweep(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]], Map[String, Map[String, Bool]], Int32) -> Bool
+
+pub fn pta_sweep_heap(Array[Cfg], Map[String, String], Map[String, Map[String, Bool]], Map[String, Map[String, Bool]], Int32, Array[String]) -> Bool
 
 pub fn pta_text(Map[String, Map[String, Bool]]) -> String
 
@@ -452,6 +468,15 @@ pub(all) enum EdgeKind {
   Ret(@ast.Expr?, String?)
 }
 
+pub(all) struct HeapCtxCompare {
+  plain : PtaCtxResult
+  cs_heap : PtaCtxResult
+  no_cs : PtaCtxResult
+  pairs_plain : Int32
+  pairs_cs_heap : Int32
+  pairs_no_cs : Int32
+}
+
 pub(all) struct IFn {
   name : String
   params : Array[String]
@@ -561,6 +586,7 @@ pub(all) struct PtaCtxEdge {
 
 pub(all) struct PtaCtxResult {
   states : Map[String, Map[String, Map[String, Bool]]]
+  heap : Map[String, Map[String, Bool]]
   contexts : Map[String, Array[String]]
   edges : Array[PtaCtxEdge]
   unresolved : Int32

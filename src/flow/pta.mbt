@@ -177,14 +177,20 @@ pub fn pta_join(pt : Pta, key : String, add : Map[String, Bool]) -> Bool {
 ///|
 /// The field pointers `o.f` for every `o` in `base` -- the deck's `o_i.f`,
 /// computed for all candidates at once because a may-analysis keeps them all.
+///
+/// THE FIELD CELLS ARE READ FROM THE HEAP, not from the variable map: `hp` is
+/// the heap, and the object's own name is the heap's address. 0581: a field is
+/// a property of the OBJECT and not of the frame that happens to look at it, so
+/// the cell has to be reachable from every frame -- the deck's own example
+/// writes `x.f` inside a method and reads `x1.f` in the caller (11-12 p.56).
 fn pta_field_pts(
-  pt : Pta,
+  hp : Pta,
   base : Map[String, Bool],
   f : String,
 ) -> Map[String, Bool] {
   let out : Map[String, Bool] = Map([])
   for o, _ in base {
-    for obj, _ in pta_of(pt, o + "." + f) {
+    for obj, _ in pta_of(hp, o + "." + f) {
       out.set(obj, true)
     }
   }
@@ -194,15 +200,22 @@ fn pta_field_pts(
 ///|
 /// The points-to set of an expression.
 ///
+/// `pt` IS THE FRAME'S OWN VARIABLE MAP and `hp` IS THE HEAP. THEY ARE THE SAME
+/// MAP whenever the analysis has one frame per function -- `pta_run` passes its
+/// map twice -- and they are DIFFERENT maps in the context-sensitive analysis,
+/// where one heap is shared by every frame. 0581: a field belongs to the object,
+/// not to the frame that stores into it, so the field cells live in the heap and
+/// a caller can read a field a callee wrote.
+///
 /// ANYTHING ELSE IS EMPTY, AND THAT IS THE SOUND DIRECTION: this is a may-analysis
 /// (p.17), so a value the analysis does not model contributes no objects rather
 /// than an invented one.
-pub fn pta_of_expr(pt : Pta, e : @ast.Expr) -> Map[String, Bool] {
+pub fn pta_of_expr(pt : Pta, hp : Pta, e : @ast.Expr) -> Map[String, Bool] {
   match e.kind {
     @ast.EName(x) => pta_of(pt, x)
-    @ast.EField(b, f) => pta_field_pts(pt, pta_of_expr(pt, b), f)
+    @ast.EField(b, f) => pta_field_pts(hp, pta_of_expr(pt, hp, b), f)
     // p.86: indexes are ignored; the whole array is one field.
-    @ast.EIndex(b, _) => pta_field_pts(pt, pta_of_expr(pt, b), "arr")
+    @ast.EIndex(b, _) => pta_field_pts(hp, pta_of_expr(pt, hp, b), "arr")
     // The header's third bullet: p.59 puts `"x"` inside a points-to set, so a
     // literal is an object. The key is the literal as PRINTED, quotes included,
     // because that is the text the deck's own table shows.
@@ -441,30 +454,79 @@ pub fn pta_bound_name(kind : NodeKind) -> String {
 }
 
 ///|
+/// The names of an object under HEAP CONTEXTS: "<context>:<object>", one per
+/// context.
+///
+/// THE DECK'S OWN NOTATION (11-12 p.30) is `c: o_i` -- the context, a colon, and
+/// the object -- and p.29 says where the context comes from: "The most common
+/// choice is to inherit contexts from the method where the object is allocated".
+/// So the deck's `3:o8` is the object of the allocation site at line 8, in the
+/// calling context 3.
+///
+/// AN EMPTY LIST LEAVES THE NAME ALONE, and that is the whole difference between
+/// a context-sensitive heap and a context-insensitive one: the rules do not
+/// change, the NAME does, and every field key is derived from the name.
+///
+/// THE LIST AND NOT ONE STRING, because the deck's own "C.I. + C.S. heap"
+/// column (p.56) has ONE frame reached from TWO call sites, and that frame's
+/// object is `3:o8` AND `4:o8` -- two objects in one frame, one per call site.
+/// A single heap context could not name both.
+///
+/// THE `if` IS A STATEMENT AND NOT AN EXPRESSION, and that is this tree's own
+/// rule and not a style choice: an `if` used as a value is OUTSIDE the
+/// analysed subset, so a read that happens only inside one is a read the
+/// analyzer never sees -- and then a parameter read only there looks unused.
+/// The same fix the 3AC layer's first draft needed (0552): make the `if` a
+/// statement, and the read is in a region the audit does read.
+pub fn pta_heap_objs(obj : String, heaps : Array[String]) -> Array[String] {
+  let out : Array[String] = []
+  if heaps.length() == 0 {
+    out.push(obj)
+  } else {
+    for h in heaps {
+      out.push(h + ":" + obj)
+    }
+  }
+  out
+}
+
+///|
 /// Apply the deck's four rules at one node, WEAKLY: every conclusion is joined
 /// into the pointer's set and nothing is ever removed. That is what
 /// flow-insensitivity means (p.55): one map for the whole program, so a later
 /// statement can never take back what an earlier one established.
+///
+/// THE HEAP CONTEXT QUALIFIES THE OBJECT'S NAME, and the field keys follow from
+/// it -- `o8.f` becomes `3:o8.f` -- so the CONTEXT-SENSITIVE HEAP (11-12 p.28-56)
+/// needs no second set of rules.
+///
+/// `hp` IS THE HEAP: the field cells live there, and `pt` is this frame's own
+/// variable map. They are the same map when the analysis has one frame per
+/// function.
 fn pta_step(
   cfgs : Array[Cfg],
   sites : Map[String, String],
   pt : Pta,
+  hp : Pta,
   fi : Int32,
   v : Int32,
+  heaps : Array[String],
 ) -> Bool {
   let kind = cfgs[fi].kinds[v]
   let mut changed = false
   match pta_alloc_of(kind) {
     // New, plus the initialisers-as-stores extension.
     Some(inits) => {
-      let obj = pta_site_of(sites, fi, v)
-      if pta_add(pt, pta_bound_name(kind), obj) {
-        changed = true
-      }
-      for pair in inits {
-        let (fld, e) = pair
-        if pta_join(pt, obj + "." + fld, pta_of_expr(pt, e)) {
+      let objs = pta_heap_objs(pta_site_of(sites, fi, v), heaps)
+      for obj in objs {
+        if pta_add(pt, pta_bound_name(kind), obj) {
           changed = true
+        }
+        for pair in inits {
+          let (fld, e) = pair
+          if pta_join(hp, obj + "." + fld, pta_of_expr(pt, hp, e)) {
+            changed = true
+          }
         }
       }
     }
@@ -475,27 +537,30 @@ fn pta_step(
         // empty for anything that is not a pointer expression, which is the sound
         // direction.
         Assign(x, e) =>
-          if pta_join(pt, x, pta_of_expr(pt, e)) {
+          if pta_join(pt, x, pta_of_expr(pt, hp, e)) {
             changed = true
           }
-        Store(x, e) => if pta_join(pt, x, pta_of_expr(pt, e)) { changed = true }
+        Store(x, e) =>
+          if pta_join(pt, x, pta_of_expr(pt, hp, e)) {
+            changed = true
+          }
         // Store THROUGH a field: `x.f = y` is the deck's Store rule.
         PlaceStore(target, e) =>
           match target.kind {
             @ast.EField(b, fld) => {
-              let dest = pta_of_expr(pt, b)
-              let src = pta_of_expr(pt, e)
+              let dest = pta_of_expr(pt, hp, b)
+              let src = pta_of_expr(pt, hp, e)
               for o, _ in dest {
-                if pta_join(pt, o + "." + fld, src) {
+                if pta_join(hp, o + "." + fld, src) {
                   changed = true
                 }
               }
             }
             @ast.EIndex(b, _) => {
-              let dest = pta_of_expr(pt, b)
-              let src = pta_of_expr(pt, e)
+              let dest = pta_of_expr(pt, hp, b)
+              let src = pta_of_expr(pt, hp, e)
               for o, _ in dest {
-                if pta_join(pt, o + ".arr", src) {
+                if pta_join(hp, o + ".arr", src) {
                   changed = true
                 }
               }
@@ -523,12 +588,32 @@ pub fn pta_sweep(
   cfgs : Array[Cfg],
   sites : Map[String, String],
   pt : Pta,
+  hp : Pta,
   fi : Int32,
+) -> Bool {
+  pta_sweep_heap(cfgs, sites, pt, hp, fi, [])
+}
+
+///|
+/// ONE SWEEP OF THE DECK'S FOUR RULES over ONE function's points-to map, with a
+/// HEAP CONTEXT.
+///
+/// THE HEAP CONTEXT IS THE ONLY DIFFERENCE, and it is the deck's own (11-12
+/// p.28-30): the object an allocation creates is named `<context>:<object>`, and
+/// the field keys follow from that name. So the CONTEXT-SENSITIVE HEAP is the same
+/// four rules over different names -- not a second rule system.
+pub fn pta_sweep_heap(
+  cfgs : Array[Cfg],
+  sites : Map[String, String],
+  pt : Pta,
+  hp : Pta,
+  fi : Int32,
+  heaps : Array[String],
 ) -> Bool {
   let mut changed = false
   let mut v = 0
   while v < cfgs[fi].kinds.length() {
-    if pta_step(cfgs, sites, pt, fi, v) {
+    if pta_step(cfgs, sites, pt, hp, fi, v, heaps) {
       changed = true
     }
     v = v + 1
@@ -566,7 +651,7 @@ pub fn pta_run(cfgs : Array[Cfg]) -> Array[Pta] {
     let pt = pta_empty()
     let mut changed = true
     while changed {
-      changed = pta_sweep(cfgs, sites, pt, fi)
+      changed = pta_sweep(cfgs, sites, pt, pt, fi)
     }
     out.push(pt)
     fi = fi + 1
@@ -619,25 +704,25 @@ pub fn pta_run_ordered(g : Cfg) -> Pta {
         pt.set(pta_bound_name(kind), pta_one(obj))
         for pair in inits {
           let (fld, e) = pair
-          pt.set(obj + "." + fld, pta_of_expr(pt, e))
+          pt.set(obj + "." + fld, pta_of_expr(pt, pt, e))
         }
       }
       None =>
         match kind {
-          Assign(x, e) => pt.set(x, pta_of_expr(pt, e))
-          Store(x, e) => pt.set(x, pta_of_expr(pt, e))
+          Assign(x, e) => pt.set(x, pta_of_expr(pt, pt, e))
+          Store(x, e) => pt.set(x, pta_of_expr(pt, pt, e))
           PlaceStore(target, e) =>
             match target.kind {
               @ast.EField(b, fld) => {
-                let dest = pta_of_expr(pt, b)
-                let src = pta_of_expr(pt, e)
+                let dest = pta_of_expr(pt, pt, b)
+                let src = pta_of_expr(pt, pt, e)
                 for o, _ in dest {
                   pt.set(o + "." + fld, src)
                 }
               }
               @ast.EIndex(b, _) => {
-                let dest = pta_of_expr(pt, b)
-                let src = pta_of_expr(pt, e)
+                let dest = pta_of_expr(pt, pt, b)
+                let src = pta_of_expr(pt, pt, e)
                 for o, _ in dest {
                   pt.set(o + ".arr", src)
                 }

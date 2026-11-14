@@ -17234,8 +17234,9 @@ every path it names has to exist in the tree -- which is what
                                                                           call graph -- 0574 (callgraph.mbt), 0575 (pta_ctx.mbt),
                                                                           0580 (pta_inter.mbt -- the INTERPROCEDURAL cell, with the
                                                                           call graph built on the fly)
-    11-12_PTA-CS.pdf (178p)     context sensitivity: the Select variants,      0575 (pta_ctx.mbt --
-                                 k-limiting, the call rule                     the CONTEXT cell's client)
+    11-12_PTA-CS.pdf (178p)     context sensitivity: the Select variants, 0575 (pta_ctx.mbt -- the CONTEXT cell's client), 0581
+                                k-limiting, the call rule, the CONTEXT-   (pta_heap_ctx.mbt -- the CONTEXT-SENSITIVE HEAP, both of
+                                SENSITIVE HEAP (p.28-56)                  the deck's p.56 columns)
 
 THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
 lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
@@ -18412,3 +18413,110 @@ THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
                            copies 2,093 -> 2,133, undef_operands 178 -> 181,
                            dead_blocks 393 -> 397, undef_uses 1,060 -> 1,093
     the test counts        1,607 -> 1,613 on wasm, 1,465 -> 1,471 on js and wasm-gc
+
+
+## 0581: THE CONTEXT-SENSITIVE HEAP -- both of the deck's columns, row for row
+
+THE THIRD ABSENT CELL, and it is the OTHER deck: `11-12_PTA-CS.pdf` p.28-30 makes the HEAP a
+choice as well, and p.56 prints the two columns and the two conclusions.
+
+### THE DECK'S THREE SENTENCES
+
+    p.28  "In practice, to improve precision, context sensitivity should also be applied to
+           heap abstraction"
+    p.28  "The abstract objects are also qualified by contexts (called heap contexts)"
+    p.29  "The most common choice is to inherit contexts from the method where the object is
+           allocated"
+    p.30  "Context-sensitive heap abstraction provides a finer-grained heap model over
+           allocation-site abstraction"
+
+AND THE NOTATION IS THE DECK'S OWN (p.30): the object is `c: o_i` -- the context, a colon, and
+the object.
+
+### THE DECK'S EXAMPLE, AND THE TABLE THAT IS THE WHOLE POINT
+
+    1  n1 = new One();          7   X newX(Number p) {
+    2  n2 = new Two();           8     X x = new X();
+    3  x1 = newX(n1);            9     x.f = p;
+    4  x2 = newX(n2);           10     return x;
+    5  n = x1.f;                11   }
+                                 12   class X { Number f; }
+
+p.56 prints TWO COLUMNS for it -- **"C.I. + C.S. heap"** and **"C.S. + C.S heap"** -- and two
+conclusions: **"Context-sensitive heap improves precision"** and **"Without C.S., C.S. heap
+cannot improve precision"**.
+
+THE LEFT COLUMN IS NOT "C.S. WITHOUT A C.S. HEAP". It is CONTEXT INSENSITIVITY WITH A
+CONTEXT-SENSITIVE HEAP, and the difference is visible in the table itself: `p` is ONE pointer
+holding BOTH objects, because `newX` was analysed ONCE, while `x` holds TWO objects, `3:o8` AND
+`4:o8`, because the heap is still sensitive to the call site. THAT IS THE SECOND CONCLUSION
+MADE VISIBLE: the heap can be split while the analysis is merged, and splitting the heap alone
+buys nothing.
+
+### BOTH COLUMNS, REPRODUCED ROW FOR ROW
+
+THE RIGHT COLUMN ("C.S. + C.S heap"), measured:
+
+    n1 -> {o1}      n2 -> {o2}      3:p -> {o1}      3:x -> {3:o8}
+    x1 -> {3:o8}    4:p -> {o2}      4:x -> {4:o8}    x2 -> {4:o8}
+    n -> {o1}       3:o8.f -> {o1}  4:o8.f -> {o2}
+
+THE LEFT COLUMN ("C.I. + C.S. heap"), measured:
+
+    n1 -> {o1}      n2 -> {o2}      p -> {o1,o2}
+    x -> {3:o8,4:o8}                x1 -> {3:o8,4:o8}    x2 -> {3:o8,4:o8}
+    n -> {o1,o2}    3:o8.f -> {o1,o2}    4:o8.f -> {o1,o2}
+
+EVERY ROW OF BOTH DECK COLUMNS IS HERE, including the ones that are hard: the deck's `3:x ->
+3:o8` is this tree's `3:x -> {3:o8}`, and the deck's `x -> 3:o8, 4:o8` is this tree's
+`x -> {3:o8,4:o8}`.
+
+### THE TWO CONCLUSIONS ARE MEASUREMENTS
+
+    C.S. + C.S. heap    n holds ONE object      13 (pointer, object) pairs
+    the ordinary heap   n holds TWO objects     14 pairs
+    C.I. + C.S. heap    n holds TWO objects     18 pairs
+
+THE CONTEXT-SENSITIVE HEAP TAKES `n` FROM TWO OBJECTS TO ONE, and UNDER A CONTEXT-INSENSITIVE
+ANALYSIS IT TAKES IT NOWHERE AT ALL -- the same answer the ordinary heap gives, which is what
+"Without C.S., C.S. heap cannot improve precision" means.
+
+### THE IMPLEMENTATION IS NOT A SECOND RULE SYSTEM
+
+THE HEAP CONTEXT QUALIFIES THE OBJECT'S NAME (`3:o8`), and every field key is derived from that
+name (`3:o8.f`). So the four rules are NOT rewritten: `pta_sweep_heap` is `pta_sweep` with the
+heap context, and `pta_ctx_run_heap` is `pta_ctx_run` with it. One rule, one place -- the
+contract `pta.mbt` has held since 0547.
+
+THE HEAP CONTEXT OF A FRAME IS THE CONTEXT THE FRAME WAS ENTERED UNDER, and for a frame that
+several call sites enter, it is the ENTERING CALL SITES themselves -- one object per call site.
+That is what the deck's left column needs and what its right column agrees with.
+
+### AND THE HEAP IS SHARED BY EVERY FRAME, WHICH IS A CHANGE TO THE RULES' SIGNATURE
+
+A FIELD BELONGS TO THE OBJECT and not to the frame that stores into it, and the deck's own
+example makes that unavoidable: `x.f = p` is written inside `newX` and `n = x1.f` is read in
+`main`. So the field cells live in ONE heap that every frame shares, and `pta_of_expr` reads
+the field cells from that heap while it reads the variables from the frame's own map. When the
+analysis has one frame per function -- `pta_run` -- the two maps are the SAME map and nothing
+about that reading changes.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: the context-sensitive heap and its test file.
+The seven corpora did not move at all -- each one still MATCHes its pinned baseline,
+MEASURED -- and the movement is therefore this tree's own code getting bigger.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        240 -> 242      (the context-sensitive heap and its test file)
+    own-source notices    1,900 -> 1,907   (printed 157 -> 157, aggregated 1,743 -> 1,750)
+    the notice table       one `struct` declaration and six `test` declarations
+    the eight-tree total  23,245 -> 23,252  (the seven corpora did not move)
+    the eight-tree split   3,971 + 19,274 -> 3,971 + 19,281
+    the suppression pair     694 / 1343 -> 694 / 1343
+    the SSA cost            files 222 -> 224, functions 1,136 -> 1,160,
+                           partial 1,131 -> 1,155, declined 5,589 -> 5,627,
+                           instructions 8,179 -> 8,196, variables 969 -> 976,
+                           versions 2,424 -> 2,431, undef_uses 1,093 -> 1,111
+    the test counts        1,613 -> 1,619 on wasm, 1,471 -> 1,477 on js and wasm-gc
