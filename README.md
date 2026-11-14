@@ -480,7 +480,8 @@ allocated once and **never renumbered**, so it survives a rename:
 | `MSA-005` | `ParamChanged` | `MSA-011` | `Unreachable` |
 | `MSA-006` | `AssignTypeMismatch` | `MSA-012` | `StaleNosec` |
 | `MSA-013` | `InfeasibleBranch` | `MSA-014` | `RedundantGuard` |
-| `MSA-015` | `DeadStore` | | |
+| `MSA-015` | `DeadStore` | `MSA-016` | `DivisionByZero` |
+| `MSA-017` | `NegativeIndex` | | |
 
 The ids are hand-allocated on purpose — deriving one from the enum's position would
 renumber every family after an insertion, which is the one thing an id must never do —
@@ -596,21 +597,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (220 files), with the per-file printing cap lifted so the count is the
+project's own source (224 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1534 | | `const` declaration | 7 |
+| `test` declaration | 1553 | | `const` declaration | 7 |
 | `if` expression | 99 | | `short lambda` | 8 |
-| `struct` declaration | 70 | | `type` declaration | 3 |
-| `anonymous function literal` | 34 | | `try` expression | 1 |
-| `enum` declaration | 22 | | | |
+| `struct` declaration | 70 | | `type` declaration | 4 |
+| `anonymous function literal` | 41 | | `try` expression | 1 |
+| `enum` declaration | 23 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
-**position**: **142** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1636** sit outside every function's
+**position**: **149** of them sit inside a function's extent and can switch that body's
+audit off, so they are printed one per line; the other **1657** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -643,10 +644,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,123** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,151** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,956** of them as printed per line and
-**19,167** as aggregated — which is 3,956 + 19,167 = 23,123, the same number — and the 3,956
+says so itself: its `NOTICES` table counts **3,963** of them as printed per line and
+**19,188** as aggregated — which is 3,963 + 19,188 = 23,151, the same number — and the 3,963
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -669,12 +670,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **694** `UnusedLocal` and **1,338** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 220 files the notice table
+the tool produces **694** `UnusedLocal` and **1,340** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 224 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **693** locals and **1,338** parameters, and the per-binding
+suppression is hiding **693** locals and **1,340** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -956,9 +957,9 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 202 files, 915 functions, 7,294
-instructions of 3AC — the same measurement gives **817** variables becoming **2,051** versions,
-**747** phi-functions and **1,842** copies. The claim is not a figure of speech.
+would need **16** copies. Over this project's own source — 206 files, 947 functions, 7,445
+instructions of 3AC — the same measurement gives **827** variables becoming **2,063** versions,
+**748** phi-functions and **1,844** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
@@ -974,7 +975,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1534/1534 on wasm; 1392/1392 on js and wasm-gc
+moon test --deny-warn                # 1553/1553 on wasm; 1411/1411 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

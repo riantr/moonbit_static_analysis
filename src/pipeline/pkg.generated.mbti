@@ -10,6 +10,8 @@ import {
 // Values
 pub fn dead_stores(Array[@ast.Stmt], Array[@core.Span]) -> Array[@report.Report]
 
+pub fn has_hole(@core.Span, Array[@core.Span]) -> Bool
+
 pub fn merge_findings(Array[@report.Report]) -> Array[@report.Report]
 
 pub fn merge_group(Array[@report.Report]) -> @report.Report
@@ -21,6 +23,8 @@ pub fn run(String, String, @core.IfaceSymTab) -> PipelineResult
 pub fn run_functions(String, String, @core.IfaceSymTab) -> PipelineResult
 
 pub fn run_tracked(String, String, @core.IfaceSymTab, Bool) -> PipelineResult
+
+pub fn sign_findings(Array[@ast.Stmt], Array[@core.Span]) -> Array[@report.Report]
 
 // Errors
 

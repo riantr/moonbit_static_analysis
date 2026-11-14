@@ -301,6 +301,15 @@ fn run_core(
     for r in dead_stores(parsed.tree.body, unread) {
       all.push(r)
     }
+    // 0571. THE LECTURE'S TWO APPLICATIONS. The sign analysis lives in
+    // `src/flow/sign.mbt` and asks the deck's own question -- what is the sign
+    // of every variable -- and these are the two checks the deck names on the
+    // same slide as the analysis: a division by zero, and a negative array
+    // index. The same two guards apply as to the dead stores above, and for
+    // the same reasons: `sign_findings` applies them itself.
+    for r in sign_findings(parsed.tree.body, unread) {
+      all.push(r)
+    }
   }
   let sigs = @interp.analyzed_sigs(
     parsed.tree,

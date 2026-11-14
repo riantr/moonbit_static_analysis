@@ -100,5 +100,15 @@ pub fn Family::advice(self : Family) -> Advice {
         why: "The value this write put in the name is read on no path: every way out of here either writes the name again before reading it or leaves the function. The binding itself may be used elsewhere -- this is about ONE write, which is why the finding is a liveness result and not an unused-local one. A DECLARATION is one write too, and it is reported here only when the name IS read somewhere, so this family and `UnusedLocal` cannot report one line for one fact.",
         how: "Delete the write, or move it to where its value is actually wanted. If the right-hand side has effects you need, keep those and drop only the binding. For a declaration the fix is the same: the initialiser is overwritten before anything reads it, so the initialiser can go -- but keep the binding itself if the name is read later. Reported as a finding because a value nobody reads is dead weight the reader is paying for at runtime and, more importantly, it usually means the value they expected to be there came from somewhere else.",
       }
+    FDivisionByZero =>
+      Advice::{
+        why: "The divisor of this division is zero on EVERY path that reaches it, so the division raises a division-by-zero when the program runs. The claim comes from a sign analysis: the divisor's sign was pinned to zero by the transfer functions, and the analysis reports only what it can pin down -- an unknown sign is never reported, so this is a must-finding and not a maybe. The toolchain does not catch this shape: `moon check` exits 0 on `1 / 0`.",
+        how: "Give the divisor a value that is not zero -- check the value that reaches it, and check the guard that was supposed to prevent it. If the division is deliberate, test the divisor first and return or raise on the zero case, which also makes the intent explicit.",
+      }
+    FNegativeIndex =>
+      Advice::{
+        why: "The index of this subscript is negative on EVERY path that reaches it, so the subscript is out of bounds when the program runs. The claim comes from a sign analysis: the index's sign was pinned to negative, and an unknown sign is never reported, so this is a must-finding and not a maybe. The toolchain does not catch this shape either: `moon check` exits 0 on `arr[-1]`.",
+        how: "Fix the index -- the usual cause is an index computed as `i - 1` or `i - offset` that goes below zero, or an offset that is larger than the base. If a negative index is meant to mean 'from the end', the language spells that differently and this finding is the analyzer telling you the two were confused.",
+      }
   }
 }

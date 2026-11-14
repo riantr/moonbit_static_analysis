@@ -49,7 +49,7 @@ $fail = 0
 
 # The number of families. Pinned, because a family added without an id --
 # or an id added without a family -- is exactly what the checks below are for.
-$WANT_FAMILIES = 15
+$WANT_FAMILIES = 17
 
 if (-not (Test-Path -LiteralPath $core)) {
   Write-Output ('ABORT: no ' + $core)

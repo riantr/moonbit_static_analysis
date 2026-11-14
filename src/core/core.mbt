@@ -569,6 +569,21 @@ pub(all) enum Family {
   /// smallest example, and it is a real defect: the first store is wasted work,
   /// and if the right-hand side has effects, wasted effects.
   FDeadStore
+  /// 0571. A division (or a remainder) whose DIVISOR is definitely zero.
+  ///
+  /// This is the lecture's own first application (`Introduction`, Nanjing
+  /// University, p.45): "To check divided by zero error", decided by the sign
+  /// of the divisor. The claim is a MUST claim -- the divisor is zero on
+  /// EVERY path that reaches the operation -- because the sign domain's
+  /// unknown is never reported.
+  FDivisionByZero
+  /// 0571. A subscript whose INDEX is definitely negative.
+  ///
+  /// The lecture's second application, on the same slide: "To check negative
+  /// array indices". A negative index is out of bounds in every container this
+  /// language has, so the claim is the same shape as the division's: the
+  /// index is negative on every path that reaches the subscript.
+  FNegativeIndex
 }
 
 ///|
@@ -589,6 +604,8 @@ pub fn Family::name(self : Family) -> String {
     FInfeasibleBranch => "InfeasibleBranch"
     FRedundantGuard => "RedundantGuard"
     FDeadStore => "DeadStore"
+    FDivisionByZero => "DivisionByZero"
+    FNegativeIndex => "NegativeIndex"
   }
 }
 
@@ -627,6 +644,8 @@ pub fn Family::id(self : Family) -> String {
     FInfeasibleBranch => "MSA-013"
     FRedundantGuard => "MSA-014"
     FDeadStore => "MSA-015"
+    FDivisionByZero => "MSA-016"
+    FNegativeIndex => "MSA-017"
   }
 }
 
@@ -664,6 +683,8 @@ pub fn family_by_id(id : String) -> Family? {
     "MSA-013" => Some(FInfeasibleBranch)
     "MSA-014" => Some(FRedundantGuard)
     "MSA-015" => Some(FDeadStore)
+    "MSA-016" => Some(FDivisionByZero)
+    "MSA-017" => Some(FNegativeIndex)
     _ => None
   }
 }
@@ -693,6 +714,8 @@ pub fn all_families() -> Array[Family] {
     FInfeasibleBranch,
     FRedundantGuard,
     FDeadStore,
+    FDivisionByZero,
+    FNegativeIndex,
   ]
 }
 
@@ -742,6 +765,10 @@ pub fn Family::reach(self : Family) -> String {
       "has never produced a finding on the pinned corpora or on this tree (measured, 0534); it fires on hand-written implication fixtures, so this is a statement about REACH on real code and not about the emitter"
     FDeadStore =>
       "29 findings across the corpora before its first audit, of which 20 were ONE defect in the CFG rather than in this family (0531), leaving 9; those nine were then measured one by one (0532) and all nine are gone: eight were a read inside a region the frontend declared outside its subset, and the ninth was the index of a place-store not counted as a read (0542). The family then reported ZERO across the pinned corpora. 0565 taught it about DECLARATIONS -- a `let` whose value is overwritten before any read -- and it now reports 23 findings across the pinned corpora, all of them on moonbitlang/core, and every one of them was measured against its source and is a true positive. A scan without its findings is not evidence that no write is dead"
+    FDivisionByZero =>
+      "NEW in 0571, and built from the lecture's own example (`Introduction`, Nanjing University, p.45-58): the divisor of a division or a remainder is DEFINITELY zero -- zero on every path that reaches the operation. MEASURED on the eight pinned trees (0571): the family fires on ZERO findings, and the reason is measured rather than guessed. The seven pinned corpora hold 3,138 division and remainder operators and 21,658 subscripts (a syntactic count, 0571), and every LITERAL zero divisor among them is one float modulo (`moonbitlang/core` `builtin/double_mod_test.mbt:44`), three block comments or one string -- so the shape this family looks for is not in the corpus. A scan without its findings is NOT evidence that no code divides by zero"
+    FNegativeIndex =>
+      "NEW in 0571, and built from the lecture's own example (`Introduction`, Nanjing University, p.45-58): the index of a subscript is DEFINITELY negative -- negative on every path that reaches it. MEASURED on the eight pinned trees (0571): the family fires on ZERO findings, and the reason is measured rather than guessed. The seven pinned corpora hold 3,138 division and remainder operators and 21,658 subscripts (a syntactic count, 0571), and the only REAL negative subscripts among them are three -- `moonbitlang/core` `deque/panic_test.mbt:27`, `deque/panic_test.mbt:32` and `immut/vector/panic_test.mbt:39` -- and all three are inside `test` blocks, which this frontend declares outside its subset and does not analyse. The other four are one list literal and three block comments. A scan without its findings is NOT evidence that no code indexes out of bounds"
   }
 }
 
@@ -770,6 +797,10 @@ pub fn Family::property(self : Family) -> String {
       "the guards before this test already force its outcome, so the test cannot decide anything"
     FDeadStore =>
       "the value this write put in the name is read on no path before the name is written again or the function exits -- and a DECLARATION is one write: the value the initialiser bound is dead in exactly the same way"
+    FDivisionByZero =>
+      "the divisor of this division is zero on EVERY path that reaches it, so the division fails at run time"
+    FNegativeIndex =>
+      "the index of this subscript is negative on EVERY path that reaches it, so the subscript is out of bounds at run time"
   }
 }
 
@@ -811,6 +842,10 @@ pub fn Family::assumption(self : Family) -> String {
       "the same fragment: an immutable binding against a literal, with integer comparisons that do not wrap and no reassignment between the two guards"
     FDeadStore =>
       "a BACKWARD MAY analysis over this function body's control-flow graph: not-live is the trustworthy direction, so a read the graph does not model can only make this report wrong, and every such case is named in excluded. A DECLARATION is reported only when the name is read SOMEWHERE -- that second half is what keeps this family off the lines `UnusedLocal` owns, whose claim is 'never read anywhere'"
+    FDivisionByZero =>
+      "the divisor's sign is DETERMINED by the sign domain's transfer functions, and the domain's top -- unknown -- is never reported, so a finding means the divisor's sign was pinned to zero and not merely guessed. The analysis is INTRAPROCEDURAL over one function body's control-flow graph, so a divisor that becomes zero only after a CALL is not seen; and the two function-level guards apply as they do to the dead-store family: a statement the graph did not convert, and a region the frontend did not read, each make the whole function unanalysed"
+    FNegativeIndex =>
+      "the index's sign is DETERMINED by the sign domain's transfer functions, and the domain's top -- unknown -- is never reported, so a finding means the index's sign was pinned to negative and not merely guessed. The analysis is INTRAPROCEDURAL over one function body's control-flow graph, so an index that becomes negative only after a CALL is not seen; and the two function-level guards apply as they do to the dead-store family: a statement the graph did not convert, and a region the frontend did not read, each make the whole function unanalysed"
   }
 }
 
@@ -853,6 +888,10 @@ pub fn Family::excluded(self : Family) -> String {
       "the same fragment; a test whose operand was mutated after the binding carries no fact, so it is undecided rather than reported"
     FDeadStore =>
       "reads this graph does not model: a break or continue edge is a Stop, a nested function body is its own graph, and a read through a field or index alias is not tracked -- so the store is a candidate rather than a proof of uselessness, and a right-hand side with effects is unaffected by the finding. A FUNCTION THAT HOLDS A REGION THE FRONTEND DID NOT READ IS NOT ANALYSED AT ALL: an if used as a value, an anonymous function literal and a try expression each leave a hole in the function that contains them, and a read inside such a hole is a path this graph never saw (0542). A DECLARATION WHOSE NAME IS NEVER READ ANYWHERE IS `UnusedLocal`'s FINDING, not this one, and the 'read somewhere' that decides it is the GRAPH's -- so a read the graph does not model makes a declaration look unread as well as a store (0565)"
+    FDivisionByZero =>
+      "a divisor whose sign the analysis could NOT pin down is not reported, and that is most of the cases: a parameter, a value read from a field, a value returned by a call, and a value that is zero on one path and not on another -- the last one because the sign domain JOINS the two paths and the join of zero and anything else is unknown. A FLOAT DIVISION BY ZERO IS NOT A CRASH, and the family does not report one the source shows to be a float: `1.0 / 0` is Infinity and `1.0 % 0` is NaN (MEASURED against the toolchain, 0571), while `1 / 0` raises `divide by zero` and `1 % 0` raises `remainder by zero`. THE RESIDUAL IS THE TYPE LENS'S: it publishes the types of the MODULE's names and not of a function's locals, so a float-valued LOCAL divided by a definitely-zero value is reported even though it does not crash -- and the eight pinned trees contain no such division (measured, 0571). A DIVISION INSIDE A REGION THE GRAPH DOES NOT MODEL is not analysed at all: a block used as a value holds statements the graph never turned into nodes, so a name such a block assigns would still carry its old value in the state this analysis reads"
+    FNegativeIndex =>
+      "an index whose sign the analysis could NOT pin down is not reported, and that is most of the cases: a parameter, a value read from a field, a value returned by a call, and an index that is negative on one path and not on another -- the last one because the sign domain JOINS the two paths and the join of negative and anything else is unknown. A SUBSCRIPT INSIDE A REGION THE GRAPH DOES NOT MODEL is not analysed at all, for the reason the division's is: a block used as a value holds statements the graph never turned into nodes. A subscript of a NEGATIVE index is out of bounds in every container this language has, and the toolchain does not catch it: `moon check` exits 0 on `arr[-1]`"
   }
 }
 
@@ -867,6 +906,8 @@ pub fn Family::severity(self : Family) -> Severity {
     FInfeasibleBranch => Warning
     FRedundantGuard => Warning
     FDeadStore => Warning
+    FDivisionByZero => Error
+    FNegativeIndex => Error
   }
 }
 

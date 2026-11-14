@@ -7600,7 +7600,7 @@ spelling is a hand-written `match` (`core.mbt:545-560`). The names and the enum 
 not the same thing:
 
 ```
-    0505 the family roster, families              : 15
+    0505 the family roster, families              : 17
     0505 the family roster, names that differ     : 5
 
 AND WHEN THE ROSTER MOVES, THESE TWO NUMBERS MOVE WITH IT, and the fix is to RE-READ
@@ -9483,8 +9483,8 @@ against this tree, so it cannot rot without the gate saying so.
     row 1  src/report/report.mbt:214    fn Report::confidence
     row 1  src/jsoncli/main.mbt:50      confidence : String
     row 2  src/core/core.mbt:537        enum Family
-    row 2  src/core/core.mbt:613        fn Family::id
-    row 2  src/core/core.mbt:650        fn family_by_id
+    row 2  src/core/core.mbt:630        fn Family::id
+    row 2  src/core/core.mbt:669        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
@@ -16855,3 +16855,225 @@ Li, Fall 2026), and 0564's map is that deck's. Both files are on disk. The
 resource is stale, and the work is not.
 
 **NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
+
+
+## 0571: THE LECTURE'S TWO APPLICATIONS, AND THE BUG THE FIXED POINT FOUND
+
+THE OPEN ITEM 0570 LEFT WAS NAMED: "THE TWO APPLICATIONS THE LECTURE NAMES ARE
+STILL NOT REPORTED. The tool no longer DIES on the division, and that is all
+0568 did: `w / 0` and `arr[-1]` are still reported by NOBODY." This chapter is
+that item, closed.
+
+### THE DECK, AND THE SLIDE THAT NAMES BOTH APPLICATIONS
+
+`Introduction` (Yue Li, Nanjing University), p.45, is titled "Static Analysis --
+An Example". It names ONE analysis and TWO applications:
+
+    Determine the sign (+, -, or 0) of all the variables of a given program.
+      - To check divided by zero error
+      - To check negative array indices
+
+So the analysis and the two checks are one slide's worth of material, and the
+slide's analysis is a SIGN ANALYSIS. p.48 prints the abstract domain as four
+boxes -- `+`, `O`, `unknown`, `undefined` -- and p.46-47 show what each
+concrete value abstracts to:
+
+    v = 1            -> +
+    v = -1           -> -
+    v = 0            -> O
+    v = e ? 1 : -1   -> unknown   (two signs, so the sign is not determined)
+    v = w / 0        -> undefined (w is unknown and the divisor is zero)
+    v = 1000         -> +
+
+THE ORDER IS THEREFORE `undefined` at the bottom, the three concrete signs in
+the middle -- pairwise INCOMPARABLE -- and `unknown` at the top, and the
+deck's own transfer table is the evidence for the middle layer: `+ + - = T` is
+a JOIN, and the join of two incomparable elements is the top.
+
+### THE TABLE, TRANSCRIBED ROW BY ROW
+
+p.54 prints four rows of addition and four of division; p.56 prints the fifth
+division row:
+
+    addition            division
+    +  +  +  = +        +  /  +  = +
+    -  +  -  = -        -  /  -  = +
+    O  +  O  = O        T  /  O  = ⊥
+    +  +  -  = T        +  /  -  = -
+                         O  /  -  = O
+
+`src/flow/sign.mbt` holds the domain, the order and the transfers, and
+`src/flow/sign_test.mbt` asserts every PRINTED row -- and marks the rows the
+deck does NOT print (subtraction, multiplication, the remainder) as DERIVED, so
+a reader can tell the two apart. The deck's `T / O = ⊥` is its
+division-by-zero row, and the deck's worked example (p.56) is the program the
+two applications are checked against:
+
+    x = 10;  y = -1;  z = 0;
+    a = x + y;   -> ⊤   (+ ⊕ - = ⊤)
+    b = z / y;   -> O   (O / - = O)
+    c = a / b;   -> ⊥   (T / O = ⊥ -- THE DIVISION BY ZERO)
+    p = arr[y];  -> the index is -: THE NEGATIVE INDEX
+    q = arr[a];  -> the index is ⊤: nothing to say
+
+`src/pipeline/signcheck_test.mbt` runs that program end to end and asserts
+EXACTLY TWO findings, in two different families, on lines 8 and 9 -- and that
+`arr[a]` on line 10 is NOT reported, which is the control the whole family
+rests on: an index the analysis cannot pin down is not a finding.
+
+### THE TOOLCHAIN IS THE ORACLE, AND IT SAYS NOTHING
+
+Measured against `moon check` on a probe holding all five shapes -- `1 / 0`,
+`10 / y`, `arr[-1]`, `arr[0 - 1]`, `arr[0]` -- the compiler exits 0 and says
+nothing about either shape (only `unused_value` and `struct_never_constructed`).
+So a finding here is not a duplicate of what the compiler already says.
+
+### AND THE BUG THE FIXED POINT FOUND, WHICH NO ASSERTION WOULD HAVE
+
+The first implementation read a name with NO VALUE as `unknown`, and the deck's
+example's division by zero was NOT reported. The cause is not a typo, it is a
+property of the lattice, and it is worth writing down because it is invisible
+to every assertion that only looks at the answer.
+
+THE DECK'S ORDER HAS `unknown` AT THE TOP. So a read that answers `unknown`
+maps the SMALLEST input to the LARGEST output: the transfer is not monotone,
+and the solver JOINS each new value into the old one, so a value that is once
+`unknown` can never be anything else. Measured, with the state dumped node by
+node:
+
+    node 3 assign b before: y=negative z=zero  || b <- bin:/ sign=zero
+    node 2 assign c before: b=unknown y=negative z=zero
+
+`b`'s value is `zero` at its own node and `unknown` at the next one, because
+the FIRST sweep computed `z / y` before `z` had a value, and that first value
+was `unknown` -- the top -- and the join kept it.
+
+THE FIX IS THE DECK'S OWN READING: a name with no value reads as NO VALUE, and
+the names whose value the analysis genuinely cannot know -- the ones the caller
+or the module chooses -- are seeded as `unknown` at the entry. `sign_before`
+takes those names as an argument for exactly this reason, and the emitter
+computes them as the names the function READS but never ASSIGNS.
+
+### THE FLOAT, WHICH IS NOT A CRASH
+
+A division by zero only CRASHES for integers. Measured against the toolchain
+(`moon test --target wasm`, five cases):
+
+    1 / 0     -> RuntimeError: divide by zero      <- a CRASH
+    1 % 0     -> RuntimeError: remainder by zero   <- a CRASH
+    1.0 / 0   -> Infinity                         <- NOT a crash
+    1.0 / 0.0 -> Infinity                         <- NOT a crash
+    1.0 % 0   -> NaN                              <- NOT a crash
+
+and `moon check` accepts all five. So a family that claims "this division
+fails at run time" must not fire on a float division, and the corpus contains
+one -- `moonbitlang/core` `builtin/double_mod_test.mbt:44`, `(1.0 % 0)` -- so
+the guard is not optional. The divisor's type does not decide the operation's
+type (an integer literal zero is COERCED in a float operation), so the guard
+is on the NUMERATOR, and it fires where the SOURCE says the numerator is a
+float: a float literal, or an operator over one.
+
+THE RESIDUAL IS THE TYPE LENS'S, and it is stated in the family's `excluded`
+rather than hidden: the type lens publishes the types of the MODULE's names
+and not of a function's LOCALS, so a float-valued local divided by a
+definitely-zero value is reported even though it does not crash. The eight
+pinned trees contain no such division (measured below), and a second type
+system that disagrees with the first is worse than no answer at all.
+
+### THE CORPUS, AND WHY THE FAMILIES ARE SILENT
+
+MEASURED on the seven pinned corpora, in BOTH views (module and per-function):
+the two families fire on ZERO findings, and no published number moved. The
+reason is measured rather than guessed:
+
+  * the seven corpora hold 3,138 division and remainder operators and 21,658
+    subscripts (a syntactic count, with comments and strings stripped), so the
+    analysis had plenty of candidates;
+  * every LITERAL zero divisor among them is one float modulo
+    (`builtin/double_mod_test.mbt:44`), three block comments or one string;
+  * the only REAL negative subscripts are three -- `deque/panic_test.mbt:27`,
+    `deque/panic_test.mbt:32` and `immut/vector/panic_test.mbt:39` -- and all
+    three are inside `test` blocks, which this frontend declares outside its
+    subset and does not analyse. The other four are one list literal and three
+    block comments.
+
+So the shape the families look for is NOT IN THE CORPUS, and a scan without
+their findings is not evidence that no code divides by zero. Both families say
+so in `reach`, in the words the census would print.
+
+### THE TWO FAMILIES, AND THE IDS THEY WILL KEEP
+
+`MSA-016 DivisionByZero` and `MSA-017 NegativeIndex`. The ids are allocated
+and never renumbered, both READMEs' family tables carry them, the census
+classifies both (rows N and O), and `--explain` prints both. Neither name
+differs from its tag, so the roster's "5 names differ" pin did not move.
+
+### THE FUNCTION-LEVEL GUARDS ARE THE DEAD-STORE FAMILY'S
+
+A statement the GRAPH did not convert, and a region the FRONTEND did not read,
+each make a claim about a whole function unsafe -- so each makes these
+families decline the whole function rather than report inside it. There is a
+third, and it is this increment's: a block used as a VALUE holds statements
+the graph never turned into nodes, so a name such a block assigns would still
+carry its old value in the state these analyses read, and the family declines
+the function rather than judge a stale state.
+
+### THE ROWS, AND THE PROOF THAT THEY CAN GO RED
+
+Nineteen rows were added: seven in `src/flow/sign_test.mbt` (the deck's two
+tables, the derived rows, the lattice's five laws over the whole carrier, the
+order, the state join, and the state's one-representation rule) and twelve in
+`src/pipeline/signcheck_test.mbt` (the deck's example end to end, the unknown
+operands, the literal shapes, the one-path-only join, the zero-on-every-path
+join, the remainder, the computed zero, the computable index, the two
+function-level guards, the float guard, and the predicate).
+
+### WHAT IS STILL OPEN
+
+**THE FLOAT-VALUED LOCAL.** The residual above is a false positive of the
+`DivisionByZero` family in principle, and it is empty in the corpus. Closing
+it means the type lens publishing a function's LOCAL types, which is a change
+to a package this increment did not touch.
+
+**THE OTHER DECKS ARE STILL OPEN, AND THE MAP SAYS WHICH.** Reaching
+definitions (3-4), constant propagation that SPEAKS (5-6), the call graph and
+CHA (7), and the context-sensitive and demand-driven pointer analyses (8, with
+their client in 9-10) are all absent, and 0564's map still carries the eight
+assignments the course grades. The storeless heap abstraction is the one cell
+that no available deck defines, and its resolution is to PIN THE BOUNDARY
+rather than invent the option.
+
+### THE PINS THAT MOVED, AND WHY EACH ONE MOVED
+
+Four pins moved, and every one of them is this increment's own source rather
+than the corpus:
+
+  * the own-source file count, 220 -> 224: the sign domain, its test file, the
+    emitter and its test file;
+  * the own-source notice table, 1,760 -> 1,806 notices: the nineteen new
+    `test` declarations, the seven closures the sign lattice and the sign
+    transfer build, the `Sign` enum and the `SignState` alias -- and the split
+    moved with it, 142 -> 149 printed and 1,636 -> 1,657 aggregated, because a
+    closure sits INSIDE a function's extent and is printed one per line while
+    a test declaration sits outside every function's extent and is counted by
+    shape;
+  * the eight-tree notice total, 23,123 -> 23,151: the seven corpora carry
+    21,345 notices, exactly what they carried before, and this repository's own
+    source carries 1,806 (it carried 1,778);
+  * the suppression-off `UnusedParam` count, 1,338 -> 1,340:
+    `sign_transfer(g, unknown)` takes the thing it is built from as a
+    PARAMETER and reads it only inside the closure it returns, which the lint
+    cannot see with the region suppression off. It is the shape 0545 measured
+    for `live_transfer` and 0546 for `cprop_node_transfer`, and the corpora did
+    not move at all.
+
+**AND THE TRANSFER MAP MOVED WITH `core.mbt`.** The map that
+`_verify/check_transfer_scope.ps1` resolves names a LINE in `src/core/core.mbt`
+for `fn Family::id` and for `fn family_by_id`, and the two new families'
+`reach` texts moved both of them: 613 -> 630 and 650 -> 669. The map is a map
+of WHERE THE CODE IS, so a map that names a line nobody re-resolved is a map
+of where the author THOUGHT the code was -- which is the whole reason the gate
+exists. It is updated, and the gate checks the new lines carry the named
+symbols.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.

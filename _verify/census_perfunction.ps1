@@ -113,6 +113,16 @@ $FAMILIES = @(
   @{ Name = 'M  a dead store -- a value nobody reads'
      Then = "^the value (bound to|stored in) '.*' is read on no path"
      What = 'the value the write put in the name is read on no path: dead weight, and the lens''s own claim about the code -- the same claim the module view makes (0565)' }
+  # 0571. THE LECTURE'S TWO APPLICATIONS. The rows are here so that a finding of
+  # either family is CLASSIFIED rather than UNCLASSIFIED -- and the census exits 1
+  # on an unclassified finding, so a family that starts speaking without a row
+  # here would fail the census instead of being counted.
+  @{ Name = 'N  a division by zero'
+     Then = "^the divisor (?:'.*' )?is definitely zero"
+     What = 'the divisor of this division is zero on every path that reaches it, so the division raises a divide-by-zero at run time -- the lecture''s first application (0571)' }
+  @{ Name = 'O  a negative index'
+     Then = "^the index (?:'.*' )?is definitely negative"
+     What = 'the index of this subscript is negative on every path that reaches it, so the subscript is out of bounds at run time -- the lecture''s second application (0571)' }
 )
 
 function Classify([string]$msg) {

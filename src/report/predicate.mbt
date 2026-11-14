@@ -157,6 +157,27 @@ pub fn Report::predicate(self : Report) -> Predicate? {
       } else {
         None
       }
+    // 0571. The two claims are about an OPERAND, and the operand is named when
+    // it is a name: the divisor is zero, the index is negative. A computed
+    // operand yields no predicate, because there is no name to check.
+    @core.FDivisionByZero =>
+      if named {
+        Some({
+          check: "divisor_definitely_zero",
+          params: [("name", subject), ("line", line), ("col", col)],
+        })
+      } else {
+        None
+      }
+    @core.FNegativeIndex =>
+      if named {
+        Some({
+          check: "index_definitely_negative",
+          params: [("name", subject), ("line", line), ("col", col)],
+        })
+      } else {
+        None
+      }
     // The claim is about POSITION, not about a name: "a statement at this line
     // follows one whose flow had already left the block". A checker reads the
     // line and the control flow above it, so the line is the argument.

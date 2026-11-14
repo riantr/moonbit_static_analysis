@@ -66,6 +66,8 @@ pub(all) enum Family {
   FInfeasibleBranch
   FRedundantGuard
   FDeadStore
+  FDivisionByZero
+  FNegativeIndex
 }
 pub fn Family::advice(Self) -> Advice
 pub fn Family::assumption(Self) -> String

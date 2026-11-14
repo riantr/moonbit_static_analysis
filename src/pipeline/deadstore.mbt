@@ -125,7 +125,12 @@ pub fn dead_stores(
 /// function for `truncated_fn`; a second spelling of the same geometry is how
 /// two parts of the analyzer come to disagree about which regions hide a
 /// finding.
-fn has_hole(extent : @core.Span, unread : Array[@core.Span]) -> Bool {
+///
+/// 0571. IT IS SHARED, and that is why it is public: the sign checker
+/// (`signcheck.mbt`) declines a function for exactly the same reason, and a
+/// second copy of this predicate would be a second answer to "which regions
+/// hide a finding".
+pub fn has_hole(extent : @core.Span, unread : Array[@core.Span]) -> Bool {
   for u in unread {
     if @walk.span_in_extent(u, extent) {
       return true

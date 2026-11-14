@@ -145,6 +145,40 @@ pub fn pta_run_ordered(Cfg) -> Map[String, Map[String, Bool]]
 
 pub fn pta_text(Map[String, Map[String, Bool]]) -> String
 
+pub fn sign_add(Sign, Sign) -> Sign
+
+pub fn sign_before(Cfg, Array[String]) -> Array[Map[String, Sign]]
+
+pub fn sign_div(Sign, Sign) -> Sign
+
+pub fn sign_join(Sign, Sign) -> Sign
+
+pub fn sign_lattice() -> Lattice[Sign]
+
+pub fn sign_leq(Sign, Sign) -> Bool
+
+pub fn sign_mod(Sign, Sign) -> Sign
+
+pub fn sign_mul(Sign, Sign) -> Sign
+
+pub fn sign_negate(Sign) -> Sign
+
+pub fn sign_of_expr(@ast.Expr, Map[String, Sign]) -> Sign
+
+pub fn sign_state_empty() -> Map[String, Sign]
+
+pub fn sign_state_eq(Map[String, Sign], Map[String, Sign]) -> Bool
+
+pub fn sign_state_join(Map[String, Sign], Map[String, Sign]) -> Map[String, Sign]
+
+pub fn sign_state_lattice() -> Lattice[Map[String, Sign]]
+
+pub fn sign_state_set(Map[String, Sign], String, Sign) -> Map[String, Sign]
+
+pub fn sign_sub(Sign, Sign) -> Sign
+
+pub fn sign_transfer(Cfg, Array[String]) -> (Int32, Map[String, Sign]) -> Map[String, Sign]
+
 pub fn[T, L] solve_edges(Lattice[T], Int32, Array[Array[Int32]], Array[Array[L]], (Int32, T) -> T, (L, Int32, Int32, T) -> T) -> Array[T]
 
 pub fn[T] solve_propagation(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
@@ -327,6 +361,16 @@ pub(all) struct Redundant {
   key : String
 }
 
+#derive(Eq)
+pub(all) enum Sign {
+  SBot
+  SZero
+  SPos
+  SNeg
+  STop
+}
+pub fn Sign::sign_name(Self) -> String
+
 pub(all) enum SsaAddr {
   Var(String, Int32)
   Const(String)
@@ -381,6 +425,8 @@ pub(all) struct WidenResult[T] {
 
 // Type aliases
 pub type Pta = Map[String, Map[String, Bool]]
+
+pub type SignState = Map[String, Sign]
 
 pub type State = Map[String, Cpv]
 
