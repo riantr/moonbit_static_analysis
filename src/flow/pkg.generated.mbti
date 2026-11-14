@@ -159,6 +159,10 @@ pub fn pred_of(Array[Array[Int32]]) -> Array[Array[Int32]]
 
 pub fn pta_alias(Map[String, Map[String, Bool]], String, String) -> Bool
 
+pub fn pta_alloc_of(NodeKind) -> Array[(String, @ast.Expr)]?
+
+pub fn pta_bound_name(NodeKind) -> String
+
 pub fn pta_ctx_contexts(PtaCtxResult, String) -> Array[String]
 
 pub fn pta_ctx_key(String, String) -> String
@@ -256,6 +260,36 @@ pub fn[T] solve_widening(Lattice[T], Int32, Array[Array[Int32]], (Int32, T) -> T
 pub fn[T] solve_worklist(Lattice[T], Int32, Array[Array[Int32]], Array[Array[Int32]], (Int32, T) -> T) -> Array[T]
 
 pub fn source_after(Int32, Int32, Int32, Int32) -> Bool
+
+pub fn ss_agree(Map[String, Map[String, Bool]], Map[String, Map[String, Bool]], Array[String], Int32) -> (Int32, Int32)
+
+pub fn ss_alias(Map[String, Map[String, Bool]], String, String, Int32) -> Bool
+
+pub fn ss_alias_at(Map[String, Map[String, Bool]], String, String, Int32) -> Bool
+
+pub fn ss_deepest(Map[String, Map[String, Bool]]) -> Int32
+
+pub fn ss_depth(String) -> Int32
+
+pub fn ss_extend(String, String, Int32) -> (String, Bool)
+
+pub fn ss_join(Map[String, Map[String, Bool]], String, Map[String, Bool]) -> Bool
+
+pub fn ss_of(Map[String, Map[String, Bool]], String) -> Map[String, Bool]
+
+pub fn ss_root(String) -> String
+
+pub fn ss_run(Array[Cfg], Int32) -> SsResult
+
+pub fn ss_same(String, String, Int32) -> Bool
+
+pub fn ss_set_empty() -> Map[String, Bool]
+
+pub fn ss_set_one(String) -> Map[String, Bool]
+
+pub fn ss_text(Map[String, Map[String, Bool]]) -> String
+
+pub fn ss_value_deepest(Map[String, Map[String, Bool]]) -> Int32
 
 pub fn ssa_check(SsaIr) -> SsaCheck
 
@@ -521,6 +555,11 @@ pub(all) enum Sign {
 }
 pub fn Sign::sign_name(Self) -> String
 
+pub(all) struct SsResult {
+  states : Array[Map[String, Map[String, Bool]]]
+  cuts : Int32
+}
+
 pub(all) enum SsaAddr {
   Var(String, Int32)
   Const(String)
@@ -593,6 +632,8 @@ pub type Pta = Map[String, Map[String, Bool]]
 pub type PtaContext = String
 
 pub type SignState = Map[String, Sign]
+
+pub type SsPts = Map[String, Map[String, Bool]]
 
 pub type State = Map[String, Cpv]
 

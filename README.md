@@ -597,21 +597,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (234 files), with the per-file printing cap lifted so the count is the
+project's own source (236 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1590 | | `const` declaration | 7 |
+| `test` declaration | 1600 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 83 | | `type` declaration | 6 |
+| `struct` declaration | 85 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 25 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1711** sit outside every function's
+audit off, so they are printed one per line; the other **1724** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -644,10 +644,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,213** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,226** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,242** as aggregated — which is 3,971 + 19,242 = 23,213, the same number — and the 3,971
+**19,255** as aggregated — which is 3,971 + 19,255 = 23,226, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -671,7 +671,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 234 files the notice table
+seven pinned corpora and this repository's own source — the same 236 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -814,8 +814,9 @@ src/flow      data-flow framework: CFG + four solvers (round-robin, the
               forward — the dual reading of the same solver), constant
               propagation (the same lattice, read over a CFG), the call
               graph (the whole-program graph, over the trait hierarchy),
-              and the pointer analysis read twice more: with a context
-              (call-site / object) and with a scope (on demand)
+              and the pointer analysis read three more times: with a context
+              (call-site / object), with a scope (on demand), and without a
+              heap at all (access paths -- the storeless model)
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
@@ -973,6 +974,69 @@ become a different analysis.
 **measurements**, and this tree's pointer analyses are library-level rather than part of the
 report pipeline. The family roster is unchanged at seventeen.
 
+**AND AN EIGHTH KIND: THE SAME POINTER QUESTION, ASKED WITHOUT A HEAP.** The pointer
+analysis above asks *"which objects can this pointer point to?"*, and the answer is a set of
+objects, and the objects have to be **named**. The storeless model does not name them. The
+deck's own **Heap abstraction** row — *How to model heap memory? — Allocation-site |
+Storeless* (p.34, re-printed at the head of every factor's section: p.48, p.54, p.71, and
+p.78 as "Pointer Analysis in This Course") — has a second cell, and the deck cites its
+definition on p.42-43: Vini Kanvar and Uday P. Khedker, *"Heap Abstractions for Static
+Analysis"*, ACM Computing Surveys 2016 (the free full text is arXiv:1403.4910v5). The
+deck names the cell nine times and defines it zero times; the survey is where it is
+defined, and this cell reads the survey.
+
+`src/flow/pta_storeless.mbt` is the storeless reading. The heap is a set of **access
+paths** — a pointer variable followed by a sequence of field names — and the survey's
+definition is exact: *"The storeless model does not explicate the memory locations or
+objects corresponding to these access paths. Given V as the set of root variables and F as
+the set of field variable names, the set of access paths is defined as V x F*"* (p.7). The
+domain here is that set, and the rules are `pta.mbt`'s four rules carried onto it. The one
+that differs is **New**: the fresh location is named by the **path rooted at the
+variable**, not by an allocation site — because the survey classifies *"allocation site"*
+as a *summarization* (p.11), and this cell is the model without it. A tree that named the
+fresh location `o1` here would be the allocation-site model wearing the storeless model's
+clothes.
+
+**THE SUMMARIZATION IS THE SURVEY'S, AND IT IS WHAT MAKES THE MODEL FINITE.** The access-path
+set is `V x F*`, so *"the number of access paths is potentially infinite and the length of
+each access path is unbounded"* (p.7). The survey bounds it with a **k-limiting
+predicate** — *"Is the heap location at most k indirections from a root variable?"* (p.12)
+— and a self loop that *"stores spurious aliases for access paths with more than k = 2
+indirections"* (p.9). This tree implements the predicate, and **counts the cut**: the
+places where a path deeper than the bound was merged into its prefix. The count is of
+**distinct sites** rather than of sweeps, because a fixed point applies the rules once per
+sweep, so a counter would report the sweeps a cut appeared in rather than the cuts in the
+program.
+
+**AND THE ALGORITHM IS THIS TREE'S, BECAUSE THE SURVEY SAYS IT IS NOT ITS SUBJECT.** Its
+abstract says so: *"our interest lies in the abstractions and not in the algorithms that
+construct them"* (p.1). So this cell is the survey's model, the survey's summarization,
+and this tree's four rules over them — and the survey's Figure 6 is **not** reproduced,
+because a tree that reproduced it would be claiming an algorithm the survey does not give.
+
+**THE TWO MODELS SIDE BY SIDE, MEASURED.** The same programs are read by both models and
+the alias verdicts are compared pair by pair. On the deck's own p.28-29 program the two
+**agree** — three pairs, three agreements, zero disagreements — because the alias question
+is the same question in both vocabularies. And they **disagree** about what a variable may
+reach, and the difference is a fact about the two abstractions rather than about either
+implementation. On `x = new C(); x = new D(); y = x;` the allocation-site model says
+`x -> {o1,o2}` and `y -> {o1,o2}` — two SITES, two objects — while the storeless model
+says `x -> {x}` and `y -> {x}` — one ROOT, one path. That is the survey's own distinction
+(*"Summarization using allocation sites merges heap objects that have been allocated at the
+same program site"*, p.11), and it is why the two models' points-to answers are not
+comparable while their alias answers are.
+
+**AND THE BOUNDARY IS COUNTED, NOT HIDDEN.** In this rule system a value is always the
+**root** of the location it names, so the deepest value sits at depth zero and the
+survey's spurious alias — a pointer reaching a path below the bound — does not arise
+through a pointer at all. It is visible in the relation instead, where a path deeper than
+the bound is merged into its prefix. The two models' alias verdicts are compared row by row
+by a test, and the row that disagrees is the one above.
+
+**AND IT STILL SPEAKS NO NEW FAMILY.** A heap abstraction is a **measurement**, not a
+report: the family roster is unchanged at seventeen, and the storeless model is a
+library-level analysis beside the other two pointer readings.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1092,7 +1156,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1590/1590 on wasm; 1448/1448 on js and wasm-gc
+moon test --deny-warn                # 1600/1600 on wasm; 1458/1458 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

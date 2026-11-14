@@ -229,7 +229,10 @@ pub fn pta_of_expr(pt : Pta, e : @ast.Expr) -> Map[String, Bool] {
 /// re-assignment each produce a fresh object. No other kind can be a site, because
 /// a call that happens to return a fresh object is exactly what this analysis does
 /// not model.
-fn pta_alloc_of(kind : NodeKind) -> Array[(String, @ast.Expr)]? {
+///
+/// 0576: this is PUBLIC for the same reason `pta_bound_name` is -- the storeless
+/// model asks the same AST question and must not answer it a second time.
+pub fn pta_alloc_of(kind : NodeKind) -> Array[(String, @ast.Expr)]? {
   let e = match kind {
     Assign(_, e) => e
     Store(_, e) => e
@@ -398,7 +401,11 @@ pub fn pta_site_names(cfgs : Array[Cfg]) -> Map[String, String] {
 /// The name a node binds, for a node `pta_alloc_of` accepted. Only `Assign` and
 /// `Store` can be accepted, so the fallback is unreachable; it is written because
 /// this tree's exhaustiveness checking does not know that.
-fn pta_bound_name(kind : NodeKind) -> String {
+///
+/// 0576: this is PUBLIC because the storeless model asks the SAME AST question --
+/// "is this node an allocation, and what does it bind?" -- and a second answer to
+/// it would be a second definition of what an allocation site is.
+pub fn pta_bound_name(kind : NodeKind) -> String {
   match kind {
     Assign(x, _) => x
     Store(x, _) => x

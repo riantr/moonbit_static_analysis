@@ -404,7 +404,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # two files, and the own-source table below says which kinds they are: six
 # `test` declarations, four anonymous function literals and one `type`
 # declaration.
-$NOTICE_TOTAL = '23213'
+# 0576. THE PIN MOVED AGAIN, 23,213 -> 23,226, and THE MOVEMENT IS AGAIN THIS
+# INCREMENT'S OWN SOURCE: the seven corpora carry 21,345 notices, exactly what
+# they carried before -- each one still MATCHes its pinned baseline -- and this
+# repository's own source carries 1,881 (it carried 1,868). The thirteen notices
+# are the storeless model's two files, and the own-source table below says which
+# kinds they are: ten `test` declarations, two `struct` declarations and one
+# `type` declaration.
+$NOTICE_TOTAL = '23226'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -471,8 +478,14 @@ $NOTICE_TOTAL = '23213'
 # extent, so they are printed one per line, while the six new `test`
 # declarations and the new `DefSet` alias sit outside every function's extent
 # and are counted by shape. The corpora did not move.
+# 0576. THE SPLIT MOVED WITH THE OWN SOURCE AGAIN: 3,971 + 19,242 ->
+# 3,971 + 19,255. The PRINTED half did not move AT ALL, and the aggregated half
+# grew by thirteen, and the thirteen are the own-source table's three movements:
+# the ten new `test` declarations, the two new `struct` declarations and the
+# one new `type` declaration all sit OUTSIDE every function's extent, so they
+# are counted by shape. The corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19242'
+$NOTICE_SPLIT_AGGREGATED = '19255'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -514,10 +527,18 @@ $NOTICE_SPLIT_AGGREGATED = '19242'
 # `anonymous function literal` is 41 -> 45 (the four closures the set lattice
 # and the transfer build), and `type declaration` is 4 -> 5 (the `DefSet`
 # alias). Every other row is where it was.
-$SELF_FILES = '234'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=25|if expression=100|short lambda=8|struct declaration=83|test declaration=1590|try expression=1|type declaration=6'
+# 0576. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source again: 234 -> 236 files (the storeless model and its test file),
+# 1,711 -> 1,724 aggregated, and 1,868 -> 1,881 notices. The `test declaration`
+# row is 1590 -> 1600 (the ten new rows), `struct declaration` is 83 -> 85 (the
+# `SsResult` and `SsState` structs) and `type declaration` is 6 -> 7 (the
+# `SsPts` alias). The PRINTED half did not move, at 157, because every one of
+# the thirteen new declarations sits OUTSIDE every function's extent. Every
+# other row is where it was.
+$SELF_FILES = '236'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=25|if expression=100|short lambda=8|struct declaration=85|test declaration=1600|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1711'
+$SELF_AGGREGATED = '1724'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -635,7 +656,23 @@ $SUPPOFF_PARAM = '1343'
 # reaching-definitions analysis and its test file are the new source, and the
 # corpus is not part of this measurement at all -- it is over THIS repository's
 # own source, so the whole movement is this tree's own code getting bigger.
-$SSA_COST = 'files=216|unreadable=0|functions=1058|converted=5|partial=1053|declined=5370|instructions=7917|variables=916|versions=2301|phis=843|copies=2043|undef_operands=173|dead_blocks=387|undef_uses=1035'
+# 0576. THE PIN MOVED AGAIN, and the movement is the SAME KIND: this
+# increment's own source grew. 216 -> 218 files, 1,058 -> 1,085 functions,
+# 1,053 -> 1,080 partial, 5,370 -> 5,430 statements the lowering declined,
+# 7,917 -> 8,017 instructions, 916 -> 934 variables, 2,301 -> 2,346 versions,
+# 843 -> 862 phis, 2,043 -> 2,081 copies, 173 -> 177 undefined operands,
+# 387 -> 392 dead blocks and 1,035 -> 1,055 undefined uses. The storeless
+# model and its test file are the new source, and the corpus is not part of
+# this measurement at all -- it is over THIS repository's own source, so the
+# whole movement is this tree's own code getting bigger.
+#
+# AND ONE OF THESE NUMBERS WAS MEASURED TWICE, because a killed gate had left
+# a MUTANT in `src/walk/walk.mbt` -- `Walker::holes_in` returned nothing -- and
+# the mutant had to be ruled out before it could be pinned. MEASURED, with the
+# mutant applied and the tree rebuilt, EVERY SSA field was IDENTICAL, digit for
+# digit, including `undef_uses`; the mutant moves none of them. So the pin is
+# the clean tree's number, and the mutant moved nothing here.
+$SSA_COST = 'files=218|unreadable=0|functions=1085|converted=5|partial=1080|declined=5430|instructions=8017|variables=934|versions=2346|phis=862|copies=2081|undef_operands=177|dead_blocks=392|undef_uses=1055'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

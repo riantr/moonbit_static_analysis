@@ -17216,12 +17216,17 @@ every path it names has to exist in the tree -- which is what
                                 dataflow                                     worklist.mbt's solve_edges),
                                                                           0574 (callgraph.mbt -- the
                                                                           CALL GRAPH is BUILT)
-    8_PTA.pdf (104p)            pointer analysis: rules, factors, statements  0547 (pta.mbt), 0548
-                                                                          (pta_flow.mbt), 0575
-                                                                          (pta_ctx.mbt,
+    8_PTA.pdf (104p)            pointer analysis: rules, factors, statements  0547 (pta.mbt, pta_flow.mbt
+                                                                          -- the ALLOCATION-SITE,
+                                                                          CONTEXT-INSENSITIVE,
+                                                                          FLOW-INSENSITIVE and
+                                                                          WHOLE-PROGRAM cells),
+                                                                          0575 (pta_ctx.mbt,
                                                                           pta_demand.mbt -- the
-                                                                          CONTEXT and the SCOPE
-                                                                          cells are BUILT)
+                                                                          CONTEXT-SENSITIVE and
+                                                                          DEMAND-DRIVEN cells),
+                                                                          0576 (pta_storeless.mbt
+                                                                          -- the STORELESS cell)
     9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4 with    §4 (p.95-153) is the
                                 method calls                                 client for the CALL rule's
                                                                           Dispatch and for the
@@ -17851,5 +17856,235 @@ THE DECK NAMES ITS OWN SURVEY, and that is where the cell's definition is: 8_PTA
 cites Kanvar & Khedker, "Heap Abstractions for Static Analysis", ACM Computing Surveys 2016
 -- the survey that defines the storeless abstraction the deck names and never defines. That
 citation is the client for the next increment.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+## 0576: THE STORELESS HEAP ABSTRACTION -- 8_PTA's last empty cell, on the survey the
+deck cites
+
+THE OPEN ITEM 0575 LEFT WAS NAMED: "THE STORELESS HEAP ABSTRACTION -- and the measurement is
+sharper than it was, because it now says WHERE the deck names it and where it does not.
+MEASURED, 'storeless' appears on NINE pages of 8_PTA.pdf, and every one of them is the KEY
+FACTORS table (p.34-38, 48, 54, 71) or the final summary (p.78). The deck's heap-abstraction
+SECTION is p.39-43 and it leads to p.44-47's 'Allocation-Site Abstraction', and there is NO
+storeless section. SO THE DECK NAMES THE CELL NINE TIMES AND DEFINES IT ZERO TIMES".
+
+AND THE LAST SENTENCE OF THAT ITEM WAS THE ONE THAT WAS WRONG: "the one cell NO available
+deck defines". THE DECK'S OWN CITATION DEFINES IT, on p.42-43, and this chapter reads the
+thing the deck cites.
+
+### THE DECK NAMES THE CELL, AND NAMES IT AS A CHOICE
+
+MEASURED over the deck's 104 pages, the Key Factors table is p.33-38 and it is RE-PRINTED at
+the head of every factor's own section -- p.48 before "Context Sensitivity" (p.49-53), p.54
+before "Flow Sensitivity" (p.55-70), p.71 before "Analysis Scope" (p.72-77), and p.78 as
+"Pointer Analysis in This Course". Its four rows are:
+
+    Factor              Problem                          Choice
+    Heap abstraction    How to model heap memory?       Allocation-site | Storeless
+    Context sensitivity How to model calling contexts?   Context-sensitive | Context-insensitive
+    Flow sensitivity    How to model control flow?       Flow-sensitive | Flow-insensitive
+    Analysis scope      Which parts of program should   Whole-program | Demand-driven
+                        be analyzed?
+
+So the deck's four factors and their eight choices are the deck's OWN, and after this
+increment every one of the eight is built in this tree. THE ROW THAT WAS EMPTY IS THE FIRST
+ONE.
+
+### THE CLIENT: THE SURVEY THE DECK CITES
+
+The deck cites it on p.42-43, on both pages:
+
+    Vini Kanvar, Uday P. Khedker, "Heap Abstractions for Static Analysis". ACM CSUR 2016
+
+THE FREE FULL TEXT IS arXiv:1403.4910v5, and this chapter's claims are MEASURED against it,
+page by page. THE MODEL IS p.6-7:
+
+    "We classify the heap models as storeless, store based, and hybrid."  (p.6)
+
+    "Storeless model. The storeless model (originally proposed by Jonkers) views the heap as a
+    collection of access paths. An access path consists of a pointer variable which is
+    followed by a sequence of fields of a structure. The desired properties of both a
+    concrete and an abstract heap memory are stored as relations on access paths. The
+    storeless model does not explicate the memory locations or objects corresponding to
+    these access paths. Given V as the set of root variables and F as the set of field
+    variable names, the set of access paths is defined as V x F*."  (p.7)
+
+THE SUMMARIZATION IS THE SURVEY'S TOO, and it is what makes the model FINITE, because the
+survey says why it is needed: the access-path set is "V x F*", so "the number of access paths
+is potentially infinite and the length of each access path is unbounded" (p.7). The PREDICATE
+is p.12's:
+
+    "k-limiting predicate: Is the heap location at most k indirections from a root variable?"
+
+and the MECHANISM is p.9's:
+
+    "For k = 2, heap nodes beyond two indirections are not stored. A self loop is created on
+    the second indirection (node corresponding to x.f.f) to over-approximate this information.
+    This stores spurious aliases for access paths with more than k = 2 indirections (for
+    example, x.f.f.f and y are spuriously marked as aliases at Out6)."  (p.11 for the
+    storeless half; p.9 for the store-based half the sentence continues from)
+
+AND THE SURVEY SAYS WHY THE ALGORITHM IS NOT ITS SUBJECT, which is the sentence that decides
+what this increment may build (p.1):
+
+    "our interest lies in the abstractions and not in the algorithms that construct them"
+
+SO THE DIVISION OF LABOUR IS THE SURVEY'S OWN, and the three claims are kept apart because
+they are three different claims:
+
+  * THE MODEL -- what the heap IS -- is the survey's: access paths, not objects.
+  * THE SUMMARIZATION -- how the model is BOUNDED -- is the survey's: the k-limiting
+    predicate and the self loop.
+  * THE ALGORITHM -- how it is COMPUTED -- is THIS TREE'S, and the survey is the reason.
+
+### WHAT LANDS
+
+  src/flow/pta_storeless.mbt   the access-path domain (`ss_depth`, `ss_root`,
+                                `ss_extend`), the k-limiting summarization, the four
+                                rules carried over to that domain, the alias relation,
+                                and the two models side by side
+  src/flow/pta_storeless_test.mbt  10 rows: the domain, the cut, the deck's p.28-29
+                                alias program, the deck's p.77 program, the field rules,
+                                the two models' agreement, the two models' DIFFERENCE,
+                                the counted cut, the summarization's merge, and the
+                                measurement that no pointer reaches a deep path
+  src/flow/pta.mbt              `pta_alloc_of` and `pta_bound_name` made public: the
+                                storeless model asks the SAME AST question, and a second
+                                answer to it would be a second definition of what an
+                                allocation site is
+
+THE FOUR RULES ARE NOT REWRITTEN. They are `pta.mbt`'s, over a different DOMAIN: a context
+is a different MAP (0575) and a heap abstraction is a different SET OF PATHS. The rules do
+not change:
+
+    New     x = new T()      the fresh location is named by the PATH ROOTED AT x
+    Assign  x = y             x may reach what y may reach
+    Store   x.f = y           for each path p x may reach, p.f may reach what y reaches
+    Load    y = x.f           y may reach what p.f reaches, for each path p x reaches
+
+AND THE NEW RULE IS WHERE THE TWO MODELS DIFFER, and it is the survey's difference: the
+fresh location is named by the path rooted at the VARIABLE and NOT by an allocation site,
+because the survey classifies "allocation site" as a SUMMARIZATION (p.11, section 2) and
+this cell is the model WITHOUT it. A tree that named the fresh location "o1" here would be
+the allocation-site model wearing the storeless model's clothes.
+
+### THE BOUNDARY, WHICH IS COUNTED AND NOT HIDDEN
+
+THIS IS NOT A RE-IMPLEMENTATION OF THE CLASSICAL UNIFICATION-BASED ANALYSES THE SURVEY
+SURVEYS, and the survey's Figure 6 -- the storeless model's answer for its own running
+example -- is NOT REPRODUCED. THE REASON IS THE SURVEY'S OWN ABSTRACT: it specifies no
+algorithm, and it says it is about abstractions and not about algorithms (p.1). A tree that
+claimed to reproduce Figure 6 would be claiming an algorithm the survey does not give.
+
+AND THE MEASUREMENT THAT FOLLOWS FROM THAT IS WORTH HAVING, because it says how much of the
+summarization this rule system can exercise AT ALL. IN THIS RULE SYSTEM A VALUE IS ALWAYS
+THE ROOT OF THE LOCATION IT NAMES -- the New rule names the fresh location by the path
+rooted at the variable -- so the only paths deeper than a root are the FIELD-POINTER NAMES,
+and a name is not a value. MEASURED: the deepest path the relation holds is ONE deep, and
+it is a KEY; the deepest VALUE is at depth ZERO. So the survey's spurious alias -- a
+pointer that reaches a path below the bound -- DOES NOT ARISE HERE, and the summarization's
+merge is visible in the RELATION (`ss_same`) rather than in a pointer's reach.
+
+THE CUT IS COUNTED, and the count is of DISTINCT SITES rather than of sweeps: the rules are
+applied once per sweep until nothing changes, so a counter would report the number of
+sweeps a cut appeared in rather than the number of cuts in the program.
+
+### THE TWO HEAP ABSTRACTIONS SIDE BY SIDE, MEASURED
+
+THE SAME PROGRAMS, READ BY BOTH MODELS, and the alias verdicts are compared PAIR BY PAIR.
+ON THE DECK'S OWN p.28-29 PROGRAM and on the field program, THE TWO AGREE -- three pairs,
+three agreements, zero disagreements -- because the alias question is the same question in
+both vocabularies.
+
+AND THEY DISAGREE ABOUT WHAT A VARIABLE MAY REACH, and the difference is a fact about the
+two ABSTRACTIONS rather than about either implementation. MEASURED on `x = new C(); x = new
+D(); y = x;`:
+
+    the allocation-site model   x -> {o1,o2}   y -> {o1,o2}     (two SITES, two objects)
+    the storeless model         x -> {x}       y -> {x}         (one ROOT, one path)
+
+So the store-based model distinguishes two allocations by their SITE and the storeless model
+by the ROOT THAT REACHES THEM, and a variable that is allocated twice is ONE path in the
+storeless model and TWO objects in the allocation-site one. That is the survey's own
+distinction -- "Summarization using allocation sites merges heap objects that have been
+allocated at the same program site" (p.11, section 2) -- and it is the reason the two
+models' points-to answers are not comparable while their alias answers are.
+
+### A MUTANT WAS FOUND IN THE TREE, AND IT WAS MEASURED RATHER THAN TOLD
+
+WHILE THIS INCREMENT WAS BEING BUILT, `git status` showed a MODIFIED `src/walk/walk.mbt` --
+a file this increment never touched. `Walker::holes_in` had been changed from
+
+    if span_in_extent(t, sp) {
+
+to
+
+    if false {
+
+and that one line is the REGION SUPPRESSION SWITCH: the README says so in so many words --
+"With the region suppression switched off -- one line in `Walker::holes_in`". So the working
+tree carried the suppression switched OFF, in a source file, as an uncommitted change. It was
+restored BYTE-FOR-BYTE from the HEAD blob before a single pin was taken, and the restore was
+checked against the blob rather than assumed.
+
+AND THEN THE MUTANT WAS MEASURED, because a pin taken on a tree nobody understands is a pin
+on a mystery. MEASURED, with the mutant applied and the tree rebuilt:
+
+    the notice table      1881 / 157 / 1724    IDENTICAL -- the mutant moves NO pin
+    the SSA cost          every field IDENTICAL, digit for digit
+    the SUMMARY line      actionable 0 -> 62, total 1881 -> 1943
+
+So the mutant moves NOTHING THAT IS PINNED, and it was one uncommitted byte away from being
+COMMITTED AS SOURCE. The one thing it does move is the number of ACTIONABLE findings,
+because `holes_in` IS the region suppression: with the suppression off, 62 suppressed
+findings become findings. And the release gate's self-scan stage checks exactly that
+number -- "actionable must be 0 AND every file must parse", `if ($act -ne 0) { FAIL }` --
+so the gate WOULD have caught it, as a RED ROW rather than as a quiet drift. It was found
+by `git status` instead, which is luck, and it is recorded here because a rule that only one
+row knows is a rule that can be wrong quietly.
+
+AND THE UNDEFINED-USES NUMBER IS THE CASE IN POINT. The SSA pin's `undef_uses` reads 1,055
+on the clean tree, and the mutant moves that field by ZERO -- measured, not argued -- so the
+two cannot be confused with each other. It was worth measuring rather than asserting: a
+number taken once, on a tree that carried a mutant, is a number taken on the mutant.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: two files and ten test rows. The
+seven corpora did not move at all, and the suppression-off pair did not move either, because
+this increment's code has no transfer factory whose parameters are read only inside the
+closure it returns.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        234 -> 236      (the analysis and its test file)
+    own-source notices    1,868 -> 1,881   (printed 157 -> 157, aggregated 1,711 -> 1,724)
+    the notice table       `test` declaration 1590 -> 1600, `struct` declaration
+                           83 -> 85, `type` declaration 6 -> 7
+    the eight-tree total  23,213 -> 23,226  (the seven corpora did not move)
+    the eight-tree split   3,971 + 19,242 -> 3,971 + 19,255
+    the suppression pair     694 / 1,343 -> 694 / 1,343
+    the SSA cost           216 files -> 218, 1,058 functions -> 1,085, 7,917
+                           instructions -> 8,017, 916 variables -> 934,
+                           2,301 versions -> 2,346, 843 phis -> 862,
+                           2,043 copies -> 2,081, 387 -> 392 dead blocks,
+                           1,035 -> 1,055 undefined uses
+    the test counts        1,590 -> 1,600 on wasm, 1,448 -> 1,458 on js and wasm-gc
+
+THE NOTICE TABLE'S THREE MOVING ROWS ARE THE INCREMENT'S OWN DECLARATIONS, as they were in
+every increment before it: a `struct` declaration is a DECLARED SCOPE LIMIT in this
+analyzer, so declaring a type is itself a notice. The two new structs are `SsResult` and
+`SsState`, the one new type is `SsPts`, and the ten new test rows are in
+`src/flow/pta_storeless_test.mbt`.
+
+### WHAT IS STILL OPEN
+
+NOTHING IN DECK 8_PTA's FOUR-FACTOR TABLE. All eight choices are built: allocation-site
+(0547), context-insensitive (0547), flow-insensitive (0547), whole-program (0547),
+flow-sensitive (0548), context-sensitive (0575), demand-driven (0575), storeless (0576).
+
+THE OTHER DECKS ARE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
+16_Soundiness.pdf are in the same directory as 9-10 and 11-12 and have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
