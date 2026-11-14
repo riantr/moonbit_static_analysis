@@ -351,6 +351,33 @@ MATCH their baselines, and the self-scan is still **0 actionable**.
 Tests: 1,607 → **1,625** on wasm, 1,465 → **1,483** on js and wasm-gc. No new finding
 family: the roster stays at 17, and no family id was renumbered.
 
+
+### PUBLISHED
+
+0.4.48 is tagged at `cc17e1c` on both remotes, CI's `gate` and `publish` are green on that
+commit, the GitHub release is published, and the registry serves it with `latest_version =
+0.4.48`.
+
+    published 0.4.48  wasm 6F38F3D9...  685218 bytes  checksum 2468b30c...  2026-11-14T18:42:21Z
+
+AND THE PUBLISHED BYTES ARE CLEAN. MEASURED with the published coordinates: the artifact the
+registry serves scans its own shipped source at **243/243** files parsed, `actionable=0`,
+and it requires exactly the 93 contracted host symbols with no `moonbitlang/async` dependency.
+
+AND THE PUBLISHED ARTIFACT DIFFERS FROM 0.4.47'S BY EXACTLY ONE BYTE — the version character
+inside the coordinate the artifact embeds. MEASURED, byte for byte: 685218 bytes both, and
+the single differing byte is the `7`→`8` of `@0.4.47`→`@0.4.48`.
+
+THE REASON IS THE FOUR INCREMENTS THEMSELVES: the pointer flow graph, the interprocedural
+analysis, the context-sensitive heap and the type variant have **no non-test caller**, so the
+published wasm — which is built without the test files — does not carry them. The published
+SOURCE tree does: eight files that 0.4.47's does not have, 216 → 224 `.mbt` files under
+`src/`.
+
+That is the honest claim for this release, and it is the one 0.4.47 made: **built** and
+**visible** are different claims. A user who installs 0.4.48 gets the four analyses in the
+source; the artifact they run is the same analyzer, with a new version string.
+
 ## 0.4.47 — the course's own analyses, and the two findings that reach a user
 
 **WHAT THIS RELEASE CARRIES.** Six increments, and they are one subject: the analyses a

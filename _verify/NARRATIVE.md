@@ -9600,6 +9600,7 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
     published 0.4.45  wasm 131112DF5666C18DD1DB2C5C412600A950AF782AA1C3B79B02DEFEE2975E64FA  628777 bytes  checksum 81d0a4db66a300e90b5547555bc547b5f87bd44258908b3db43559694ff3a800  2026-11-09T16:25:03.671513+00:00
     published 0.4.46  wasm 53A24C3E2775E5F793A20215793622C2D222A7C3AD6F40B1F3E175C43CF86954  660472 bytes  checksum aa43ce37d3887dedecc237ab44823771894488c2dd6618adf5a9ea750408c20f  2026-11-11T13:43:21.732369+00:00
     published 0.4.47  wasm 5144FE0F499D509F6C60CAFD0AED2C77B73ABDC4632E735A10EF6591ED34F6CD  685218 bytes  checksum dc34082714f87daaef728ab2a35be0e2a482f8716502ee78fe07b36a4362c107  2026-11-14T12:31:08.501333+00:00
+    published 0.4.48  wasm 6F38F3D915E471E5E98CDE40A431559304CAB838E8D149EEE2C76CF58D470F09  685218 bytes  checksum 2468b30c1b00d1881da642cf227e0615892cc891f70d38cdd9be2036d4b63a7a  2026-11-14T18:42:21.542833+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -18828,3 +18829,69 @@ version move. Run on the bumped tree, the gate STOPS at that stage -- 117 stages
 one red, and the four stages behind it SKIPPED by the gate's own fail-fast rule -- while all
 87 of the mutation gates are green on it too. A gate that had to pass on the bumped tree
 would be a gate that cannot exist before its own release.
+
+
+## 0585: 0.4.48 SHIPPED, AND THE PUBLISHED BYTES SAY WHAT THE RELEASE PROMISED
+
+The release is out, so the numbers that can only be read AFTER a publish are recorded: the
+registry's own checksum and created_at, and the SHA-256 and size of the wasm the registry
+actually serves.
+
+    tag        v0.4.48  ->  cc17e1c  on BOTH remotes
+    CI         gate     43628014925  (master push)  success
+               gate     43628045401  (tag push)     success
+               publish  43628045460                   success
+    registry   latest_version = 0.4.48   build_status = success
+               checksum    2468b30c1b00d1881da642cf227e0615892cc891f70d38cdd9be2036d4b63a7a
+               created_at  2026-11-14T18:42:21.542833+00:00
+
+    published 0.4.48  wasm 6F38F3D915E471E5E98CDE40A431559304CAB838E8D149EEE2C76CF58D470F09  685218 bytes  checksum 2468b30c1b00d1881da642cf227e0615892cc891f70d38cdd9be2036d4b63a7a  2026-11-14T18:42:21.542833+00:00
+
+THE HASH IS READ, NOT TYPED. The reader was self-checked against 0.4.47, whose row was
+already in this table, and it reproduced that row byte for byte -- wasm 5144FE0F..., 685218
+bytes, checksum dc340827..., 2026-11-14T12:31:08.501333+00:00 -- before it was trusted for
+0.4.48.
+
+### THE PUBLISHED WASM DIFFERS FROM 0.4.47'S BY EXACTLY ONE BYTE, AND THE REASON IS THE POINT
+
+    bytes that differ between the published 0.4.47 and 0.4.48 wasm: 1
+    offset 685146: '7' -> '8'
+    context: riantr/moonbit_static_analysis@0.4.47 -> riantr/moonbit_static_analysis@0.4.48
+
+SAME SIZE, 685218 bytes both, and ONE byte different -- the version character inside the
+coordinate the artifact embeds. That is not a coincidence and not a stale artifact: it is
+what the four increments of this series ARE.
+
+THE REASON, MEASURED: the four new modules have NO non-test caller.
+
+    pfg            non-test callers: src/flow/pta_inter.mbt   (one of the four)
+    pta_inter      non-test callers: NONE
+    pta_heap_ctx   non-test callers: NONE
+    pta_variants   non-test callers: NONE
+
+so they are unreachable from the analyzer's entry point, and the published wasm is built
+WITHOUT the test files -- which means it does not carry them. The published SOURCE tree
+does, and that is where a user gets them:
+
+    the published 0.4.48 tree carries EIGHT files that 0.4.47's does not:
+        src/flow/pfg.mbt            src/flow/pfg_test.mbt
+        src/flow/pta_inter.mbt      src/flow/pta_inter_test.mbt
+        src/flow/pta_heap_ctx.mbt   src/flow/pta_heap_ctx_test.mbt
+        src/flow/pta_variants.mbt   src/flow/pta_variants_test.mbt
+    216 -> 224 .mbt files under src/
+
+SO THE HONEST CLAIM FOR 0.4.48 IS NOT "THE ARTIFACT GAINS FOUR ANALYSES". IT IS "THE PACKAGE
+GAINS FOUR ANALYSES, AND THE ARTIFACT IS UNCHANGED BUT FOR ITS VERSION STRING" -- which is
+what "library-level" means, measured against the bytes a user actually gets.
+
+### AND THE PUBLISHED BYTES ARE CLEAN
+
+`selfscan_published.ps1` asked the registry for 0.4.48, read the tree the registry actually
+serves, and ran the analyzer over THAT: 243/243 files parsed, actionable=0, and exactly the
+93 contracted host symbols with no `moonbitlang/async` dependency. 243 files and not 235
+because the published tree now carries the eight new ones.
+
+AND THE GATE DEMANDED THE ROW: after the publish, `_verify/check_transfer_scope.ps1` went
+RED with "v0.4.48 is TAGGED but the record has no published-bytes row for it. A reader of
+that release cannot check the bytes they were given." The record that names the bytes is
+not a courtesy -- it is a gate requirement, and it became one the moment the tag existed.
