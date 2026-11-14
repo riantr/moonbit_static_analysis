@@ -15760,7 +15760,7 @@ Teaching Plan, Evaluation Criteria.
 
 IT IS NOT THE POINTER-ANALYSIS LECTURE the previous increments used, and its own p.72 says
 where that one is: the sixteen-lecture plan lists "9. Pointer Analysis", "10. Pointer
-Analysis - Foundations", "11. Context Sensitivity" and "12. Modern Pointer Analysis". This
+Analysis – Foundations", "11. Context Sensitivity" and "12. Modern Pointer Analysis". This
 lecture is the frame all of them assume, and it is the frame this tree is built in.
 
 WHAT IT TEACHES, IN FOUR PLACES:
@@ -16379,12 +16379,20 @@ MEASURED, on a file whose only oddity is a modulo by zero in a condition:
       x
     }
 
-scanned with this tool's own scanner:
+scanned with this tool's own scanner -- the DEBUG build of this tree, at the commit
+BEFORE the fix (82ceaaf):
 
     RuntimeError: remainder by zero
         at @riantr/moonbit_static_analysis/src/walk.const_eval
+        at @riantr/moonbit_static_analysis/src/walk.const_eval
         at @riantr/moonbit_static_analysis/src/walk.Walker::walk_stmt
+        at @riantr/moonbit_static_analysis/src/walk.walk_module
         at @riantr/moonbit_static_analysis/src/pipeline.run_core
+
+(FIVE frames, and the wasm addresses are left out -- the frame names are the tool's
+own. An earlier draft of this chapter printed three of them without saying that it
+had dropped the other two. The stack is the evidence for the most consequential
+claim in this chapter, so it is printed whole. 0569 records the re-measurement.)
 
 ### AND THE BLAST RADIUS IS THE WHOLE SCAN
 
@@ -16495,5 +16503,123 @@ That is an increment of its own, and 0564's text says why.
 
 The negative array index is the other half of the lecture's pair, and it is
 untouched here.
+
+**NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
+## 0569: THE VERIFICATION THAT WAS INTERRUPTED, DONE AGAIN
+
+A VERIFICATION THAT WAS INTERRUPTED IS NOT A VERIFICATION. The host's check of 0568 never
+reached a verdict, so every "MEASURED" in that chapter was measured AGAIN, against the
+source, instead of being reused. Almost all of it held. One line did not, and it is
+corrected in place, in the chapter it belongs to.
+
+### THE SOURCE-LEVEL CLAIMS, ONE AT A TIME
+
+    src/walk/walk.mbt:115        OpMod => Some(CInt(i % j))     AT THE PRE-FIX COMMIT
+    src/interp/interp.mbt:2347   OpMod => if j == 0 { ABottom } else
+    src/interp/interp.mbt:2367   OpDiv => if j == 0 { ABottom } else
+    src/flow/cprop.mbt:243       cprop_fold -- OpAdd, OpSub, OpMul, and nothing else
+    src/flow/interval.mbt        no OpMod arm at all
+
+The fifth row needed a closer look, because the earlier sweep did not spell out that
+`eval_div` DOES fold a division -- and a division by zero would have been a SECOND
+site to die. It cannot: at `interval.mbt:341` a divisor interval that CONTAINS zero
+answers `full()` before any division is attempted. So "ONE site was wrong" is still
+true, and it is now true for a reason that was CHECKED rather than assumed.
+
+THE SEMANTICS, re-run in MoonBit itself, every row of 0568's table:
+
+    1 / 0                     exit 1   RuntimeError: divide by zero
+    1 % 0                     exit 1   RuntimeError: remainder by zero
+    1.0 / 0.0                 Infinity
+    1.0 % 0.0                 NaN
+    2000000000 + 2000000000   -294967296
+    100000 * 100000           1410065408
+    -(-2147483648)            -2147483648
+    1 << 32                   1
+    -2147483648 / -1          exit 1   "divide result unrepresentable"
+
+Nine rows, nine as 0568 says.
+
+### THE LECTURE'S OWN PAGES, RE-READ
+
+Page 45 of the attachment carries "To check divided by zero error" and "To check negative
+array indices" -- the two applications 0568 took one of. Page 2 is the title page ("Static
+Program Analysis", Nanjing University, Yue Li, Fall 2026), page 4 the six sections, page 35
+the four quadrants and "Mostly compromising completeness: Sound but not fully-precise static
+analysis", page 72 the sixteen-lecture plan, page 73 the eight assignments, page 74 the four
+takeaways. EVERY PAGE ANCHOR 0564 WROTE DOWN RESOLVES TO WHAT IT SAYS IT DOES.
+
+### THE BLAST RADIUS, AS A CONTROLLED PAIR
+
+THE FIXTURE: two files in one directory -- `good.mbt` carries a real finding, `bad.mbt`
+carries the shape. FOUR RUNS, and the third is the control that makes the second mean
+something:
+
+    the PUBLISHED 0.4.46, through moonx        exit 1   NO finding lines at all
+    this tree at 82ceaaf (pre-fix)             exit 1   NO finding lines at all
+    good.mbt ALONE, the pre-fix build          exit 0   the finding, REPORTED
+    this tree at a20e0fa (post-fix)            exit 0   the finding, REPORTED
+
+THE THIRD ROW IS THE CONTROL. The same good file, in the same pre-fix build, scans clean
+and reports its finding -- so the good file was never the problem. The OTHER file's shape
+is what took its findings away. That is the blast radius, as two runs that differ by ONE
+FILE.
+
+THE PUBLISHED 0.4.46 IS A CRASHING BUILD ON THIS SHAPE, and that is not a defect of the
+published package: 0.4.46 IS the pre-fix code. MEASURED: of the commits since the tag
+`v0.4.46` (7d0ba68), exactly ONE touched `src/walk/walk.mbt`, and it is the fix itself.
+THE FIX IS NOT IN THE PUBLISHED PACKAGE YET -- it is in this tree, and a user on 0.4.46
+today hits this crash.
+
+### THE ONE CORRECTION, IN PLACE
+
+0568 printed the crash stack with THREE frames. The tool's stack has FIVE: the second
+`const_eval` frame and the `walk_module` frame were dropped, and nothing said so. The stack
+is the evidence for the most consequential claim in that chapter, so it is now printed
+whole. A truncated stack is not a wrong stack -- but an excerpt presented as a stack is a
+claim the reader cannot check, and this project's own rule is that a fact nobody can check
+is not pinned.
+
+### TWO POINTERS THAT NAMED A PAGE WITHOUT NAMING THE DECK
+
+The READMEs' `--ssa-cost` row and the SSA paragraph both quoted "p.37" for the lecture's
+SSA cost claim -- and p.37 IS the right page, of the *Intermediate Representation* lecture
+(Nanjing University, Fall 2026, the 97-page deck), NOT of the *Static Program Analysis*
+deck this project follows. A reader who took "the lecture" to mean the course's
+introduction lecture would have opened p.37 and found "Necessity of Soundness". BOTH READMEs
+NOW NAME THE DECK.
+
+AND ONE QUOTE THAT WAS NORMALISED: the attachment's p.72 reads "Pointer Analysis –
+Foundations" with an EN DASH, and 0564's quotation used a plain hyphen. A quotation with a
+different character is not a quotation.
+
+### WHAT DID NOT MOVE
+
+A full gate run on the committed tree re-derived every pin, and the pins held:
+
+    the gate (increment mode)        34 stage rows, 33 True, 1 False
+    the one red row                  the per-function census control (abort/pkg.mbti:4),
+                                    red since 0.4.43, and its message names its cause
+    own source                       files=218 parsed=218 actionable=0 notices=1760
+                                    unchecked=3243; 1760 = 138 printed + 1622 aggregated
+    SSA cost                         the pin matches, 14 numbers: functions=909,
+                                    partial=906, declined=4894, instructions=7080
+    the eight trees                  19697 = 3407 printed + 16290 aggregated
+    the corpus pins                  all MATCH: core actionable=33, async 0, moui 0,
+                                    labeler 1, image 0, proton 0, proton_contract 0
+    the READMEs                      6 relative links each, 0 broken
+
+THE MUTATION GATES AND THE PUBLISHED-PACKAGE SELF-SCAN WERE SKIPPED AGAIN, because
+`-SkipMutations` is the mode this file documents for a tree whose version is not being
+bumped, and this increment does not bump the version. THAT IS A SKIP, NOT A PASS.
+
+### WHAT IS STILL OPEN
+
+THE TWO APPLICATIONS THE LECTURE NAMES ARE STILL NOT REPORTED. The tool no longer DIES on
+the division, and that is ALL 0568 did: `w / 0` and `arr[-1]` are still reported by NOBODY.
+Reporting the division needs a family of its own -- a claim ("this expression cannot
+produce a value") that none of the fifteen makes -- with an id that is never renumbered,
+both README tables, the census list, and an audit of every finding it adds, one at a time.
+The negative array index is the other half of the lecture's pair, and it is untouched.
 
 **NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY.** This is an increment.
