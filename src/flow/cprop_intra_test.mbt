@@ -8,8 +8,9 @@
 // row below asserts one of those.
 //
 // WHY HAND-BUILT AND NOT PARSED: the same reason `reaching_test.mbt` gives. This
-// package imports `ast` and nothing else, so a test builds an `Expr` without
-// reaching for the parser.
+// package does not depend on the PARSER, so a test builds an `Expr` without
+// reaching for it; the one frontend dependency it has is the LEXER, and
+// `callgraph.mbt` says why.
 
 ///|
 /// A literal.

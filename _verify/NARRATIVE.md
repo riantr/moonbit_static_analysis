@@ -17213,9 +17213,9 @@ every path it names has to exist in the tree -- which is what
                                                                           worklist.mbt's
                                                                           solve_worklist)
     7_Inter.pdf (108p)          §2 call graph (CHA), §3 ICFG, §4 interproc.   0546 (icfg.mbt, cprop.mbt,
-                                dataflow                                     worklist.mbt's solve_edges);
-                                                                          the CALL GRAPH is ABSENT --
-                                                                          it is the next increment
+                                dataflow                                     worklist.mbt's solve_edges),
+                                                                          0574 (callgraph.mbt -- the
+                                                                          CALL GRAPH is BUILT)
     8_PTA.pdf (104p)            pointer analysis: rules, factors, statements  0547 (pta.mbt), 0548
                                                                           (pta_flow.mbt)
     9-10_PTA-FD.pdf (153p)      §2 how to implement, §3 algorithms, §4 with    the CLIENT for the
@@ -17449,6 +17449,192 @@ THE CALL GRAPH (7_Inter §2), the context-sensitive and demand-driven pointer an
 (8_PTA's cells C1 and S2, with their client in 9-10 §4), and the storeless heap
 abstraction -- the one cell NO available deck defines, whose resolution is to PIN THE
 BOUNDARY rather than invent the option.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0574: THE CALL GRAPH THE DECK'S SECOND SECTION DESCRIBES, AND THE TRAIT HIERARCHY THAT REPLACES CLASSES
+
+THE OPEN ITEM 0573 LEFT WAS NAMED: "THE CALL GRAPH (7_Inter §2)". This chapter is
+it, and the interesting part is not the two algorithms -- those are short -- but
+the two places where MoonBit does not have what the deck assumes, and what
+this tree does about each.
+
+### THE DECK, AND THE TWO ALGORITHMS
+
+`Interprocedural Analysis` (Tian Tan, Nanjing University, 2021) is 108 pages and its
+second section is "Call Graph Construction", p.15-72. Two algorithms, both printed in
+full:
+
+    Resolve(call)                                     p.33-39
+      T = {}
+      m = method signature at call
+      if call is a static call then
+        T = { m }
+      if call is special call then
+        cm = class type of m
+        T = { Dispatch(cm, m) }
+      if call is a virtual call then
+        c = declared type of receiver variable at call
+        foreach c' that is a subclass of c or c itself do
+          add Dispatch(c', m) to T
+      return T
+
+    BuildCallGraph(main)                             p.52-56
+      WL = [main], CG = {}, RM = {}
+      while WL is not empty do
+        remove m from WL
+        if m not in RM then
+          add m to RM
+          foreach call site cs in m do
+            T = Resolve(cs)
+            foreach target method m' in T do
+              add cs -> m' to CG
+              add m' to WL
+      return CG
+
+AND THE IDEA THE TWO ALGORITHMS SERVE, on p.30-31: "Require the class hierarchy
+information (inheritance structure) of the whole program. Resolve a virtual call based
+on the declared type of receiver variable of the call site." CHA = Class Hierarchy
+Analysis (Dean, Grove, Chambers, ECOOP 1995), and p.47-49 says what it costs and
+buys: "Only consider the declared type of receiver variable at the call-site, and its
+inheritance hierarchy. Ignore data- and control-flow information ... Disadvantage:
+imprecise. Easily introduce spurious target methods."
+
+### THE FIRST THING MOONBIT DOES NOT HAVE: CLASS INHERITANCE
+
+MoonBit has no classes and no subclassing. It has TRAITS: a trait declares methods, and
+a type implements a trait with `impl Trait for Type` or with `derive(Trait)`. A value
+whose DECLARED TYPE is a trait dispatches dynamically to whichever implementation it
+holds -- which is exactly the situation CHA answers.
+
+So THE CLASS HIERARCHY IS THE TRAIT HIERARCHY, and the deck's "c' that is a subclass of
+c or c itself" is "every type that implements c, plus c itself". MoonBit's hierarchy is
+ONE LEVEL DEEP where Java's is a tree, and that is not a gap in the translation: a trait
+and its implementors is the whole of the structure CHA reads.
+
+### THE SECOND THING MOONBIT DOES NOT HAVE: THE HIERARCHY IN THE AST
+
+THE AST DOES NOT CARRY IT, and that is measured rather than assumed: the parser reads
+past `struct`, `enum`, `trait`, `impl` and `extend` declarations WHOLE
+(`src/parser/parser.mbt:204-210`), so a trait declaration is a declared scope limit and
+not a node. `SKind` has no trait node and no impl node. The name harvester
+(`collect_declared_names`) records a trait's NAME and its METHODS -- `Trait::method` is
+one of the two facts it carries -- but it records NOTHING for an `impl`, because
+"impl and extend declare NOTHING -- `impl Eq for T` names the trait being implemented,
+which is declared somewhere else" (the parser's own note). So "which TYPE implements
+which TRAIT" is a fact that NOBODY in this tree could answer before this increment, and
+the analyzer could not even see that it was missing.
+
+SO `collect_trait_table` READS IT FROM THE SOURCE, with the lexer, and it reads HEADERS
+rather than bodies: `impl[T] Trait for Type` names its trait and its type before the
+first brace, and a trait's own methods are one level inside its braces, so the scan is a
+token scan with a brace-depth counter and never has to find a matching close brace to
+know which declaration it is inside. It answers ONE question -- "which type implements
+which trait" -- and that question has exactly one answer in the tree.
+
+THE `derive` FORM IS THE OTHER HALF, and it needs the shape MoonBit writes it in:
+`derive(Debug, Eq)` comes RIGHT AFTER the type's own declaration, so the reader has to
+remember the last type it saw. A `derive` says the type implements the traits the list
+names, which is the same fact an `impl` states, so both go into the same table.
+
+### THE THIRD THING: WHERE THE RECEIVER'S DECLARED TYPE COMES FROM
+
+The deck needs "the declared type of receiver variable at call", and THIS TREE HAS
+EXACTLY ONE SOURCE FOR IT: the ANNOTATION in the AST -- `SLet(name, ann, init)`'s
+second field and `Param.tyann`.
+
+MEASURED, NOT ASSUMED: the type lens publishes `TypeResult.syms` from the MODULE frame
+only -- `src/types/infer.mbt:1202-1215` builds it out of `inf.frames[0]`, and every
+symbol it carries has `fn_scope: ""`. A function's LOCAL types are therefore published
+NOWHERE, and an inferred type is not an option. The annotation is what is left, and an
+UNANNOTATED receiver has no declared type at all: its call site resolves to NOTHING and
+is COUNTED as unresolved, exactly the contract `icfg.mbt`'s `unresolved` already
+carries.
+
+THE DECLARED TYPES ARE FLAT, and that is the deck's own approximation rather than a
+shortcut: CHA "ignore[s] data- and control-flow information" (p.47-48), so a name bound
+twice in one body keeps the LAST annotation and no shadowing is modelled.
+
+### THE THREE CASES, AND WHAT EACH ONE ANSWERS IN MOONBIT
+
+  * STATIC -- `f(x)`. The callee's name IS the target: `T = { "f" }`, the deck's `T = { m }`.
+  * SPECIAL -- `Type::m(x)`. The parser folds `::` into the name, so the call arrives as
+    the name `Type::m`, and that name IS the deck's `Dispatch(cm, m)` already spelled.
+  * VIRTUAL -- `recv.m(x)`. The receiver's declared type decides. If it is a TRAIT, the
+    targets are the trait's own method plus one for every type that implements it -- the
+    deck's "c' that is a subclass of c or c itself". If it is a CONCRETE type, the
+    target is that type's own method, because MoonBit has no subclasses of a struct. If
+    the receiver has no declared type, or its type is neither a trait nor a type the
+    table knows, the target set is EMPTY.
+
+THE TARGET OF A VIRTUAL CALL IS A NAME -- `X::m` -- and the name is what the graph
+carries. `Dispatch(c', m)` is "the method m AS DISPATCHED IN c'", and in MoonBit that is
+the name `c'::m`.
+
+### THE BOUNDARY, WHICH IS COUNTED AND NOT HIDDEN
+
+A METHOD'S BODY IS NOT IN THIS TREE. The parser reads past `impl` declarations whole,
+so `impl Marker for A { fn foo(self) -> Int { ... } }` contributes its HEADER to the
+hierarchy and its BODY to nothing. The call graph's edges therefore NAME the
+implementations -- `A::foo`, `B::foo` -- and the graph STOPS there: the calls INSIDE an
+implementation are not visible, because the body is not in the tree.
+
+THE BOUNDARY IS NOT A GUESS, IT IS THE GRAPH'S SHAPE: a target with no body is an edge
+and not a source of further edges. The work list reaches `A::foo`, finds no function by
+that name, and adds no edges under it. The chapter's test row pins exactly that.
+
+AND THE OTHER HALF OF THE BOUNDARY IS THE UNRESOLVED COUNT: a call site that resolves
+to nothing is counted, so the graph says how much of the program it is entitled to a
+claim about. CHA is an approximation by the deck's own account, and an approximation
+that counts what it did not resolve is honest about it.
+
+### WHY IT SPEAKS NO NEW FAMILY
+
+0546's precedent, not an omission: a library analysis may be built and pinned without a
+family when no class is free. The class a call graph could report -- a call whose target
+cannot be resolved -- is ALREADY SPOKEN by the type lens's unchecked calls (0507's
+`n_unchecked`, which counts the calls whose signature it could not check) and by the
+structural lens's undefined-function finding. So this increment adds a library and a
+measurement, and no family.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: two files and nine test rows.
+The seven corpora did not move at all -- the eight-tree total moved by exactly the
+own-source delta -- and the suppression-off pair did not move either, because this
+increment's code has no transfer factory whose parameters are read only inside the
+closure it returns.
+
+THE NUMBERS, SO THAT A READER CAN CHECK THEM AGAINST THE GATE:
+
+    own-source files        228 -> 230      (the analysis and its test file)
+    own-source notices    1,826 -> 1,841   (printed 154 -> 154, aggregated 1,672 -> 1,687)
+    the notice table       `test` declaration 1566 -> 1575, `enum` declaration
+                           23 -> 24, `struct` declaration 71 -> 76
+    the eight-tree total  23,171 -> 23,186  (the seven corpora did not move)
+    the eight-tree split   3,968 + 19,203 -> 3,968 + 19,218
+    the suppression pair     694 / 1,343 -> 694 / 1,343
+    the SSA cost           210 files -> 212, 975 functions -> 1,003, 7,556
+                           instructions -> 7,638, 847 variables -> 867,
+                           2,125 versions -> 2,161, 776 phis -> 784,
+                           1,900 copies -> 1,916
+    the test counts        1,566 -> 1,575 on wasm, 1,424 -> 1,433 on js and wasm-gc
+
+THE NOTICE TABLE'S THREE MOVING ROWS ARE THE INCREMENT'S OWN DECLARATIONS, and that is
+the kind of number that is easy to misread: `struct` declaration moved by five because
+THE ANALYSIS DECLARED FIVE STRUCTS (`TraitTable`, `CgFn`, `CgCall`, `CgEdge`,
+`CallGraph`), `enum` declaration moved by one because it declared one enum
+(`CallKind`), and `test` declaration moved by nine because the test file has nine rows.
+A `struct` declaration is a DECLARED SCOPE LIMIT in this analyzer, so declaring a type
+is itself a notice -- and the count moved exactly because the increment declares types.
+
+### WHAT IS STILL OPEN
+
+THE CONTEXT-SENSITIVE AND DEMAND-DRIVEN POINTER ANALYSES (8_PTA's cells C1 and S2,
+with their client in 9-10 §4), and the storeless heap abstraction -- the one cell NO
+available deck defines, whose resolution is to PIN THE BOUNDARY rather than invent the
+option.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 

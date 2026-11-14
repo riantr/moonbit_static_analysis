@@ -6,7 +6,7 @@
 // a reader can tell the two apart.
 //
 // WHY THE EXAMPLE IS NOT HERE. The worked example (p.56) needs a PARSED
-// program, and this package imports `ast` and nothing else on purpose: the
+// program, and this package does not depend on the PARSER on purpose: the
 // framework is below the frontend, and `--deny-warn` treats a test-only import
 // as an error (`unused_package`). So the example is pinned in the package that
 // owns the parse-to-graph path -- `src/pipeline/signcheck_test.mbt` -- and what

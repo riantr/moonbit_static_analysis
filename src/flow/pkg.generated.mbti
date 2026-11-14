@@ -25,9 +25,17 @@ pub fn avail_universe(Cfg) -> Map[String, Bool]
 
 pub fn bb_of(Cfg) -> Bb
 
+pub fn build_call_graph(String, Array[CgFn], TraitTable) -> CallGraph
+
 pub fn call_shape(NodeKind) -> CallShape?
 
+pub fn call_sites_of(CgFn) -> Array[CgCall]
+
 pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
+
+pub fn cg_fns_of(Array[@ast.Stmt]) -> Array[CgFn]
+
+pub fn collect_trait_table(String) -> TraitTable
 
 pub fn cprop_after(Icfg, Array[Map[String, Cpv]], Int32) -> Map[String, Cpv]
 
@@ -64,6 +72,8 @@ pub fn cprop_text(Map[String, Cpv]) -> String
 pub fn cpv_leq(Cpv, Cpv) -> Bool
 
 pub fn cpv_text(Cpv) -> String
+
+pub fn declared_types(CgFn) -> Map[String, String]
 
 pub fn def_key(String, Int32) -> String
 
@@ -177,6 +187,8 @@ pub fn reaching_transfer(Array[Map[String, Bool]], Array[Map[String, Bool]]) -> 
 
 pub fn reaching_use_defs(Cfg, Array[Map[String, Bool]]) -> Array[Array[String]]
 
+pub fn resolve_call(CgCall, Map[String, String], TraitTable) -> Array[String]
+
 pub fn sign_add(Sign, Sign) -> Sign
 
 pub fn sign_before(Cfg, Array[String]) -> Array[Map[String, Sign]]
@@ -259,6 +271,20 @@ pub(all) struct Bb {
 }
 pub fn Bb::dump(Self) -> String
 
+pub(all) struct CallGraph {
+  edges : Array[CgEdge]
+  reachable : Array[String]
+  resolved : Int32
+  unresolved : Int32
+}
+
+#derive(Eq)
+pub(all) enum CallKind {
+  Static
+  Special
+  Virtual
+}
+
 pub struct CallShape {
   callee : String
   args : Array[@ast.Expr]
@@ -284,6 +310,25 @@ pub(all) struct Cfg {
 pub fn Cfg::dump(Self) -> String
 pub fn Cfg::kind_label(Self, Int32) -> String
 pub fn Cfg::source_order(Self) -> Array[Int32]
+
+#derive(Eq)
+pub(all) struct CgCall {
+  kind : CallKind
+  name : String
+  receiver : String
+}
+
+#derive(Eq)
+pub(all) struct CgEdge {
+  caller : String
+  callee : String
+}
+
+pub(all) struct CgFn {
+  name : String
+  params : Array[@ast.Param]
+  body : Array[@ast.Stmt]
+}
 
 pub(all) struct ConstBranch {
   node : Int32
@@ -455,6 +500,18 @@ pub(all) struct SsaIr {
   cost : SsaCost
 }
 pub fn SsaIr::dump(Self) -> String
+
+pub(all) struct TraitTable {
+  traits : Map[String, Bool]
+  types : Map[String, Bool]
+  impls : Map[String, Array[String]]
+  methods : Map[String, Array[String]]
+}
+pub fn TraitTable::empty() -> Self
+pub fn TraitTable::has_method(Self, String, String) -> Bool
+pub fn TraitTable::implementors(Self, String) -> Array[String]
+pub fn TraitTable::is_trait(Self, String) -> Bool
+pub fn TraitTable::merge(Self, Self) -> Self
 
 pub(all) struct WidenResult[T] {
   states : Array[T]

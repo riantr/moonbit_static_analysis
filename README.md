@@ -597,21 +597,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (228 files), with the per-file printing cap lifted so the count is the
+project's own source (230 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | |
 |---|---:|---|---|---:|---|
-| `test` declaration | 1566 | | `const` declaration | 7 |
+| `test` declaration | 1575 | | `const` declaration | 7 |
 | `if` expression | 99 | | `short lambda` | 8 |
-| `struct` declaration | 71 | | `type` declaration | 5 |
+| `struct` declaration | 76 | | `type` declaration | 5 |
 | `anonymous function literal` | 46 | | `try` expression | 1 |
-| `enum` declaration | 23 | | | |
+| `enum` declaration | 24 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **154** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1672** sit outside every function's
+audit off, so they are printed one per line; the other **1687** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -644,10 +644,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,171** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,186** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,968** of them as printed per line and
-**19,203** as aggregated — which is 3,968 + 19,203 = 23,171, the same number — and the 3,968
+**19,218** as aggregated — which is 3,968 + 19,218 = 23,186, the same number — and the 3,968
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -671,7 +671,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 228 files the notice table
+seven pinned corpora and this repository's own source — the same 230 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -811,8 +811,9 @@ src/flow      data-flow framework: CFG + four solvers (round-robin, the
               basic blocks and the CFG over them,
               live variables (may, backward), the
               interval domain with widening, available expressions (must,
-              forward — the dual reading of the same solver), and constant
-              propagation (the same lattice, read over a CFG)
+              forward — the dual reading of the same solver), constant
+              propagation (the same lattice, read over a CFG), and the call
+              graph (the whole-program graph, over the trait hierarchy)
 src/sa        scan entry + aggregate() + mermaid_states() (public, library)
 src/lexer     MoonBit lexer frontend
 src/parser    MoonBit syntax → ast
@@ -902,6 +903,30 @@ outcome is decided before the program runs -- is already spoken by `MSA-013`
 (`InfeasibleBranch`) and `MSA-014` (`RedundantGuard`). So `cprop_const_branches` is a
 **measurement**, not a report: it names the branches the analysis can decide, and it adds no
 family, because the family that would carry those findings already exists.
+
+**AND A SIXTH KIND: THE WHOLE-PROGRAM GRAPH OVER IT.** The call graph
+(`src/flow/callgraph.mbt`) is the deck's second section -- *Interprocedural Analysis*
+(Tian Tan, Nanjing University), p.33-39 and p.52-56 -- and it is where a method call
+stops being a hole. The deck's `Resolve(call)` has three cases and MoonBit answers all
+three: a **static** call `f(x)` names its target; a **special** call `Type::m(x)` names
+its type in the call; and a **virtual** call `recv.m(x)` is resolved through the
+receiver's **declared type** -- if that type is a trait, the targets are the trait's own
+method plus one for every type that implements it, which is the deck's *"c' that is a
+subclass of c or c itself"*; if it is a concrete type, the target is that type's own
+method.
+
+MoonBit has no classes, so the deck's **class hierarchy** is the **trait hierarchy** --
+`impl Trait for Type` and `derive(Trait)` -- and it is read from the source text,
+because this tree's AST does not carry it: the parser reads past `trait` and `impl`
+declarations whole, so *"which type implements which trait"* was a fact nobody in this
+tree could answer. The **declared type** of a receiver is the annotation (`SLet`'s second
+field, `Param.tyann`), because the type lens publishes only the module frame, and a
+function's local types are therefore published nowhere.
+
+Two boundaries are counted rather than hidden. A **method's body is not in the tree**,
+so the graph's edges *name* the implementations and stop there -- the calls inside an
+implementation are not visible. And a call whose receiver has **no declared type**
+resolves to nothing, and is counted as unresolved rather than connected to a guess.
 
 ### And under the CFG there are basic blocks
 
@@ -1022,7 +1047,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1566/1566 on wasm; 1424/1424 on js and wasm-gc
+moon test --deny-warn                # 1575/1575 on wasm; 1433/1433 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

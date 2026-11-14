@@ -1,4 +1,16 @@
+// The LEXER is here for ONE file and ONE reason: `callgraph.mbt` reads the
+// CLASS HIERARCHY out of the source text, because this tree's AST does not
+// carry it -- the parser reads past `impl` and `trait` declarations whole, so
+// "which type implements which trait" is not a fact the AST can answer.
+//
+// It is NOT a test-only import, and that is what keeps `--deny-warn` off it:
+// the toolchain counts a package imported only by test files as an ERROR
+// (`unused_package`), which was measured rather than assumed (see
+// `flow_cfg_test.mbt`).
+//
+// The PARSER is still not imported: the framework stays below it.
 import {
   "riantr/moonbit_static_analysis/src/ast",
   "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/lexer",
 }

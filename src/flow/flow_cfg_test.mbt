@@ -1,9 +1,11 @@
 // The graph's own invariants, tested on payload-free nodes.
 //
-// WHY NOT A PARSED PROGRAM HERE. This package imports `ast` and nothing else,
-// on purpose: the framework is below the frontend, and `--deny-warn` in this
+// WHY NOT A PARSED PROGRAM HERE. This package does not depend on the PARSER, on
+// purpose: the framework is below the frontend, and `--deny-warn` in this
 // toolchain treats a test-only import as an ERROR (`unused_package`), which was
-// measured rather than assumed. So the tests here cover what needs no AST -- the
+// measured rather than assumed. (Its one frontend dependency is the LEXER, for
+// `callgraph.mbt` alone -- see that file's header.) So the tests here cover
+// what needs no AST -- the
 // graph's inverse-edge invariant and the dump -- while the BUILDER's tests
 // belong to the package that owns the parse-to-graph path (`pipeline`), which
 // already imports the parser and drives this one from increment 2 onward. That

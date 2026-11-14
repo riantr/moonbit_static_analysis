@@ -8,7 +8,7 @@
 //   p.65   the eight-definition program, with its bit-vector iteration
 //
 // WHY HAND-BUILT AND NOT PARSED: the same reason `flow_live_test.mbt` gives.
-// This package imports `ast` and nothing else, so a test builds an `Expr`
+// This package does not depend on the PARSER, so a test builds an `Expr`
 // without reaching for the parser -- which is what the toolchain's
 // `--deny-warn` treatment of test-only imports forces (0526, 0527). The
 // graphs below are small on purpose: a data-flow test should fail on the

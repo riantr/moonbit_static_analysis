@@ -10,7 +10,7 @@
 //     static int ten() { return 10; }
 //
 // THE FIXTURES ARE BUILT FROM AST VALUES RATHER THAN PARSED, because this package
-// imports `ast` and nothing else on purpose (see `flow_cfg_test.mbt`: `--deny-warn`
+// does not depend on the PARSER on purpose (see `flow_cfg_test.mbt`: `--deny-warn`
 // counts a test-only import as an error, measured rather than assumed). So the
 // source above appears here as the statements it parses to, and the deck's
 // numbers are asserted against those.
