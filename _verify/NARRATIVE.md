@@ -19213,3 +19213,133 @@ THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.p
 same directory as the ones this series read, and they have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0588: THE DECK'S OTHER THREE CHAPTERS, COUNTED AND PINNED
+
+THE THREE CHAPTERS, AND WHAT EACH ONE'S ANSWER IS IN THIS TREE. Chapter 0586 audited the deck's
+cells against this tree and answered seven questions; 0586 and 0587 answered two of them (the taint
+analysis and the finding). This increment deals with the REST, and it deals with them by COUNTING
+them -- a boundary written down in prose is a promise, and a boundary written down in a TEST is a
+fact the next increment has to argue with.
+
+    CHAPTER 1, THE SECURITY LEVELS (p.25-28). The deck's label is a LATTICE
+      element and its policy is an ORDER on that lattice: two levels (L <= H,
+      p.25-27) and, for a real classification, five (p.28). THIS TREE'S TAINT
+      LABEL IS A TWO-LEVEL LATTICE, and the two levels are the deck's own. So the
+      tree answers the deck's question -- does a high datum reach a low place --
+      for TWO of the deck's FIVE levels, and the generalization is not
+      instantiated: `src/flow/lattice.mbt` holds the lattice FRAMEWORK the sign
+      analysis uses, and no SECURITY lattice is built on it.
+
+    CHAPTER 1, THE NONINTERFERENCE PROPERTY (p.29-36). The deck's property is
+      "x_H = y_H": two runs of the program, compared. EVERY ANALYSIS IN THIS
+      TREE IS A ONE-RUN MAY-ANALYSIS, and no may-analysis answers a relational
+      property over two runs. That is a different KIND of question and not a
+      smaller one.
+
+    CHAPTER 2, CONFIDENTIALITY AND INTEGRITY (p.38-43). MEASURED, and the
+      answer is NO: the deck's OWN integrity example is not reported. Three rows
+      below.
+
+    CHAPTER 3, THE COVERT CHANNELS (p.45-62). The deck's implicit flows -- a
+      branch on tainted data, a termination channel, a timing channel, an
+      exception channel (p.60) -- are FOUR channels, and this tree analyses
+      NONE of them. That boundary is the DECK'S OWN DECISION and not this tree's:
+      p.61-62 says "Explicit flows generally carry more information than covert
+      channels, so we focus on explicit flows".
+
+THE MEASUREMENT, AND IT IS THREE ROWS. The deck's integrity slide (p.40) carries the shape the whole
+chapter is about:
+
+    x = readInput();   // untrusted
+    cmd = "..." + x;
+    execute(cmd);      // critical (trusted)
+
+and p.41 names what that shape is: "Injection errors (#1 cause of vulnerabilities in 2013-2019)" --
+command injection, SQL injection, XSS.
+
+    THE CONCATENATION FORM      NOT REPORTED
+    THE INTERPOLATION FORM       NOT REPORTED
+    THE DERIVED VALUE REMOVED    REPORTED
+
+The three programs differ by ONE EXPRESSION, and the third is the CONTROL: without it, a zero would
+say only that the specification did not match the program. So the zero says the DERIVED VALUE is what
+the analysis does not follow. `src/pipeline/taintdeck_test.mbt` pins all three.
+
+THE REASON IS THE POINTER ANALYSIS'S EXPRESSION MODEL, and it is the tree's own sentence:
+"ANYTHING ELSE IS EMPTY, AND THAT IS THE SOUND DIRECTION: this is a may-analysis, so a value the
+analysis does not model contributes no objects rather than an invented one" (`src/flow/pta.mbt`). A
+concatenation allocates a NEW string, and an interpolated string carries a REFERENCE rather than an
+object, so the tainted datum never enters the derived variable's points-to set and the deck's own sink
+rule (p.76) has nothing to find.
+
+AND IT IS ALSO THE DECK'S OWN RULE TABLE. p.75 lists four rules -- New, Assign, Store, Load -- and
+none of them is a rule for a derived value. The taint analysis is the pointer analysis plus a seed
+(0586), so it answers exactly what those four rules answer, and the deck's own chapter-2 example is
+outside them.
+
+THE SHAPE IS NOT RARE, and that is measured rather than asserted. Over the seven pinned corpora:
+
+    314 concatenations that carry a call's result into a string
+    513 interpolations that carry a call's result into a string
+    827 sites in all
+
+That is a SYNTACTIC count and not a flow count, exactly like 0571's count of division operators and
+subscripts: most of those sites are benign -- a log line is not an injection -- and what the count
+says is that the boundary is not theoretical. The family fires on ZERO findings on the eight pinned
+trees, and this is the SECOND reason for that zero (the first is that the corpora are scanned with no
+taint specification, because a source and a sink are functions of the analysed project).
+
+AND THE ONE RULE THAT WOULD CLOSE IT IS NAMED, because a boundary with a named cause is a decision
+and a boundary without one is an excuse. It is "a value derived from a tainted datum carries the
+taint", and it belongs to the TAINT layer and not to the pointer analysis -- which would make the
+taint analysis ONE RULE WIDER than the deck's four, and would change what this tool claims. It is
+written down here and NOT made: 0586's design statement is that the seed is the whole difference, and
+a rule that is not in the deck's table is a change to that statement and not an increment.
+
+### THE PINS THAT MOVED
+
+THE OWN-SOURCE PINS, and every one of them moved because this increment added source:
+
+    own-source files         248 -> 249   (the deck-chapter-2 test file)
+    own-source notices     1,942 -> 1,945
+    own-source printed       157 -> 157   (unchanged)
+    own-source aggregated 1,785 -> 1,788 (the three new `test` declarations)
+
+THE EIGHT-TREE TOTAL moved with the own-source half, and the corpora did not move:
+
+    the eight-tree total   23,287 -> 23,290
+    the eight-tree split     3,971 + 19,316 -> 3,971 + 19,319
+
+The PRINTED half did not move AT ALL, and the aggregated half grew by three: the three new `test`
+declarations sit OUTSIDE every function's extent, so they are counted by shape.
+
+AND THE TWO PAIRS THAT DID NOT MOVE:
+
+    the suppression pair       694 / 1,341 -> 694 / 1,341   (DID NOT MOVE)
+    the family roster              18 -> 18              (no family added)
+
+THE SSA COST moved with the new file:
+
+    files 230 -> 231, functions 1,220 -> 1,225, partial 1,215 -> 1,220, declined 5,787 -> 5,798,
+    instructions 8,324 (unchanged), variables 997 (unchanged), versions 2,473 (unchanged),
+    phis 898, copies 2,181, undef_operands 186, dead_blocks 404, undef_uses 1,135
+
+AND THE TEST COUNTS, on all three targets:
+
+    1,649 -> 1,652 on wasm, 1,507 -> 1,510 on js and wasm-gc
+
+### WHAT IS STILL OPEN
+
+THE DECK'S REMAINING CELLS ARE NOW ALL ACCOUNTED FOR: three of them are answered (the taint
+analysis, the finding, the two-level part of chapter 1's levels), and three are bounded with a
+counted reason (chapter 2's derived values, chapter 1's noninterference, chapter 3's four covert
+channels). NONE of them is a gap a smaller implementation would close: the first needs a rule the
+deck's table does not have, and the other two need a relational analysis and an implicit-flow
+analysis respectively.
+
+THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the
+same directory as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.

@@ -617,12 +617,12 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (248 files), with the per-file printing cap lifted so the count is the
+project's own source (249 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1649 | | `const` declaration | 7 |
+| `test` declaration | 1652 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
 | `struct` declaration | 96 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -631,7 +631,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1785** sit outside every function's
+audit off, so they are printed one per line; the other **1788** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,287** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,290** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,316** as aggregated — which is 3,971 + 19,316 = 23,287, the same number — and the 3,971
+**19,319** as aggregated — which is 3,971 + 19,319 = 23,290, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -691,7 +691,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **694** `UnusedLocal` and **1,341** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 248 files the notice table
+seven pinned corpora and this repository's own source — the same 249 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -1278,6 +1278,47 @@ been a **sanitizer**, and a sanitizer the analysis never read is a flow the anal
 the program does not have.
 
 
+### And the deck's own injection example is not reported — measured
+
+**THE SECURITY LECTURE'S SECOND CHAPTER IS *CONFIDENTIALITY AND INTEGRITY*, AND ITS INTEGRITY SLIDE
+CARRIES THE SHAPE THE CHAPTER IS ABOUT:**
+
+```
+x = readInput();   // untrusted
+cmd = "..." + x;
+execute(cmd);      // critical (trusted)
+```
+
+and p.41 names what that shape is: **"Injection errors (#1 cause of vulnerabilities in 2013-2019)"** —
+command injection, SQL injection, XSS.
+
+**THE TOOL DOES NOT REPORT IT, IN BOTH OF ITS SYNTACTIC FORMS, AND THE REASON IS THE POINTER
+ANALYSIS'S AND NOT A GAP IN THE TAINT RULES.** A concatenation and an interpolated string are both
+values the pointer analysis does **not** model — `src/flow/pta.mbt` says it in its own words:
+*"ANYTHING ELSE IS EMPTY, AND THAT IS THE SOUND DIRECTION"* — so the tainted datum never enters the
+derived variable's points-to set, and the deck's own sink rule has nothing to find.
+
+**MEASURED, AND THE MEASUREMENT IS THREE ROWS.** The deck's program with the concatenation reports
+**nothing**; the same program with the interpolation reports **nothing**; the same program with the
+derived value **removed** reports the flow. The three differ by one expression, and the two that
+report nothing are pinned by tests.
+
+**AND IT IS ALSO THE DECK'S OWN RULE TABLE.** p.75 lists four rules — New, Assign, Store, Load — and
+none of them is a rule for a derived value. The taint analysis is the pointer analysis plus a seed,
+so it answers exactly what those four rules answer.
+
+**THE SHAPE IS NOT RARE.** MEASURED over the seven pinned corpora: **827** sites carry a call's result
+into a string — **314** concatenations and **513** interpolations. That is a **syntactic** count and
+not a flow count: most of those sites are benign (a log line is not an injection), and what the count
+says is that the boundary is not theoretical.
+
+**AND THE ONE RULE THAT WOULD CLOSE IT IS NAMED, because a boundary with a named cause is a decision
+and a boundary without one is an excuse.** It is *"a value derived from a tainted datum carries the
+taint"*, and it belongs to the **taint layer** and not to the pointer analysis — which would make the
+taint analysis **one rule wider** than the deck's four. That is a change to what this tool claims, so
+it is written down here and not made.
+
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1397,7 +1438,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1649/1649 on wasm; 1507/1507 on js and wasm-gc
+moon test --deny-warn                # 1652/1652 on wasm; 1510/1510 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
