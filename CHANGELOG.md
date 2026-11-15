@@ -4089,6 +4089,120 @@ and the SAME published artifact on the SAME program without the specification re
 `actionable=0`. The previous release refuses the question outright: the published 0.4.48
 answers `ERROR unexpected extra argument: readInput`.
 
+## 0.4.50 — the Datalog deck: an engine in the tree, the deck's own rules RUN, and a strata bug found by running them
+
+**WHAT THIS RELEASE IS.** The fourth NJU lecture deck, `14_Datalog.pdf` (*Datalog-Based Program
+Analysis*, Tian Tan, Nanjing University, 93 pages), is read against this tree cell by cell. Four
+increments close it, and they are four different kinds of thing.
+
+| increment | what it is | does it reach a user's report? |
+|---|---|---|
+| 0592 | the Datalog engine and the reader — the deck's language (p.18-59) | no — a library-level capability |
+| 0593 | the deck's pointer rules, RUN and compared with `pta_run` | no — a measurement |
+| 0594 | the deck's taint rules, RUN and compared with `taint_analyze` | no — and they found a bug |
+| 0595 | the deck's first chapter, counted; its last two pages, checked | no — it pins the boundaries |
+
+**NO NEW FINDING FAMILY.** The deck's rules are read and run, and the answer is compared with the
+answer this tree already gives — it is a measurement of the deck's claim, not a second implementation
+of it. The roster stays at eighteen families.
+
+### THE DECK'S RULES ARE TEXT, AND THEY ROUND-TRIP
+
+A rule built in code is the imperative form wearing a hat. A rule that is **text** can be read,
+printed, and compared with the slide, and the round trip is pinned: what the reader parses is what
+the printer writes back, byte for byte.
+
+    deck p.70   VarPointsTo(x, o) <- New(x, o).
+    ours        the same four lines, parsed, and printed back as the same four lines
+
+AND THE ENGINE IS IN THE TREE, because p.92's third pro — "Benefit from off-the-shelf optimized
+Datalog engines" — does not hold here, and it does not hold here for a reason that can be measured:
+this tree has its own engine, and owning one cost it a bug.
+
+### THE POINTER RULES AGREE WITH THE ANSWER THIS TREE ALREADY GIVES
+
+The deck's four rules (p.70) are run over the deck's own program, and the points-to sets come out
+identical to the ones `pta_run` gives on the same program:
+
+    p -> {o1}   q -> {o1}   x -> {o3}   y -> {o4}      both readings
+
+AND WHERE THEY DISAGREE, THE DISAGREEMENT IS NAMED, because the two relations do not mean the same
+thing: the deck's `FieldPointsTo` holds the **pointers a field points at**, and `pta_run`'s field
+cell holds the **values a field contains**. Both are right about their own relation, and the
+comparison prints both answers rather than picking one.
+
+### AND THE TAINT RULES FOUND A REAL BUG IN THIS ENGINE
+
+This is the part that matters, because the increment was supposed to ADD a capability and it found
+a DEFECT instead. The strata-ordering loop counted **predicates** against the number of **groups**
+— two different things — so on a program with three IDB predicates in two strata it exited with the
+second stratum **never evaluated**, and the `TaintFlow` rule was never run.
+
+**THE SYMPTOM WAS INVISIBLE FROM THE ANSWER.** The program derived `VarPointsTo(s, t3)` — the
+tainted datum *did* reach the sink's argument — and derived **no flow** from it. The relation was
+right, the rule was right, the program was right; what was missing was a stratum. The only thing
+that found it was running the deck's own rules.
+
+AND THE FIX IS PINNED BY A ROW THAT IS **PROVEN TO FIRE**: the bug was reintroduced, the suite went
+red on three rows, and the file was restored byte for byte.
+
+### AND THE DECK'S FIRST CHAPTER IS COUNTED, NOT PARAPHRASED
+
+The deck's first chapter (p.10-12) prints the imperative `Solve(main)` with a worklist and asks the
+questions the imperative form leaves open. The list **grows** across the three pages, and by p.12 it
+carries **five** bullets — the fifth, "How to connect PFG nodes and pointers?", is easy to miss, and
+the first draft of the increment counted four.
+
+**THE ANSWER IS NOT "the declarative form has no implementation details".** Measured against this
+tool's own engine, the declarative form closes **four** of the deck's five questions and leaves
+**one**: the points-to set's representation, which is exactly the deck's own "Hash set or bit
+vector?". This engine stores tuples in a **hash set** of length-prefixed tuple keys — so the deck's
+question is answered here by naming which of the deck's two options this tree takes, and the key's
+injectivity is measured rather than asserted.
+
+**AND "Cannot fully control performance" IS THE DECK'S OWN p.92 CONS LINE**, and this tree already
+paid for it: the strata-ordering bug of 0594 is what the answer costs.
+
+### THE MEASUREMENTS
+
+### THE MEASUREMENTS
+
+    the engine                 src/flow/datalog.mbt, datalog_parse.mbt
+    the pointer reading        src/flow/datalog_pointer.mbt
+    the taint reading          src/flow/datalog_taint.mbt
+    the deck's first chapter   src/flow/datalog_deck.mbt
+
+    the deck's rules, read     the pointer rules (p.70) and the taint rules (p.91)
+                               round-trip verbatim: what the slide prints is what the
+                               printer prints
+    the pointer rules, run     p -> {o1}  q -> {o1}  x -> {o3}  y -> {o4} -- the SAME
+                               four points-to sets `pta_run` gives on the deck's own
+                               program
+    the taint rules, run       TaintFlow(3, 7, 0) -- the triple the security deck's
+                               p.84 prints, and the two readings AGREE
+    the deck's five questions  FOUR closed, ONE open -- and the open one is the deck's
+                               own "Hash set or bit vector?"
+    the deck's p.92            three pros, two cons; one pro does NOT hold here
+    the deck's p.93            three things, each naming the increment that did it
+
+AND THE PINS THAT MOVED are this release's own source, and the seven corpora did not
+move:
+
+    own-source files         249 -> 258
+    own-source notices     1,945 -> 2,013
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated 1,788 -> 1,856
+    the eight-tree total   23,290 -> 23,358
+    the eight-tree split     3,971 + 19,319 -> 3,971 + 19,387
+    the test counts         1,652 -> 1,699 on wasm, 1,510 -> 1,557 on js and wasm-gc
+
+### THE DECK IS COVERED
+
+All three of p.93's three things are done, its five implementation questions are counted and
+answered, and its three pros and two cons are checked against this tree's engine. The deck's
+motivation prose and its worked examples are the language's own, and 0592's reader takes the deck's
+syntax as it is.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and
