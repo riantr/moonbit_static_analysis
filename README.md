@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (256 files), with the per-file printing cap lifted so the count is the
+project's own source (258 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1688 | | `const` declaration | 7 |
+| `test` declaration | 1699 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 109 | | `type` declaration | 7 |
+| `struct` declaration | 111 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
-| `enum` declaration | 29 | | | |
+| `enum` declaration | 32 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1840** sit outside every function's
+audit off, so they are printed one per line; the other **1856** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,342** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,358** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,371** as aggregated — which is 3,971 + 19,371 = 23,342, the same number — and the 3,971
+**19,387** as aggregated — which is 3,971 + 19,387 = 23,358, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1391,6 +1391,36 @@ the file was restored byte for byte.
 program and not of the solver's internals — and a caller that cannot see it cannot explain a
 rule that derived nothing.
 
+### And the deck's first chapter is COUNTED, and its last two pages are CHECKED
+
+The lecture's first chapter is the motivation (p.5-16): it prints the imperative `Solve(main)` with a
+worklist and asks the questions the imperative form leaves open. The list **grows** across p.10, p.11
+and p.12, and by p.12 it carries **five** bullets — the fifth, "How to connect PFG nodes and
+pointers?", is on p.12 and is easy to miss.
+
+**THE ANSWER IS NOT "the declarative form has no implementation details".** Measured against this
+tool's own engine, the declarative form closes **four** of the deck's five questions and leaves
+**one** — the points-to set's representation, which is exactly the deck's own "Hash set or bit
+vector?". This tool's engine stores tuples in a **hash set** of length-prefixed tuple keys, so the
+deck's question is answered here by naming which of the deck's two options this tree takes.
+
+**AND THE ORDER QUESTION SURVIVES.** "Which worklist entry should be processed first?" becomes
+"which stratum first" — the same question in a different hat, and the deck's own p.92 cons line names
+it: "Cannot fully control performance". This tree has already paid for it: the strata-ordering bug
+that 0594 found is that cost.
+
+**p.92 IS THREE PROS AND TWO CONS, AND ONE PRO IS NOT TRUE HERE.** "Benefit from off-the-shelf
+optimized Datalog engines" does not hold for this tree, which has its own engine — and the price is
+measured, not asserted: the strata-ordering bug of 0594 is what owning an engine costs. It is
+reported as not true rather than left implied by silence.
+
+**AND "Restricted expressiveness" IS TWO REFUSALS HERE, not a vague limit** — an unsafe rule (p.53)
+and a recursion-and-negation conflict (p.56) are both refused, and a refusal says which rule and
+why.
+
+**p.93 IS THREE THINGS, AND EACH NAMES THE INCREMENT THAT DID IT**: the language (0592), the pointer
+analysis via Datalog (0593) and the taint analysis via Datalog (0594).
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1510,7 +1540,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1688/1688 on wasm; 1546/1546 on js and wasm-gc
+moon test --deny-warn                # 1699/1699 on wasm; 1557/1557 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

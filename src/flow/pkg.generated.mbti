@@ -117,7 +117,15 @@ pub fn dgoal_neg(DAtom) -> DGoal
 
 pub fn dgoal_text_of(DGoal) -> String
 
+pub fn dl_answer_of(DlQuestion) -> DlQuestionAnswer
+
+pub fn dl_answer_text(DlQuestionAnswer) -> String
+
+pub fn dl_claims() -> Array[DlClaim]
+
 pub fn dl_compare_text(Array[Cfg], Int32) -> String
+
+pub fn dl_cons() -> Array[DlClaim]
 
 pub fn dl_fact_text(DFact) -> String
 
@@ -129,6 +137,8 @@ pub fn dl_has_fact(Array[DFact], String, Array[String]) -> Bool
 
 pub fn dl_has_tuple(Array[Array[String]], Array[String]) -> Bool
 
+pub fn dl_open_questions() -> Array[DlQuestion]
+
 pub fn dl_pointer_agrees(Array[Cfg], Int32) -> Bool
 
 pub fn dl_pointer_answer(Array[Cfg], Int32) -> DlAnswer
@@ -136,6 +146,12 @@ pub fn dl_pointer_answer(Array[Cfg], Int32) -> DlAnswer
 pub fn dl_pointer_program(Array[Cfg], Int32) -> DProgram
 
 pub fn dl_pointer_rules_text() -> String
+
+pub fn dl_pros() -> Array[DlClaim]
+
+pub fn dl_question_text(DlQuestion) -> String
+
+pub fn dl_questions() -> Array[DlQuestion]
 
 pub fn dl_taint_agrees(Array[Cfg], Int32, TaintSpec) -> Bool
 
@@ -150,6 +166,8 @@ pub fn dl_taint_facts_of(Array[Cfg], Int32, TaintSpec) -> DlTaintFacts
 pub fn dl_taint_program(DlTaintFacts, DlFacts) -> DProgram
 
 pub fn dl_taint_rules_text() -> String
+
+pub fn dl_things() -> Array[DlThing]
 
 pub fn dominance_frontiers(Bb, Dom) -> Array[Array[Int32]]
 
@@ -648,12 +666,42 @@ pub(all) struct DlAnswer {
   rounds : Int32
 }
 
+pub(all) struct DlClaim {
+  text : String
+  kind : DlClaimKind
+  holds : Bool
+  why : String
+}
+
+#derive(Eq)
+pub(all) enum DlClaimKind {
+  DlPros
+  DlCons
+}
+
 pub(all) struct DlFacts {
   new : Array[DFact]
   assign : Array[DFact]
   store : Array[DFact]
   load : Array[DFact]
 }
+
+#derive(Eq)
+pub(all) enum DlQuestion {
+  DlWorklist
+  DlWorklistShape
+  DlWorklistOrder
+  DlPointSet
+  DlConnect
+}
+
+#derive(Eq)
+pub(all) enum DlQuestionAnswer {
+  DlGone
+  DlBySpecification
+  DlByDataStructure
+}
+pub fn DlQuestionAnswer::name(Self) -> String
 
 pub(all) struct DlTaintAnswer {
   ok : Bool
@@ -669,6 +717,11 @@ pub(all) struct DlTaintFacts {
   callgraph : Array[DFact]
   callreturn : Array[DFact]
   argument : Array[DFact]
+}
+
+pub(all) struct DlThing {
+  text : String
+  increment : String
 }
 
 pub(all) struct Dom {

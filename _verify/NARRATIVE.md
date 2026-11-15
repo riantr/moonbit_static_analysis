@@ -19994,3 +19994,145 @@ THE OTHER DECKS ARE STILL DECKS: 15_IFDS.pdf and 16_Soundiness.pdf sit in the sa
 directory as the ones this series read, and they have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0595: THE DECK'S FIRST CHAPTER, COUNTED -- and its last two pages
+
+AND THIS IS THE LAST OF THE DECK. The three cells that 0592, 0593 and 0594 built are
+built; what was left of `14_Datalog.pdf` was its first chapter -- the MOTIVATION,
+p.5-16 -- and its last two pages, p.92's PROS AND CONS and p.93's THREE THINGS. And
+all three of those are BOUNDARIES AND MEASUREMENTS rather than cells to build, so
+this increment counts them and pins the counts.
+
+    src/flow/datalog_deck.mbt        the five questions and their answers, p.92's
+                                     three pros and two cons, p.93's three things
+    src/flow/datalog_deck_test.mbt   ten rows, each naming the slide it pins
+
+### THE DECK ASKS FIVE QUESTIONS, AND THE LIST GROWS ACROSS THREE PAGES
+
+The deck's first chapter prints the imperative `Solve(main)` with a worklist
+(p.10-12) and asks the questions the imperative form does not answer. The list
+GROWS: p.10 carries three bullets, p.11 adds the points-to set, and p.12 adds the
+last one.
+
+    p.10   How to implement worklist?
+           Array list or linked list?
+           Which worklist entry should be processed first?
+    p.11   How to implement points-to set (pt)? Hash set or bit vector?
+    p.12   How to connect PFG nodes and pointers?
+
+AND IT IS FIVE, and the first draft of this increment had FOUR -- the four on p.11
+-- because the fifth bullet is on p.12 and was missed. A count of the deck's own
+list is a fact, and a fact that is off by one is a defect, so it is measured here
+and pinned.
+
+AND THE ANSWER IS NOT "the declarative form has no implementation details". The
+deck's claim (p.15-16) is that the declarative form has none; measured against
+this tree's engine, it has FEWER:
+
+    how to implement worklist?              GONE      there is no queue
+    array list or linked list?              GONE      there is no list
+    which worklist entry first?             BY SPECIFICATION   the strata decide
+    how to implement points-to set (pt)?     BY DATA STRUCTURE   the implementer decides
+    how to connect PFG nodes and pointers?   GONE      there is no PFG
+
+FOUR of the FIVE are closed and ONE is still open, and the one it keeps is the
+deck's own "Hash set or bit vector?". The declarative form answers what the set
+IS -- it holds tuples -- and does not answer how it is STORED. This tree's engine
+stores tuples in a hash set of length-prefixed tuple keys, so the deck's question
+is answered by NAMING which of the deck's two options this tree takes.
+
+AND THE KEY IS MEASURED, not asserted: the key of a tuple is its terms
+LENGTH-PREFIXED, so `["ab", "c"]` and `["a", "bc"]` are TWO tuples even though
+their terms concatenate to the same text. A key that was the plain concatenation
+would put both in one bucket and the set would answer "yes" to a tuple it never
+held.
+
+### THE ORDER QUESTION SURVIVES, AND 0594 IS WHAT IT COST
+
+"Which worklist entry should be processed first?" does not go away. The declarative
+form replaces it with "which STRATUM first", and that is the same question wearing a
+different hat -- and the deck's own p.92 cons line names it: "Cannot fully control
+performance".
+
+AND THIS TREE PAID FOR IT ALREADY. 0594 found the strata-ordering loop counting
+PREDICATES against GROUPS, and a program with three IDB predicates in two strata
+lost its second stratum entirely. So the deck's question is not academic: it is a
+question an implementation can get wrong, and this implementation got it wrong once
+already.
+
+### p.92 IS THREE PROS AND TWO CONS, AND ONE PRO IS NOT TRUE HERE
+
+    Pros   Succinct and readable                                   HOLDS
+           Easy to implement                                       HOLDS
+           Benefit from off-the-shelf optimized Datalog engines    DOES NOT HOLD
+    Cons   Restricted expressiveness, i.e., it is impossible or    HOLDS
+           inconvenient to express some logics
+           Cannot fully control performance                        HOLDS
+
+AND THE THIRD PRO IS REPORTED AS NOT TRUE rather than left implied by silence.
+This tree has its OWN engine and uses no off-the-shelf one, so it does not ride on
+anyone else's optimisation work -- and the price is measured: 0594's strata bug is
+what owning the engine costs. A pros list that is a list of advantages is a list of
+advantages of SOMEONE ELSE's engine.
+
+AND "Restricted expressiveness" is not a vague limit here: it is two REFUSALS, one
+for an unsafe rule (p.53) and one for a recursion-and-negation conflict (p.56), and
+a refusal says WHICH rule and WHY.
+
+### p.93 IS THREE THINGS, AND EACH NAMES THE INCREMENT THAT DID IT
+
+    Datalog language                                    0592
+    How to implement pointer analysis via Datalog      0593
+    How to implement taint analysis via Datalog        0594
+
+AND THE COUNT IS A FACT AND NOT A SENTENCE, so a future increment can see at a
+glance whether an entry is still open.
+
+### AND TWO THINGS IN THIS INCREMENT'S OWN FIRST DRAFT WERE WRONG
+
+AND THE FIRST DRAFT OF THE REFUSALS ROW used "Adult(person) <- Age(person, age),
+age >= 18." and expected a REFUSAL. THAT RULE IS SAFE -- every variable appears in the
+non-negated relational atom `Age(person, age)` -- so the check was right and the
+expectation was wrong. The deck's own two UNSAFE examples are the ones on p.51-52, and
+they are the ones measured now.
+
+AND THE FIRST DRAFT NAMED ITS ENUM `DlAnswer`, WHICH 0593 ALREADY USES for the pointer
+analysis's answer, so the compiler refused the tree with "the type DlAnswer is declared
+twice". The name is now `DlQuestionAnswer`, because "the answer to a QUESTION" and "the
+pointer analysis's answer" are two different things and one of the two has to give way.
+
+AND BOTH ARE THE SAME CLASS OF DEFECT: A CLAIM THAT WAS NOT MEASURED. The count of the
+deck's own questions was four until the deck was read again, and the refusal was expected
+until the check was run. That is the second time in this deck's series that reading the
+slide and running the thing disagreed, and it is why the rows are MEASURED and not
+described.
+
+### THE PINS THAT MOVED
+
+    own-source files         256 -> 258   (the deck's first chapter, counted)
+    own-source notices     1,997 -> 2,013
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated 1,840 -> 1,856
+
+THE EIGHT-TREE TOTAL moved with the own-source half, and the corpora did not move:
+
+    the eight-tree total   23,342 -> 23,358
+    the eight-tree split     3,971 + 19,371 -> 3,971 + 19,387
+
+AND THE TEST COUNTS, on all three targets:
+
+    1,688 -> 1,699 on wasm, 1,546 -> 1,557 on js and wasm-gc
+
+### WHAT IS STILL OPEN
+
+THE DECK IS COVERED. All three of p.93's things are done, its five implementation
+questions are counted and answered, and its three pros and two cons are checked
+against this tree's engine. What remains of the deck is p.5-9's motivation prose
+and p.17-59's worked examples, and those are the language's own -- 0592's reader
+takes the deck's syntax as it is.
+
+THE OTHER DECKS ARE STILL DECKS: 15_IFDS.pdf and 16_Soundiness.pdf sit in the same
+directory as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
