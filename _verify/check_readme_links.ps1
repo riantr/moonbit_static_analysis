@@ -675,6 +675,93 @@ if (-not $chapM.Success) {
 }
 
 Write-Output ''
-if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables and the course map all check out.'; exit 0 }
+Write-Output ''
+Write-Output '=== 9. the NARRATIVE has HEADINGS, and no family says the same thing twice ==='
+# WHY THIS CHECK EXISTS. Two defects, ONE cause, and NEITHER was caught by a gate:
+#
+#   1. The patch that installs an increment's prose was applied TWICE to
+#      `src/core/core.mbt`, so the paragraph about the deck's derived-value boundary
+#      sat in the `FTaintFlow` arm of `Family::excluded` TWICE -- 586 characters,
+#      twice. The file compiled, the notice pins did not move (a string literal is
+#      not a notice), and the text read as though it were explaining itself twice.
+#   2. The same double-apply left chapters 0587 and 0588 without their `## `
+#      prefix, so they rendered as body text and the record silently lost two of
+#      its chapters from its own structure.
+#
+# A defect written only in prose is unfixed, and these two WERE prose: the notice
+# pins count NOTICES, the family tables count FAMILIES, and nothing counted HEADINGS
+# or SENTENCES. So they are counted now.
+#
+#   9a. every chapter in the NARRATIVE is a level-2 heading -- no line at column 0
+#       may start with `NNNN: ` -- and no chapter number is used twice. The COUNT
+#       is pinned in `release.ps1` as $NARRATIVE_CHAPTERS and derived here, the same
+#       way the corpus numbers are: ONE place carries the number, and this gate
+#       asks whether the file agrees with it.
+#   9b. no family's boundary text repeats a sentence. A boundary text is prose, and
+#       prose that says the same thing twice is a paste that went in twice.
+$narrLines = [System.IO.File]::ReadAllLines($narrPath2, [System.Text.Encoding]::UTF8)
+$lostHeads = @()
+$chapSeen = @{}
+$dupChaps = @()
+$chapCount = 0
+foreach ($ln in $narrLines) {
+  $m = [regex]::Match($ln, '^##\s+(\d{4}):\s+\S')
+  if ($m.Success) {
+    $chapCount++
+    $c = $m.Groups[1].Value
+    if ($chapSeen.ContainsKey($c)) { $dupChaps += $c } else { $chapSeen[$c] = $true }
+    continue
+  }
+  $m2 = [regex]::Match($ln, '^(\d{4}):\s+[A-Z]')
+  if ($m2.Success) { $lostHeads += $ln.Trim() }
+}
+$ncM = [regex]::Match($relTxt2, "\`$NARRATIVE_CHAPTERS\s*=\s*'(\d+)'")
+if (-not $ncM.Success) {
+  Write-Output '  FAIL: release.ps1 no longer carries the $NARRATIVE_CHAPTERS pin.'
+  $fail++
+} elseif ([int]$ncM.Groups[1].Value -ne $chapCount) {
+  Write-Output ("  FAIL: the NARRATIVE carries {0} chapter heading(s) and the pin says {1}." -f $chapCount, $ncM.Groups[1].Value)
+  $fail++
+} else {
+  Write-Output ("  the NARRATIVE carries {0} chapter heading(s), and the pin says {0}  OK" -f $chapCount)
+}
+if ($lostHeads.Count -gt 0) {
+  Write-Output ('  FAIL: {0} chapter heading(s) carry no `## ` prefix, so they render as body text:' -f $lostHeads.Count)
+  foreach ($h in $lostHeads) { Write-Output ('      ' + $h) }
+  $fail += $lostHeads.Count
+} elseif ($dupChaps.Count -gt 0) {
+  Write-Output ("  FAIL: {0} chapter number(s) are used twice:" -f $dupChaps.Count)
+  foreach ($d in $dupChaps) { Write-Output ('      ' + $d) }
+  $fail += $dupChaps.Count
+} else {
+  Write-Output '  every chapter is a `## ` heading, and no chapter number is used twice  OK'
+}
+$corePath = Join-Path $root 'src\core\core.mbt'
+$coreTxt = [System.IO.File]::ReadAllText($corePath, [System.Text.Encoding]::UTF8)
+$armM = [regex]::Matches($coreTxt, '(?ms)^    (F[A-Za-z0-9]+) =>\r?\n      ("(?:[^"\\]|\\.)*")')
+$repSents = @()
+foreach ($a in $armM) {
+  $fam = $a.Groups[1].Value
+  $body = $a.Groups[2].Value
+  if ($body.StartsWith('"')) { $body = $body.Substring(1) }
+  if ($body.EndsWith('"')) { $body = $body.Substring(0, $body.Length - 1) }
+  $body = $body -replace '\\"', '"'
+  $sentSeen = @{}
+  foreach ($s in ([regex]::Split($body, '(?<=[.!?]) (?=[A-Z`"])'))) {
+    $st = $s.Trim()
+    if ($st.Length -le 20) { continue }
+    $k = $st.Substring(0, [Math]::Min(90, $st.Length))
+    if ($sentSeen.ContainsKey($k)) { $repSents += ($fam + ' -- ' + $k) } else { $sentSeen[$k] = $true }
+  }
+}
+if ($repSents.Count -eq 0) {
+  Write-Output ("  no family's boundary text repeats a sentence ({0} family arm(s) read)  OK" -f $armM.Count)
+} else {
+  Write-Output ("  FAIL: {0} repeated sentence(s) in family boundary text(s):" -f $repSents.Count)
+  foreach ($rs in $repSents) { Write-Output ('      ' + $rs) }
+  $fail += $repSents.Count
+}
+
+if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables, the course map, the chapter headings and the family texts all check out.'; exit 0 }
 Write-Output ("VERIFY FAILED: " + $fail + " problem(s).")
 exit 1

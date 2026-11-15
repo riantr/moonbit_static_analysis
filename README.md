@@ -1518,6 +1518,14 @@ The list is DERIVED from `_verify/release.ps1` and checked by
 `_verify/check_readme_links.ps1`, so a stage added to the gate and not named here makes
 that gate red rather than quietly widening what the gate does.
 
+**AND THE SAME STAGE NOW CHECKS THE DOCUMENT'S OWN STRUCTURE.** Section 9 of
+`_verify/check_readme_links.ps1` counts the NARRATIVE's chapter headings, requires every one of
+them to be a `## ` heading, requires that no chapter number be used twice, and requires that no
+family's boundary text repeat a sentence. That check exists because a prose defect IS a defect:
+one family's boundary text once carried its paragraph **twice**, and two chapters lost their
+heading and rendered as body text. Both are fixed, both are pinned now, and the gate is shown
+to go red on each of them.
+
 ### What the three transfers were asked for
 
 The confidence axis, the stable family ids and the `nosec` are not features this

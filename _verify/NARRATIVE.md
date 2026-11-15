@@ -19080,7 +19080,7 @@ same directory as the ones this series read, and they have not been read.
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
 
-0587: THE TAINT FINDING -- THE DECK'S TRIPLES, AS A REPORT
+## 0587: THE TAINT FINDING -- THE DECK'S TRIPLES, AS A REPORT
 
 THE FAMILY. `MSA-018`, `TaintFlow`, severity Error, confidence High. The roster's EIGHTEENTH,
 and the first family in this tree whose claim is about a FLOW rather than about a place.
@@ -19341,5 +19341,102 @@ analysis respectively.
 
 THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the
 same directory as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0589: THE INSTALLER RAN TWICE -- and the two things it broke are now PINNED
+
+THE DEFECT WAS FOUND WHILE INSTALLING 0588, and it was found by MEASURING THE DOCUMENT
+rather than by any gate -- which is the honest way of saying that NO GATE COULD HAVE FOUND
+IT. Three symptoms, ONE cause: the patch that installs an increment's prose was applied
+TWICE over the same file. Each symptom looks fine on its own.
+
+    the family's boundary text          the paragraph about the deck's derived-value
+    (src/core/core.mbt, the             boundary sat in the `FTaintFlow` arm of
+    `FTaintFlow` arm of                  `Family::excluded` TWICE -- 586 characters,
+    `Family::excluded`)                  twice. The file compiled. The notice pins did
+                                         not move, because a string literal is not a
+                                         notice, and the text read as though it were
+                                         explaining itself twice.
+    chapter 0587's heading               installed WITHOUT its `## ` prefix, so it
+    (the taint finding)                  rendered as body text and the record silently
+                                         lost a chapter from its own structure.
+    chapter 0588's heading               the same, in the same install run.
+    (the deck's other chapters)
+
+WHICH OF THE THREE REACHED THE HISTORY, AND WHICH DID NOT, because that is the part a reader
+of the log has to be told. The DOUBLED PARAGRAPH never did: it was corrected while 0588 was
+still uncommitted, so it is fixed in place inside 0588's own commit and there is nothing left
+of it here. Chapter 0587's heading DID: it was committed BROKEN in `bba9ded`, and it is fixed
+in THIS increment. Chapter 0588's heading did not, because 0588's own commit installs it
+correctly -- the installer was fixed before the commit was made.
+
+THE MEASUREMENT, AND IT IS THREE NUMBERS. The state the double-apply left behind: 97
+chapter headings carried `## `, TWO did not (0587 and 0588), and one family's boundary text
+repeated a sentence. 0588's own heading was corrected in 0588's own commit, and this
+increment corrects 0587's, so the file now carries 100 chapter headings and NONE of them is
+missing one. The sentence check reads ALL 62 family arms in `src/core/core.mbt` -- the three
+functions that carry a boundary text, across all eighteen families -- and all 62 are clean.
+
+AND THE SOURCE PINS DID NOT MOVE AT ALL, and that is measured rather than asserted: this
+increment changed ONE string literal's TEXT and two lines of the NARRATIVE's MARKDOWN, and
+nothing else. A string literal's length is not a notice, not a declaration and not an
+instruction, so every pin that counts those is untouched.
+
+    own-source files                      249   (unchanged)
+    own-source notices                  1,945   (unchanged)
+    own-source printed                    157   (unchanged)
+    own-source aggregated              1,788   (unchanged)
+    the SSA cost          files 231, functions 1,225, partial 1,220, declined 5,798,
+                          instructions 8,324, variables 997, versions 2,473, phis 898,
+                          copies 2,181, undef_operands 186, dead_blocks 404,
+                          undef_uses 1,135                    (all unchanged)
+    the NARRATIVE's chapter headings   97 -> 100  (0587 and 0588 carry their `## `,
+                                          and this chapter is the hundredth)
+
+### THE GATE ROW, BECAUSE A DEFECT WRITTEN ONLY IN PROSE IS UNFIXED
+
+THE TWO THINGS THAT BROKE ARE BOTH STRUCTURAL, and NOTHING COUNTED THEM: the notice pins
+count NOTICES, the family tables count FAMILIES, and neither counted HEADINGS or SENTENCES.
+So section 9 of `_verify/check_readme_links.ps1` counts them now, and that file is already a
+stage of the release gate, so the check runs on every release:
+
+    9a. every chapter in the NARRATIVE is a level-2 heading -- no line at column 0 may
+        start with `NNNN: ` -- and no chapter number is used twice. The COUNT is pinned in
+        `release.ps1` as $NARRATIVE_CHAPTERS (100) and derived here, the same way the corpus
+        numbers are: ONE place carries the number, and the gate asks whether the file
+        agrees with it.
+    9b. no family's boundary text repeats a sentence. A boundary text is prose, and prose
+        that says the same thing twice is a paste that went in twice.
+
+AND THE GATE IS SHOWN TO GO RED, TWICE, because a gate nobody has seen fail is a gate nobody
+knows is looking. Both defects were put BACK into the tree and the gate was run.
+
+    the doubled paragraph, back in `src/core/core.mbt`:
+
+        FAIL: 2 repeated sentence(s) in family boundary text(s):
+        VERIFY FAILED: 2 problem(s).
+        exit 1
+
+    the heading, back in `_verify/NARRATIVE.md`:
+
+        FAIL: the NARRATIVE carries 99 chapter heading(s) and the pin says 100.
+        FAIL: 1 chapter heading(s) carry no `## ` prefix, so they render as body text:
+            0588: THE DECK'S OTHER THREE CHAPTERS, COUNTED AND PINNED
+        VERIFY FAILED: 2 problem(s).
+        exit 1
+
+BOTH FILES WERE RESTORED BYTE FOR BYTE, and the restore was verified BY HASH rather than by
+eye: `src/core/core.mbt` came back as
+`0384ad27f72270ee835d8e6a5830691d85c2f9368b0dbdd51bb565072baa6a1d`, the same 56,380 bytes,
+and the gate went green again on the restored tree.
+
+### WHAT IS STILL OPEN
+
+THE DECK'S CELLS ARE ALL ACCOUNTED FOR -- 0586, 0587 and 0588 closed them, and the three
+chapters 0588 bounded are bounded with a count -- and the other decks are still decks:
+14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the same directory as the ones
+this series read, and they have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
