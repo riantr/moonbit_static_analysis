@@ -19644,3 +19644,161 @@ strings are not stored literally in this artifact -- which is a fact about the B
 about the release, and the absence of `TaintFlow` therefore says NOTHING about whether the
 family is in it. The claim this chapter makes is the one the bytes support: the artifact
 GREW, the non-test call sites say why, and the published artifact FIRES the family.
+
+
+## 0592: THE DATALOG ENGINE -- the deck's rules, READ, and then RUN
+
+The deck's first chapter is a complaint, and the complaint is the increment. The same pointer
+analysis has an IMPERATIVE form (p.9-14: a worklist, a `Solve(main)` loop, and "so many
+implementation details") and a DECLARATIVE form (p.15-16: seven rules, "Succinct / Readable
+(logic-based specification) / Easy to implement"). The deck's claim is not that Datalog is a
+nicer language. It is that THE RULES ARE THE SPECIFICATION, and a specification you can read
+is a specification you can check.
+
+So this increment makes the claim TESTABLE, and the test is the deck's own text.
+
+    src/flow/datalog.mbt        the engine: the fixpoint, the safety check, the strata
+    src/flow/datalog_parse.mbt  the reader: the deck's syntax, in the deck's notation
+    src/flow/datalog_test.mbt   twenty rows, each naming the slide it pins
+
+### THE READER READS THE DECK'S SYNTAX, AND IT READS IT CONTEXTUALLY
+
+The deck's syntax CANNOT distinguish a variable from a value, and this is not an oversight to
+be repaired -- it is the deck's syntax. Its facts are `New(b, o1)` (p.65) and its rules are
+`VarPointsTo(x, o) <- New(x, o).` (p.70), and in BOTH the object name and the variable are
+bare identifiers.
+
+So the distinction is CONTEXTUAL: a FACT's bare terms are values, a RULE's bare terms are
+variables. The terms are typed explicitly in the engine (`DVar` / `DConst`) because the
+reader's CONTEXT has to carry what the text cannot.
+
+### THE DECK'S MULTI-HEAD SHORTHAND IS THREE RULES WITH ONE BODY
+
+p.15 writes one body under three heads. The reader expands it into three rules, because
+that is what it means, and the expansion is a pinned row.
+
+### THE TWO REFUSALS ARE REFUSALS, NOT SILENT DROPS
+
+A rule that is UNSAFE is refused: every variable must appear in at least one non-negated
+relational atom (p.51-53), and the deck's own two counter-examples are the pinned rows. And a
+program where RECURSION AND NEGATION ARE NOT SEPARATED is refused (p.54-56).
+
+Both refusals produce a diagnostic that names the rule, and `datalog_solve` returns
+`ok = false` rather than an empty answer. THE REASON IS WORTH WRITING DOWN, because it is
+the difference between "the tool says unknown" and "the tool says nothing": an empty answer
+is indistinguishable from a program whose answer is empty, and a dropped rule would leave a
+program that runs and answers nothing.
+
+And the separation is between RECURSION AND NEGATION, and not a ban on negation: the deck's
+own make-up-exam rule negates `PassedStd` and is perfectly legal, because `PassedStd` is not
+defined by a rule at all (p.47). That row is pinned too, because a reader that banned
+negation would be wrong in the direction that looks safe.
+
+### THE NUMBERS ARE NUMBERS AND NOT TEXT
+
+`age >= 18` has to put 9 BELOW 18, and a text comparison puts "9" ABOVE "18" because '9' is
+the larger character. The deck's own example carries a ninth grader in it (p.29, p.32), and
+that example is a pinned row.
+
+### THE ENGINE IS MONOTONE AND TERMINATES, AND THE ROUNDS ARE MEASURED
+
+p.57-59: facts cannot be deleted, and the possible values of IDB predicates are finite --
+the second half of that argument being exactly the rule-safety property above. The recursion's
+round count is MEASURED with a probe rather than asserted: the pinned row reads the number of
+rounds the fixpoint took, and it is 2.
+
+### AND THE ROUND TRIP IS THE POINT
+
+The reader writes the rules back out in the deck's own notation, and the deck's own
+pointer-analysis rules (p.70) and taint rules (p.91) come back VERBATIM -- read from text, in
+the deck's order, in the deck's words. A specification that cannot be read back is not a
+specification this tool can check.
+
+### WHAT THIS IS NOT
+
+It is NOT a second pointer analysis, and that is the house rule honoured rather than
+circumvented. The Datalog engine computes the DECK'S rules; `src/flow/pta.mbt` computes this
+tree's answer over the same program; the increment that follows writes the deck's rules in
+the engine and COMPARES the two answers. The engine is the deck's SPECIFICATION and the
+pointer analysis is this tree's IMPLEMENTATION, and the deck's question -- which of them the
+two agree on -- is a question this tree can now ask.
+
+### THE PINS THAT MOVED
+
+    own-source files         249 -> 252   (the engine, its reader and its test file)
+    own-source notices     1,945 -> 1,977
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated 1,788 -> 1,820
+
+THE EIGHT-TREE TOTAL moved with the own-source half, and the corpora did not move:
+
+    the eight-tree total   23,290 -> 23,322
+    the eight-tree split     3,971 + 19,319 -> 3,971 + 19,351
+
+THE PRINTED HALF DID NOT MOVE AT ALL, and the reason is worth recording because the FIRST
+draft of this increment moved it. The notice table's `if expression` row went 100 -> 102 and
+then BACK to 100, and the two `if`s it went up for were the two `if`s used as VALUES in this
+increment's own source. The 0552 precedent says an `if` used as a value is outside the
+analysed subset -- so the analyzer reported the two variables those `if`s read as UNUSED, and
+the suppression-off measurement read 697 where the pin says 694.
+
+THOSE ARE FALSE POSITIVES, and a false positive is FIXED and never pinned. Both `if`s became
+`match`es, the two variables are read again, and the pair is back at 694 / 1,341 with the
+corpora untouched -- which is the control: the corpora did not move, so the +3 was this
+increment's own source and not the analyzer changing its mind about other people's code.
+
+AND THE TEST COUNTS, on all three targets:
+
+    1,652 -> 1,672 on wasm, 1,510 -> 1,530 on js and wasm-gc
+
+### AND TWO GATE DEFECTS THIS INCREMENT FOUND, BOTH FIXED
+
+THE ENGLISH README HAD A SECTION PASTED IN TWICE, and it has carried that since 0587: the
+heading `### And a tainted datum that reaches a sink is a finding` appears TWICE, and the two
+copies are equal line for line -- 40 lines each. It was found while measuring this increment,
+and it is removed here.
+
+AND THE REMOVAL IS NOT LEFT AS PROSE, because a defect written only in prose is unfixed. It
+is the THIRD defect of the same family that no gate could see: 0587 applied a patch that
+inserted a section which was ALREADY THERE, and nothing counted sections. The links gate
+resolves links, the counts gate counts NUMBERS, and a section that appears twice still
+resolves every link in it and still contributes the right numbers. So `check_readme_links.ps1`
+now reads every README's headings -- OUTSIDE the fenced code blocks, because a `#` line in a
+shell snippet is not a heading -- and checks that no heading is used twice AND that no section
+carries a body another section already carries, so a copy pasted under a DIFFERENT heading is
+caught too.
+
+AND THE CHECK IS PROVEN TO FIRE, because a check that has never gone red is a comment. The
+exact defect was injected into `README.md` -- one byte-identical copy of the section, the way
+0587 left it -- and the gate answered:
+
+    FAIL: 1 README section heading(s) are used twice in README.md:
+    FAIL: 1 README section(s) in README.md carry a body another section already carries:
+    VERIFY FAILED: 2 problem(s).
+
+and the file was then restored BYTE FOR BYTE, which is the same discipline the killed gate
+needs.
+
+AND THE SECOND DEFECT IS IN A GATE THAT WAS COUNTING THE WRONG THING. The course map's
+capture was `(?ms)^## 0564:.*\z`, and `\z` is THE END OF THE FILE -- so the map this gate
+checked was chapter 0564 AND EVERY CHAPTER AFTER IT. The check still verified every path it
+saw, so it never failed on its own terms, but the number it REPORTED was not the map's
+number. MEASURED: chapter 0564's own map names 14 files and 4 family ids, and the gate
+reported 53 -- the extra 39 are paths mentioned in the chapters that came after it, which is
+why the count grew when this increment added three files it had nothing to do with. A gate
+that says how much it checked, and checks something else, is a green row that measured
+nothing, so the capture stops at the next chapter heading, and the gate now reports 14.
+
+### WHAT IS STILL OPEN
+
+THE DECK'S THREE THINGS TO UNDERSTAND (p.93) ARE THE DECK'S OWN THREE CHAPTERS, and this
+increment is the SECOND one -- the language. The first (the motivation, p.5-16) is a boundary
+this increment answers by construction: the imperative form is what this tree already has,
+and the declarative form is what this increment adds, and the increment that follows asks
+whether they agree. The third (taint analysis via Datalog, p.90-91) is the increment after
+that.
+
+THE OTHER DECKS ARE STILL DECKS: 15_IFDS.pdf and 16_Soundiness.pdf sit in the same directory
+as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.

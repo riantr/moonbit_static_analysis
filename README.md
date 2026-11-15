@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (249 files), with the per-file printing cap lifted so the count is the
+project's own source (252 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1652 | | `const` declaration | 7 |
+| `test` declaration | 1672 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 96 | | `type` declaration | 7 |
+| `struct` declaration | 105 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
-| `enum` declaration | 26 | | | |
+| `enum` declaration | 29 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1788** sit outside every function's
+audit off, so they are printed one per line; the other **1820** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,290** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,322** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,319** as aggregated — which is 3,971 + 19,319 = 23,290, the same number — and the 3,971
+**19,351** as aggregated — which is 3,971 + 19,351 = 23,322, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1237,47 +1237,6 @@ been a **sanitizer**, and a sanitizer the analysis never read is a flow the anal
 the program does not have.
 
 
-### And a tainted datum that reaches a sink is a finding
-
-`src/pipeline/taintcheck.mbt` turns the deck's triples into **findings**, and the family is
-**`MSA-018` (`TaintFlow`)** — the roster's **eighteenth**.
-
-**THE FINDING SITS AT THE SINK.** The sink call is what the reader has to look at, so the finding
-is on the sink's line and the sink's name leads the message: *the sensitive argument 0 of 'log' may
-receive tainted data from 'get_password'*. The **source** is named too, because "tainted data"
-without a source is not a fact about the program.
-
-**ONE FINDING PER SINK CALL, AND THAT IS THE MERGE'S FAULT.** The pipeline collapses a family to
-one finding per **line**, so a sink with two sensitive arguments would lose one of them, and two
-sources reaching one sink would lose one of **them**. So the flows are **grouped** by the sink call
-and the message names every argument and every source the group covers — the merge then has nothing
-to collapse, and the report keeps the whole fact.
-
-**THE PREDICATE IS CHECKABLE**, and this is the first predicate in this tree whose claim is about a
-**flow** rather than about a place:
-
-```
-taint_reaches_sink(sink=log, source=get_password, arg=0, line=7, col=3)
-```
-
-The **sink** is the subject, the **source** is where the data came from, and the **argument** is the
-deck's own `k`. The values are the message's own words, so a checker splits them the way the message
-reads.
-
-**THE SPECIFICATION IS THE READER'S, AND IT IS A PARAMETER.** `--taint-source <fn>` names a function
-whose result is tainted data; `--taint-sink <fn>:<idx>` names a sink and the index of its sensitive
-argument — `log:0` is the deck's own `<log(String), 0>`. Both are repeatable, a malformed one is
-**refused** rather than dropped (a dropped sink would scan the program and report nothing, which
-looks exactly like a clean program), and with no specification the family says nothing — the same
-honest default as every other analysis in this tree.
-
-**AND THE THREE GUARDS ARE THE PIPELINE'S.** A file the frontend did not read whole, a function
-holding a region it did not read, and a function whose control-flow graph **lost a statement** are
-all functions this family does not analyse — the third one because the statement it lost may have
-been a **sanitizer**, and a sanitizer the analysis never read is a flow the analysis believes in and
-the program does not have.
-
-
 ### And the deck's own injection example is not reported — measured
 
 **THE SECURITY LECTURE'S SECOND CHAPTER IS *CONFIDENTIALITY AND INTEGRITY*, AND ITS INTEGRITY SLIDE
@@ -1318,6 +1277,62 @@ taint"*, and it belongs to the **taint layer** and not to the pointer analysis �
 taint analysis **one rule wider** than the deck's four. That is a change to what this tool claims, so
 it is written down here and not made.
 
+
+### And the deck's own rules can be READ, and then RUN
+
+The `Datalog-Based Program Analysis` lecture (Tian Tan, Nanjing University, 93 pages) spends its
+first chapter on a complaint: the same pointer analysis has an **imperative** form (p.9-14 — a
+worklist, a `Solve(main)` loop, and "so many implementation details") and a **declarative** form
+(p.15-16 — seven rules, "Succinct / Readable (logic-based specification) / Easy to implement"). The
+lecture's claim is not that Datalog is a nicer language. It is that **the rules are the
+specification**, and a specification you can read is a specification you can check.
+
+`src/flow/datalog.mbt` and `src/flow/datalog_parse.mbt` are that engine and that reader, and they
+exist to make the claim **testable**: the deck's own rules are written out, read back, run, and
+compared with the answer this tree's own pointer analysis already gives.
+
+**THE READER READS THE DECK'S SYNTAX, AND IT READS IT CONTEXTUALLY.** The deck's syntax cannot
+distinguish a variable from a value — its facts are `New(b, o1)` (p.65) and its rules are
+`VarPointsTo(x, o) <- New(x, o).` (p.70), and in **both** the object name and the variable are bare
+identifiers. So the distinction is **contextual**: a **fact**'s bare terms are values, a **rule**'s
+bare terms are variables. A reader that guessed would be wrong on one of the two, and the deck
+gives both forms on purpose.
+
+**THE DECK'S MULTI-HEAD SHORTHAND IS THREE RULES WITH ONE BODY.** p.15 writes one head over three
+lines with a single body, and the reader expands it, because that is what it means:
+
+```
+VarPointsTo(x, o) <- New(x, o).        // one head
+FieldPointsTo(f, o) <- New(f, o).      // the deck's p.15 form: three heads,
+FieldPointsTo(f, o) <- HeapStore(f, o). // one body -- read as THREE rules
+```
+
+**THE TWO REFUSALS ARE REFUSALS, NOT SILENT DROPS.** A rule that is **unsafe** — every variable
+must appear in at least one non-negated relational atom (p.51-53) — is refused, and so is a program
+where **recursion and negation are not separated** (p.54-56). Both produce a diagnostic that names
+the rule, and the solve returns *not ok* rather than an empty answer. An empty answer would look
+exactly like a program whose answer is empty, and that is the difference between "the tool says
+unknown" and "the tool says nothing".
+
+**THE NUMBERS ARE NUMBERS AND NOT TEXT.** `age >= 18` has to put **9** below **18**, and a text
+comparison puts `"9"` *above* `"18"` because `'9'` is the larger character. The deck's own example
+carries a ninth grader in it (p.29, p.32), and that example is a pinned row.
+
+**AND THE ENGINE IS MONOTONE AND TERMINATES** (p.57-59), because facts are never deleted and the
+possible values of an IDB predicate are finite — the second half of that argument being exactly the
+rule-safety property above. The recursion's round count is **measured**, not asserted: the pinned
+row reads the number of rounds the fixpoint took.
+
+**AND THE ROUND TRIP IS THE POINT.** The reader writes the rules back out in the deck's own
+notation, and the deck's own pointer-analysis rules (p.70) and taint rules (p.91) come back
+**verbatim** — read from text, in the deck's order, in the deck's words. A specification that
+cannot be read back is not a specification this tool can check.
+
+**WHAT THIS IS NOT.** It is **not** a second pointer analysis. The Datalog engine computes the
+deck's rules; the pointer analysis this tree already has computes the same answer over the same
+program, and the two are compared against each other in the increment that follows. One fact, one
+place in the tree — so the Datalog engine is the deck's *specification*, and `src/flow/pta.mbt` is
+the tree's *implementation*, and the question the deck raises is which of them the two agree on.
 
 ### And under the CFG there are basic blocks
 
@@ -1438,7 +1453,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1652/1652 on wasm; 1510/1510 on js and wasm-gc
+moon test --deny-warn                # 1672/1672 on wasm; 1530/1530 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

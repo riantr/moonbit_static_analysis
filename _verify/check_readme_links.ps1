@@ -637,7 +637,19 @@ Write-Output '=== 8. the NARRATIVE course map names only what this tree has ==='
 # -- read in section 7 out of `src/core/core.mbt`, not written down a second time.
 $narrPath2 = Join-Path $root '_verify\NARRATIVE.md'
 $narrTxt2 = [System.IO.File]::ReadAllText($narrPath2, [System.Text.Encoding]::UTF8)
-$chapM = [regex]::Match($narrTxt2, '(?ms)^## 0564:.*\z')
+# THE CAPTURE IS BOUNDED TO THE CHAPTER, and it was not. The regex was
+# `(?ms)^## 0564:.*\z`, and `\z` is THE END OF THE FILE -- so the 'course map'
+# this gate checks was chapter 0564 AND EVERY CHAPTER AFTER IT. The check
+# still verified every path it saw, so it never failed on its own terms; but
+# the number it REPORTED was not the map's number. MEASURED: chapter 0564's own
+# map names 14 files and 4 family ids, and the gate reported 53 files -- the
+# 39 extra ones are paths mentioned in the chapters that came after it, which
+# is why the count grew when this increment added three files it had nothing
+# to do with.
+#
+# A gate that says how much it checked, and checks something else, is a green
+# row that measured nothing. So the capture stops at the next chapter heading.
+$chapM = [regex]::Match($narrTxt2, '(?ms)^## 0564:.*?(?=^## \d{4}:|\z)')
 if (-not $chapM.Success) {
   Write-Output '  FAIL: the NARRATIVE has no chapter 0564, so the course map cannot be checked.'
   $fail++
@@ -762,6 +774,81 @@ if ($repSents.Count -eq 0) {
   $fail += $repSents.Count
 }
 
-if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables, the course map, the chapter headings and the family texts all check out.'; exit 0 }
+#   9c. NO README SECTION IS PASTED IN TWICE, and this is the THIRD defect of the
+#       same family that no gate could see.
+#
+#       0587 applied a README patch that inserted a section which was ALREADY THERE,
+#       and the English README has carried TWO byte-identical copies of
+#       `### And a tainted datum that reaches a sink is a finding` ever since -- 40
+#       lines each, equal line for line. Nothing caught it: the links gate resolves
+#       links, the counts gate counts NUMBERS, and a section that appears twice
+#       still resolves every link in it and still contributes the right numbers.
+#       A reader scrolling the README saw the same paragraphs twice and the second
+#       copy read as though the first were explaining itself.
+#
+#       IT IS THE SAME CLASS AS THE TWO ABOVE: a patch applied twice, where the
+#       thing it pasted was PROSE, and no gate counted prose. 9b counts a repeated
+#       SENTENCE inside a family's boundary text; 9c counts a repeated SECTION
+#       inside a README -- and it counts it by the heading AND by the body, so a
+#       copy pasted under a different heading is caught too.
+#
+#       The headings are read OUTSIDE the fenced code blocks, because a `#` line in
+#       a shell snippet is not a heading.
+$readmeFiles = @('README.md', 'README.zh.md')
+foreach ($rf in $readmeFiles) {
+  $rfPath = Join-Path $root $rf
+  $rfLines = [System.IO.File]::ReadAllLines($rfPath, [System.Text.Encoding]::UTF8)
+  $headings = @()
+  $inFence = $false
+  for ($i = 0; $i -lt $rfLines.Count; $i++) {
+    $ln = $rfLines[$i]
+    if ($ln.TrimStart().StartsWith('```')) { $inFence = -not $inFence; continue }
+    if ($inFence) { continue }
+    $hm = [regex]::Match($ln, '^(#{2,4})\s+(\S.*?)\s*$')
+    if ($hm.Success) {
+      $headings += [pscustomobject]@{ Line = $i + 1; Title = $hm.Groups[2].Value; Body = '' }
+    }
+  }
+  # the body of a section is everything up to the next heading
+  for ($k = 0; $k -lt $headings.Count; $k++) {
+    $from = $headings[$k].Line
+    $to = if ($k + 1 -lt $headings.Count) { $headings[$k + 1].Line - 1 } else { $rfLines.Count }
+    $body = ''
+    for ($j = $from; $j -lt $to; $j++) {
+      $body += ($rfLines[$j].TrimEnd() + "`n")
+    }
+    $headings[$k].Body = $body
+  }
+  $dupHeads = @()
+  $hSeen = @{}
+  foreach ($h in $headings) {
+    if ($hSeen.ContainsKey($h.Title)) { $dupHeads += ('line ' + $h.Line + ': ' + $h.Title) }
+    else { $hSeen[$h.Title] = $true }
+  }
+  $bSeen = @{}
+  $dupBodies = @()
+  foreach ($h in $headings) {
+    $norm = ($h.Body -replace "`n", '').Trim()
+    if ($norm.Length -lt 40) { continue }
+    $k2 = $norm.Substring(0, [Math]::Min(120, $norm.Length))
+    if ($bSeen.ContainsKey($k2)) { $dupBodies += ('line ' + $h.Line + ': ' + $h.Title) }
+    else { $bSeen[$k2] = $true }
+  }
+  if ($dupHeads.Count -gt 0) {
+    Write-Output ("  FAIL: {0} README section heading(s) are used twice in {1}:" -f $dupHeads.Count, $rf)
+    foreach ($d in $dupHeads) { Write-Output ('      ' + $d) }
+    $fail += $dupHeads.Count
+  }
+  if ($dupBodies.Count -gt 0) {
+    Write-Output ("  FAIL: {0} README section(s) in {1} carry a body another section already carries:" -f $dupBodies.Count, $rf)
+    foreach ($d in $dupBodies) { Write-Output ('      ' + $d) }
+    $fail += $dupBodies.Count
+  }
+  if ($dupHeads.Count -eq 0 -and $dupBodies.Count -eq 0) {
+    Write-Output ("  no README section is pasted in twice ({0} section(s) read in {1})  OK" -f $headings.Count, $rf)
+  }
+}
+
+if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables, the course map, the chapter headings, the family texts and the README sections all check out.'; exit 0 }
 Write-Output ("VERIFY FAILED: " + $fail + " problem(s).")
 exit 1

@@ -75,6 +75,28 @@ pub fn cpv_leq(Cpv, Cpv) -> Bool
 
 pub fn cpv_text(Cpv) -> String
 
+pub fn datalog_check(DProgram) -> DCheck
+
+pub fn datalog_has(DSolve, String, Array[String]) -> Bool
+
+pub fn datalog_parse(String) -> DParse
+
+pub fn datalog_parse_rule(String) -> DRule?
+
+pub fn datalog_program_text(DProgram) -> String
+
+pub fn datalog_rule_text(DRule) -> String
+
+pub fn datalog_solve(DProgram) -> DSolve
+
+pub fn datalog_text(DSolve) -> String
+
+pub fn datalog_tuples(DSolve, String) -> Array[Array[String]]
+
+pub fn dcmp(DTerm, String, DTerm) -> DAtom
+
+pub fn dconst(String) -> DTerm
+
 pub fn declared_types(CgFn) -> Map[String, String]
 
 pub fn def_key(String, Int32) -> String
@@ -83,9 +105,33 @@ pub fn def_set_lattice() -> Lattice[Map[String, Bool]]
 
 pub fn def_set_text(Map[String, Bool]) -> String
 
+pub fn dfact(String, Array[String]) -> DFact
+
+pub fn dgoal(DAtom) -> DGoal
+
+pub fn dgoal_neg(DAtom) -> DGoal
+
 pub fn dominance_frontiers(Bb, Dom) -> Array[Array[Int32]]
 
 pub fn dominators(Bb) -> Dom
+
+pub fn dprog() -> DProgram
+
+pub fn drel(String, Array[DTerm]) -> DAtom
+
+pub fn drel_add(DRelation, Array[String]) -> Bool
+
+pub fn drel_empty() -> DRelation
+
+pub fn drel_has(DRelation, Array[String]) -> Bool
+
+pub fn drule(DAtom, Array[DGoal]) -> DRule
+
+pub fn drule_disj(DAtom, Array[Array[DGoal]]) -> DRule
+
+pub fn drule_safe(DRule) -> Bool
+
+pub fn dvar(String) -> DTerm
 
 pub fn eval_add(Interval, Interval) -> Interval
 
@@ -477,6 +523,80 @@ pub(all) struct CtxVariants {
   call_site : PtaCtxResult
   object : PtaCtxResult
   type_ctx : PtaCtxResult
+}
+
+pub(all) enum DAtom {
+  DRel(String, Array[DTerm])
+  DCmp(DTerm, String, DTerm)
+}
+
+pub(all) struct DCheck {
+  ok : Bool
+  problems : Array[String]
+}
+
+pub(all) struct DFact {
+  pred : String
+  args : Array[String]
+}
+
+pub(all) struct DGoal {
+  atom : DAtom
+  negated : Bool
+}
+
+pub(all) struct DParse {
+  ok : Bool
+  error : String
+  program : DProgram
+}
+
+pub(all) struct DProgram {
+  facts : Array[DFact]
+  rules : Array[DRule]
+}
+
+pub(all) struct DReader {
+  toks : Array[DTok]
+  mut pos : Int32
+  mut in_rule : Bool
+}
+
+pub(all) struct DRelation {
+  tuples : Array[Array[String]]
+  keys : Map[String, Bool]
+}
+
+pub(all) struct DRule {
+  head : DAtom
+  body : Array[Array[DGoal]]
+}
+
+pub(all) struct DSolve {
+  ok : Bool
+  problems : Array[String]
+  rels : Map[String, DRelation]
+  rounds : Int32
+}
+
+pub(all) enum DTerm {
+  DVar(String)
+  DConst(String)
+}
+
+#derive(Eq)
+pub(all) enum DTok {
+  TIdent(String)
+  TNum(String)
+  TStr(String)
+  TLParen
+  TRParen
+  TComma
+  TDot
+  TLArrow
+  TSemi
+  TBang
+  TOp(String)
 }
 
 pub(all) struct Dom {

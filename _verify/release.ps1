@@ -438,7 +438,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # The three notices are the three new `test` declarations in
 # `src/pipeline/taintdeck_test.mbt`, and they are AGGREGATED, not printed: a
 # test declaration sits outside every function's extent.
-$NOTICE_TOTAL = '23290'
+# 0592. THE PIN MOVED, 23,290 -> 23,322, and THE MOVEMENT IS THIS INCREMENT'S
+# OWN SOURCE and nothing else: the seven corpora carry 21,345 notices, exactly
+# what they carried before -- each one still MATCHes its pinned baseline,
+# MEASURED -- and this repository's own source carries 1,977 (it carried 1,945).
+# The thirty-two notices are the Datalog engine, its reader and its test file,
+# and they are ALL AGGREGATED: a declaration sits outside every function's
+# extent, and the PRINTED half of the split did not move at all.
+$NOTICE_TOTAL = '23322'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -533,8 +540,14 @@ $NOTICE_TOTAL = '23290'
 # grew by three -- the three new `test` declarations, which sit outside every
 # function's extent and are therefore counted by shape. The corpora did not
 # move.
+# 0592. THE SPLIT MOVED WITH THE OWN SOURCE AGAIN: 3,971 + 19,319 ->
+# 3,971 + 19,351. The PRINTED half did not move AT ALL -- and that is worth
+# saying out loud, because it is the check that the movement is the new
+# files' DECLARATIONS and not a new finding that hides one: all thirty-two are
+# AGGREGATED, because a declaration sits outside every function's extent. The
+# corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19319'
+$NOTICE_SPLIT_AGGREGATED = '19351'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -612,16 +625,21 @@ $NOTICE_SPLIT_AGGREGATED = '19319'
 # write it; the fix is 0552's, the branches became STATEMENTS (`run_pipeline`
 # returns early), and the check that the fix landed is that the PRINTED half
 # is back at 157 and the suppression-off pair went DOWN to 694 / 1,341.
-# 0588. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
-# source again: 248 -> 249 files (the deck-chapter-2 test file), 1,785 -> 1,788
-# aggregated, and 1,942 -> 1,945 notices. The notice table's ONLY moving row is
-# the `test` declaration row (1649 -> 1652, the three new rows), and the
-# PRINTED half did not move, at 157, because a test declaration sits OUTSIDE
-# every function's extent.
-$SELF_FILES = '249'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=26|if expression=100|short lambda=8|struct declaration=96|test declaration=1652|try expression=1|type declaration=7'
+# 0592. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source: 249 -> 252 files (the Datalog engine, its reader and its test file),
+# 1,788 -> 1,820 aggregated, and 1,945 -> 1,977 notices. The PRINTED half did
+# NOT move, and that is the interesting part: the notice table's `if expression`
+# row went 100 -> 102 and then BACK to 100, because the two `if`s it went up for
+# were the two `if`s used as VALUES in this increment's own source -- and the
+# 0552 precedent says an `if` used as a value is outside the analysed subset,
+# so the analyzer reported the two variables those `if`s read as UNUSED. Those
+# are FALSE POSITIVES, and a false positive is FIXED and never pinned: both `if`s
+# became `match`es, the two variables are read again, and the printed half is
+# back where it was.
+$SELF_FILES = '252'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=29|if expression=100|short lambda=8|struct declaration=105|test declaration=1672|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1788'
+$SELF_AGGREGATED = '1820'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -786,7 +804,12 @@ $SUPPOFF_PARAM = '1341'
 # undef_operands 181 -> 184,
 # dead_blocks 397 -> 397,
 # undef_uses 1,117 -> 1,124,
-$SSA_COST = 'files=231|unreadable=0|functions=1225|converted=5|partial=1220|declined=5798|instructions=8324|variables=997|versions=2473|phis=898|copies=2181|undef_operands=186|dead_blocks=404|undef_uses=1135'
+# 0592. THE SSA COST MOVED WITH THE THREE NEW FILES: files 231 -> 234,
+# functions 1,225 -> 1,293, partial 1,220 -> 1,288, declined 5,798 -> 6,060,
+# instructions 8,324 -> 8,749, variables 997 -> 1,051, versions 2,473 -> 2,593,
+# phis 898 -> 927, copies 2,181 -> 2,306, undef_operands 186 -> 193,
+# dead_blocks 404 -> 449, undef_uses 1,135 -> 1,215.
+$SSA_COST = 'files=234|unreadable=0|functions=1293|converted=5|partial=1288|declined=6060|instructions=8749|variables=1051|versions=2593|phis=927|copies=2306|undef_operands=193|dead_blocks=449|undef_uses=1215'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -803,7 +826,7 @@ $SSA_COST = 'files=231|unreadable=0|functions=1225|converted=5|partial=1220|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '102'
+$NARRATIVE_CHAPTERS = '103'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites
