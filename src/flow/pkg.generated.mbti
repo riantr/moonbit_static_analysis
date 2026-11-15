@@ -353,6 +353,8 @@ pub fn taint_spec_empty() -> TaintSpec
 
 pub fn taint_spec_sink(TaintSpec, String, Int32) -> Unit
 
+pub fn taint_spec_sink_text(TaintSpec, String) -> Bool
+
 pub fn taint_spec_source(TaintSpec, String) -> Unit
 
 pub fn taint_text(TaintResult) -> String
@@ -710,7 +712,9 @@ pub fn SsaIr::dump(Self) -> String
 
 pub(all) struct TaintFlow {
   src_line : Int32
+  src_name : String
   sink_line : Int32
+  sink_name : String
   arg : Int32
   sink_span : @core.Span
 }

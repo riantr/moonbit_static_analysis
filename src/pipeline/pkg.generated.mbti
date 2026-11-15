@@ -4,6 +4,7 @@ package "riantr/moonbit_static_analysis/src/pipeline"
 import {
   "riantr/moonbit_static_analysis/src/ast",
   "riantr/moonbit_static_analysis/src/core",
+  "riantr/moonbit_static_analysis/src/flow",
   "riantr/moonbit_static_analysis/src/report",
 }
 
@@ -20,11 +21,15 @@ pub fn render_result(PipelineResult) -> String
 
 pub fn run(String, String, @core.IfaceSymTab) -> PipelineResult
 
+pub fn run_configured(String, String, @core.IfaceSymTab, Bool, Bool, @flow.TaintSpec) -> PipelineResult
+
 pub fn run_functions(String, String, @core.IfaceSymTab) -> PipelineResult
 
 pub fn run_tracked(String, String, @core.IfaceSymTab, Bool) -> PipelineResult
 
 pub fn sign_findings(Array[@ast.Stmt], Array[@core.Span]) -> Array[@report.Report]
+
+pub fn taint_findings(Array[@ast.Stmt], Array[@core.Span], @flow.TaintSpec) -> Array[@report.Report]
 
 // Errors
 

@@ -481,7 +481,7 @@ allocated once and **never renumbered**, so it survives a rename:
 | `MSA-006` | `AssignTypeMismatch` | `MSA-012` | `StaleNosec` |
 | `MSA-013` | `InfeasibleBranch` | `MSA-014` | `RedundantGuard` |
 | `MSA-015` | `DeadStore` | `MSA-016` | `DivisionByZero` |
-| `MSA-017` | `NegativeIndex` | | |
+| `MSA-017` | `NegativeIndex` | `MSA-018` | `TaintFlow` |
 
 The ids are hand-allocated on purpose — deriving one from the enum's position would
 renumber every family after an insertion, which is the one thing an id must never do —
@@ -617,12 +617,12 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (246 files), with the per-file printing cap lifted so the count is the
+project's own source (248 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1639 | | `const` declaration | 7 |
+| `test` declaration | 1649 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
 | `struct` declaration | 96 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -631,7 +631,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1775** sit outside every function's
+audit off, so they are printed one per line; the other **1785** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,277** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,287** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,306** as aggregated — which is 3,971 + 19,306 = 23,277, the same number — and the 3,971
+**19,316** as aggregated — which is 3,971 + 19,316 = 23,287, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -690,12 +690,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 246 files the notice table
+the tool produces **694** `UnusedLocal` and **1,341** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 248 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **693** locals and **1,343** parameters, and the per-binding
+suppression is hiding **693** locals and **1,341** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -1002,7 +1002,7 @@ become a different analysis.
 
 **AND IT SPEAKS NO NEW FAMILY.** Neither reading reports anything: a context and a scope are
 **measurements**, and this tree's pointer analyses are library-level rather than part of the
-report pipeline. The family roster is unchanged at seventeen.
+report pipeline. The family roster is at eighteen, and this analysis added none of them.
 
 **AND AN EIGHTH KIND: THE SAME POINTER QUESTION, ASKED WITHOUT A HEAP.** The pointer
 analysis above asks *"which objects can this pointer point to?"*, and the answer is a set of
@@ -1064,7 +1064,7 @@ the bound is merged into its prefix. The two models' alias verdicts are compared
 by a test, and the row that disagrees is the one above.
 
 **AND IT STILL SPEAKS NO NEW FAMILY.** A heap abstraction is a **measurement**, not a
-report: the family roster is unchanged at seventeen, and the storeless model is a
+report: this analysis added no family, and the storeless model is a
 library-level analysis beside the other two pointer readings.
 **AND A NINTH KIND: THE SAME POINTER QUESTION, ASKED OVER A POINTER FLOW GRAPH.** Every reading
 above sweeps the statements of a function and joins what it learns into one map. The deck that
@@ -1138,7 +1138,7 @@ where the call-site and the object variants keep them apart.
 
 **AND IT STILL SPEAKS NO NEW FAMILY.** A graph, a call graph built on the fly, a heap and a
 context are all **measurements**, and this tree's pointer analyses are library-level rather than
-part of the report pipeline. The family roster is unchanged at seventeen.
+part of the report pipeline. The family roster is at eighteen, and this analysis added none of them.
 
 ### And a tainted datum is an object, so taint IS the pointer analysis
 
@@ -1191,9 +1191,92 @@ order on it, while a noninterference claim is a **relational** property over two
 program with different high inputs, and no may-analysis answers it. And the analysis is
 **intraprocedural**, because the pointer analysis it is built on is one map per function.
 
-**AND IT STILL SPEAKS NO NEW FAMILY.** The taint analysis is a **library-level** capability
+**AND IN 0587 IT SPEAKS A NEW FAMILY.** The taint analysis is a **library-level** capability
 in `src/flow`, like the pointer analyses above it: it computes the deck's triples and hands
-them to a caller. The family roster is unchanged at seventeen.
+them to a caller — and **0587** is the increment that gave those triples a family of their own,
+`MSA-018` (`TaintFlow`). The family roster is at eighteen.
+
+### And a tainted datum that reaches a sink is a finding
+
+`src/pipeline/taintcheck.mbt` turns the deck's triples into **findings**, and the family is
+**`MSA-018` (`TaintFlow`)** — the roster's **eighteenth**.
+
+**THE FINDING SITS AT THE SINK.** The sink call is what the reader has to look at, so the finding
+is on the sink's line and the sink's name leads the message: *the sensitive argument 0 of 'log' may
+receive tainted data from 'get_password'*. The **source** is named too, because "tainted data"
+without a source is not a fact about the program.
+
+**ONE FINDING PER SINK CALL, AND THAT IS THE MERGE'S FAULT.** The pipeline collapses a family to
+one finding per **line**, so a sink with two sensitive arguments would lose one of them, and two
+sources reaching one sink would lose one of **them**. So the flows are **grouped** by the sink call
+and the message names every argument and every source the group covers — the merge then has nothing
+to collapse, and the report keeps the whole fact.
+
+**THE PREDICATE IS CHECKABLE**, and this is the first predicate in this tree whose claim is about a
+**flow** rather than about a place:
+
+```
+taint_reaches_sink(sink=log, source=get_password, arg=0, line=7, col=3)
+```
+
+The **sink** is the subject, the **source** is where the data came from, and the **argument** is the
+deck's own `k`. The values are the message's own words, so a checker splits them the way the message
+reads.
+
+**THE SPECIFICATION IS THE READER'S, AND IT IS A PARAMETER.** `--taint-source <fn>` names a function
+whose result is tainted data; `--taint-sink <fn>:<idx>` names a sink and the index of its sensitive
+argument — `log:0` is the deck's own `<log(String), 0>`. Both are repeatable, a malformed one is
+**refused** rather than dropped (a dropped sink would scan the program and report nothing, which
+looks exactly like a clean program), and with no specification the family says nothing — the same
+honest default as every other analysis in this tree.
+
+**AND THE THREE GUARDS ARE THE PIPELINE'S.** A file the frontend did not read whole, a function
+holding a region it did not read, and a function whose control-flow graph **lost a statement** are
+all functions this family does not analyse — the third one because the statement it lost may have
+been a **sanitizer**, and a sanitizer the analysis never read is a flow the analysis believes in and
+the program does not have.
+
+
+### And a tainted datum that reaches a sink is a finding
+
+`src/pipeline/taintcheck.mbt` turns the deck's triples into **findings**, and the family is
+**`MSA-018` (`TaintFlow`)** — the roster's **eighteenth**.
+
+**THE FINDING SITS AT THE SINK.** The sink call is what the reader has to look at, so the finding
+is on the sink's line and the sink's name leads the message: *the sensitive argument 0 of 'log' may
+receive tainted data from 'get_password'*. The **source** is named too, because "tainted data"
+without a source is not a fact about the program.
+
+**ONE FINDING PER SINK CALL, AND THAT IS THE MERGE'S FAULT.** The pipeline collapses a family to
+one finding per **line**, so a sink with two sensitive arguments would lose one of them, and two
+sources reaching one sink would lose one of **them**. So the flows are **grouped** by the sink call
+and the message names every argument and every source the group covers — the merge then has nothing
+to collapse, and the report keeps the whole fact.
+
+**THE PREDICATE IS CHECKABLE**, and this is the first predicate in this tree whose claim is about a
+**flow** rather than about a place:
+
+```
+taint_reaches_sink(sink=log, source=get_password, arg=0, line=7, col=3)
+```
+
+The **sink** is the subject, the **source** is where the data came from, and the **argument** is the
+deck's own `k`. The values are the message's own words, so a checker splits them the way the message
+reads.
+
+**THE SPECIFICATION IS THE READER'S, AND IT IS A PARAMETER.** `--taint-source <fn>` names a function
+whose result is tainted data; `--taint-sink <fn>:<idx>` names a sink and the index of its sensitive
+argument — `log:0` is the deck's own `<log(String), 0>`. Both are repeatable, a malformed one is
+**refused** rather than dropped (a dropped sink would scan the program and report nothing, which
+looks exactly like a clean program), and with no specification the family says nothing — the same
+honest default as every other analysis in this tree.
+
+**AND THE THREE GUARDS ARE THE PIPELINE'S.** A file the frontend did not read whole, a function
+holding a region it did not read, and a function whose control-flow graph **lost a statement** are
+all functions this family does not analyse — the third one because the statement it lost may have
+been a **sanitizer**, and a sanitizer the analysis never read is a flow the analysis believes in and
+the program does not have.
+
 
 ### And under the CFG there are basic blocks
 
@@ -1314,7 +1397,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1639/1639 on wasm; 1497/1497 on js and wasm-gc
+moon test --deny-warn                # 1649/1649 on wasm; 1507/1507 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

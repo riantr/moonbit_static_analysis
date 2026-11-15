@@ -584,6 +584,15 @@ pub(all) enum Family {
   /// language has, so the claim is the same shape as the division's: the
   /// index is negative on every path that reaches the subscript.
   FNegativeIndex
+  /// 0587. TAINTED DATA MAY REACH A SENSITIVE ARGUMENT.
+  ///
+  /// The security deck's fourth chapter (`Static Analysis for Security`,
+  /// Tian Tan, Nanjing University, p.73-85): "(i, j, k) = tainted data from
+  /// call site i may flow to the k-th argument of call site j". The claim is a
+  /// MAY claim -- the analysis reports a flow it cannot rule out -- and the
+  /// sources and the sinks are the ANALYSED PROJECT's own functions, so the
+  /// family fires only where the reader says which functions they are.
+  FTaintFlow
 }
 
 ///|
@@ -606,6 +615,7 @@ pub fn Family::name(self : Family) -> String {
     FDeadStore => "DeadStore"
     FDivisionByZero => "DivisionByZero"
     FNegativeIndex => "NegativeIndex"
+    FTaintFlow => "TaintFlow"
   }
 }
 
@@ -646,6 +656,7 @@ pub fn Family::id(self : Family) -> String {
     FDeadStore => "MSA-015"
     FDivisionByZero => "MSA-016"
     FNegativeIndex => "MSA-017"
+    FTaintFlow => "MSA-018"
   }
 }
 
@@ -685,6 +696,7 @@ pub fn family_by_id(id : String) -> Family? {
     "MSA-015" => Some(FDeadStore)
     "MSA-016" => Some(FDivisionByZero)
     "MSA-017" => Some(FNegativeIndex)
+    "MSA-018" => Some(FTaintFlow)
     _ => None
   }
 }
@@ -716,6 +728,7 @@ pub fn all_families() -> Array[Family] {
     FDeadStore,
     FDivisionByZero,
     FNegativeIndex,
+    FTaintFlow,
   ]
 }
 
@@ -769,6 +782,8 @@ pub fn Family::reach(self : Family) -> String {
       "NEW in 0571, and built from the lecture's own example (`Introduction`, Nanjing University, p.45-58): the divisor of a division or a remainder is DEFINITELY zero -- zero on every path that reaches the operation. MEASURED on the eight pinned trees (0571): the family fires on ZERO findings, and the reason is measured rather than guessed. The seven pinned corpora hold 3,138 division and remainder operators and 21,658 subscripts (a syntactic count, 0571), and every LITERAL zero divisor among them is one float modulo (`moonbitlang/core` `builtin/double_mod_test.mbt:44`), three block comments or one string -- so the shape this family looks for is not in the corpus. A scan without its findings is NOT evidence that no code divides by zero"
     FNegativeIndex =>
       "NEW in 0571, and built from the lecture's own example (`Introduction`, Nanjing University, p.45-58): the index of a subscript is DEFINITELY negative -- negative on every path that reaches it. MEASURED on the eight pinned trees (0571): the family fires on ZERO findings, and the reason is measured rather than guessed. The seven pinned corpora hold 3,138 division and remainder operators and 21,658 subscripts (a syntactic count, 0571), and the only REAL negative subscripts among them are three -- `moonbitlang/core` `deque/panic_test.mbt:27`, `deque/panic_test.mbt:32` and `immut/vector/panic_test.mbt:39` -- and all three are inside `test` blocks, which this frontend declares outside its subset and does not analyse. The other four are one list literal and three block comments. A scan without its findings is NOT evidence that no code indexes out of bounds"
+    FTaintFlow =>
+      "NEW in 0587, and built from the security deck's own chapter (`Static Analysis for Security`, Tian Tan, Nanjing University, p.64-85): tainted data from a SOURCE may reach a SENSITIVE ARGUMENT of a SINK -- the deck's own triple, `<3, 7, 0>`. MEASURED on the eight pinned trees (0587): the family fires on ZERO findings, and the reason is measured rather than guessed: the corpora are scanned with NO taint specification, because a source and a sink are FUNCTIONS OF THE ANALYSED PROJECT and no corpus declares which of its functions they are. A scan without this family's findings is NOT evidence that no untrusted data reaches a sink"
   }
 }
 
@@ -801,6 +816,8 @@ pub fn Family::property(self : Family) -> String {
       "the divisor of this division is zero on EVERY path that reaches it, so the division fails at run time"
     FNegativeIndex =>
       "the index of this subscript is negative on EVERY path that reaches it, so the subscript is out of bounds at run time"
+    FTaintFlow =>
+      "tainted data may reach a sensitive argument of a sink: the source's result is tainted data, and the sink's argument may hold it"
   }
 }
 
@@ -846,6 +863,8 @@ pub fn Family::assumption(self : Family) -> String {
       "the divisor's sign is DETERMINED by the sign domain's transfer functions, and the domain's top -- unknown -- is never reported, so a finding means the divisor's sign was pinned to zero and not merely guessed. The analysis is INTRAPROCEDURAL over one function body's control-flow graph, so a divisor that becomes zero only after a CALL is not seen; and the two function-level guards apply as they do to the dead-store family: a statement the graph did not convert, and a region the frontend did not read, each make the whole function unanalysed"
     FNegativeIndex =>
       "the index's sign is DETERMINED by the sign domain's transfer functions, and the domain's top -- unknown -- is never reported, so a finding means the index's sign was pinned to negative and not merely guessed. The analysis is INTRAPROCEDURAL over one function body's control-flow graph, so an index that becomes negative only after a CALL is not seen; and the two function-level guards apply as they do to the dead-store family: a statement the graph did not convert, and a region the frontend did not read, each make the whole function unanalysed"
+    FTaintFlow =>
+      "the tainted datum was created by a call to a SOURCE, and the sink's argument MAY hold it -- a MAY claim, so a finding means the flow could NOT be ruled out, not that it certainly happens. The tainted datum is an OBJECT (the deck's own p.71-72) and it is propagated by the tree's pointer analysis, so the propagation is flow-insensitive and context-insensitive. The analysis is INTRAPROCEDURAL over one function body's control-flow graph, so a source in one function and a sink in another are not connected, and the three function-level guards apply as they do to the dead-store family: a statement the graph did not convert, a region the frontend did not read, and a file the frontend did not read whole, each make the whole function unanalysed"
   }
 }
 
@@ -892,6 +911,8 @@ pub fn Family::excluded(self : Family) -> String {
       "a divisor whose sign the analysis could NOT pin down is not reported, and that is most of the cases: a parameter, a value read from a field, a value returned by a call, and a value that is zero on one path and not on another -- the last one because the sign domain JOINS the two paths and the join of zero and anything else is unknown. A FLOAT DIVISION BY ZERO IS NOT A CRASH, and the family does not report one the source shows to be a float: `1.0 / 0` is Infinity and `1.0 % 0` is NaN (MEASURED against the toolchain, 0571), while `1 / 0` raises `divide by zero` and `1 % 0` raises `remainder by zero`. THE RESIDUAL IS THE TYPE LENS'S: it publishes the types of the MODULE's names and not of a function's locals, so a float-valued LOCAL divided by a definitely-zero value is reported even though it does not crash -- and the eight pinned trees contain no such division (measured, 0571). A DIVISION INSIDE A REGION THE GRAPH DOES NOT MODEL is not analysed at all: a block used as a value holds statements the graph never turned into nodes, so a name such a block assigns would still carry its old value in the state this analysis reads"
     FNegativeIndex =>
       "an index whose sign the analysis could NOT pin down is not reported, and that is most of the cases: a parameter, a value read from a field, a value returned by a call, and an index that is negative on one path and not on another -- the last one because the sign domain JOINS the two paths and the join of negative and anything else is unknown. A SUBSCRIPT INSIDE A REGION THE GRAPH DOES NOT MODEL is not analysed at all, for the reason the division's is: a block used as a value holds statements the graph never turned into nodes. A subscript of a NEGATIVE index is out of bounds in every container this language has, and the toolchain does not catch it: `moon check` exits 0 on `arr[-1]`"
+    FTaintFlow =>
+      "IMPLICIT FLOWS (the deck's p.47-58): a branch on tainted data, a termination channel, a timing channel and an exception channel are NOT analysed, and that boundary is the DECK'S OWN (p.61-62: 'Explicit flows generally carry more information than covert channels, so we focus on explicit flows'). The analysis does not model what a CALL RETURNS, so the tainted datum reaches a VARIABLE only when the source call IS the right-hand side of the assignment; a source call that IS the sink's argument is read directly. A FUNCTION WHOSE GRAPH LOST A STATEMENT IS NOT ANALYSED AT ALL, because the statement it lost may have been a SANITIZER -- a `pw = scrub(pw)` the analysis never read would leave the tainted datum in `pw`, and the flow reported would be one the program does not have. THE SECURITY LEVELS (the deck's p.25-28) and the NONINTERFERENCE property (p.29-36) are not analysed either: a level is a LATTICE element and a policy is an ORDER on it, this analysis's label is a single bit, and noninterference is a RELATIONAL property over TWO RUNS of the program"
   }
 }
 
@@ -908,6 +929,7 @@ pub fn Family::severity(self : Family) -> Severity {
     FDeadStore => Warning
     FDivisionByZero => Error
     FNegativeIndex => Error
+    FTaintFlow => Error
   }
 }
 

@@ -68,6 +68,7 @@ pub(all) enum Family {
   FDeadStore
   FDivisionByZero
   FNegativeIndex
+  FTaintFlow
 }
 pub fn Family::advice(Self) -> Advice
 pub fn Family::assumption(Self) -> String

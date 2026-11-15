@@ -25,6 +25,7 @@ options(
 
 import {
   "riantr/moonbit_static_analysis/src/pipeline",
+  "riantr/moonbit_static_analysis/src/flow",
   "riantr/moonbit_static_analysis/src/statecheck",
   "riantr/moonbit_static_analysis/src/moonfiles",
   "riantr/moonbit_static_analysis/src/report",

@@ -133,6 +133,14 @@ async fn main {
   //                           reported as a finding of its own -- a stale
   //                           suppression is a fact about the source, and the
   //                           source is what this tool analyses.
+  //   --taint-source <fn>       A SOURCE: a function whose RESULT is tainted
+  //                           data. Repeatable. The security analysis has to
+  //                           know which functions produce untrusted data, and
+  //                           that is a fact about the analysed project, not
+  //                           something a toolchain can know.
+  //   --taint-sink <fn>:<idx>  A SINK: a function and the index of its
+  //                           SENSITIVE argument, counted from zero. Repeatable.
+  //                           "log:0" is the deck's own <log(String), 0>.
   //   --ssa-cost
   //                           Measure what STATIC SINGLE ASSIGNMENT would cost
   //                           on the target tree and print one `SSA-COST` line:
@@ -163,6 +171,11 @@ async fn main {
   // default, and the profile is validated BEFORE the scan runs.
   let family_include : Array[String] = []
   let family_exclude : Array[String] = []
+  // 0587. THE TAINT SPECIFICATION: the sources and the sinks, as TEXT. The
+  // text is parsed by the scanner, so the CLI and the JSON bridge spell ONE
+  // format and not two.
+  let taint_sources : Array[String] = []
+  let taint_sinks : Array[String] = []
   let mut honor_nosec = false
   // 0520. `--explain` and `--explain-all` print a family's CONTRACT and then
   // STOP: no scan runs. The value is mandatory for `--explain` for the same
@@ -241,6 +254,20 @@ async fn main {
       for id in split_ids(args[i]) {
         family_exclude.push(id)
       }
+    } else if a == "--taint-source" {
+      if i + 1 >= args.length() {
+        println("ERROR\t--taint-source needs a function name")
+        return
+      }
+      i += 1
+      taint_sources.push(args[i])
+    } else if a == "--taint-sink" {
+      if i + 1 >= args.length() {
+        println("ERROR\t--taint-sink needs <function>:<argument index>")
+        return
+      }
+      i += 1
+      taint_sinks.push(args[i])
     } else if a == "--honor-nosec" {
       honor_nosec = true
     } else if a == "--mmd" {
@@ -350,5 +377,7 @@ async fn main {
     },
     metrics,
     contexts,
+    taint_sources,
+    taint_sinks,
   )
 }

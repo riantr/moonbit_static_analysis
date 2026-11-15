@@ -424,7 +424,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # eighteen notices are the taint analysis and its test file, and the own-source
 # table below says which kinds they are: fourteen `test` declarations and four
 # `struct` declarations.
-$NOTICE_TOTAL = '23277'
+# 0587. THE PIN MOVED, 23,277 -> 23,287, and THE MOVEMENT IS AGAIN THIS
+# INCREMENT'S OWN SOURCE and nothing else: the seven corpora carry 21,345
+# notices, exactly what they carried before -- each one still MATCHes its
+# pinned baseline, MEASURED -- and this repository's own source carries 1,942
+# (it carried 1,932). The ten notices are the ten new `test` declarations in
+# `src/pipeline/taintcheck_test.mbt`, and they are AGGREGATED, not printed:
+# a test declaration sits outside every function's extent.
+$NOTICE_TOTAL = '23287'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -508,8 +515,14 @@ $NOTICE_TOTAL = '23277'
 # the fourteen new `test` declarations and the four new `struct` declarations
 # all sit OUTSIDE every function's extent, so they are counted by shape. The
 # corpora did not move.
+# 0587. THE SPLIT MOVED WITH THE OWN SOURCE AGAIN: 3,971 + 19,306 ->
+# 3,971 + 19,316. The PRINTED half did not move AT ALL -- and the reason is the
+# FIX recorded at the own-source pins below, which took the own-source printed
+# count back to 157 -- and the aggregated half grew by ten, and the ten are the
+# ten new `test` declarations, which sit outside every function's extent. The
+# corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19306'
+$NOTICE_SPLIT_AGGREGATED = '19316'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -572,10 +585,25 @@ $NOTICE_SPLIT_AGGREGATED = '19306'
 # `TaintFlow`, the `TaintResult` and the `SourceSite`). The PRINTED half did
 # not move, at 157, because every one of the eighteen new declarations sits
 # OUTSIDE every function's extent.
-$SELF_FILES = '246'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=26|if expression=100|short lambda=8|struct declaration=96|test declaration=1639|try expression=1|type declaration=7'
+# 0587. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source again: 246 -> 248 files (the taint producer and its test file),
+# 1,775 -> 1,785 aggregated, and 1,932 -> 1,942 notices. The notice table's
+# ONLY moving row is the `test declaration` row (1639 -> 1649, the ten new
+# rows).
+#
+# AND THE `if expression` ROW WENT 100 -> 101 -> 100, which is the FIX this
+# increment made and not a pin that moved twice. The new `taint` parameter of
+# `analyze` read only inside an `if` USED AS A VALUE -- a region the frontend
+# discards, and therefore a region the analyzer's OWN audit cannot see -- so
+# the region suppression hid it and the suppression-off measurement counted it
+# (UnusedParam 1,343 -> 1,344). 0552 named this shape and 0586 refused to
+# write it; the fix is 0552's, the branches became STATEMENTS (`run_pipeline`
+# returns early), and the check that the fix landed is that the PRINTED half
+# is back at 157 and the suppression-off pair went DOWN to 694 / 1,341.
+$SELF_FILES = '248'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=26|if expression=100|short lambda=8|struct declaration=96|test declaration=1649|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1775'
+$SELF_AGGREGATED = '1785'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -657,7 +685,7 @@ $SELF_AGGREGATED = '1775'
 # tree and it reads the same pair, because this increment's code has
 # no parameter that is read only inside a closure the lint cannot see.
 $SUPPOFF_LOCAL = '694'
-$SUPPOFF_PARAM = '1343'
+$SUPPOFF_PARAM = '1341'
 
 #   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
 #                 own source, measured by the scanner's own `--ssa-cost` mode
@@ -740,7 +768,7 @@ $SUPPOFF_PARAM = '1343'
 # undef_operands 181 -> 184,
 # dead_blocks 397 -> 397,
 # undef_uses 1,117 -> 1,124,
-$SSA_COST = 'files=228|unreadable=0|functions=1200|converted=5|partial=1195|declined=5701|instructions=8226|variables=989|versions=2448|phis=890|copies=2141|undef_operands=184|dead_blocks=397|undef_uses=1124'
+$SSA_COST = 'files=230|unreadable=0|functions=1220|converted=5|partial=1215|declined=5787|instructions=8324|variables=997|versions=2473|phis=898|copies=2181|undef_operands=186|dead_blocks=404|undef_uses=1135'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

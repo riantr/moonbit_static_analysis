@@ -7600,7 +7600,7 @@ spelling is a hand-written `match` (`core.mbt:545-560`). The names and the enum 
 not the same thing:
 
 ```
-    0505 the family roster, families              : 17
+    0505 the family roster, families              : 18
     0505 the family roster, names that differ     : 5
 
 AND WHEN THE ROSTER MOVES, THESE TWO NUMBERS MOVE WITH IT, and the fix is to RE-READ
@@ -9483,13 +9483,13 @@ against this tree, so it cannot rot without the gate saying so.
     row 1  src/report/report.mbt:214    fn Report::confidence
     row 1  src/jsoncli/main.mbt:50      confidence : String
     row 2  src/core/core.mbt:537        enum Family
-    row 2  src/core/core.mbt:630        fn Family::id
-    row 2  src/core/core.mbt:669        fn family_by_id
+    row 2  src/core/core.mbt:640        fn Family::id
+    row 2  src/core/core.mbt:680        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
     row 3  src/sa/profile.mbt:341       fn stale_report
-    row 3  src/sa/main.mbt:1292         fn filtered_reports
+    row 3  src/sa/main.mbt:1308         fn filtered_reports
     --- END TRANSFER MAP ---
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
 and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
@@ -19072,6 +19072,141 @@ place, and the correction is recorded here rather than left silent.
 
 THE DECK'S REMAINING CELLS ARE CHAPTER 1's SECURITY LEVELS AND NONINTERFERENCE, AND CHAPTER
 3's COVERT CHANNELS -- all four of them stated above with the reason each one is out of
+scope, and none of them a gap that a smaller implementation would close.
+
+THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the
+same directory as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+0587: THE TAINT FINDING -- THE DECK'S TRIPLES, AS A REPORT
+
+THE FAMILY. `MSA-018`, `TaintFlow`, severity Error, confidence High. The roster's EIGHTEENTH,
+and the first family in this tree whose claim is about a FLOW rather than about a place.
+
+WHAT 0586 LEFT. 0586 built the deck's analysis (chapter 4, the taint rules) and it spoke NO
+family: it computed the deck's triples and handed them to a caller, and a triple nobody reports
+is a MEASUREMENT and not a finding. 0587 is the increment that gives those triples a report, and
+the report is where the deck's own claim becomes something a reader acts on.
+
+THE FINDING SITS AT THE SINK. The sink call is what the reader has to look at, so the finding is
+on the sink's line and the sink's name leads the message:
+
+    the sensitive argument 0 of 'log' may receive tainted data from 'get_password'
+
+The SOURCE is named too, because "tainted data" without a source is not a fact about the program.
+And the ARGUMENT is named, because that is the deck's own `k`: the triple is
+`(i, j, k) = tainted data from call site i may flow to the k-th argument of call site j`.
+
+ONE FINDING PER SINK CALL, AND THE MERGE IS WHY. The pipeline collapses a family to one finding
+per LINE -- `merge_key` is `{merge_group}@{span.start.line}` -- and it keeps the representative's
+MESSAGE. So two flows at one sink call would become one finding carrying ONE of the two messages,
+and a sink with two sensitive arguments would lose one of them. So the flows are GROUPED by the
+sink call in `src/pipeline/taintcheck.mbt`, and the message names every argument and every source
+the group covers. The merge then has nothing to collapse, and the report keeps the whole fact.
+
+THE PREDICATE IS THE FIRST ONE IN THIS TREE WHOSE CLAIM IS ABOUT A FLOW:
+
+    taint_reaches_sink(sink=log, source=get_password, arg=0, line=7, col=3)
+
+The SINK is the subject (the finding is at the sink), the SOURCE is where the data came from, and
+the ARGUMENT is the deck's `k`. Every other predicate in `src/report/predicate.mbt` is about a
+PLACE -- a name, a line, a column -- and this one is about a relation between two call sites. The
+values are the MESSAGE'S OWN WORDS, so a checker splits them the way the message reads: the
+source list by " or " and the argument list by " and ". The message is the single place the shape
+is fixed, and `src/report/predicate.mbt` reads it -- the same liability the name has had since
+0523, and the same guard: a message that stops naming its sink loses its predicate instead of
+reporting an empty name.
+
+THE SPECIFICATION IS THE READER'S, AND IT IS A PARAMETER, NOT A LIST. `--taint-source <fn>` names a
+function whose RESULT is tainted data; `--taint-sink <fn>:<idx>` names a sink and the index of its
+sensitive argument -- `log:0` is the deck's own `<log(String), 0>`. Both are repeatable, and a
+malformed sink is REFUSED rather than dropped: a sink whose index was silently ignored would scan
+the program and report nothing, which looks exactly like a clean program. With no specification
+the family says nothing, and that is the same honest default as every other analysis here.
+
+THE THIRD GUARD IS NEW TO THIS FAMILY, AND ITS REASON IS A SANITIZER. The two guards the
+dead-store family has are a file the frontend did not read whole and a region it did not read. The
+taint family adds the third -- a function whose control-flow graph LOST a statement -- and the
+reason is that a MAY analysis cannot see a statement it never read, and a skipped statement cannot
+CREATE a flow but can DESTROY a SANITIZER. A `pw = scrub(pw)` the graph did not turn into nodes
+leaves the tainted datum in `pw`, and the flow this file reports would be one the program does not
+have. The guard lives in `src/flow/taint.mbt`, beside the graph it is about.
+
+### THE 0552 LESSON, AGAIN, AND IT WAS CAUGHT THE SAME WAY
+
+THE INCREMENT ADDED A PARAMETER, AND THE MEASUREMENT CAUGHT IT. `analyze` in `src/sa/main.mbt`
+takes the taint specification as a parameter, and its only read sat inside an `if` used as a
+VALUE -- the shape 0552 named and 0586 refused to write. An `if` expression is outside the
+analysed subset: the frontend reads past it and says so, and a region the frontend does not read
+is a region the analyzer's OWN audit does not see either. So with the region suppression switched
+off, the parameter read as UNREAD.
+
+MEASURED, not guessed: the suppression-off stage measured UnusedParam 1,343 -> 1,344, and the
+finding named the parameter and the line -- `src/sa/main.mbt:1343`, in the tree before this fix:
+
+    1343:3 - warning: parameter 'taint' may not be used (UnusedParam) [structural, MSA-004, high]
+
+AND THE FIX IS 0552's, exactly: the branches became STATEMENTS. `run_pipeline` is a new function
+whose three configurations are three EARLY RETURNS, because a `let mut r = ...` followed by an
+`if` would have run the pipeline TWICE -- the default configuration computed and then thrown
+away. The reads are now in statements the audit reads, and the check that the fix landed is the
+NUMBER: the suppression-off pair went 1,344 -> 1,341, and it went DOWN BY THREE -- `taint`, and
+the `per_function` and `track` parameters that 0541 had already put in that same discarded
+region.
+
+So this increment REMOVED two false positives that had been published before it, and did not add
+the third. The own-source table's `if expression` row went 100 -> 101 -> 100 for the same reason,
+and the printed half went 157 -> 158 -> 157.
+
+### THE PINS THAT MOVED
+
+THE OWN-SOURCE PINS, and every one of them moved because this increment added source:
+
+    own-source files            246 -> 248   (taintcheck.mbt and taintcheck_test.mbt)
+    own-source notices        1,932 -> 1,942
+    own-source printed          157 -> 157   (the fix above took it back to where it was)
+    own-source aggregated    1,775 -> 1,785 (the ten new `test declaration` rows)
+
+THE EIGHT-TREE TOTAL moved with the own-source half, and the corpora did not move:
+
+    the eight-tree total     23,277 -> 23,287
+    the eight-tree split    3,971 + 19,306 -> 3,971 + 19,316
+
+The PRINTED half did not move AT ALL, and the aggregated half grew by ten -- the ten new `test`
+declarations, which sit OUTSIDE every function's extent and are therefore counted by shape. The
+seven corpora carry exactly what they carried before: each one still MATCHes its pinned baseline,
+MEASURED.
+
+THE SUPPRESSION-OFF PAIR, and it moved DOWN:
+
+    UnusedLocal  694 -> 694    (unchanged)
+    UnusedParam 1,343 -> 1,341 (the fix above: three findings fewer, and two of them were
+                                  published before this increment)
+
+THE FAMILY ROSTER, and the test counts:
+
+    the family roster              17 -> 18
+    the test count       1639 -> 1649 on wasm; 1497 -> 1507 on js and wasm-gc
+
+The two numbers on js and wasm-gc are SMALLER than the wasm one, and the reason is the tree's own
+boundary rather than a lost test: `src/sa` needs the async runtime, which the js backend has
+none of and wasm-gc does not export, so `src/sa` declares `supported_targets = "+wasm+native"` and
+is SKIPPED on the other two. MEASURED, `src/sa` holds 142 test blocks, and 1,649 - 142 = 1,507 --
+which is exactly the number js and wasm-gc report. The gap is arithmetic, not a mystery.
+
+### THE SENTENCE 0586 WROTE, CORRECTED IN PLACE
+
+0586 closed its own section with "AND IT STILL SPEAKS NO NEW FAMILY" and "The family roster is
+unchanged at seventeen". That was true when it was written -- 0586 added no family -- and it is
+false now, because 0587 is exactly the increment that gives the taint triples one. The sentence is
+corrected in place in BOTH READMEs, and the correction is recorded here rather than left silent.
+
+### WHAT IS STILL OPEN
+
+THE DECK'S REMAINING CELLS ARE CHAPTER 1's SECURITY LEVELS AND NONINTERFERENCE, AND CHAPTER 3's
+COVERT CHANNELS -- all three of them stated in chapter 0586 with the reason each one is out of
 scope, and none of them a gap that a smaller implementation would close.
 
 THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the

@@ -110,5 +110,10 @@ pub fn Family::advice(self : Family) -> Advice {
         why: "The index of this subscript is negative on EVERY path that reaches it, so the subscript is out of bounds when the program runs. The claim comes from a sign analysis: the index's sign was pinned to negative, and an unknown sign is never reported, so this is a must-finding and not a maybe. The toolchain does not catch this shape either: `moon check` exits 0 on `arr[-1]`.",
         how: "Fix the index -- the usual cause is an index computed as `i - 1` or `i - offset` that goes below zero, or an offset that is larger than the base. If a negative index is meant to mean 'from the end', the language spells that differently and this finding is the analyzer telling you the two were confused.",
       }
+    FTaintFlow =>
+      Advice::{
+        why: "Data from a source you named may reach a sensitive argument of this sink. The claim comes from the security deck's own analysis: a tainted datum is an OBJECT, it is carried by the pointer analysis, and a flow is a triple of (source call site, sink call site, argument index). The claim is a MAY claim -- the analysis reports a flow it cannot rule out -- and it is only as good as your specification: the analysis knows what you called a source and what you called a sink, and it knows nothing about which of them are actually sensitive. The toolchain does not catch this shape: `moon check` says nothing about where a value came from.",
+        how: "Decide what this sink's sensitive argument must not receive, and remove the taint before the data reaches it -- pass a length, a boolean, a redacted string, or a value that has been through a scrubbing step. If the flow is intended, then the specification is what needs fixing rather than the code: the source and the sink you named are the ones the analyzer takes as untrusted and sensitive, and a finding nobody can act on is a finding everybody learns to ignore.",
+      }
   }
 }

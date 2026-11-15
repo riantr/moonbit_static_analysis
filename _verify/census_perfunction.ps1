@@ -123,6 +123,14 @@ $FAMILIES = @(
   @{ Name = 'O  a negative index'
      Then = "^the index (?:'.*' )?is definitely negative"
      What = 'the index of this subscript is negative on every path that reaches it, so the subscript is out of bounds at run time -- the lecture''s second application (0571)' }
+  # 0587. THE TAINT FINDING. The row is here so that a finding of this shape is
+  # CLASSIFIED rather than counted as unclassified -- and the count is expected
+  # to be ZERO, because the corpora are scanned with NO taint specification: a
+  # source and a sink are FUNCTIONS OF THE ANALYSED PROJECT and no corpus
+  # declares which of its functions they are.
+  @{ Name = 'P  a tainted datum that reaches a sink'
+     Then = "^the sensitive argument"
+     What = 'tainted data from a source may reach a sensitive argument of a sink -- the security lecture, chapter 4 (0587)' }
 )
 
 function Classify([string]$msg) {

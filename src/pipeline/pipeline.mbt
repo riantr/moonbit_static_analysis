@@ -116,7 +116,14 @@ pub fn run(
   file : String,
   extern_iface : @core.IfaceSymTab,
 ) -> PipelineResult {
-  run_core(src, file, extern_iface, false, false)
+  run_configured(
+    src,
+    file,
+    extern_iface,
+    false,
+    false,
+    @flow.taint_spec_empty(),
+  )
 }
 
 ///|
@@ -138,7 +145,7 @@ pub fn run_functions(
   file : String,
   extern_iface : @core.IfaceSymTab,
 ) -> PipelineResult {
-  run_core(src, file, extern_iface, true, false)
+  run_configured(src, file, extern_iface, true, false, @flow.taint_spec_empty())
 }
 
 ///|
@@ -156,7 +163,34 @@ pub fn run_tracked(
   extern_iface : @core.IfaceSymTab,
   per_function : Bool,
 ) -> PipelineResult {
-  run_core(src, file, extern_iface, per_function, true)
+  run_configured(
+    src,
+    file,
+    extern_iface,
+    per_function,
+    true,
+    @flow.taint_spec_empty(),
+  )
+}
+
+///|
+/// THE CONFIGURED ENTRY, and the one the three entries above are wrappers of.
+///
+/// 0587. The taint analysis needs a SPECIFICATION -- the sources and the sinks
+/// -- and the three entries above cannot carry one without changing their
+/// signatures, which every caller in this tree already uses. So they stay as
+/// they are and delegate here with an EMPTY specification. An empty
+/// specification is the honest default: with no source and no sink there is no
+/// flow, so a scan that says nothing about taint says nothing about taint.
+pub fn run_configured(
+  src : String,
+  file : String,
+  extern_iface : @core.IfaceSymTab,
+  per_function : Bool,
+  track : Bool,
+  taint : @flow.TaintSpec,
+) -> PipelineResult {
+  run_core(src, file, extern_iface, per_function, track, taint)
 }
 
 ///|
@@ -168,6 +202,7 @@ fn run_core(
   extern_iface : @core.IfaceSymTab,
   per_function : Bool,
   track : Bool,
+  taint : @flow.TaintSpec,
 ) -> PipelineResult {
   let parsed = @parser.parse(src)
   let all : Array[@report.Report] = []
@@ -308,6 +343,15 @@ fn run_core(
     // index. The same two guards apply as to the dead stores above, and for
     // the same reasons: `sign_findings` applies them itself.
     for r in sign_findings(parsed.tree.body, unread) {
+      all.push(r)
+    }
+    // 0587. THE TAINT FINDING, under the same three guards as the two above:
+    // a file the frontend did not read whole, a function holding a region it
+    // did not read, and a function whose graph lost a statement are all
+    // functions this family does not analyse. The specification is the
+    // ANALYSED PROJECT's own -- its sources and its sinks -- so with an empty
+    // specification there is nothing to report, and that is the default.
+    for r in taint_findings(parsed.tree.body, unread, taint) {
       all.push(r)
     }
   }

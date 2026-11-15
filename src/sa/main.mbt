@@ -707,7 +707,23 @@ pub async fn scan(
   profile : Profile,
   metrics : Bool,
   contexts : Bool,
+  taint_sources : Array[String],
+  taint_sinks : Array[String],
 ) -> Unit {
+  // 0587. THE TAINT SPECIFICATION IS READ FIRST, and a malformed sink is
+  // REFUSED rather than dropped: a sink whose index was silently ignored
+  // would scan the program and report nothing, which looks exactly like a
+  // clean program.
+  let taint = @flow.taint_spec_empty()
+  for s in taint_sources {
+    @flow.taint_spec_source(taint, s)
+  }
+  for s in taint_sinks {
+    if !@flow.taint_spec_sink_text(taint, s) {
+      println("ERROR\ttaint sink '\{s}' is not '<function>:<argument index>'")
+      return
+    }
+  }
   let root = locate(target)
   if root == "" {
     println("ERROR\tcannot locate source for target: \{target}")
@@ -799,7 +815,7 @@ pub async fn scan(
       Some(t) => t
       None => iface_tab
     }
-    let (v, file_ctx) = analyze(f, tab, per_function, profile, contexts)
+    let (v, file_ctx) = analyze(f, tab, per_function, profile, contexts, taint)
     ctx_total = ctx_total.plus(file_ctx)
     verdicts.push(v)
     kind_files.set(v.kind, bump(kind_files, v.kind))
@@ -1313,6 +1329,42 @@ fn filtered_reports(
 ///|
 
 ///|
+/// THE ONE PIPELINE RUN FOR A FILE, and the three ways it can be configured.
+///
+/// 0587. THE BRANCHES ARE STATEMENTS AND NOT AN `if` USED AS A VALUE, and the
+/// reason is the one 0552 gave and 0586 followed: an `if` expression is outside
+/// the analysed subset -- the frontend reads past it and says so -- and a region
+/// the frontend does not read is a region the analyzer's OWN audit does not see
+/// either. With the region suppression switched off, `taint`, `per_function` and
+/// `track` all read as UNREAD, because their only reads were inside that
+/// discarded region. MEASURED: the `taint` parameter this increment added took
+/// the self tree's UnusedParam count from 30 to 31, and the finding named the
+/// parameter and the line.
+///
+/// A `let mut r = ...` followed by an `if` would have run the pipeline TWICE,
+/// because the default configuration would have been computed and then thrown
+/// away. So the three configurations are three EARLY RETURNS: one call, one
+/// result, and every read is in a statement the audit reads.
+fn run_pipeline(
+  src : String,
+  n : String,
+  extern_iface : @core.IfaceSymTab,
+  per_function : Bool,
+  track : Bool,
+  taint : @flow.TaintSpec,
+) -> @pipeline.PipelineResult {
+  if track {
+    return @pipeline.run_configured(
+      src, n, extern_iface, per_function, true, taint,
+    )
+  }
+  if per_function {
+    return @pipeline.run_configured(src, n, extern_iface, true, false, taint)
+  }
+  @pipeline.run_configured(src, n, extern_iface, false, false, taint)
+}
+
+///|
 /// The per-file verdict, AND the behavioral lens's call-context ledger for that
 /// file. The two travel separately on purpose: the ledger belongs to no verdict,
 /// no family, and no SUMMARY number, and putting it in `Verdict` would have made
@@ -1324,6 +1376,7 @@ async fn analyze(
   per_function : Bool,
   profile : Profile,
   track : Bool,
+  taint : @flow.TaintSpec,
 ) -> (Verdict, @core.CtxLedger) {
   let src = read_or(p)
   let n = base_of(p)
@@ -1444,13 +1497,7 @@ async fn analyze(
       // 0541. `track` rides the SAME call rather than a second analysis: the
       // ledger and the findings must come from one execution of the module, or
       // the figure would describe a run nobody's findings came from.
-      let r = if track {
-        @pipeline.run_tracked(src, n, extern_iface, per_function)
-      } else if per_function {
-        @pipeline.run_functions(src, n, extern_iface)
-      } else {
-        @pipeline.run(src, n, extern_iface)
-      }
+      let r = run_pipeline(src, n, extern_iface, per_function, track, taint)
       let reports = filtered_reports(r.reports, src, profile)
       let total = reports.length()
       // The trusted region: everything before the first genuine read failure.

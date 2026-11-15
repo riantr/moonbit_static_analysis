@@ -109,8 +109,19 @@ pub(all) struct TaintSpec {
 pub(all) struct TaintFlow {
   /// The line of the SOURCE call site -- the deck's `i`.
   src_line : Int32
+  /// The SOURCE FUNCTION's name -- the callee of the source call.
+  ///
+  /// 0587. It is here because a REPORT has to say it: the deck's triple is
+  /// three call SITES, and a reader wants to know WHICH FUNCTION produced the
+  /// data, not only which line it was produced on.
+  src_name : String
   /// The line of the SINK call site -- the deck's `j`.
   sink_line : Int32
+  /// The SINK FUNCTION's name -- the callee of the sink call.
+  ///
+  /// 0587. The finding sits AT the sink, so the sink is the name the report
+  /// leads with.
+  sink_name : String
   /// The index of the SENSITIVE argument -- the deck's `k`.
   arg : Int32
   /// The sink call's own position, so a report can point at the call and not
@@ -175,6 +186,46 @@ pub fn taint_spec_sink(spec : TaintSpec, name : String, arg : Int32) -> Unit {
 }
 
 ///|
+/// Add a SINK written as TEXT: a function name and an argument index, separated
+/// by a colon -- "log:0".
+///
+/// THE TEXT FORM IS THE CLI'S AND THE WIRE'S, and it is parsed HERE so that
+/// both spell it the same way: the CLI's `--taint-sink log:0` and the JSON
+/// bridge's `"taint_sinks": ["log:0"]` are ONE format and not two.
+///
+/// IT RETURNS FALSE FOR A TEXT IT DOES NOT UNDERSTAND, and it says so rather
+/// than guessing: a sink whose index was silently dropped would scan the
+/// program and report nothing, which looks exactly like a clean program.
+pub fn taint_spec_sink_text(spec : TaintSpec, text : String) -> Bool {
+  let mut name = ""
+  let mut idx = ""
+  let mut k = 0
+  for part in text.split(":") {
+    let p = part.trim().to_owned()
+    if k == 0 {
+      name = p
+    } else if k == 1 {
+      idx = p
+    } else {
+      return false
+    }
+    k = k + 1
+  }
+  if name == "" || idx == "" {
+    return false
+  }
+  let mut n = 0
+  for ch in idx {
+    if !ch.is_ascii_digit() {
+      return false
+    }
+    n = n * 10 + (ch.to_int() - '0'.to_int())
+  }
+  taint_spec_sink(spec, name, n)
+  true
+}
+
+///|
 /// THE ANALYSIS: the pointer analysis's own rules, over a map seeded with one
 /// tainted object per source call site, and the deck's sink rule on top.
 ///
@@ -190,6 +241,19 @@ pub fn taint_analyze(cfgs : Array[Cfg], spec : TaintSpec) -> TaintResult {
   let mut fi = 0
   while fi < cfgs.length() {
     let g = cfgs[fi]
+    // 0587. A GRAPH THAT LOST A STATEMENT IS NOT ANALYSED, and the reason is a
+    // SANITIZER. The taint analysis is a MAY analysis, so a statement it never
+    // read cannot CREATE a flow -- but it can DESTROY one: a `pw = scrub(pw)`
+    // the graph did not turn into nodes leaves the tainted datum in `pw`, and
+    // the flow this file reports would be one the program does not have. So a
+    // function whose graph lost a statement is not analysed at all, and its
+    // map is EMPTY rather than missing, so the index of every map is still the
+    // index of its function.
+    if g.skipped > 0 {
+      pts.push(pta_empty())
+      fi = fi + 1
+      continue
+    }
     let sources = source_sites(g, spec)
     // THE SOURCE RULE (p.74): `t_l in pt(r)`. The tainted datum is an object
     // named after its call site, and it goes into the points-to set of the
@@ -223,6 +287,8 @@ priv struct SourceSite {
   node : Int32
   line : Int32
   obj : String
+  /// The SOURCE FUNCTION's name -- the callee the source rule matched on.
+  callee : String
 }
 
 ///|
@@ -275,7 +341,7 @@ fn source_sites(g : Cfg, spec : TaintSpec) -> Array[SourceSite] {
       1 => "t" + line.to_string()
       _ => "t" + line.to_string() + "_" + k.to_string()
     }
-    out.push({ node: v, line, obj, })
+    out.push({ node: v, line, obj, callee, })
   }
   out
 }
@@ -295,12 +361,16 @@ fn collect_flows(
   sources : Array[SourceSite],
   flows : Array[TaintFlow],
 ) -> Unit {
-  // The tainted objects and the line each was created on. Every tainted object
+  // The tainted objects and the SITE each was created at. Every tainted object
   // in the map came from one of this function's source sites, so this map is
-  // the whole answer to "which line is this tainted datum from".
-  let tainted_lines : Map[String, Int32] = Map([])
+  // the whole answer to "which line is this tainted datum from" -- and to
+  // "which function produced it", which is the half a REPORT needs.
+  //
+  // THE LOOKUP IS BY THE OBJECT'S NAME, not by its line: two source calls on
+  // one line are `t3` and `t3_2`, and the names are what tell them apart.
+  let tainted_sites : Map[String, SourceSite] = Map([])
   for s in sources {
-    tainted_lines.set(s.obj, s.line)
+    tainted_sites.set(s.obj, s)
   }
   for v in g.source_order() {
     let e = match node_expr(g.kinds[v]) {
@@ -327,11 +397,13 @@ fn collect_flows(
       // is the case the deck's worked example exercises -- `s` holds the
       // tainted datum, and `log(s)` reads it.
       for obj, _ in pta_of_expr(pt, pt, arg) {
-        match tainted_lines.get(obj) {
-          Some(line) =>
+        match tainted_sites.get(obj) {
+          Some(s) =>
             add_flow(flows, {
-              src_line: line,
+              src_line: s.line,
+              src_name: s.callee,
               sink_line: g.spans[v].start.line,
+              sink_name: callee,
               arg: i,
               sink_span: g.spans[v],
             })
@@ -350,7 +422,9 @@ fn collect_flows(
       if iyields && spec.sources.contains(icallee) {
         add_flow(flows, {
           src_line: arg.span.start.line,
+          src_name: icallee,
           sink_line: g.spans[v].start.line,
+          sink_name: callee,
           arg: i,
           sink_span: g.spans[v],
         })

@@ -57,20 +57,63 @@ pub(all) struct Predicate {
 /// quoting its subject loses its predicate instead of reporting an empty name,
 /// and an empty name is the one value a checker cannot tell from a real one.
 fn quoted(text : String) -> String? {
+  let runs = quoted_runs(text)
+  if runs.length() == 0 {
+    None
+  } else {
+    Some(runs[0])
+  }
+}
+
+///|
+/// EVERY single-quoted run in `text`, in the order they appear.
+///
+/// The first is the SUBJECT -- the name the finding is about -- and the ones
+/// after it are the rest of the claim. `quoted` is this list's first element,
+/// so the two cannot disagree about where a name starts.
+fn quoted_runs(text : String) -> Array[String] {
+  let out : Array[String] = []
   let mut buf = StringBuilder()
   let mut inside = false
   for c in text {
     if c == '\'' {
       if inside {
-        return Some(buf.to_string())
+        out.push(buf.to_string())
+        inside = false
+        buf = StringBuilder()
+      } else {
+        inside = true
+        buf = StringBuilder()
       }
-      inside = true
-      buf = StringBuilder()
     } else if inside {
       buf.write_char(c)
     }
   }
-  None
+  out
+}
+
+///|
+/// The SENSITIVE ARGUMENTS the message names, or "" if it names none.
+///
+/// 0587. The message is FIXED by `src/pipeline/taintcheck.mbt` -- "the
+/// sensitive argument 0 of 'log' may receive tainted data from 'get_password'"
+/// -- and this reads the text between "argument" and " of '". The text is the
+/// MESSAGE'S OWN, so the predicate and the message say the same thing and a
+/// checker splits the value the way the message reads.
+fn arg_text(text : String) -> String {
+  match text.find("argument") {
+    None => ""
+    Some(i) => {
+      let tail = text[i + 8:].to_owned()
+      // "arguments" -- the plural marker -- is dropped, and what is left starts
+      // with the space before the list.
+      let tail = if tail.has_prefix("s ") { tail[2:].to_owned() } else { tail }
+      match tail.find(" of '") {
+        None => ""
+        Some(k) => if k <= 1 { "" } else { tail[1:k].to_owned() }
+      }
+    }
+  }
 }
 
 ///|
@@ -178,6 +221,43 @@ pub fn Report::predicate(self : Report) -> Predicate? {
       } else {
         None
       }
+    // 0587. The claim is about a FLOW: tainted data from a SOURCE may reach a
+    // SENSITIVE ARGUMENT of a SINK. The finding sits AT the sink, so the
+    // sink's name leads the message; the argument index is the text between
+    // "argument" and " of '".
+    //
+    // THE MESSAGE HAS TWO LISTS OF NAMES, and the split between them is at
+    // "may receive": the SINKS are the quoted runs before it and the SOURCES
+    // the ones after it. Two lists of names in one message would otherwise be
+    // ambiguous, and a predicate that guessed which list a name belonged to
+    // would be a predicate about nothing.
+    //
+    // THE VALUES ARE THE MESSAGE'S OWN WORDS, so a checker splits them the way
+    // the message reads: a list is separated by " or " and the argument list
+    // by " and ".
+    @core.FTaintFlow => {
+      let (head, tail) = match self.message.find("may receive") {
+        Some(i) => (self.message[0:i].to_owned(), self.message[i:].to_owned())
+        None => (self.message, "")
+      }
+      let sink = quoted_runs(head).join(" or ")
+      let source = quoted_runs(tail).join(" or ")
+      let arg = arg_text(self.message)
+      if sink != "" && source != "" && arg != "" {
+        Some({
+          check: "taint_reaches_sink",
+          params: [
+            ("sink", sink),
+            ("source", source),
+            ("arg", arg),
+            ("line", line),
+            ("col", col),
+          ],
+        })
+      } else {
+        None
+      }
+    }
     // The claim is about POSITION, not about a name: "a statement at this line
     // follows one whose flow had already left the block". A checker reads the
     // line and the control flow above it, so the line is the argument.

@@ -147,6 +147,10 @@ struct Request {
   source : String?
   filename : String?
   spec : SpecReq?
+  /// 0587. The taint specification: the SOURCES whose result is tainted data,
+  /// and the SINKS with their sensitive argument index -- "log:0".
+  taint_sources : Array[String]?
+  taint_sinks : Array[String]?
 }
 
 ///|
@@ -280,8 +284,19 @@ fn run_machine(req : SpecReq) -> Reply {
 }
 
 ///|
-fn run_program(source : String, filename : String) -> Reply {
-  let result = @pipeline.run(source, filename, @core.IfaceSymTab::empty())
+fn run_program(
+  source : String,
+  filename : String,
+  taint : @flow.TaintSpec,
+) -> Reply {
+  let result = @pipeline.run_configured(
+    source,
+    filename,
+    @core.IfaceSymTab::empty(),
+    false,
+    false,
+    taint,
+  )
   // The ONLY request kind that runs a type lens, so the only one that has an
   // adequacy figure to report.
   ok_reply(
@@ -298,7 +313,11 @@ fn run_program(source : String, filename : String) -> Reply {
 ///   .md / .mbt.md → literate MoonBit (moonbit fences, real line numbers)
 ///   .mbti         → interface well-formedness audit
 ///   .mbtp         → proof-file logic-side audit
-fn dispatch_file(filename : String, source : String) -> Reply {
+fn dispatch_file(
+  filename : String,
+  source : String,
+  taint : @flow.TaintSpec,
+) -> Reply {
   let lower = filename.to_lower()
   let kind = if lower.has_suffix(".mbt.md") || lower.has_suffix(".md") {
     "md"
@@ -328,8 +347,27 @@ fn dispatch_file(filename : String, source : String) -> Reply {
       let reports = @moonfiles.proof(source, filename)
       ok_reply(reports, render_reports(reports), None)
     }
-    _ => run_program(source, filename)
+    _ => run_program(source, filename, taint)
   }
+}
+
+///|
+/// The taint specification the request asks for, and the error it carries.
+///
+/// 0587. A malformed sink is an ERROR and not a dropped sink: a sink whose
+/// index was silently ignored would scan the program and report nothing, which
+/// looks exactly like a clean program.
+fn taint_spec_of(req : Request) -> (@flow.TaintSpec, String) {
+  let spec = @flow.taint_spec_empty()
+  for s in req.taint_sources.unwrap_or([]) {
+    @flow.taint_spec_source(spec, s)
+  }
+  for s in req.taint_sinks.unwrap_or([]) {
+    if !@flow.taint_spec_sink_text(spec, s) {
+      return (spec, "taint sink '\{s}' is not '<function>:<argument index>'")
+    }
+  }
+  (spec, "")
 }
 
 ///|
@@ -349,16 +387,30 @@ fn handle(raw : String) -> Reply {
     let request : Request = @json.from_json(@json.parse(raw))
     let kind = request.kind.unwrap_or("program")
     match kind {
-      "program" =>
-        run_program(
-          request.source.unwrap_or(""),
-          request.filename.unwrap_or("main.mbt"),
-        )
-      "file" =>
-        dispatch_file(
-          request.filename.unwrap_or("main.mbt"),
-          request.source.unwrap_or(""),
-        )
+      "program" => {
+        let (taint, terr) = taint_spec_of(request)
+        if terr != "" {
+          err_reply(terr)
+        } else {
+          run_program(
+            request.source.unwrap_or(""),
+            request.filename.unwrap_or("main.mbt"),
+            taint,
+          )
+        }
+      }
+      "file" => {
+        let (taint, terr) = taint_spec_of(request)
+        if terr != "" {
+          err_reply(terr)
+        } else {
+          dispatch_file(
+            request.filename.unwrap_or("main.mbt"),
+            request.source.unwrap_or(""),
+            taint,
+          )
+        }
+      }
       "machine" =>
         match request.spec {
           None => err_reply("machine request needs a spec object")

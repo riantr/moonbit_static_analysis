@@ -16,7 +16,10 @@
 /// floor to the source text.
 test "0520: every family declares a real property, assumption and excluded" {
   let fams = @core.all_families()
-  assert_eq(fams.length(), 17)
+  // 0587. THE ROSTER MOVED: the taint finding (MSA-018) is a family of its own,
+  // so the count is eighteen. The pin moves with the roster and never away from
+  // it -- a family added without a pin here would not be caught by this test.
+  assert_eq(fams.length(), 18)
   for f in fams {
     assert_true(f.property().length() >= 15)
     assert_true(f.assumption().length() >= 15)
