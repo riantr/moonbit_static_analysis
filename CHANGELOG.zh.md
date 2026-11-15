@@ -3481,6 +3481,39 @@ enum Layer {
 **3,971 + 19,319**；族表 **17 → 18**；测试 wasm 1,625 → **1,652**，js 与 wasm-gc 1,483 →
 **1,510**。七个固定语料**一个都没动**。
 
+### 已发布
+
+0.4.49 已在两个远端打上 tag `2d30afb`，CI 的 `gate` 与 `publish` 在该提交上都是绿的，GitHub
+Release 已发布，注册表以 `latest_version = 0.4.49` 提供它。
+
+    published 0.4.49  wasm 17002698...  706965 bytes  checksum 5c19e207...  2026-11-15T04:01:06Z
+
+**已发布的字节是干净的。** 用发布坐标实测：注册表提供的产物扫自己发布的源码，**248/248**
+个文件解析，`actionable=0`，且恰好需要那 93 个约定的宿主符号，没有 `moonbitlang/async` 依赖。
+
+**而这一版，已发布的产物真的变了。** 逐字节实测：0.4.48 是 685218 字节，0.4.49 是 **706965**
+——产物**长大了 21747 字节**，而且公共前缀的 685218 字节里有 598761 字节不同，因为代码变大时
+wasm 的布局会移位。这和 0.4.48 那次正好相反——那一次两个产物只差一个字节。
+
+**原因在于污点层从报告流水线里可达**，这也是 0.4.48 的四个增量和这两个增量的差别，而它是按
+非测试调用点实测出来的：
+
+    src/flow/taint.mbt          非测试调用方: src/pipeline/taintcheck.mbt
+    src/pipeline/taintcheck.mbt  非测试调用方: src/pipeline/pipeline.mbt,
+                                               src/report/predicate.mbt
+
+0.4.48 的四个新模块**没有**非测试调用方，所以发布版 wasm（它是不带测试文件构建的）不携带它们。
+这两个有，所以产物携带它们，也所以它变大了。
+
+**而且已发布的产物会报出新家族**——在发布坐标上实测：带上 `--taint-source readInput
+--taint-sink log:0`，发布的 0.4.49 报出
+
+    12:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+           'readInput' (TaintFlow) [structural, MSA-018, high]
+
+而**同一个**已发布产物在**同一个**程序上不带那个规格时报 `actionable=0`。上一个版本则干脆
+拒绝这个问题：发布的 0.4.48 回答 `ERROR unexpected extra argument: readInput`。
+
 ## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
 
 0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是

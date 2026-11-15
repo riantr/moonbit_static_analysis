@@ -4050,6 +4050,45 @@ half **did not move** (157), the eight-tree total 23,259 → **23,290** split 3,
 **3,971 + 19,319**, the family roster **17 → 18**, tests 1,625 → **1,652** on wasm and 1,483 →
 **1,510** on js and wasm-gc. The seven pinned corpora **did not move**.
 
+### PUBLISHED
+
+0.4.49 is tagged at `2d30afb` on both remotes, CI's `gate` and `publish` are green on that
+commit, the GitHub release is published, and the registry serves it with `latest_version =
+0.4.49`.
+
+    published 0.4.49  wasm 17002698...  706965 bytes  checksum 5c19e207...  2026-11-15T04:01:06Z
+
+AND THE PUBLISHED BYTES ARE CLEAN. MEASURED with the published coordinates: the artifact the
+registry serves scans its own shipped source at **248/248** files parsed, `actionable=0`, and
+it requires exactly the 93 contracted host symbols with no `moonbitlang/async` dependency.
+
+**AND THE PUBLISHED ARTIFACT ACTUALLY CHANGED THIS TIME.** MEASURED, byte for byte: 0.4.48 was
+685218 bytes and 0.4.49 is **706965** — the artifact **GREW by 21747 bytes**, and 598761 of the
+685218 bytes in the common prefix differ, because the wasm layout shifts when the code grows.
+That is the opposite of 0.4.48's release, whose artifact differed by exactly one byte.
+
+THE REASON IS THAT THE TAINT LAYER IS REACHABLE FROM THE REPORT PIPELINE, which is the
+difference between 0.4.48's four increments and these two, and it is measured by the non-test
+call sites:
+
+    src/flow/taint.mbt          non-test callers: src/pipeline/taintcheck.mbt
+    src/pipeline/taintcheck.mbt  non-test callers: src/pipeline/pipeline.mbt,
+                                               src/report/predicate.mbt
+
+0.4.48's four new modules had NO non-test caller, so the published wasm — which is built
+without the test files — did not carry them. These two DO have one, so the artifact carries
+them, and it is bigger.
+
+**AND THE PUBLISHED ARTIFACT FIRES THE NEW FAMILY**, measured at the published coordinate: with
+`--taint-source readInput --taint-sink log:0` the published 0.4.49 reports
+
+    12:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+           'readInput' (TaintFlow) [structural, MSA-018, high]
+
+and the SAME published artifact on the SAME program without the specification reports
+`actionable=0`. The previous release refuses the question outright: the published 0.4.48
+answers `ERROR unexpected extra argument: readInput`.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

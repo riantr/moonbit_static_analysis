@@ -9601,6 +9601,7 @@ true forever -- which is why the rows ACCUMULATE and are never rewritten:
     published 0.4.46  wasm 53A24C3E2775E5F793A20215793622C2D222A7C3AD6F40B1F3E175C43CF86954  660472 bytes  checksum aa43ce37d3887dedecc237ab44823771894488c2dd6618adf5a9ea750408c20f  2026-11-11T13:43:21.732369+00:00
     published 0.4.47  wasm 5144FE0F499D509F6C60CAFD0AED2C77B73ABDC4632E735A10EF6591ED34F6CD  685218 bytes  checksum dc34082714f87daaef728ab2a35be0e2a482f8716502ee78fe07b36a4362c107  2026-11-14T12:31:08.501333+00:00
     published 0.4.48  wasm 6F38F3D915E471E5E98CDE40A431559304CAB838E8D149EEE2C76CF58D470F09  685218 bytes  checksum 2468b30c1b00d1881da642cf227e0615892cc891f70d38cdd9be2036d4b63a7a  2026-11-14T18:42:21.542833+00:00
+    published 0.4.49  wasm 17002698373CA063B8A1A945175AE9B3C39D1C034675090C9472ABAB114FC57C  706965 bytes  checksum 5c19e20788d810e13ba8ae7430f77ec0e5bb5bb2ea76eba3e208d9588c2cb98d  2026-11-15T04:01:06.451146+00:00
 
 `_verify/check_transfer_scope.ps1` re-hashes the local registry copy of EVERY row
 it can resolve, says so plainly for the ones it cannot, and REQUIRES a row for
@@ -19551,3 +19552,95 @@ and the CHANGELOG entries follow the green gate, and the CI publishes from the t
 
 THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the
 same directory as the ones this series read, and they have not been read.
+
+
+## 0591: 0.4.49 SHIPPED, AND THE PUBLISHED ARTIFACT ACTUALLY CHANGED
+
+The release is out, so the numbers that can only be read AFTER a publish are recorded: the
+registry's own checksum and created_at, and the SHA-256 and size of the wasm the registry
+actually serves.
+
+    tag        v0.4.49  ->  2d30afb  on BOTH remotes
+    CI         gate     43674844151  (master push)  success
+               gate     43674857089  (tag push)     success
+               publish  43674857126                   success
+    registry   latest_version = 0.4.49   build_status = success
+                checksum    5c19e20788d810e13ba8ae7430f77ec0e5bb5bb2ea76eba3e208d9588c2cb98d
+                created_at  2026-11-15T04:01:06.451146+00:00
+
+    published 0.4.49  wasm 17002698373CA063B8A1A945175AE9B3C39D1C034675090C9472ABAB114FC57C  706965 bytes  checksum 5c19e20788d810e13ba8ae7430f77ec0e5bb5bb2ea76eba3e208d9588c2cb98d  2026-11-15T04:01:06.451146+00:00
+
+THE HASH IS READ, NOT TYPED, and the reader is SELF-CHECKED before it is trusted: it reproduced
+the 0.4.47 row (wasm 5144FE0F..., 685218 bytes) and the 0.4.48 row (wasm 6F38F3D9..., 685218
+bytes) byte for byte out of the local registry copies BEFORE it was applied to 0.4.49. A reader
+that has never reproduced a known row is not a reader, it is a guess.
+
+### THE PUBLISHED ARTIFACT ACTUALLY CHANGED, AND THAT IS THE POINT
+
+    published 0.4.48  685218 bytes
+    published 0.4.49  706965 bytes      (+21747)
+    bytes differing in the 685218-byte common prefix: 598761
+
+0.4.48's release was the OPPOSITE: the artifact differed from 0.4.47's by EXACTLY ONE BYTE,
+the version digit inside the coordinate the artifact embeds. This release's artifact GREW, and
+598761 of the common prefix's bytes differ, because the wasm layout shifts when the code grows.
+
+THE REASON IS MEASURED, and it is the difference between 0.4.48's four increments and these
+two: THE TAINT LAYER IS REACHABLE FROM THE REPORT PIPELINE.
+
+    src/flow/taint.mbt          non-test callers: src/pipeline/taintcheck.mbt
+    src/pipeline/taintcheck.mbt  non-test callers: src/pipeline/pipeline.mbt,
+                                               src/report/predicate.mbt
+
+0.4.48's four new modules had NO non-test caller at all, so the published wasm -- which is
+built WITHOUT the test files -- did not carry them, and the artifact stayed the same size with
+one byte changed. These two HAVE one, so the artifact carries them and it is bigger. **BUILT**
+and **VISIBLE** are different claims, and this is the release where they come apart in the
+artifact's favour.
+
+### AND THE PUBLISHED ARTIFACT FIRES THE NEW FAMILY, MEASURED AT THE PUBLISHED COORDINATE
+
+THE STRONGEST STATEMENT AVAILABLE, and it is measured rather than argued: the artifact the
+registry serves was asked whether tainted data reaches a sink, on a three-line program.
+
+    published 0.4.49, with --taint-source readInput --taint-sink log:0
+
+        12:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+               'readInput' (TaintFlow) [structural, MSA-018, high]
+        SUMMARY  files=1  parsed=1  actionable=1
+
+AND THE CONTROL, which is what makes the row above mean something: the SAME published artifact
+on the SAME program WITHOUT the taint specification reports `actionable=0`. So the zero is the
+specification's doing and not the analyzer's.
+
+AND THE PREVIOUS RELEASE REFUSES THE QUESTION, which is the release boundary visible from the
+published bytes themselves:
+
+    published 0.4.48, with --taint-source readInput --taint-sink log:0
+
+        ERROR  unexpected extra argument: readInput
+
+### AND THE PUBLISHED BYTES ARE CLEAN, AND THE HOST CONTRACT IS THE CONTRACTED ONE
+
+MEASURED with the published coordinates: the artifact the registry serves scans its own
+shipped source at **248/248** files parsed, `actionable=0`, notices 1945. And the host
+contract holds exactly: 107 imports, 93 of them from `moonbitlang/async`, no `moonbitlang/async`
+dependency in `moon.mod`, and the toolchain's bundled `moonbitlang/core` 0.10.20+65efd5b93 --
+the contracted floor -- declares 215 externs and covers all 93.
+
+AND THE PUBLISHED TREE CARRIES 230 `.mbt` FILES against the 249 the local self-scan reads, and
+the ONE file of difference is measured: `src/lexer/lexer_0488_test.mbt`, an untracked scratch
+file an earlier session left in the tree. The self-scan counts it; the published package does
+not carry it. The published tree's own count is 248 = 230 `.mbt` + 17 `.mbti` + 1 `.mbtp`, and
+the published scan reports exactly 248.
+
+### AND A CONTROL THAT PREVENTED A FALSE CLAIM
+
+THE QUESTION "does the published artifact carry the new family?" WAS ASKED, and the ANSWER WAS
+MEASURED FIRST: `TaintFlow`, `MSA-018`, `DeadStore`, `MSA-015`, `UnusedLocal` and
+`taint_analyze` appear ZERO times in BOTH the 0.4.48 and the 0.4.49 artifacts, while the
+coordinate string `riantr/moonbit_static_analysis@0.4.49` IS present in the 0.4.49 one. So the
+strings are not stored literally in this artifact -- which is a fact about the BINARY and not
+about the release, and the absence of `TaintFlow` therefore says NOTHING about whether the
+family is in it. The claim this chapter makes is the one the bytes support: the artifact
+GREW, the non-test call sites say why, and the published artifact FIRES the family.
