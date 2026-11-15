@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (254 files), with the per-file printing cap lifted so the count is the
+project's own source (256 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1680 | | `const` declaration | 7 |
+| `test` declaration | 1688 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 107 | | `type` declaration | 7 |
+| `struct` declaration | 109 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 29 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1830** sit outside every function's
+audit off, so they are printed one per line; the other **1840** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,332** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,342** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,361** as aggregated — which is 3,971 + 19,361 = 23,332, the same number — and the 3,971
+**19,371** as aggregated — which is 3,971 + 19,371 = 23,342, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1363,6 +1363,34 @@ than normalised away.
 **AND THE COMPARISON PRINTS BOTH ANSWERS**, side by side, because a comparison that prints a
 boolean is a thing a reader has to take on trust.
 
+### And the deck's taint rules can be RUN, and they found a bug in this engine
+
+The lecture's third thing to understand (p.93) is taint analysis via Datalog, and its
+chapter is two pages (p.90-91): the EDB relations `Source(m)`, `Sink(m, i)` and
+`Taint(l, t)`, the IDB relation `TaintFlow(sr, sn, i)`, and two rules. `src/flow/datalog_taint.mbt`
+runs them and compares the answer with the one `taint_analyze` gives on the same program.
+
+**THE DECK'S TRIPLE IS FOUND, ON THE DECK'S OWN PROGRAM.** The security deck's seven-statement
+example (p.77) prints `TaintFlows: { <3, 7, 0> }` on p.84 — the source call site, the sink call
+site, the argument index — and the Datalog reading derives exactly that triple, and the two
+readings **agree**.
+
+**AND RUNNING THE DECK'S OWN RULES FOUND A REAL BUG IN THIS TOOL'S ENGINE.** The strata-ordering
+loop counted **predicates** against the number of **groups** — two different things — so on a
+program with three IDB predicates in two strata it exited with the second stratum **never
+evaluated**. The `TaintFlow` rule was never run.
+
+**THE SYMPTOM WAS INVISIBLE FROM THE ANSWER**, and that is what made it worth measuring rather
+than guessing: the program derived `VarPointsTo(s, t3)` — the tainted datum *did* reach the
+sink's argument — and derived **no flow** from it. The relation was right, the rule was right, the
+program was right; what was missing was a stratum. The fix counts groups, and the row that
+pins it **is proven to fire**: the bug was reintroduced, the suite went red on three rows, and
+the file was restored byte for byte.
+
+**AND THE ENGINE NOW EXPOSES ITS EVALUATION ORDER**, because the order is a property of the
+program and not of the solver's internals — and a caller that cannot see it cannot explain a
+rule that derived nothing.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1482,7 +1510,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1680/1680 on wasm; 1538/1538 on js and wasm-gc
+moon test --deny-warn                # 1688/1688 on wasm; 1546/1546 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

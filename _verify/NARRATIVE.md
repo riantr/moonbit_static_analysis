@@ -19906,3 +19906,91 @@ Datalog (p.90-91), whose model is `Source(m)`, `Sink(m, i)` and `Taint(l, t)` ov
 pointer analysis this increment's rules provide.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0594: THE DECK'S TAINT RULES, RUN -- and they found a bug in this engine
+
+THE DECK'S THIRD THING TO UNDERSTAND (p.93) is "How to implement taint analysis via
+Datalog", and its chapter is TWO PAGES (p.90-91). The model is `Source(m)`, `Sink(m, i)`
+and `Taint(l, t)` over the pointer analysis, and the IDB relation is
+`TaintFlow(sr, sn, i)`. The two rules are the deck's own.
+
+    src/flow/datalog_taint.mbt       the reading: the facts, the program, the answer
+                                      and the comparison
+    src/flow/datalog_taint_test.mbt   seven rows, each naming the slide it pins
+
+AND THE DECK'S TRIPLE IS FOUND, ON THE DECK'S OWN PROGRAM. The security deck's
+seven-statement example (p.77) prints `TaintFlows: { <3, 7, 0> }` on p.84, and the Datalog
+reading derives exactly that triple -- and the two readings AGREE.
+
+### AND THE DECK'S OWN RULES FOUND A REAL BUG IN THIS ENGINE
+
+AND THIS IS THE PART THAT MATTERS, because the increment was supposed to ADD a capability
+and it found a DEFECT instead. The strata-ordering loop counted PREDICATES against the
+number of GROUPS -- two different things -- so on a program with three IDB predicates in
+two strata it exited with the SECOND STRATUM NEVER EVALUATED.
+
+AND THE DECK'S OWN PROGRAM IS WHAT TRIGGERS IT, because `VarPointsTo` and `FieldPointsTo`
+are genuinely MUTUALLY RECURSIVE: the deck's Load rule reads the field relation and its
+Store rule reads the pointer relation. So they share a stratum, the stratum holds TWO
+predicates, and the count reached 2 while the group count was 2.
+
+AND THE SYMPTOM WAS INVISIBLE FROM THE ANSWER, and that is what made it worth measuring
+rather than guessing:
+
+    VarPointsTo(s, t3)     DERIVED -- the tainted datum reached the sink's argument
+    TaintFlow(3, 7, 0)     NOT DERIVED -- and the rule that derives it never ran
+
+The relation was right, the rule was right, the program was right, the safety check
+passed, and every INPUT the rule needed was present. What was missing was a STRATUM. A
+program that derives half of what its rules say is exactly the shape of a bug a green
+row cannot see, and the ONLY thing that found it was running the deck's own rules.
+
+AND THE FIX COUNTS GROUPS, and the row that pins it is PROVEN TO FIRE: the bug was
+reintroduced, the suite went red on THREE rows -- the dedicated one and the two that
+depend on the flow -- and the file was restored BYTE FOR BYTE.
+
+AND THE ENGINE NOW EXPOSES ITS EVALUATION ORDER (`datalog_strata`), because the order is a
+property of the PROGRAM and not of the solver's internals, and a caller that cannot see
+it cannot explain a rule that derived nothing.
+
+### AND A FILE OF THIS INCREMENT'S OWN WAS READ ONLY PARTIALLY, AND THAT WAS FIXED TOO
+
+`src/flow/datalog_taint.mbt` came out of the analyzer's own scan as PARTIAL -- "read up to
+line 242, 2 after it not shown" -- because of a tuple pattern in a `for` HEAD, which is a
+construct the frontend reads past. The tree's own convention destructures inside the loop
+body (`pta.mbt`: "for pair in inits { let (fld, e) = pair"), and the file now follows it,
+and the self-scan reads 256/256 with `unreliable=0`.
+
+AN UNREADABLE FILE IS A FILE WHOSE FINDINGS NOBODY CAN TRUST, so this is the same class of
+defect as the rest of them: it was measured, it was fixed, and the fix is in the code
+rather than in a note.
+
+### THE PINS THAT MOVED
+
+    own-source files         254 -> 256   (the taint reading and its test file)
+    own-source notices     1,987 -> 1,997
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated 1,830 -> 1,840
+
+THE EIGHT-TREE TOTAL moved with the own-source half, and the corpora did not move:
+
+    the eight-tree total   23,332 -> 23,342
+    the eight-tree split     3,971 + 19,361 -> 3,971 + 19,371
+
+AND THE TEST COUNTS, on all three targets:
+
+    1,680 -> 1,688 on wasm, 1,538 -> 1,546 on js and wasm-gc
+
+### WHAT IS STILL OPEN
+
+THE DECK'S THREE THINGS TO UNDERSTAND (p.93) ARE NOW ALL THREE DONE: the language (0592),
+the pointer analysis via Datalog (0593) and the taint analysis via Datalog (0594). What
+remains of the deck is its first chapter -- the MOTIVATION, p.5-16 -- and its last two
+pages, p.92's PROS AND CONS, and those are boundaries and measurements rather than cells
+to build.
+
+THE OTHER DECKS ARE STILL DECKS: 15_IFDS.pdf and 16_Soundiness.pdf sit in the same
+directory as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.

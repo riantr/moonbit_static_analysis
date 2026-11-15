@@ -224,6 +224,39 @@ pub fn dprog() -> DProgram {
 }
 
 ///|
+/// A subgoal as text, so a reader can see what the reader READ.
+///
+/// IT IS PUBLIC because a rule that reads as one thing and means another is a bug
+/// that no other check can see: the solver would answer "nothing derived" and the
+/// reason would be in the PARSE and not in the rules.
+pub fn dgoal_text_of(g : DGoal) -> String {
+  let inner = match g.atom {
+    DRel(p, args) => {
+      let parts : Array[String] = []
+      for a in args {
+        parts.push(dterm_text_of(a))
+      }
+      p + "(" + parts.join(", ") + ")"
+    }
+    DCmp(l, op, r) => dterm_text_of(l) + " " + op + " " + dterm_text_of(r)
+  }
+  if g.negated {
+    "!" + inner
+  } else {
+    inner
+  }
+}
+
+///|
+/// A term as text: a variable keeps its name and a constant keeps its value.
+pub fn dterm_text_of(t : DTerm) -> String {
+  match t {
+    DVar(v) => v
+    DConst(c) => c
+  }
+}
+
+///|
 /// The predicate of an atom; `""` for an arithmetic one, which has none.
 fn datom_pred(a : DAtom) -> String {
   match a {
@@ -780,7 +813,10 @@ fn d_head_tuple(head : DAtom, bind : Map[String, String]) -> Array[String]? {
 /// makes the negation sound: a negated subgoal always reads a relation that is
 /// already final, because the check in `datalog_check` refuses a negated edge
 /// that lies on a cycle.
-fn d_strata(prog : DProgram, idb : Map[String, Bool]) -> Array[Array[String]] {
+pub fn d_strata(
+  prog : DProgram,
+  idb : Map[String, Bool],
+) -> Array[Array[String]] {
   let deps = d_deps(prog, idb)
   let reach = d_reach(deps)
   let preds = dkeys(idb)
@@ -867,11 +903,33 @@ fn d_strata(prog : DProgram, idb : Map[String, Bool]) -> Array[Array[String]] {
     }
   }
   // sort the groups by their level
+  //
+  // 0594. THE LOOP COUNTS GROUPS AND NOT PREDICATES, and the first version counted
+  // PREDICATES against the number of GROUPS -- which is a comparison of two
+  // different things, and it DROPS A GROUP.
+  //
+  // MEASURED, on the deck's own taint program (p.91): the program has three IDB
+  // predicates -- `VarPointsTo`, `FieldPointsTo` and `TaintFlow` -- and they fall
+  // into TWO strata, because `VarPointsTo` and `FieldPointsTo` are genuinely
+  // mutually recursive (the deck's Load rule reads the field relation and the
+  // Store rule reads the pointer relation). The first group therefore holds TWO
+  // predicates, and `used.length()` reached 2 while `groups.length()` was 2 -- so
+  // the loop exited with the SECOND GROUP NEVER EVALUATED. The `TaintFlow` rule
+  // was never run, and every flow was empty.
+  //
+  // The symptom was invisible from the answer and visible from the ORDER: the
+  // program derived `VarPointsTo(s, t3)` -- the taint datum reached the sink's
+  // argument -- and derived NO flow from it, and the relation was right and the
+  // rule was right and the PROGRAM was right. What was missing was a STRATUM.
+  // That is why `datalog_strata` is public: the evaluation order is a property of
+  // the program, and a caller that cannot see it cannot explain a rule that
+  // derived nothing.
   let ordered : Array[Array[String]] = []
   let used : Map[String, Bool] = Map([])
+  let mut placed = 0
   let mut lvl = 0
   let mut guard2 = 0
-  while used.length() < groups.length() && guard2 < 64 {
+  while placed < groups.length() && guard2 < 64 {
     guard2 = guard2 + 1
     for g in groups {
       let mut gl = 0
@@ -894,12 +952,23 @@ fn d_strata(prog : DProgram, idb : Map[String, Bool]) -> Array[Array[String]] {
         }
         if fresh.length() > 0 {
           ordered.push(fresh)
+          placed = placed + 1
         }
       }
     }
     lvl = lvl + 1
   }
   ordered
+}
+
+///|
+/// The STRATA of a program, in the order they are evaluated.
+///
+/// IT IS PUBLIC because the evaluation order is a property of the PROGRAM and not
+/// of the solver's internals, and a caller that has to guess it cannot explain why
+/// a rule derived nothing.
+pub fn datalog_strata(prog : DProgram) -> Array[Array[String]] {
+  d_strata(prog, d_idb(prog))
 }
 
 ///|

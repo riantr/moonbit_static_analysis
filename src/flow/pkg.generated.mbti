@@ -75,6 +75,8 @@ pub fn cpv_leq(Cpv, Cpv) -> Bool
 
 pub fn cpv_text(Cpv) -> String
 
+pub fn d_strata(DProgram, Map[String, Bool]) -> Array[Array[String]]
+
 pub fn datalog_check(DProgram) -> DCheck
 
 pub fn datalog_has(DSolve, String, Array[String]) -> Bool
@@ -88,6 +90,8 @@ pub fn datalog_program_text(DProgram) -> String
 pub fn datalog_rule_text(DRule) -> String
 
 pub fn datalog_solve(DProgram) -> DSolve
+
+pub fn datalog_strata(DProgram) -> Array[Array[String]]
 
 pub fn datalog_text(DSolve) -> String
 
@@ -111,6 +115,8 @@ pub fn dgoal(DAtom) -> DGoal
 
 pub fn dgoal_neg(DAtom) -> DGoal
 
+pub fn dgoal_text_of(DGoal) -> String
+
 pub fn dl_compare_text(Array[Cfg], Int32) -> String
 
 pub fn dl_fact_text(DFact) -> String
@@ -131,6 +137,20 @@ pub fn dl_pointer_program(Array[Cfg], Int32) -> DProgram
 
 pub fn dl_pointer_rules_text() -> String
 
+pub fn dl_taint_agrees(Array[Cfg], Int32, TaintSpec) -> Bool
+
+pub fn dl_taint_answer(DlTaintFacts, DlFacts) -> DlTaintAnswer
+
+pub fn dl_taint_compare_text(Array[Cfg], Int32, TaintSpec) -> String
+
+pub fn dl_taint_facts_empty() -> DlTaintFacts
+
+pub fn dl_taint_facts_of(Array[Cfg], Int32, TaintSpec) -> DlTaintFacts
+
+pub fn dl_taint_program(DlTaintFacts, DlFacts) -> DProgram
+
+pub fn dl_taint_rules_text() -> String
+
 pub fn dominance_frontiers(Bb, Dom) -> Array[Array[Int32]]
 
 pub fn dominators(Bb) -> Dom
@@ -150,6 +170,8 @@ pub fn drule(DAtom, Array[DGoal]) -> DRule
 pub fn drule_disj(DAtom, Array[Array[DGoal]]) -> DRule
 
 pub fn drule_safe(DRule) -> Bool
+
+pub fn dterm_text_of(DTerm) -> String
 
 pub fn dvar(String) -> DTerm
 
@@ -631,6 +653,22 @@ pub(all) struct DlFacts {
   assign : Array[DFact]
   store : Array[DFact]
   load : Array[DFact]
+}
+
+pub(all) struct DlTaintAnswer {
+  ok : Bool
+  flow : Array[Array[String]]
+  vpt : Array[Array[String]]
+  rounds : Int32
+}
+
+pub(all) struct DlTaintFacts {
+  source : Array[DFact]
+  sink : Array[DFact]
+  taint : Array[DFact]
+  callgraph : Array[DFact]
+  callreturn : Array[DFact]
+  argument : Array[DFact]
 }
 
 pub(all) struct Dom {

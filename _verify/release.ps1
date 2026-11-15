@@ -452,7 +452,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # The ten notices are the pointer-analysis reading and its test file, and they
 # are ALL AGGREGATED: a declaration sits outside every function's extent, and
 # the PRINTED half of the split did not move at all.
-$NOTICE_TOTAL = '23332'
+# 0594. THE PIN MOVED, 23,332 -> 23,342, and THE MOVEMENT IS THIS INCREMENT'S
+# OWN SOURCE and nothing else: the seven corpora carry 21,345 notices, exactly
+# what they carried before -- each one still MATCHes its pinned baseline,
+# MEASURED -- and this repository's own source carries 1,997 (it carried 1,987).
+# The ten notices are the taint reading and its test file, and they are ALL
+# AGGREGATED: a declaration sits outside every function's extent, and the
+# PRINTED half of the split did not move at all.
+$NOTICE_TOTAL = '23342'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -557,8 +564,10 @@ $NOTICE_TOTAL = '23332'
 # did not move AT ALL, for the same reason -- the ten new notices are the new
 # file's declarations, and a declaration sits outside every function's extent.
 # The corpora did not move.
+# 0594. AND AGAIN: 3,971 + 19,361 -> 3,971 + 19,371. The PRINTED half did not
+# move AT ALL, for the same reason. The corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19361'
+$NOTICE_SPLIT_AGGREGATED = '19371'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -654,10 +663,15 @@ $NOTICE_SPLIT_AGGREGATED = '19361'
 # declaration row (1,672 -> 1,680, the eight new rows) and the `struct`
 # declaration row (105 -> 107, the two new structs) -- and a declaration sits
 # OUTSIDE every function's extent, so it hides nothing.
-$SELF_FILES = '254'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=29|if expression=100|short lambda=8|struct declaration=107|test declaration=1680|try expression=1|type declaration=7'
+# 0594. AND THEY MOVED AGAIN: 254 -> 256 files (the taint reading and its test
+# file), 1,830 -> 1,840 aggregated, and 1,987 -> 1,997 notices. The PRINTED half
+# did NOT move AGAIN, and the notice table's ONLY moving rows are the `test`
+# declaration row (1,680 -> 1,688, the eight new rows) and the `struct`
+# declaration row (107 -> 109, the two new structs).
+$SELF_FILES = '256'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=29|if expression=100|short lambda=8|struct declaration=109|test declaration=1688|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1830'
+$SELF_AGGREGATED = '1840'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -832,7 +846,11 @@ $SUPPOFF_PARAM = '1341'
 # instructions 8,749 -> 8,778, variables 1,051 -> 1,062, versions 2,593 -> 2,608,
 # phis 927 -> 928, copies 2,306 -> 2,308, dead_blocks 449 -> 451,
 # undef_uses 1,215 -> 1,225.
-$SSA_COST = 'files=236|unreadable=0|functions=1308|converted=5|partial=1303|declined=6109|instructions=8778|variables=1062|versions=2608|phis=928|copies=2308|undef_operands=193|dead_blocks=451|undef_uses=1225'
+# 0594. AND AGAIN WITH THE NEXT TWO: files 236 -> 238, functions 1,308 -> 1,323,
+# partial 1,303 -> 1,318, declined 6,109 -> 6,163, instructions 8,778 -> 8,827,
+# variables 1,062 -> 1,074, versions 2,608 -> 2,623, phis 928 -> 929,
+# copies 2,308 -> 2,310, dead_blocks 451 -> 455, undef_uses 1,225 -> 1,244.
+$SSA_COST = 'files=238|unreadable=0|functions=1323|converted=5|partial=1318|declined=6163|instructions=8827|variables=1074|versions=2623|phis=929|copies=2310|undef_operands=193|dead_blocks=455|undef_uses=1244'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -849,7 +867,7 @@ $SSA_COST = 'files=236|unreadable=0|functions=1308|converted=5|partial=1303|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '104'
+$NARRATIVE_CHAPTERS = '105'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

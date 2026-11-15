@@ -368,3 +368,63 @@ test "0592: a rule's terms are VARIABLES and a fact's terms are VALUES" {
   let s = @flow.datalog_solve(p.program)
   assert_eq(dtest_rel(s, "VarPointsTo"), "VarPointsTo(b, o1)")
 }
+
+///|
+test "0594: a program with MORE PREDICATES THAN STRATA evaluates EVERY stratum -- p.91" {
+  // THE BUG THIS ROW PINS, and it is a bug in the ENGINE and not in a rule.
+  //
+  // The deck's taint program (p.91) has three IDB predicates -- `VarPointsTo`,
+  // `FieldPointsTo` and `TaintFlow` -- and they fall into TWO strata, because
+  // `VarPointsTo` and `FieldPointsTo` are genuinely MUTUALLY RECURSIVE: the deck's
+  // Load rule reads the field relation and its Store rule reads the pointer
+  // relation. So the first stratum holds TWO predicates.
+  //
+  // The strata-ordering loop counted PREDICATES against the number of GROUPS, so
+  // `used.length()` reached 2 while `groups.length()` was 2 and the loop EXITED
+  // with the second group never evaluated. The `TaintFlow` rule was never run.
+  //
+  // THE SYMPTOM WAS INVISIBLE FROM THE ANSWER: the program derived
+  // `VarPointsTo(s, t3)` -- the tainted datum reached the sink's argument -- and
+  // derived NO flow from it. The relation was right, the rule was right and the
+  // program was right; what was missing was a STRATUM.
+  //
+  // AND IT NEEDS A PROGRAM WITH MORE PREDICATES THAN STRATA TO SHOW UP, which is
+  // why the engine's own rows did not catch it: they have one or two predicates in
+  // one stratum, and there the count and the group count agree.
+  let rules = "VarPointsTo(x, o) <- New(x, o).\n" +
+    "VarPointsTo(x, o) <- Assign(x, y), VarPointsTo(y, o).\n" +
+    "FieldPointsTo(oi, f, oj) <- Store(x, f, y), VarPointsTo(x, oi), VarPointsTo(y, oj).\n" +
+    "VarPointsTo(y, oj) <- Load(y, x, f), VarPointsTo(x, oi), FieldPointsTo(oi, f, oj).\n" +
+    "VarPointsTo(r, t) <- CallGraph(l, m), Source(m), CallReturn(l, r), Taint(l, t).\n" +
+    "TaintFlow(j, l, i) <- CallGraph(l, m), Sink(m, i), Argument(l, i, ai), VarPointsTo(ai, t), Taint(j, t)."
+  let parsed = @flow.datalog_parse(rules)
+  assert_eq(parsed.ok, true)
+  assert_eq(parsed.program.rules.length(), 6)
+  // THREE predicates and TWO strata: the two mutually recursive ones share a
+  // stratum and `TaintFlow` has one of its own.
+  let strata = @flow.datalog_strata(parsed.program)
+  assert_eq(strata.length(), 2)
+  assert_eq(strata[0].length(), 2)
+  assert_eq(strata[1].length(), 1)
+  assert_eq(strata[1][0], "TaintFlow")
+  // AND THE SECOND STRATUM IS EVALUATED, which is the whole point: the deck's own
+  // program, with the deck's own facts, derives the deck's own triple.
+  let facts = @flow.datalog_parse(
+    "New(x, o2).\nAssign(y, x).\nStore(x, f, pw).\nLoad(s, y, f).\n" +
+    "CallGraph(3, get_password).\nSource(get_password).\nCallReturn(3, pw).\nTaint(3, t3).\n" +
+    "CallGraph(7, log).\nSink(log, 0).\nArgument(7, 0, s).\n",
+  )
+  let prog = @flow.dprog()
+  for f in facts.program.facts {
+    prog.facts.push(f)
+  }
+  for r in parsed.program.rules {
+    prog.rules.push(r)
+  }
+  let s = @flow.datalog_solve(prog)
+  assert_eq(s.ok, true)
+  // The tainted datum reaches the sink's argument ...
+  assert_eq(@flow.datalog_has(s, "VarPointsTo", ["s", "t3"]), true)
+  // ... AND THE FLOW IS DERIVED, which is what the missing stratum took away.
+  assert_eq(@flow.datalog_has(s, "TaintFlow", ["3", "7", "0"]), true)
+}
