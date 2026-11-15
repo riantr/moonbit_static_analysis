@@ -417,7 +417,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # and this repository's own source carries 1,914 (it carried 1,907). The
 # 7 notices are the type-sensitivity variant and its test file, and the own-source table
 # below says which kinds they are: one `struct` declaration and six `test` declarations.
-$NOTICE_TOTAL = '23259'
+# 0586. THE PIN MOVED, 23,259 -> 23,277, and THE MOVEMENT IS THIS INCREMENT'S
+# OWN SOURCE: the seven corpora carry 21,345 notices, exactly what they
+# carried before -- each one still MATCHes its pinned baseline, MEASURED --
+# and this repository's own source carries 1,932 (it carried 1,914). The
+# eighteen notices are the taint analysis and its test file, and the own-source
+# table below says which kinds they are: fourteen `test` declarations and four
+# `struct` declarations.
+$NOTICE_TOTAL = '23277'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -495,8 +502,14 @@ $NOTICE_TOTAL = '23259'
 # the one `struct` declaration and six `test` declarations are the own-source table's
 # movements: the new declarations all sit OUTSIDE every function's
 # extent, so they are counted by shape. The corpora did not move.
+# 0586. THE SPLIT MOVED WITH THE OWN SOURCE: 3,971 + 19,288 ->
+# 3,971 + 19,306. The PRINTED half did not move AT ALL, and the aggregated half
+# grew by eighteen, and the eighteen are the own-source table's two movements:
+# the fourteen new `test` declarations and the four new `struct` declarations
+# all sit OUTSIDE every function's extent, so they are counted by shape. The
+# corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19288'
+$NOTICE_SPLIT_AGGREGATED = '19306'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -551,10 +564,18 @@ $NOTICE_SPLIT_AGGREGATED = '19288'
 # 1,750 -> 1,757 aggregated, and 1,907 -> 1,914 notices. The notice table's
 # moving rows are one `struct` declaration and six `test` declarations.
 # The PRINTED half did not move, at 157.
-$SELF_FILES = '244'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=26|if expression=100|short lambda=8|struct declaration=92|test declaration=1625|try expression=1|type declaration=7'
+# 0586. THE OWN-SOURCE PINS MOVED, and the movement is this increment's own
+# source again: 244 -> 246 files (the taint analysis and its test file),
+# 1,757 -> 1,775 aggregated, and 1,914 -> 1,932 notices. The notice table's
+# moving rows are the `test declaration` row (1625 -> 1639, the fourteen new
+# rows) and the `struct declaration` row (92 -> 96, the `TaintSpec`, the
+# `TaintFlow`, the `TaintResult` and the `SourceSite`). The PRINTED half did
+# not move, at 157, because every one of the eighteen new declarations sits
+# OUTSIDE every function's extent.
+$SELF_FILES = '246'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=26|if expression=100|short lambda=8|struct declaration=96|test declaration=1639|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1757'
+$SELF_AGGREGATED = '1775'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -705,7 +726,21 @@ $SUPPOFF_PARAM = '1343'
 # phis 886 -> 885,
 # copies 2,133 -> 2,131,
 # undef_uses 1,111 -> 1,117,
-$SSA_COST = 'files=226|unreadable=0|functions=1174|converted=5|partial=1169|declined=5650|instructions=8200|variables=980|versions=2432|phis=885|copies=2131|undef_operands=181|dead_blocks=397|undef_uses=1117'
+# 0586. THE PIN MOVED AGAIN, and the movement is the SAME KIND: this
+# increment's own source grew.
+# files 226 -> 228,
+# functions 1,174 -> 1,200,
+# partial 1,169 -> 1,195,
+# declined 5,650 -> 5,701,
+# instructions 8,200 -> 8,226,
+# variables 980 -> 989,
+# versions 2,432 -> 2,448,
+# phis 885 -> 890,
+# copies 2,131 -> 2,141,
+# undef_operands 181 -> 184,
+# dead_blocks 397 -> 397,
+# undef_uses 1,117 -> 1,124,
+$SSA_COST = 'files=228|unreadable=0|functions=1200|converted=5|partial=1195|declined=5701|instructions=8226|variables=989|versions=2448|phis=890|copies=2141|undef_operands=184|dead_blocks=397|undef_uses=1124'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

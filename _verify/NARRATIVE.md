@@ -17239,6 +17239,17 @@ every path it names has to exist in the tree -- which is what
                                 k-limiting, the call rule, the CONTEXT-   (pta_heap_ctx.mbt -- the CONTEXT-SENSITIVE HEAP, both of
                                 SENSITIVE HEAP (p.28-56), the TYPE        the deck's p.56 columns), 0582 (pta_variants.mbt -- the
                                 variant (p.170-176)                       TYPE variant and the three-way comparison)
+    13_Security.pdf (86p)       information flow, security levels,         §1's information-flow
+                                noninterference, confidentiality vs.        relation IS the pointer
+                                integrity, explicit vs. covert flows,       analysis's own (0547 -- the
+                                taint analysis: sources, sinks, the        deck's p.24 asks "Looks like
+                                rules, TaintFlows                         pointer analysis? You will
+                                                                          see ..." and p.70 answers it);
+                                                                          0586 (taint.mbt -- the TAINT
+                                                                          LAYER: the deck's source and
+                                                                          sink rules over the pointer
+                                                                          analysis, and the deck's own
+                                                                          TaintFlows triple)
 
 THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
 lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
@@ -18088,8 +18099,9 @@ NOTHING IN DECK 8_PTA's FOUR-FACTOR TABLE. All eight choices are built: allocati
 (0547), context-insensitive (0547), flow-insensitive (0547), whole-program (0547),
 flow-sensitive (0548), context-sensitive (0575), demand-driven (0575), storeless (0576).
 
-THE OTHER DECKS ARE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
-16_Soundiness.pdf are in the same directory as 9-10 and 11-12 and have not been read.
+THE OTHER DECKS WERE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
+16_Soundiness.pdf are in the same directory as 9-10 and 11-12. 0586 HAS SINCE READ
+13_Security.pdf; the other three are still unread.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
@@ -18150,9 +18162,9 @@ NOTHING IN DECKS 1-8. Every cell of the course's four-factor pointer-analysis ta
 allocation-site, context-insensitive, flow-insensitive and whole-program (0547), flow-sensitive
 (0548), context-sensitive and demand-driven (0575), storeless (0576).
 
-THE OTHER DECKS ARE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
-16_Soundiness.pdf sit in the same directory as the ones this series read, and they have not
-been read.
+THE OTHER DECKS WERE STILL DECKS: 13_Security.pdf, 14_Datalog.pdf, 15_IFDS.pdf and
+16_Soundiness.pdf sit in the same directory as the ones this series read. 0586 HAS SINCE
+READ 13_Security.pdf; the other three are still unread.
 
 ## 0578: 0.4.47 SHIPPED, AND THE PUBLISHED BYTES NOW REPORT WHAT THE RELEASE PROMISED
 
@@ -18895,3 +18907,174 @@ AND THE GATE DEMANDED THE ROW: after the publish, `_verify/check_transfer_scope.
 RED with "v0.4.48 is TAGGED but the record has no published-bytes row for it. A reader of
 that release cannot check the bytes they were given." The record that names the bytes is
 not a courtesy -- it is a gate requirement, and it became one the moment the tag existed.
+
+
+
+## 0586: THE TAINT LAYER -- the security deck's fourth chapter, on the pointer analysis this tree already has
+
+THE DECK. `13_Security.pdf` -- *Static Analysis for Security* (Tian Tan, Nanjing University),
+86 pages, four chapters: 1. Information Flow Security (p.12-36), 2. Confidentiality and
+Integrity (p.38-43), 3. Explicit Flows and Covert Channels (p.45-62), 4. Taint Analysis
+(p.64-85).
+
+THE AUDIT FOUND ONE CELL ABSENT, AND IT IS CHAPTER 4. Everything else is either already in the
+tree, or is a boundary the deck itself states.
+
+    the information-flow relation x -> y     PRESENT, and the deck says so itself: p.24
+    (p.22-24)                               asks "Looks like pointer analysis? You will
+                                            see ..." and p.70 answers it. This tree's four
+                                            pointer-analysis rules (0547) ARE those flows.
+    the security levels and their lattice    the lattice FRAMEWORK is present
+    (p.25-28)                               (src/flow/lattice.mbt, 0545) but no SECURITY
+                                            lattice is instantiated -- and the deck's own
+                                            chapter 4 is its two-level instance, so the
+                                            label this increment adds IS that instance.
+    the noninterference property (p.29-36)  ABSENT, and it is a RELATIONAL property: two
+                                            runs of the program with different high
+                                            inputs. No may-analysis answers it.
+    confidentiality vs. integrity (p.38-43) ABSENT as two analyses; they are the two
+                                            APPLICATIONS of one taint analysis (p.67: the
+                                            source is the source of secret data, or the
+                                            source of untrusted data; the sink is the
+                                            leakage, or the critical operation).
+    the explicit flows (p.45-46)            PRESENT -- they are the taint analysis's
+                                            Assign, Store and Load.
+    the covert channels (p.47-62)           ABSENT BY THE DECK'S OWN DECISION. p.61-62:
+                                            "Explicit flows generally carry more information
+                                            than covert channels, so we focus on explicit
+                                            flows".
+    the taint analysis (p.64-85)            ABSENT -- and THIS CHAPTER IS IT.
+
+### THE SEED IS THE WHOLE DIFFERENCE
+
+THE DECK'S p.70 IS THE SLIDE THAT DECIDES HOW THIS IS BUILT: "Taint and Pointer Analysis,
+Together". The deck treats tainted data as OBJECTS (p.71-72: "Tainted data t_i, t_j in T
+subset O"), treats a source as an ALLOCATION SITE, and propagates taint with the pointer
+analysis's OWN rules (p.75). So the taint analysis here is NOT A SECOND POINTER ANALYSIS: it
+is the pointer analysis this tree already has, with ONE EXTRA OBJECT PER SOURCE CALL SITE.
+
+THE SOURCE RULE (p.74) is the seed:
+
+    Call | l: r = x.k(a1,...,an) | l -> m in CG ; m in Sources => t_l in pt(r)
+
+and the deck's own worked example prints the tainted datum INSIDE the points-to set of the
+variable the source call was bound to (p.79): `pw -> o11, t3`. So a tainted datum is an
+object named after its CALL SITE (`t3`, the way an allocation site is named `o3`), and it
+starts in the points-to set of the call's result. Everything after that is the deck's four
+rules -- New, Assign, Store, Load -- which `pta.mbt` already implements, IN ONE PLACE, and
+which this file CALLS rather than copies.
+
+### THE DECK'S OWN EXAMPLE, REPRODUCED LINE FOR LINE
+
+The deck's program (p.77) is seven statements, and the deck walks it one slide at a time. It
+is JAVA, so the fixture here is its MoonBit translation with THE DECK'S OWN LINE NUMBERS --
+and the line numbers are not decoration: they are the deck's IDENTIFIERS, because the deck
+names an object after its allocation site's line, a tainted datum after its call site's line,
+and the triple it prints is three call sites.
+
+    2    let x = A::{ f: "" }        -- the deck's `A x = new A()`
+    3    let pw = get_password()     -- the deck's `String pw = getPassword()`
+    4    let y = x                   -- the deck's `A y = x`
+    5    x.f = pw                    -- the deck's `x.f = pw`
+    6    let s = y.f                 -- the deck's `String s = y.f`
+    7    log(s)                      -- the deck's `log(s)`
+
+WHAT COMES OUT, against the deck's own slides:
+
+    deck p.79   x -> o2                    ours   x -> {o2}
+    deck p.79   pw -> o11, t3              ours   pw -> {t3}
+    deck p.81   y -> o2                    ours   y -> {o2}
+    deck p.82   o2.f -> o11, t3            ours   o2.f -> {"",t3}
+    deck p.83   s -> o11, t3               ours   s -> {"",t3}
+    deck p.84   TaintFlows: { <3,7,0> }    ours   flow <3, 7, 0>
+
+THE DECK'S ANSWER IS THE SAME. The triple is the deck's own, reproduced EXACTLY.
+
+AND THE ONE DIFFERENCE IS MEASURED, NOT ASSUMED. The deck's `o11` is the object the source
+call RETURNED -- `new String(...)` on line 11, inside `getPassword` -- and this tree's pointer
+analysis does not model what a call returns (`pta.mbt`: "a call that happens to return a
+fresh object is exactly what this analysis does not model"). So there is no `o11` here, and
+`pw` points to the tainted datum ALONE. The MoonBit translation fills the field instead of
+leaving it null, and a string literal is an object (p.59), so the field also holds `""`.
+
+### THE SOURCES AND THE SINKS ARE PARAMETERS
+
+p.73 makes them two sets the analyst supplies: "Sources = a set of source methods", "Sinks = a
+set of sink methods with sensitive arguments". The deck's own example uses `getPassword()` and
+`log(String)` -- two functions of the program under analysis, and neither one is a name any
+toolchain defines. A taint analysis that carried its own list of source names would be
+answering a DIFFERENT question -- "does untrusted data reach this sink?" as a guess about the
+analysed project rather than a fact about it -- so `TaintSpec` carries the two sets and the
+analysis reads them.
+
+### THE BOUNDARIES ARE THE DECK'S OWN
+
+FOUR THINGS ARE NOT BUILT, AND NONE OF THEM IS AN OMISSION.
+
+    the implicit flows (p.47-58)     the deck's OWN words (p.61-62): "Explicit flows
+                                      generally carry more information than covert channels,
+                                      so we focus on explicit flows". A branch on tainted
+                                      data, a termination channel, a timing channel and an
+                                      exception channel are all out of scope BY THE DECK.
+    the security levels (p.25-28)    a level is a LATTICE element and the policy is an
+                                      ORDER on it. This increment's label is the deck's
+                                      two-level instance, and the tree's lattice framework
+                                      (src/flow/lattice.mbt) is where a wider lattice would
+                                      go.
+    the noninterference (p.29-36)    a RELATIONAL property: two runs of the program with
+                                      different high inputs, and the claim is about the
+                                      PAIR. No may-analysis answers it, and a may-analysis
+                                      that pretended to would be the worst kind of wrong.
+    the call rule across bodies      the deck's p.75 propagates a call's result into the
+    (p.75's Call row)                caller and the caller's arguments into the callee. The
+                                      pointer analysis this is built on has ONE MAP PER
+                                      FUNCTION -- its own stated restriction -- so the
+                                      analysis is INTRAPROCEDURAL, and that is the SAME
+                                      boundary the pointer analysis already has.
+
+### THE PINS THAT MOVED
+
+EVERY PIN MOVED BECAUSE THIS INCREMENT'S OWN SOURCE GREW: the taint analysis and its test
+file. The seven corpora did not move at all -- each one still MATCHes its pinned baseline,
+MEASURED -- and the movement is therefore this tree's own code getting bigger.
+
+    own-source files        244 -> 246      (the taint analysis and its test file)
+    own-source notices    1,914 -> 1,932    (printed 157 -> 157, aggregated 1,757 -> 1,775)
+    the notice table       `test` declaration 1625 -> 1639, `struct` declaration 92 -> 96
+    the eight-tree total  23,259 -> 23,277  (the seven corpora did not move)
+    the eight-tree split   3,971 + 19,288 -> 3,971 + 19,306
+    the suppression pair     694 / 1,343 -> 694 / 1,343   (DID NOT MOVE)
+    the SSA cost           files 226 -> 228, functions 1,174 -> 1,200,
+                           partial 1,169 -> 1,195, declined 5,650 -> 5,701,
+                           instructions 8,200 -> 8,226, variables 980 -> 989,
+                           versions 2,432 -> 2,448, phis 885 -> 890,
+                           copies 2,131 -> 2,141, undef_operands 181 -> 184,
+                           dead_blocks 397 -> 397, undef_uses 1,117 -> 1,124
+    the test counts        1,625 -> 1,639 on wasm, 1,483 -> 1,497 on js and wasm-gc
+
+THE PRINTED HALF DID NOT MOVE, and that is the check that the two numbers are still the same
+fact: all eighteen new notices are DECLARATIONS -- fourteen `test` declarations and four
+`struct` declarations -- and a declaration sits OUTSIDE every function's extent, so it hides
+nothing and is counted by shape.
+
+THE SUPPRESSION-OFF PAIR DID NOT MOVE EITHER, and it is worth saying why rather than leaving
+it as a coincidence: the pair counts the bindings the region suppression hides, and every
+binding the taint analysis declares is READ by the analysis -- the two source sets, the two
+sink sets, the map, the sites, the flows. Nothing is declared and never read.
+
+### THE SENTENCE TWO EARLIER CHAPTERS WROTE, CORRECTED IN PLACE
+
+0576 and 0577 each said, in the present tense, that `13_Security.pdf` "has not been read".
+That was true when they were written and it is false now, so both sentences are corrected in
+place, and the correction is recorded here rather than left silent.
+
+### WHAT IS STILL OPEN
+
+THE DECK'S REMAINING CELLS ARE CHAPTER 1's SECURITY LEVELS AND NONINTERFERENCE, AND CHAPTER
+3's COVERT CHANNELS -- all four of them stated above with the reason each one is out of
+scope, and none of them a gap that a smaller implementation would close.
+
+THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the
+same directory as the ones this series read, and they have not been read.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.

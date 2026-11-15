@@ -347,6 +347,16 @@ pub fn ssa_of(Ir) -> SsaIr
 
 pub fn[T] states_after(Int32, Array[T], (Int32, T) -> T) -> Array[T]
 
+pub fn taint_analyze(Array[Cfg], TaintSpec) -> TaintResult
+
+pub fn taint_spec_empty() -> TaintSpec
+
+pub fn taint_spec_sink(TaintSpec, String, Int32) -> Unit
+
+pub fn taint_spec_source(TaintSpec, String) -> Unit
+
+pub fn taint_text(TaintResult) -> String
+
 pub fn widen_interval(Interval, Interval, Array[Int32]) -> Interval
 
 // Errors
@@ -697,6 +707,23 @@ pub(all) struct SsaIr {
   cost : SsaCost
 }
 pub fn SsaIr::dump(Self) -> String
+
+pub(all) struct TaintFlow {
+  src_line : Int32
+  sink_line : Int32
+  arg : Int32
+  sink_span : @core.Span
+}
+
+pub(all) struct TaintResult {
+  pts : Array[Map[String, Map[String, Bool]]]
+  flows : Array[TaintFlow]
+}
+
+pub(all) struct TaintSpec {
+  sources : Map[String, Bool]
+  sinks : Map[String, Array[Int32]]
+}
 
 pub(all) struct TraitTable {
   traits : Map[String, Bool]

@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (244 files), with the per-file printing cap lifted so the count is the
+project's own source (246 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
-| notice | n | | notice | n | |
+| notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1625 | | `const` declaration | 7 |
+| `test` declaration | 1639 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 92 | | `type` declaration | 7 |
+| `struct` declaration | 96 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 26 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1757** sit outside every function's
+audit off, so they are printed one per line; the other **1775** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,259** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,277** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,288** as aggregated — which is 3,971 + 19,288 = 23,259, the same number — and the 3,971
+**19,306** as aggregated — which is 3,971 + 19,306 = 23,277, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -691,7 +691,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **694** `UnusedLocal` and **1,343** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 244 files the notice table
+seven pinned corpora and this repository's own source — the same 246 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -1140,6 +1140,61 @@ where the call-site and the object variants keep them apart.
 context are all **measurements**, and this tree's pointer analyses are library-level rather than
 part of the report pipeline. The family roster is unchanged at seventeen.
 
+### And a tainted datum is an object, so taint IS the pointer analysis
+
+`src/flow/taint.mbt` is the **security** lecture's fourth chapter — *Static Analysis for
+Security* (Tian Tan, Nanjing University), p.64-85 — and p.70 is the slide that decides how it
+is built: **"Taint and Pointer Analysis, Together"**. The deck treats tainted data as
+**objects** (p.71-72: *"Tainted data t_i, t_j ∈ T ⊂ O"*), treats a source as an **allocation
+site**, and propagates taint with the pointer analysis's **own** rules (p.75). So this is
+**not a second pointer analysis**: it is the pointer analysis this tree already has
+(`src/flow/pta.mbt`), with **one extra object per source call site**.
+
+**THE SEED IS THE WHOLE DIFFERENCE.** The deck's source rule (p.74) reads
+`m ∈ Sources ⇒ t_l ∈ pt(r)`, and the deck's worked example prints the tainted datum **inside**
+the points-to set of the variable the source call was bound to — `pw → o11, t3`. So a tainted
+datum is an object named after its **call site** (`t3`, the way an allocation site is named
+`o3`), and it starts in the points-to set of the call's result. Everything after that is the
+deck's four rules — New, Assign, Store, Load — which `pta.mbt` already implements **in one
+place**, and which this file *calls* rather than copies.
+
+**THE OUTPUT IS THE DECK'S TRIPLE.** p.73 defines it — *"(i, j, k) = tainted data from call
+site i may flow to the k-th argument of call site j"* — and p.84 prints the deck's own answer
+to its own example: **`TaintFlows: { ⟨3, 7, 0⟩ }`**. The example is reproduced **line for
+line**: the allocation on line 2 is `o2`, the source call on line 3 creates `t3`, the copy on
+line 4 shares `o2`, the store on line 5 and the load on line 6 carry `t3`, and the sink on
+line 7 reports the deck's own triple. `src/flow/taint_test.mbt` pins every one of those
+tables.
+
+**ONE DIFFERENCE FROM THE DECK'S TABLES, AND IT IS MEASURED.** The deck's `o11` is the object
+the source call **returned** (`new String(…)` on line 11, inside `getPassword`), and this
+tree's pointer analysis does not model what a call returns — so there is no `o11` here, and
+`pw` points to the tainted datum **alone**. The MoonBit translation fills the field instead
+of leaving it null, so `o2.f` also holds the field's initial value. The deck's **answer** —
+the triple — is the same.
+
+**THE SOURCES AND THE SINKS ARE PARAMETERS, AND THAT IS THE DECK'S OWN SHAPE.** p.73 makes
+them two sets the analyst supplies: *"Sources = a set of source methods"*, *"Sinks = a set of
+sink methods with sensitive arguments"*. The deck's own example uses `getPassword()` and
+`log(String)` — two functions of the program under analysis, and neither one is a name any
+toolchain defines. A taint analysis that carried its own list of source names would be
+answering a different question, so `TaintSpec` carries the two sets and the analysis reads
+them.
+
+**AND THE BOUNDARIES ARE THE DECK'S OWN, NOT THE IMPLEMENTATION'S.** The deck itself says
+(p.61-62) *"Explicit flows generally carry more information than covert channels, so we focus
+on explicit flows"* — so the **implicit** flows (a branch on tainted data, a termination
+channel, a timing channel, an exception channel) are out of scope **by the deck's own
+decision**. The **security levels** (p.25-28) and the **noninterference** property (p.29-36)
+are out of scope for a different reason: a level is a lattice element and the policy is an
+order on it, while a noninterference claim is a **relational** property over two runs of the
+program with different high inputs, and no may-analysis answers it. And the analysis is
+**intraprocedural**, because the pointer analysis it is built on is one map per function.
+
+**AND IT STILL SPEAKS NO NEW FAMILY.** The taint analysis is a **library-level** capability
+in `src/flow`, like the pointer analyses above it: it computes the deck's triples and hands
+them to a caller. The family roster is unchanged at seventeen.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1259,7 +1314,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1625/1625 on wasm; 1483/1483 on js and wasm-gc
+moon test --deny-warn                # 1639/1639 on wasm; 1497/1497 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -1482,3 +1537,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 - Nanjing University, *Static Program Analysis* (Yue Li, Fall 2026) — the lecture series this
   tool's analyses follow; the map of what this tree implements is in `_verify/NARRATIVE.md`
   §0564
+- Nanjing University, *Static Analysis for Security* (Tian Tan) — the security lecture the
+  taint analysis (`src/flow/taint.mbt`) follows; its chapter 4 is the taint rules and its own
+  worked example is the oracle
