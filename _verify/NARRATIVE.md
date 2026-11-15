@@ -20136,3 +20136,113 @@ THE OTHER DECKS ARE STILL DECKS: 15_IFDS.pdf and 16_Soundiness.pdf sit in the sa
 directory as the ones this series read, and they have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0596: 0.4.50 SHIPPED, AND THE PUBLISHED ARTIFACT CHANGED BY EXACTLY TWO BYTES
+
+The release is out, so the numbers that can only be read AFTER a publish are recorded: the
+registry's own checksum and created_at, and the SHA-256 and size of the wasm the registry
+actually serves.
+
+    tag        v0.4.50  ->  96784ea  on BOTH remotes
+    CI         gate     43722896984  (master push)  success
+               gate     43722905375  (tag push)    success
+               publish  43722905370                  success
+    registry   latest_version = 0.4.50   build_status = success
+                checksum    65b0b1653bed7b7415ea5569a2134061413a077380fbbe9478d843cb78bc3796
+                created_at  2026-11-15T14:11:03.031993+00:00
+
+    published 0.4.50  wasm 0138A07D1FB7774D4E75403A4693D332F93E46135E263FEB79EF9301380A273F  706965 bytes  checksum 65b0b1653bed7b7415ea5569a2134061413a077380fbbe9478d843cb78bc3796  2026-11-15T14:11:03.031993+00:00
+
+THE HASH IS READ, NOT TYPED, and the reader is SELF-CHECKED before it is trusted: it reproduced
+the 0.4.49 row (wasm 17002698373CA063..., 706965 bytes) byte for byte BEFORE it was applied to
+0.4.50. A reader that has never reproduced a known row is not a reader, it is a guess.
+
+### AND THE ARTIFACT CHANGED BY EXACTLY TWO BYTES, AND THEY ARE THE VERSION DIGITS
+
+    published 0.4.49  706965 bytes
+    published 0.4.50  706965 bytes      (+0)
+    bytes differing in the 706965-byte common prefix: 2
+
+    offset 706892   '4' -> '5'
+    offset 706893   '9' -> '0'
+    ... riantr/moonbit_static_analysis@0.4.49  ->  ...@0.4.50
+
+SO THE PUBLISHED CLI ARTIFACT DOES NOT CARRY THE DATALOG ENGINE, and the reason is MEASURED
+rather than guessed: every non-test caller of the engine is inside the engine's own files.
+
+    src/flow/datalog.mbt            datalog_check, datalog_solve, datalog_strata,
+                                    datalog_tuples, datalog_has
+    src/flow/datalog_pointer.mbt    dl_pointer_answer
+    src/flow/datalog_taint.mbt      dl_taint_answer
+    src/flow/datalog_deck.mbt       dl_questions, dl_claims, dl_things
+    (and the four *_test.mbt files, which the published artifact is not built with)
+
+AND NOTHING IN `src/pipeline`, `src/report` or `src/cli` CALLS ANY OF THEM, so the published
+wasm -- which is built WITHOUT the test files -- does not carry the engine. This is 0.4.48's
+situation again, for the same measured reason, and the one release that differs (0.4.48 ->
+0.4.49) is the one whose new code IS reachable from the report pipeline.
+
+### BUT THE PUBLISHED PACKAGE DOES CARRY THE ENGINE'S SOURCE, AND IT IS THE SAME SOURCE
+
+    published 0.4.50 carries 239 .mbt files; published 0.4.49 carried 230
+    the difference is NINE, and the nine Datalog modules are exactly nine:
+
+      datalog.mbt            datalog_parse.mbt         datalog_test.mbt
+      datalog_pointer.mbt    datalog_pointer_test.mbt  datalog_taint.mbt
+      datalog_taint_test.mbt datalog_deck.mbt          datalog_deck_test.mbt
+
+AND EVERY ONE OF THE NINE IS BYTE-IDENTICAL to the local tree, measured file by file.
+
+BUILT and AVAILABLE ARE DIFFERENT CLAIMS. The artifact is the CLI; the package is the library a
+MoonBit program can depend on, and the engine IS in the published package -- as source, which
+is how a MoonBit package ships code at all.
+
+### AND THE PUBLISHED ARTIFACT STILL FIRES THE FAMILY, AT THE PUBLISHED COORDINATE
+
+THE STRONGEST STATEMENT AVAILABLE, and it is measured rather than argued: the artifact the
+registry serves was asked whether tainted data reaches a sink, on a three-line program.
+
+    published 0.4.50, with --taint-source readInput --taint-sink log:0
+
+        12:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+               'readInput' (TaintFlow) [structural, MSA-018, high]
+        SUMMARY  files=1  parsed=1  actionable=1
+
+AND THE CONTROL, which is what makes the row above mean something: the SAME published artifact
+on the SAME program WITHOUT the taint specification reports `actionable=0`. So the zero is the
+specification's doing and not the analyzer's.
+
+AND THE PUBLISHED 0.4.49 ARTIFACT ANSWERS THE SAME QUESTION THE SAME WAY, which is exactly what
+a two-byte difference predicts.
+
+### AND THE PUBLISHED TREE SCANS ITS OWN SHIPPED SOURCE CLEAN
+
+    published 0.4.50   257 files, 257/257 parsed, actionable=0, notices 2013, unreliable=0
+    the host contract   exactly the 93 contracted symbols, and the toolchain's bundled core
+                        covers all 93
+
+AND THE LOCAL SELF-SCAN reads 258 files against the published tree's 257, and the ONE file of
+difference is measured: `src/lexer/lexer_0488_test.mbt`, an untracked scratch file an earlier
+session left in the tree. The self-scan counts it; the published package does not carry it.
+
+### AND THE CONTROL THAT PREVENTED A FALSE CLAIM
+
+THE QUESTION "does the published artifact carry the engine?" WAS ASKED, and the ANSWER WAS
+MEASURED FIRST: `TaintFlow`, `MSA-018`, `DeadStore`, `MSA-015`, `UnusedLocal` and `taint_analyze`
+appear ZERO times in BOTH the 0.4.49 and the 0.4.50 artifacts, while the coordinate string
+`riantr/moonbit_static_analysis@0.4.50` IS present. So the strings are not stored literally in
+this artifact -- which is a fact about the BINARY and not about the release -- and the absence
+of "datalog" in the bytes would therefore have said NOTHING about whether the engine is in it.
+
+THE CLAIM THIS CHAPTER MAKES is the one the bytes support: the artifact is the same tool
+(706,965 bytes, two version digits apart), the engine is NOT in it, and the reason is the
+measured call-site table and not a grep. The engine IS in the published PACKAGE's source, byte
+for byte, and that is where a MoonBit user gets it.
+
+### THE DECK IS DONE
+
+`14_Datalog.pdf` is covered end to end: its language (0592), its pointer analysis (0593), its
+taint analysis (0594), its first chapter and its last two pages (0595). The other two decks in
+the same directory -- `15_IFDS.pdf` and `16_Soundiness.pdf` -- have not been read, and this
+chapter does not pretend otherwise.

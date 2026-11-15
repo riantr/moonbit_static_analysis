@@ -3614,6 +3614,54 @@ vector?」。这个引擎把元组存在一个**哈希集合**里，键是带长
 p.93 的三件事全都做完了，它的五个实现问题被数清楚并回答了，它的三条优点两条缺点也与这棵树的引擎
 核对过了。讲义的动机部分和它的例子是语言本身的东西，而 0592 的读取器照单全收讲义的语法。
 
+### 已发布
+
+0.4.50 在两个远端都打了标签 `96784ea`，CI 的 `gate` 与 `publish` 在那个提交上都是绿的，registry
+以 `latest_version = 0.4.50` 提供它。
+
+    published 0.4.50  wasm 0138A07D...  706965 bytes  checksum 65b0b165...  2026-11-15T14:11:03Z
+
+**而且发布出去的字节是干净的。** 用发布坐标实测：registry 提供的那个产物扫描它自己随包发出的
+源码是 **257/257** 个文件全部解析、`actionable=0`、2013 条 notice，而且它需要的正是那 93 个
+契约主机符号，`moon.mod` 里没有 `moonbitlang/async` 依赖。
+
+**而且发布出去的产物只变了两个字节，而且就是版本号那两位。** 逐字节实测：发布的 0.4.49 是
+706965 字节，发布的 0.4.50 还是 **706965** 字节——产物**没有长大**——共同前缀里只有 **2** 个
+字节不同，在偏移 706892 和 706893 处，它们就是内嵌坐标
+`riantr/moonbit_static_analysis@0.4.49` 里的 `4` 和 `9`。
+
+**原因是实测出来的**，而且就是非测试调用点：**Datalog 引擎在它自己的文件之外没有任何非测试
+调用者。**
+
+    src/flow/datalog.mbt            datalog_check、datalog_solve、datalog_strata、
+                                    datalog_tuples、datalog_has
+    src/flow/datalog_pointer.mbt    dl_pointer_answer
+    src/flow/datalog_taint.mbt      dl_taint_answer
+    src/flow/datalog_deck.mbt       dl_questions、dl_claims、dl_things
+
+`src/pipeline`、`src/report`、`src/cli` 里没有任何东西调用它们，所以发布的 wasm——它是不带测试
+文件构建的——不携带这个引擎。**构建出来**和**可用**是两个不同的主张，而这一次它们朝相反的方向
+分开：引擎**在**发布的包里，以源码的形式，而依赖这个包的 MoonBit 程序拿到的就是它。
+
+**而且这个包确实带着它，逐字节相同**：发布的源码树有 **239** 个 `.mbt` 文件，0.4.49 是 **230**
+个，多出来的那九个正好就是九个 Datalog 模块，而且它们每一个都和本地树逐字节相同。
+
+**而且发布的产物仍然会报出那个家族**，在发布坐标上实测：带上 `--taint-source readInput
+--taint-sink log:0`，发布的 0.4.50 报出
+
+    12:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+           'readInput' (TaintFlow) [structural, MSA-018, high]
+
+而**同一个**发布的产物，在**同一个**程序上不带这个规格时报 `actionable=0`——所以那个零是规格
+带来的，不是分析器带来的。发布的 0.4.49 对同样的问题给出同样的答案，这正是两个字节之差所预测
+的。
+
+**还有一个防止虚假结论的对照。** 「发布的产物里有没有这个引擎」这个问题被问出来了，而答案是
+**先**测出来的：`TaintFlow`、`MSA-018`、`DeadStore`、`MSA-015`、`UnusedLocal` 和 `taint_analyze`
+在 0.4.49 和 0.4.50 两个产物里都出现 **0** 次，而坐标字符串是在的。所以这些字符串并没有以字面
+形式存进这个产物——那是关于**二进制**的事实而不是关于这次发布的——于是字节里没有 "datalog"
+这件事，对「引擎在不在里面」什么也说明不了。这一条记录主张的，只是字节支持得住的那一部分。
+
 ## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
 
 0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是

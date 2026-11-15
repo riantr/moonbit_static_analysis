@@ -4203,6 +4203,60 @@ answered, and its three pros and two cons are checked against this tree's engine
 motivation prose and its worked examples are the language's own, and 0592's reader takes the deck's
 syntax as it is.
 
+### PUBLISHED
+
+0.4.50 is tagged at `96784ea` on both remotes, CI's `gate` and `publish` are green on that
+commit, and the registry serves it with `latest_version = 0.4.50`.
+
+    published 0.4.50  wasm 0138A07D...  706965 bytes  checksum 65b0b165...  2026-11-15T14:11:03Z
+
+AND THE PUBLISHED BYTES ARE CLEAN. MEASURED with the published coordinates: the artifact the
+registry serves scans its own shipped source at **257/257** files parsed, `actionable=0`, notices
+2013, and it requires exactly the 93 contracted host symbols with no `moonbitlang/async`
+dependency.
+
+**AND THE PUBLISHED ARTIFACT CHANGED BY EXACTLY TWO BYTES, AND THEY ARE THE VERSION DIGITS.**
+MEASURED, byte for byte: published 0.4.49 was 706965 bytes and published 0.4.50 is **706965**
+bytes — the artifact did **not** grow — and **2** of the bytes in the common prefix differ, at
+offsets 706892 and 706893, which are the `4` and the `9` of the embedded coordinate
+`riantr/moonbit_static_analysis@0.4.49`.
+
+THE REASON IS MEASURED, and it is the non-test call sites: **THE DATALOG ENGINE HAS NO NON-TEST
+CALLER** outside its own files.
+
+    src/flow/datalog.mbt            datalog_check, datalog_solve, datalog_strata,
+                                    datalog_tuples, datalog_has
+    src/flow/datalog_pointer.mbt    dl_pointer_answer
+    src/flow/datalog_taint.mbt      dl_taint_answer
+    src/flow/datalog_deck.mbt       dl_questions, dl_claims, dl_things
+
+Nothing in `src/pipeline`, `src/report` or `src/cli` calls any of them, so the published wasm —
+which is built without the test files — does not carry the engine. **BUILT** and **AVAILABLE**
+are different claims, and here they come apart in the other direction: the engine IS in the
+published PACKAGE, as source, and a MoonBit program that depends on the package gets it.
+
+AND THE PACKAGE CARRIES IT, BYTE FOR BYTE: the published tree has **239** `.mbt` files against
+0.4.49's **230**, the nine that are new are exactly the nine Datalog modules, and every one of
+them is byte-identical to the local tree.
+
+**AND THE PUBLISHED ARTIFACT STILL FIRES THE FAMILY**, measured at the published coordinate:
+with `--taint-source readInput --taint-sink log:0` the published 0.4.50 reports
+
+    12:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+           'readInput' (TaintFlow) [structural, MSA-018, high]
+
+and the SAME published artifact on the SAME program without the specification reports
+`actionable=0` — so the zero is the specification's doing and not the analyzer's. The published
+0.4.49 answers the same question the same way, which is what a two-byte difference predicts.
+
+**AND A CONTROL THAT PREVENTED A FALSE CLAIM.** The question "does the published artifact carry
+the engine?" was asked, and the answer was measured FIRST: `TaintFlow`, `MSA-018`, `DeadStore`,
+`MSA-015`, `UnusedLocal` and `taint_analyze` appear ZERO times in BOTH the 0.4.49 and the 0.4.50
+artifacts, while the coordinate string IS present. So the strings are not stored literally in
+this artifact — a fact about the BINARY and not about the release — and the absence of "datalog"
+in the bytes therefore says NOTHING about whether the engine is in it. The claim this entry makes
+is the one the bytes support.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and
