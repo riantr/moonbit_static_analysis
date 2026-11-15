@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (252 files), with the per-file printing cap lifted so the count is the
+project's own source (254 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1672 | | `const` declaration | 7 |
+| `test` declaration | 1680 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 105 | | `type` declaration | 7 |
+| `struct` declaration | 107 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 29 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1820** sit outside every function's
+audit off, so they are printed one per line; the other **1830** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,322** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,332** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,351** as aggregated — which is 3,971 + 19,351 = 23,322, the same number — and the 3,971
+**19,361** as aggregated — which is 3,971 + 19,361 = 23,332, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1334,6 +1334,35 @@ program, and the two are compared against each other in the increment that follo
 place in the tree — so the Datalog engine is the deck's *specification*, and `src/flow/pta.mbt` is
 the tree's *implementation*, and the question the deck raises is which of them the two agree on.
 
+### And the deck's own rules can be RUN, and compared with the answer this tree already gives
+
+The lecture's claim (p.15-16) is not that Datalog is faster than a worklist. It is that **the
+rules are the specification** — "Succinct / Readable (logic-based specification) / Easy to
+implement" — and a specification you can read is one you can check. `src/flow/datalog_pointer.mbt`
+makes that claim **testable**: the deck's own four rules (p.70) are written out, the program's
+statements become the deck's own EDB relations, the rules are **run**, and the answer is
+**compared** with the one `pta_run` gives on the same program.
+
+**THE RULES ARE TEXT, NOT CODE.** A rule built in code is the imperative form wearing a hat; a
+rule that is text can be read, printed, and compared with the slide. The four rules are in the
+deck's own order and its own words, and they come back out verbatim.
+
+**AND THE COMPARISON CAN DISAGREE, AND WHEN IT DOES THE DIFFERENCE IS NAMED.** A comparison
+that can only say "yes" is not a comparison. On the deck's p.28-29 program — `p = new C();
+q = p; x = new X(); y = new Y();` — the two readings **agree exactly** on the pointer relation:
+`p → {o1}`, `q → {o1}`, `x → {o3}`, `y → {o4}`, four tuples each.
+
+**AND ON A FIELD THAT HOLDS A STRING THEY DISAGREE, AND THE CAUSE IS THE SPECIFICATIONS' OWN.**
+`pta_run`'s field cell holds the **value** a field contains — p.59 puts `"x"` inside a points-to
+set — while the deck's `FieldPointsTo` holds the **pointers** a field points at, and a string is
+not a pointer. So on the deck's own p.57 program the deck's field relation is empty where
+`pta_run`'s holds `{"x"}`, and the two readings disagree about the reader of that field too. That
+is a fact about the two *specifications* and not an error in either, and it is reported rather
+than normalised away.
+
+**AND THE COMPARISON PRINTS BOTH ANSWERS**, side by side, because a comparison that prints a
+boolean is a thing a reader has to take on trust.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1453,7 +1482,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1672/1672 on wasm; 1530/1530 on js and wasm-gc
+moon test --deny-warn                # 1680/1680 on wasm; 1538/1538 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

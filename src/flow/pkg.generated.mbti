@@ -111,6 +111,26 @@ pub fn dgoal(DAtom) -> DGoal
 
 pub fn dgoal_neg(DAtom) -> DGoal
 
+pub fn dl_compare_text(Array[Cfg], Int32) -> String
+
+pub fn dl_fact_text(DFact) -> String
+
+pub fn dl_facts_empty() -> DlFacts
+
+pub fn dl_facts_of(Array[Cfg], Int32) -> DlFacts
+
+pub fn dl_has_fact(Array[DFact], String, Array[String]) -> Bool
+
+pub fn dl_has_tuple(Array[Array[String]], Array[String]) -> Bool
+
+pub fn dl_pointer_agrees(Array[Cfg], Int32) -> Bool
+
+pub fn dl_pointer_answer(Array[Cfg], Int32) -> DlAnswer
+
+pub fn dl_pointer_program(Array[Cfg], Int32) -> DProgram
+
+pub fn dl_pointer_rules_text() -> String
+
 pub fn dominance_frontiers(Bb, Dom) -> Array[Array[Int32]]
 
 pub fn dominators(Bb) -> Dom
@@ -597,6 +617,20 @@ pub(all) enum DTok {
   TSemi
   TBang
   TOp(String)
+}
+
+pub(all) struct DlAnswer {
+  ok : Bool
+  vpt : Array[Array[String]]
+  field : Array[Array[String]]
+  rounds : Int32
+}
+
+pub(all) struct DlFacts {
+  new : Array[DFact]
+  assign : Array[DFact]
+  store : Array[DFact]
+  load : Array[DFact]
 }
 
 pub(all) struct Dom {

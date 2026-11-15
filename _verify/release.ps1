@@ -445,7 +445,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # The thirty-two notices are the Datalog engine, its reader and its test file,
 # and they are ALL AGGREGATED: a declaration sits outside every function's
 # extent, and the PRINTED half of the split did not move at all.
-$NOTICE_TOTAL = '23322'
+# 0593. THE PIN MOVED, 23,322 -> 23,332, and THE MOVEMENT IS THIS INCREMENT'S
+# OWN SOURCE and nothing else: the seven corpora carry 21,345 notices, exactly
+# what they carried before -- each one still MATCHes its pinned baseline,
+# MEASURED -- and this repository's own source carries 1,987 (it carried 1,977).
+# The ten notices are the pointer-analysis reading and its test file, and they
+# are ALL AGGREGATED: a declaration sits outside every function's extent, and
+# the PRINTED half of the split did not move at all.
+$NOTICE_TOTAL = '23332'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -546,8 +553,12 @@ $NOTICE_TOTAL = '23322'
 # files' DECLARATIONS and not a new finding that hides one: all thirty-two are
 # AGGREGATED, because a declaration sits outside every function's extent. The
 # corpora did not move.
+# 0593. AND IT MOVED AGAIN: 3,971 + 19,351 -> 3,971 + 19,361. The PRINTED half
+# did not move AT ALL, for the same reason -- the ten new notices are the new
+# file's declarations, and a declaration sits outside every function's extent.
+# The corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19351'
+$NOTICE_SPLIT_AGGREGATED = '19361'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -636,10 +647,17 @@ $NOTICE_SPLIT_AGGREGATED = '19351'
 # are FALSE POSITIVES, and a false positive is FIXED and never pinned: both `if`s
 # became `match`es, the two variables are read again, and the printed half is
 # back where it was.
-$SELF_FILES = '252'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=29|if expression=100|short lambda=8|struct declaration=105|test declaration=1672|try expression=1|type declaration=7'
+# 0593. THE OWN-SOURCE PINS MOVED AGAIN, and the movement is this increment's own
+# source: 252 -> 254 files (the pointer-analysis reading and its test file),
+# 1,820 -> 1,830 aggregated, and 1,977 -> 1,987 notices. The PRINTED half did
+# NOT move again, and the notice table's ONLY moving rows are the `test`
+# declaration row (1,672 -> 1,680, the eight new rows) and the `struct`
+# declaration row (105 -> 107, the two new structs) -- and a declaration sits
+# OUTSIDE every function's extent, so it hides nothing.
+$SELF_FILES = '254'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=29|if expression=100|short lambda=8|struct declaration=107|test declaration=1680|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1820'
+$SELF_AGGREGATED = '1830'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -809,7 +827,12 @@ $SUPPOFF_PARAM = '1341'
 # instructions 8,324 -> 8,749, variables 997 -> 1,051, versions 2,473 -> 2,593,
 # phis 898 -> 927, copies 2,181 -> 2,306, undef_operands 186 -> 193,
 # dead_blocks 404 -> 449, undef_uses 1,135 -> 1,215.
-$SSA_COST = 'files=234|unreadable=0|functions=1293|converted=5|partial=1288|declined=6060|instructions=8749|variables=1051|versions=2593|phis=927|copies=2306|undef_operands=193|dead_blocks=449|undef_uses=1215'
+# 0593. AND IT MOVED AGAIN WITH THE TWO NEW FILES: files 234 -> 236,
+# functions 1,293 -> 1,308, partial 1,288 -> 1,303, declined 6,060 -> 6,109,
+# instructions 8,749 -> 8,778, variables 1,051 -> 1,062, versions 2,593 -> 2,608,
+# phis 927 -> 928, copies 2,306 -> 2,308, dead_blocks 449 -> 451,
+# undef_uses 1,215 -> 1,225.
+$SSA_COST = 'files=236|unreadable=0|functions=1308|converted=5|partial=1303|declined=6109|instructions=8778|variables=1062|versions=2608|phis=928|copies=2308|undef_operands=193|dead_blocks=451|undef_uses=1225'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -826,7 +849,7 @@ $SSA_COST = 'files=234|unreadable=0|functions=1293|converted=5|partial=1288|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '103'
+$NARRATIVE_CHAPTERS = '104'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

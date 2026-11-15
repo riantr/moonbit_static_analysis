@@ -19802,3 +19802,107 @@ THE OTHER DECKS ARE STILL DECKS: 15_IFDS.pdf and 16_Soundiness.pdf sit in the sa
 as the ones this series read, and they have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0593: THE DECK'S POINTER RULES, RUN, AND COMPARED WITH `pta_run`
+
+THE DECK'S SECOND THING TO UNDERSTAND (p.93) is "How to implement pointer analysis via
+Datalog", and this increment is it. The deck's claim is not that Datalog is faster than a
+worklist -- it is that THE RULES ARE THE SPECIFICATION, and a specification you can read is
+one you can check (p.16: "Succinct / Readable (logic-based specification) / Easy to
+implement").
+
+SO THIS INCREMENT IS A MEASUREMENT OF THAT CLAIM and not a second pointer analysis. The
+deck's four rules (p.70) are written out, the program's statements become the deck's own
+EDB relations, the rules are RUN in the engine 0592 built, and the answer is COMPARED with
+the answer `pta_run` gives on the same program.
+
+    src/flow/datalog_pointer.mbt       the reading: the facts, the program, the answer
+                                        and the comparison
+    src/flow/datalog_pointer_test.mbt   eight rows, each naming the slide it pins
+
+### THE RULES ARE TEXT, AND NOT CODE
+
+A rule built in code is the imperative form wearing a hat. A rule that is TEXT can be read,
+printed, and compared with the slide, so the four rules are in the deck's own order and its
+own words, and the reader 0592 built reads them and writes them back verbatim.
+
+    VarPointsTo(x, o) <- New(x, o).
+    VarPointsTo(x, o) <- Assign(x, y), VarPointsTo(y, o).
+    FieldPointsTo(oi, f, oj) <- Store(x, f, y), VarPointsTo(x, oi), VarPointsTo(y, oj).
+    VarPointsTo(y, oj) <- Load(y, x, f), VarPointsTo(x, oi), FieldPointsTo(oi, f, oj).
+
+### AND THE TWO READINGS AGREE, ON THE DECK'S OWN p.28-29 PROGRAM
+
+    1 p = new C();
+    2 q = p;
+    3 x = new X();
+    4 y = new Y();
+
+THE POINTER RELATION IS THE SAME IN BOTH, four tuples each: `p -> {o1}`, `q -> {o1}`,
+`x -> {o3}`, `y -> {o4}`. And the deck's own claim about the program holds in the Datalog
+reading too: p and q ALIAS, x and y do not.
+
+AND THE OBJECT NAMES ARE THE DECK'S, and they come from `pta_site_names` -- the same function
+that names the objects for `pta_run`. That is the house rule "one fact, one place" honoured
+rather than circumvented: if the Datalog reading named its objects on its own, the two
+answers would not be comparable, and a comparison that cannot be compared is not a
+comparison.
+
+### AND ON A FIELD THAT HOLDS A STRING THEY DISAGREE, AND THE CAUSE IS NAMED
+
+THE MEASUREMENT, and it is the interesting part of the increment. `pta_run`'s FIELD CELL
+holds the VALUE a field contains -- p.59 puts `"x"` inside a points-to set, so `o1.f` holds
+`{"x"}` -- while the deck's `FieldPointsTo` holds the POINTERS a field points at, because
+its p.70 rule puts the stored VALUE's points-to set into the field relation.
+
+SO ON THE DECK'S OWN p.57 PROGRAM the deck's field relation is EMPTY where `pta_run`'s holds
+the value, and the two readings disagree about the READER of that field as well: `s` holds
+the value in `pta_run` and holds nothing in the Datalog reading, because the load rule reads
+the field relation.
+
+AND THE CAUSE IS THE TWO SPECIFICATIONS' OWN, and not an error in either: a string is a
+value and not a pointer. The disagreement is REPORTED -- the comparison returns false and
+prints both answers -- rather than normalised away, because a comparison that can only say
+"yes" is not a comparison.
+
+### AND THE FACTS COME OUT IN REVERSE SOURCE ORDER, AND THAT IS NOT A DEFECT
+
+The facts are read from the CFG's NODES, and `cfg_of` allocates those back to front -- the
+same trap `pta_source_order` exists to undo. So the facts are compared as a SET and not by
+position, and the one row that asserts an order asserts the REVERSE order, because that is
+what the measurement says.
+
+### AND A ROW THAT WAS WRONG WAS CORRECTED IN PLACE
+
+The first version of the facts row said the p.28-29 program allocates TWO objects. It
+allocates THREE -- p, x and y, and only `q` is a copy -- and the measurement corrected the
+expectation. The row now says three.
+
+### THE PINS THAT MOVED
+
+    own-source files         252 -> 254   (the reading and its test file)
+    own-source notices     1,977 -> 1,987
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated 1,820 -> 1,830
+
+THE EIGHT-TREE TOTAL moved with the own-source half, and the corpora did not move:
+
+    the eight-tree total   23,322 -> 23,332
+    the eight-tree split     3,971 + 19,351 -> 3,971 + 19,361
+
+THE PRINTED HALF DID NOT MOVE AT ALL, and the notice table's ONLY moving rows are the
+`test` declaration row (1,672 -> 1,680) and the `struct` declaration row (105 -> 107) --
+and a declaration sits OUTSIDE every function's extent, so it hides nothing.
+
+AND THE TEST COUNTS, on all three targets:
+
+    1,672 -> 1,680 on wasm, 1,530 -> 1,538 on js and wasm-gc
+
+### WHAT IS STILL OPEN
+
+THE DECK'S THIRD THING TO UNDERSTAND (p.93) IS THE NEXT INCREMENT: taint analysis via
+Datalog (p.90-91), whose model is `Source(m)`, `Sink(m, i)` and `Taint(l, t)` over the
+pointer analysis this increment's rules provide.
+
+### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
