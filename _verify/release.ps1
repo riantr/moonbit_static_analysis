@@ -796,12 +796,13 @@ $SSA_COST = 'files=231|unreadable=0|functions=1225|converted=5|partial=1220|decl
 #                   body text and the record silently lost two of its chapters. The
 #                   pin is the COUNT, and the gate also checks that every one of
 #                   them is a heading and that no chapter number is used twice.
-# 0589. THE PIN IS NEW, and the number is 100: the file carries 100 chapter
-# headings, every one of them a `## ` heading, and no chapter number twice.
+# 0589. THE PIN IS NEW, and the number is 101 at 0.4.49: the file carries 101
+# chapter headings, every one of them a `## ` heading, and no chapter number
+# twice. It was 100 through 0589 and moved to 101 with chapter 0590.
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '100'
+$NARRATIVE_CHAPTERS = '101'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

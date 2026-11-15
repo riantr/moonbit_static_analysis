@@ -70,14 +70,14 @@ analyzer could not resolve — are counted as notices and are not in that 30. On
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.4.48
+moon add riantr/moonbit_static_analysis@0.4.49
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.4.48",
+  "riantr/moonbit_static_analysis@0.4.49",
 }
 ```
 
@@ -133,7 +133,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 symbols — the same three console jobs. A toolchain bundling 0.22.5 cannot supply them.
 0.4.45 asks for those three again, plus two more, because the runtime it uses is the one
 that ships with the toolchain. If you hit that error on 0.4.38: use **0.4.37**, or
-upgrade your MoonBit toolchain, or move to **0.4.48**.
+upgrade your MoonBit toolchain, or move to **0.4.49**.
 
 One more thing to know before you upgrade: `moonbitlang/core/async` is still marked
 **experimental** by the core team, so the packages that use it say so explicitly in their
@@ -301,7 +301,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.4.48_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.4.49_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # version not determined
 ```

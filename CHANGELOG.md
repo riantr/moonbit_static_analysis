@@ -3962,6 +3962,94 @@ The verification script itself bit twice during this cycle:
 
 Criterion: **before comparing two results, prove both results exist.**
 
+## 0.4.49 — the security deck's fourth chapter, given a family; and its other three chapters, counted
+
+**WHAT THIS RELEASE IS.** The third NJU lecture deck, `13_Security.pdf` (*Static Analysis for
+Security*, Tian Tan, Nanjing University, 86 pages), is read against this tree cell by cell. Four
+chapters: information flow security, confidentiality and integrity, explicit flows and covert
+channels, and taint analysis. Three increments close it, and they are three different kinds of
+thing.
+
+| increment | what it is | does it reach a user's report? |
+|---|---|---|
+| 0586 | the taint layer — the deck's fourth chapter, on the pointer analysis this tree already has | no — a library-level measurement |
+| 0587 | the family `MSA-018 TaintFlow` — the deck's triples, as a report | **yes** |
+| 0588 | the deck's other three chapters: counted, not described | no — but it pins the boundaries |
+| 0589 | the installer ran twice — fixed, and pinned | no — the gate grows a check |
+
+### THE TAINT ANALYSIS IS BUILT ON THE POINTER ANALYSIS THIS TREE ALREADY HAS
+
+The deck's p.70 decides the shape: **"Taint and Pointer Analysis, Together"**. So there is no
+second pointer analysis here — the seed is **one extra object per source call site**, and the
+deck's own four rules (p.75: New, Assign, Store, Load) are the rules this tree already
+implements, **in one place**, and they are **called** rather than copied.
+
+The deck's own example is reproduced exactly:
+
+    deck p.84   TaintFlows: { <3,7,0> }    ours   flow <3, 7, 0>
+
+### THOSE FLOWS NOW HAVE A FAMILY: `MSA-018`, `TaintFlow`, severity Error
+
+The roster's **eighteenth**, and the first family in this tree whose claim is about a **flow**
+rather than about a place. It sits **at the sink**, because the sink call is what the reader has
+to look at, and the source is named too:
+
+    the sensitive argument 0 of 'log' may receive tainted data from 'get_password'
+
+The sources and the sinks are **parameters**, not a built-in list: `--taint-source <fn>` names a
+function whose result is tainted data, `--taint-sink <fn>:<idx>` names a sink and the index of
+its sensitive argument — `log:0` is the deck's own `<log(String), 0>`. A malformed sink is
+**refused** rather than dropped, because a dropped sink would scan the program and report
+nothing, which looks exactly like a clean program.
+
+### AND THE DECK'S OWN CHAPTER-2 EXAMPLE IS NOT REPORTED — MEASURED
+
+The deck's integrity slide (p.40) carries the shape its whole chapter is about, and p.41 names
+it: **"Injection errors (#1 cause of vulnerabilities in 2013-2019)"**. Three rows, and the third
+is the control:
+
+| the deck's program | reported |
+|---|---|
+| `cmd = "..." + x;` — concatenation | **no** |
+| `cmd = "..." \{x};` — interpolation | **no** |
+| the derived value removed | **yes** |
+
+So the zero says the **derived value** is what the analysis does not follow, and the reason is
+the pointer analysis's own expression model: a concatenation allocates a **new** string and an
+interpolated string carries a **reference** rather than an object, so the tainted datum never
+enters the derived variable's points-to set. The deck's own rule table (p.75) has four rules and
+none of them is a rule for a derived value. The shape is not theoretical: **827** sites over the
+seven pinned corpora carry a call's result into a string — **314** concatenations and **513**
+interpolations.
+
+**The rule that would close it is named, and not made.** It is *"a value derived from a tainted
+datum carries the taint"*, and it belongs to the taint layer rather than to the pointer analysis
+— which would make the taint analysis one rule **wider** than the deck's four, and would change
+what this tool claims. It is written down rather than done.
+
+### THE OTHER THREE CHAPTERS ARE COUNTED, NOT DESCRIBED
+
+Chapter 1's security levels are a **two-level** lattice here against the deck's **five** (p.28),
+so the tree answers the deck's question for two of its five levels. Chapter 1's noninterference
+is a **relational** property — a comparison over two runs — and every analysis in this tree is a
+one-run may-analysis: a different **kind** of question, not a smaller one. Chapter 3's four
+covert channels are out of scope **by the deck's own decision** (p.61-62).
+
+### AND A DEFECT IN THE DOCUMENTATION PROCESS WAS FOUND AND PINNED
+
+The installer that writes an increment's prose ran twice over the same file: one family's
+boundary text carried its paragraph **twice**, and two chapters lost their `## ` heading and
+rendered as body text. The first is fixed in place, the second is fixed, and section 9 of the
+release gate now counts headings and repeated sentences — so a prose defect cannot sit in the
+tree again without the gate saying so. The gate is shown to go red on both.
+
+### MEASURED
+
+Own-source files 244 → **249**, own-source aggregated notices 1,757 → **1,788** and the printed
+half **did not move** (157), the eight-tree total 23,259 → **23,290** split 3,971 + 19,288 →
+**3,971 + 19,319**, the family roster **17 → 18**, tests 1,625 → **1,652** on wasm and 1,483 →
+**1,510** on js and wasm-gc. The seven pinned corpora **did not move**.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

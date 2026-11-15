@@ -19375,8 +19375,8 @@ correctly -- the installer was fixed before the commit was made.
 THE MEASUREMENT, AND IT IS THREE NUMBERS. The state the double-apply left behind: 97
 chapter headings carried `## `, TWO did not (0587 and 0588), and one family's boundary text
 repeated a sentence. 0588's own heading was corrected in 0588's own commit, and this
-increment corrects 0587's, so the file now carries 100 chapter headings and NONE of them is
-missing one. The sentence check reads ALL 62 family arms in `src/core/core.mbt` -- the three
+increment corrects 0587's, so at this increment the file carries 100 chapter headings and
+NONE of them is missing one. The sentence check reads ALL 62 family arms in `src/core/core.mbt` -- the three
 functions that carry a boundary text, across all eighteen families -- and all 62 are clean.
 
 AND THE SOURCE PINS DID NOT MOVE AT ALL, and that is measured rather than asserted: this
@@ -19440,3 +19440,114 @@ chapters 0588 bounded are bounded with a count -- and the other decks are still 
 this series read, and they have not been read.
 
 ### NO CHANGE TO THE VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0590: THE RELEASE -- 0.4.49, AND THE SECURITY DECK'S FOURTH CHAPTER
+
+FOUR INCREMENTS, and they are two subjects: the third NJU lecture deck, read against this tree
+cell by cell, and a defect in the process that writes this record.
+
+### THE DECK, AND THE AUDIT
+
+`13_Security.pdf` -- *Static Analysis for Security* (Tian Tan, Nanjing University), 86 pages,
+four chapters: information flow security (p.12-36), confidentiality and integrity (p.38-43),
+explicit flows and covert channels (p.45-62), and taint analysis (p.64-85). It was read end to
+end against this tree, and the audit's answer was that ONE of its cells was absent -- chapter
+four -- and that the rest were either already here or were boundaries the deck itself states.
+
+    0586  the taint layer                              src/flow/taint.mbt
+    0587  the family MSA-018 TaintFlow                 src/pipeline/taintcheck.mbt
+    0588  the deck's other three chapters, counted     src/pipeline/taintdeck_test.mbt
+    0589  the installer ran twice -- fixed, and pinned  _verify/check_readme_links.ps1
+
+### THE TAINT ANALYSIS IS THE POINTER ANALYSIS PLUS A SEED
+
+The deck's p.70 decides the shape -- "Taint and Pointer Analysis, Together" -- so there is no
+second pointer analysis here: the seed is ONE EXTRA OBJECT PER SOURCE CALL SITE, and the deck's
+own four rules (p.75) are the rules `src/flow/pta.mbt` already implements, IN ONE PLACE, and
+they are CALLED rather than copied. The deck's own example is reproduced exactly:
+
+    deck p.84   TaintFlows: { <3,7,0> }    ours   flow <3, 7, 0>
+
+### THE FAMILY, AND IT SITS AT THE SINK
+
+`MSA-018`, `TaintFlow`, severity Error -- the roster's EIGHTEENTH, and the first family in this
+tree whose claim is about a FLOW rather than about a place. The sources and the sinks are
+PARAMETERS (`--taint-source <fn>`, `--taint-sink <fn>:<idx>`), because a taint analysis that
+carried its own list of source names would be answering a guess about the analysed project
+rather than a fact about it. A malformed sink is REFUSED rather than dropped, because a dropped
+sink would scan the program and report nothing, which looks exactly like a clean program.
+
+### THE DECK'S OWN CHAPTER-2 EXAMPLE IS NOT REPORTED, AND THAT IS MEASURED
+
+The deck's integrity slide (p.40) carries the shape its whole chapter is about, and p.41 names
+it: "Injection errors (#1 cause of vulnerabilities in 2013-2019)". Three rows, and the third is
+the CONTROL:
+
+    the deck's program, concatenation form       NOT REPORTED
+    the deck's program, interpolation form        NOT REPORTED
+    the same program, the derived value removed   REPORTED
+
+Without the third row a zero would say only that the specification did not match the program.
+So the zero says the DERIVED VALUE is what the analysis does not follow, and the reason is the
+pointer analysis's own expression model: a concatenation allocates a NEW string and an
+interpolated string carries a REFERENCE rather than an object, so the tainted datum never
+enters the derived variable's points-to set. The deck's own rule table (p.75) has four rules and
+none of them is a rule for a derived value.
+
+AND THE SHAPE IS NOT RARE: 827 sites over the seven pinned corpora carry a call's result into a
+string -- 314 concatenations and 513 interpolations. That is a SYNTACTIC count and not a flow
+count, and what it says is that the boundary is not theoretical.
+
+AND THE RULE THAT WOULD CLOSE IT IS NAMED, AND NOT MADE: "a value derived from a tainted datum
+carries the taint" belongs to the TAINT layer and not to the pointer analysis, and it would make
+the taint analysis ONE RULE WIDER than the deck's four. 0586's design statement is that the seed
+is the whole difference, so a rule that is not in the deck's table is a change to that statement
+and not an increment.
+
+### THE OTHER THREE CHAPTERS ARE COUNTED, NOT DESCRIBED
+
+Chapter 1's security levels are a TWO-level lattice here against the deck's FIVE (p.28), so the
+tree answers the deck's question for two of its five levels. Chapter 1's noninterference is a
+RELATIONAL property over TWO RUNS, and every analysis in this tree is a one-run may-analysis:
+a different KIND of question, not a smaller one. Chapter 3's four covert channels are out of
+scope BY THE DECK'S OWN DECISION (p.61-62).
+
+### A DEFECT IN THE PROCESS, AND THE GATE THAT NOW CATCHES IT
+
+The installer that writes an increment's prose ran TWICE over the same file: one family's
+boundary text carried its paragraph twice, and two chapters lost their `## ` heading and
+rendered as body text. Both are fixed, and section 9 of `_verify/check_readme_links.ps1` counts
+headings and repeated sentences now, so a prose defect cannot sit in the tree again without the
+gate saying so. The gate is shown to go red on BOTH defects, and both files were restored byte
+for byte.
+
+### THE PINS THAT MOVED
+
+    own-source files         244 -> 249      (four new source files)
+    own-source notices     1,757 -> 1,788    (printed 157 -> 157, and the printed half did
+                                             not move at all: every new notice is a
+                                             DECLARATION, and a declaration sits outside
+                                             every function's extent)
+    the eight-tree total   23,259 -> 23,290
+    the eight-tree split     3,971 + 19,288 -> 3,971 + 19,319
+    the family roster              17 -> 18
+    the test counts         1,625 -> 1,652 on wasm; 1,483 -> 1,510 on js and wasm-gc
+    the NARRATIVE's headings      100 -> 101  (this chapter is the hundred-and-first, and
+                                             the count is pinned in release.ps1 and checked
+                                             by the gate)
+    the seven corpora          DID NOT MOVE -- each one still MATCHes its pinned baseline,
+                               MEASURED
+
+### THE VERSION, AND THE ORDER
+
+THE LOCAL RELEASE GATE IS GREEN ON THIS TREE, and that ORDER is load-bearing: the gate's
+`selfscan-published` stage scans the PUBLISHED artifact, so on the tree that introduces a new
+version it asks the registry for an asset that does not exist yet. So the gate runs FIRST, on the
+tree that still names the previous version, and only then does the version move. The version bump
+and the CHANGELOG entries follow the green gate, and the CI publishes from the tag.
+
+### WHAT IS STILL OPEN
+
+THE OTHER DECKS ARE STILL DECKS: 14_Datalog.pdf, 15_IFDS.pdf and 16_Soundiness.pdf sit in the
+same directory as the ones this series read, and they have not been read.
