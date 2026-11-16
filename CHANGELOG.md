@@ -4401,6 +4401,45 @@ AND THE PINS THAT MOVED are this release's own source, and the seven corpora did
     the test counts         1,699 -> 1,731 on wasm, 1,557 -> 1,589 on js and wasm-gc
     the NARRATIVE chapters    106 -> 111
 
+### PUBLISHED
+
+0.4.51 is tagged at `d811c02` on both remotes, CI's `gate` and `publish` are green on that
+commit, and the registry serves it with `latest_version = 0.4.51`.
+
+    published 0.4.51  wasm D57E80AE...  706965 bytes  checksum 008832d4...  2026-11-16T17:56:22Z
+
+**AND THE PUBLISHED ARTIFACT CHANGED BY EXACTLY ONE BYTE, AND IT IS THE LAST DIGIT OF THE
+VERSION.** MEASURED, byte for byte: published 0.4.50 was 706965 bytes and published 0.4.51 is
+**706965** bytes — the artifact did **not** grow — and **1** of the bytes in the common prefix
+differ, at offset 706893, which is the last digit of the embedded coordinate
+`riantr/moonbit_static_analysis@0.4.51`. The coordinate string is found at offset 706857, so the
+byte that moved is the version digit and nothing else.
+
+THE REASON IS MEASURED, and it is the non-test call sites: **THE FOUR NEW IFDS MODULES HAVE NO
+CALLER OUTSIDE `src/flow`**, and `src/flow` is not one of the packages the CLI is built from —
+`src/pipeline`, `src/report`, `src/cli`, `src/jsoncli` and `src/sa` are. The whole set has
+exactly one non-test call site outside its own files (`ifds_zero`, called from
+`src/flow/ifds_tab.mbt`), and that one is inside `src/flow` too.
+
+**AND THE PUBLISHED PACKAGE DOES CARRY THE LAYER'S SOURCE.** The published tree has **247**
+`.mbt` files, 0.4.50 had **239**, the difference is **eight**, the eight are exactly the eight
+new files, and every one of them is byte-identical to the local tree.
+
+**AND THE PUBLISHED TREE SCANS ITS OWN SHIPPED SOURCE CLEAN**: 265/265 files parsed,
+`actionable=0`, notices 2052 — the same three numbers this tree's own pins carry (2052 notices,
+157 printed, 1895 aggregated).
+
+**AND THE PUBLISHED ARTIFACT STILL FIRES THE FAMILY**, measured at the published coordinate:
+with `--taint-source readInput --taint-sink log:0` the published 0.4.51 reports
+
+    15:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+           'readInput' (TaintFlow) [structural, MSA-018, high]
+    SUMMARY  files=1  parsed=1  actionable=1
+
+and the SAME published artifact on the SAME program without the specification reports
+`actionable=0` — so the zero is the specification's doing and not the analyzer's. The published
+0.4.50 answers the same question the same way, which is what a one-byte difference predicts.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

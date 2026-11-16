@@ -969,7 +969,7 @@ $SSA_COST = 'files=248|unreadable=0|functions=1402|converted=5|partial=1397|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '111'
+$NARRATIVE_CHAPTERS = '112'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

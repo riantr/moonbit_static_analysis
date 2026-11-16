@@ -20706,3 +20706,112 @@ the labelling of the tree's own graph, and p.24 for the witness and the pair cou
 ### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
 
+## 0601: 0.4.51 SHIPPED, AND THE PUBLISHED ARTIFACT CHANGED BY EXACTLY ONE BYTE
+
+The release is out, so the numbers that can only be read AFTER a publish are recorded: the
+registry's own checksum and created_at, and the SHA-256 and size of the wasm the registry
+actually serves.
+
+    tag        v0.4.51  ->  d811c02  on BOTH remotes
+    CI         gate     43923126829  (0600, master push)   success
+               gate     43923494776  (release, master push) success
+               gate     43923508694  (tag push)             success
+               publish  43923508666  (tag push)             success
+    registry   latest_version = 0.4.51   build_status = success
+                checksum    008832d476846e2ad76f393997a55730acc5fe633161d0275baa37a7b463c1c4
+                created_at  2026-11-16T17:56:22.942344+00:00
+
+    published 0.4.51  wasm D57E80AEC02779236450C9ADDEE456298B925519562BBC1CF9044DDF9C99FF84  706965 bytes  checksum 008832d476846e2ad76f393997a55730acc5fe633161d0275baa37a7b463c1c4  2026-11-16T17:56:22.942344+00:00
+
+THE HASH IS READ, NOT TYPED, and the reader is SELF-CHECKED before it is trusted: it reproduced
+the 0.4.50 row (wasm 0138A07D..., 706965 bytes) byte for byte BEFORE it was applied to 0.4.51.
+A reader that has never reproduced a known row is not a reader, it is a guess.
+
+### AND THE ARTIFACT CHANGED BY EXACTLY ONE BYTE, AND IT IS THE LAST DIGIT OF THE VERSION
+
+    published 0.4.50  706965 bytes
+    published 0.4.51  706965 bytes      (+0)
+    bytes differing in the 706965-byte common prefix: 1
+
+    offset 706893   '0' -> '1'
+    ... riantr/moonbit_static_analysis@0.4.50  ->  ...@0.4.51
+
+AND THE COORDINATE STRING IS FOUND WHERE THE CLAIM PUTS IT: the string
+`riantr/moonbit_static_analysis@0.4.51` starts at offset 706857, and 706893 is its thirty-seventh
+character -- the last digit of the version. So the one byte that moved is the version digit and
+nothing else, and the artifact did not grow.
+
+### SO THE PUBLISHED CLI ARTIFACT DOES NOT CARRY THE IFDS LAYER, AND THE REASON IS MEASURED
+
+EVERY public function the four new modules add was searched for in every file of the tree, with
+the comments stripped, so that a NAME IN A COMMENT is not counted as a call site:
+
+    src/flow/ifds.mbt           11 functions
+    src/flow/ifds_tab.mbt        4 functions
+    src/flow/ifds_distrib.mbt    7 functions
+    src/flow/cfl.mbt             9 functions
+
+AND THE WHOLE SET HAS EXACTLY ONE non-test call site outside its own files:
+
+    ifds_zero  <-  src/flow/ifds_tab.mbt
+
+AND THAT ONE IS INSIDE src/flow, and src/flow is NOT one of the packages the published CLI is
+built from -- `src/pipeline`, `src/report`, `src/cli`, `src/jsoncli` and `src/sa` are. So the
+count of new-module call sites inside a CLI package is ZERO, the whole new subgraph is
+unreachable from the CLI entry point, and the artifact cannot carry it.
+
+THIS IS 0.4.50's SITUATION AGAIN, for the same measured reason, and the one release that differs
+(0.4.48 -> 0.4.49) is the one whose new code IS reachable from the report pipeline.
+
+### BUT THE PUBLISHED PACKAGE DOES CARRY THE LAYER'S SOURCE, AND IT IS THE SAME SOURCE
+
+    published 0.4.51 carries 247 .mbt files; published 0.4.50 carried 239
+    the difference is EIGHT, and the eight are exactly the eight new files:
+
+      ifds.mbt            ifds_test.mbt            ifds_tab.mbt
+      ifds_tab_test.mbt   ifds_distrib.mbt         ifds_distrib_test.mbt
+      cfl.mbt             cfl_test.mbt
+
+AND EVERY ONE OF THE EIGHT IS BYTE-IDENTICAL to the local tree, measured file by file.
+
+BUILT and AVAILABLE are different claims. The artifact is the CLI; the package is the library a
+MoonBit program can depend on, and the layer IS in the published package -- as source, which is
+how a MoonBit package ships code at all.
+
+### AND THE PUBLISHED ARTIFACT STILL FIRES THE FAMILY, AT THE PUBLISHED COORDINATE
+
+THE STRONGEST STATEMENT AVAILABLE, and it is measured rather than argued: the artifact the
+registry serves was asked whether tainted data reaches a sink, on a fifteen-line program.
+
+    published 0.4.51, with --taint-source readInput --taint-sink log:0
+
+        15:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+               'readInput' (TaintFlow) [structural, MSA-018, high]
+        SUMMARY  files=1  parsed=1  actionable=1
+
+AND THE CONTROL, which is what makes the row above mean something: the SAME published artifact
+on the SAME program WITHOUT the taint specification reports `actionable=0`. So the zero is the
+specification's doing and not the analyzer's.
+
+AND THE PUBLISHED 0.4.50 ARTIFACT ANSWERS THE SAME QUESTION THE SAME WAY, which is exactly what
+a one-byte difference predicts.
+
+### AND THE PUBLISHED TREE SCANS ITS OWN SHIPPED SOURCE CLEAN
+
+    published 0.4.51   265 files, 265/265 parsed, actionable=0, notices 2052, unreliable=0,
+                        withheld=0
+    the notice split    printed 157, aggregated 1895
+    the .mbt half       247 files, 247/247 parsed, defects=0
+
+AND THE PUBLISHED TREE'S NOTICE COUNT IS THE LOCAL TREE'S OWN-SOURCE COUNT: 2052 notices, 157
+printed, 1895 aggregated -- the three numbers this tree's own pins carry.
+
+AND THE LOCAL SELF-SCAN reads one file more than the published tree, and the ONE file of
+difference is measured as a SET DIFFERENCE rather than as an arithmetic remark: the local tree
+has 248 `.mbt` files and the published package has 247, and the one file in the local tree and
+not in the package is `src/lexer/lexer_0488_test.mbt`, an UNTRACKED scratch file an earlier
+session left in the tree. The self-scan counts it; the published package does not carry it.
+
+### NO CHANGE TO THE VERSION, AND NO NEW FAMILY. This is the record of a release already cut.
+
+
