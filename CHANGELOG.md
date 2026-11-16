@@ -4257,6 +4257,150 @@ this artifact — a fact about the BINARY and not about the release — and the 
 in the bytes therefore says NOTHING about whether the engine is in it. The claim this entry makes
 is the one the bytes support.
 
+## 0.4.51 — the IFDS deck: the exploded supergraph, the tabulation that fills it, and the boundary where distributivity ends
+
+**WHAT THIS RELEASE IS.** The fifth NJU lecture deck, `15_IFDS.pdf` (*CFL-Reachability and IFDS*,
+Yue Li, Nanjing University, 2021, 174 pages), is read against this tree cell by cell. Four
+increments close it, and they are four different kinds of thing.
+
+| increment | what it is | does it reach a user's report? |
+|---|---|---|
+| 0597 | the exploded supergraph and the glue edge — the deck's p.84 relation, RUN on this tree's own flow functions | no — a library-level capability |
+| 0598 | the tabulation algorithm on the exploded supergraph — the deck's p.141 bound, MEASURED | no — a measurement |
+| 0599 | the distributivity boundary — the deck's own algebra, MEASURED against `cprop` and `pta` | no — a measurement |
+| 0600 | CFL-reachability — the realizable-path language, run over this tree's OWN supergraph | no — a measurement |
+
+**NO NEW FINDING FAMILY.** The deck's algorithms are read and run, and the answers are compared
+with the answers this tree already gives. It is a measurement of the deck's claim, not a second
+implementation of it. The roster stays at eighteen families.
+
+### THE GLUE EDGE IS A PARAMETER OF THE RELATION, NOT A CONSTANT
+
+p.84 writes the IFDS relation with `(0,0)` **inside** `Rf`. The first draft of 0597 kept `(0,0)`
+out of the relation and modelled the glue as a `0->0` node self-loop, and MEASUREMENT killed it:
+the exploded supergraph then reached exactly one node, `0|0`.
+
+    rel1(glue)    0->0  0->x@1  y@3->y@3
+    rel1(noglue)  0->x@1  y@3->y@3
+
+and the reach sets, on the same program:
+
+    WITH glue     0|0  1|0  2|0  3|0  4|0  2|x@1  3|x@2  4|x@2  4|y@3
+    WITHOUT glue  0|0
+
+So the glue edge is a **parameter**: `ifds_reach_rel(gen, kill, node, facts, glue : Bool)`. A
+measurement that cannot turn the thing off cannot measure it — and with the glue off, the same
+tree reaches nothing but `0|0`.
+
+### THE TABULATION FILLS THE EXPLODED SUPERGRAPH, AND IT REPRODUCES THIS TREE'S OWN ANALYSIS
+
+0598 runs the deck's tabulation over the exploded supergraph and compares the result with
+`reaching_in` — the tree's own reaching-definitions analysis — node by node. They agree:
+`IN[2] = {x@1}`, `IN[3] = {x@2}`, `IN[4] = {x@2, y@3}`.
+
+AND THE CONTROL IS THE POINT. With the `(0,0)` clause removed from the relation — the defect
+0597's first draft had — the tabulation's answer is **EMPTY**. The two halves agree because the
+tree's own transfer IS the tree's own relation, written as pairs.
+
+### AND THE BOUND IS MEASURED, NOT QUOTED
+
+p.141's bound is `O(E·D³)`. On this tree's exploded supergraph: `E = 14`, `D = 4`, so the bound
+is `14 × 4³ = 896`. The walk followed **8** of the 14 edges. The first draft of the note said 10;
+measurement corrected it, and the note was corrected in place.
+
+### DISTRIBUTIVITY IS A QUESTION ABOUT THE TRANSFER, NOT ABOUT THE LATTICE
+
+p.156-164 and p.165-172 ask the same question of constant propagation and of pointer analysis:
+does the transfer distribute over the join of the facts? The deck's own algebra is
+`F(x ∧ y) = F(x) ∧ F(y)`, read as "is the output the join of the outputs each fact produces
+alone?" — measured on this tree's own `cprop` and `pta`.
+
+    cprop  z = x + y    reads=2   z:all=5   one=⊥   distributes=false
+    cprop  y = x        reads=1   y:all=2   one=2   distributes=true
+    cprop  y = 2x + 3   reads=1   y:all=9   one=9   distributes=true
+    cprop  z = 5        reads=0   z:all=5   one=5   distributes=true
+
+    pta    x -> {o1}   y -> {o1}   z -> {o1}   o1.f -> {o1}
+    alias  x, y     alias(x,y)=true   facts=4   one=false   distributes=false
+    alias  x, x     alias(x,x)=true   facts=4   one=true    distributes=TRUE   <- the control
+    load   y.f      load(y.f)={o1}     facts=4   one={}      distributes=false
+
+The `alias(x,x)` row is the control: a function that only ever answers "false" is not measuring
+the question.
+
+### AND THE REALIZABLE PATH IS A LANGUAGE, NOT A PATH
+
+0600 turns to CFL-reachability. The recognizer is a stack, and the stack IS the grammar read left
+to right — an alternative parser would be a second implementation of the same language.
+
+The deck's own words decide it, quoted the way the slides print them:
+
+    p.29   (1 (2 e )2 )1 (3              realizable -- and NOT BALANCED
+    p.39   e e (1 (2 e e e )2 )1 (3 (4 e  realizable -- and NOT BALANCED
+    p.41   e(1eee)1e                      realizable
+    p.42   e(1eee)1e(2eee)1               NOT realizable
+
+And then this tree's OWN supergraph is measured with it. The tree's edge labels are
+
+    0: 1:e,)0,)1 2: 3:e 4: 5:e,)2 6: 7:e,(0 8:e 9: 10:e 11: 12:e,(1 13:e,(2 14:e
+
+The program's entry is **derived**, not assumed — it is the function no call reaches, node
+**14**. From there the search produces the witness word
+
+    e (2 e (0 e )1
+
+with the stack holding `2` on top of `0`, and the pair counts are
+
+    ordinary pairs      82
+    realizable pairs    57
+    EXCLUDED pairs      25
+
+The third number is the difference, and it is there because a realizable path IS a path: the
+distributive supergraph this tree already has — it carries the call-to-return edge, which is what
+0599's half measured — holds paths that are not call sequences.
+
+AND TWO DEFECTS THE MEASUREMENT FOUND IN THE INCREMENT'S OWN WORK, and neither is pinned as a
+defect — both are FIXED. The search kept the **LAST** witness while its own comment promised the
+**first**; it now keeps the first, which produces the canonical witness above. And the row named
+"p.42's word" asserted on a word that is **on no slide**, while the row's own comment quoted the
+slide's word — the slide's word is `e(1eee)1e(2eee)1`, and the row now builds THAT word. A row
+that claims a slide and does not test it pins nothing, and the one deck word that was still
+uncovered, p.39's own derivation, is now a row of its own.
+
+### THE MEASUREMENTS
+
+    the exploded supergraph   src/flow/ifds.mbt
+    the tabulation            src/flow/ifds_tab.mbt
+    the distributivity        src/flow/ifds_distrib.mbt
+    the CFL recognizer        src/flow/cfl.mbt
+
+    the glue edge             4 edges;  with it 14, without it 10
+    the reach sets            with glue  0|0 1|0 2|0 3|0 4|0 2|x@1 3|x@2 4|x@2 4|y@3
+                              without     0|0
+    the tabulation            reproduces reaching_in node by node
+                              IN[2]={x@1}  IN[3]={x@2}  IN[4]={x@2,y@3}
+                              without (0,0): EMPTY
+    the bound                 p.141  O(E·D^3)  E=14  D=4  -> 896;  the walk followed 8 of 14 edges
+    the distributivity        cprop  z=x+y false;  y=x, y=2x+3, z=5 true
+                              pta    alias(x,y) false;  alias(x,x) true (the control)
+                              pta    load(y.f) false
+    the CFL words             p.29 realizable, p.39 realizable, p.41 realizable,
+                              p.42 NOT realizable
+    this tree's supergraph    the entry is derived = node 14
+                              witness  e (2 e (0 e )1
+                              ordinary 82, realizable 57, excluded 25
+
+AND THE PINS THAT MOVED are this release's own source, and the seven corpora did not move:
+
+    own-source files         258 -> 266
+    own-source notices     2,013 -> 2,052
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated  1,856 -> 1,895
+    the eight-tree total   23,358 -> 23,397
+    the eight-tree split     3,971 + 19,387 -> 3,971 + 19,426
+    the test counts         1,699 -> 1,731 on wasm, 1,557 -> 1,589 on js and wasm-gc
+    the NARRATIVE chapters    106 -> 111
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

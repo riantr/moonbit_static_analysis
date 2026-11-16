@@ -3662,6 +3662,142 @@ p.93 的三件事全都做完了，它的五个实现问题被数清楚并回答
 形式存进这个产物——那是关于**二进制**的事实而不是关于这次发布的——于是字节里没有 "datalog"
 这件事，对「引擎在不在里面」什么也说明不了。这一条记录主张的，只是字节支持得住的那一部分。
 
+## 0.4.51 —— IFDS 那份讲义：爆炸超级图、填满它的表格算法，以及可分配性到哪儿为止
+
+**这次发布是什么。** 第五份南大讲义 `15_IFDS.pdf`（*CFL-Reachability and IFDS*，李樾，南京大学，
+2021 年，174 页）被逐格对照这棵树读完。四个增量关掉它，而这四个是四种不同的东西。
+
+| 增量 | 是什么 | 会不会走到用户的报告里 |
+|---|---|---|
+| 0597 | 爆炸超级图与 glue 边——讲义 p.84 的关系式，跑在这棵树自己的流函数上 | 不会——这是库层的能力 |
+| 0598 | 爆炸超级图上的表格算法——讲义 p.141 的界，被测量 | 不会——这是一次测量 |
+| 0599 | 可分配性的边界——讲义自己的代数，对着 `cprop` 和 `pta` 测量 | 不会——这是一次测量 |
+| 0600 | CFL 可达性——可实现路径这门语言，跑在这棵树**自己**的超级图上 | 不会——这是一次测量 |
+
+**没有新的发现家族。** 讲义的算法被读进来、跑起来，答案与这棵树本来就给出的答案对拍——这是对
+讲义主张的一次测量，不是对它的第二份实现。名册仍然是十八个家族。
+
+### glue 边是关系式的**参数**，不是常量
+
+p.84 把 IFDS 关系式写成 `(0,0)` 在 `Rf` **里面**。0597 的第一版把 `(0,0)` 留在关系式外面，把
+glue 建模成一个 `0->0` 的节点自环，而**测量**把它否掉了：那样一来爆炸超级图只到达一个节点，
+`0|0`。
+
+    rel1(glue)    0->0  0->x@1  y@3->y@3
+    rel1(noglue)  0->x@1  y@3->y@3
+
+在同一个程序上，可达集是：
+
+    WITH glue     0|0  1|0  2|0  3|0  4|0  2|x@1  3|x@2  4|x@2  4|y@3
+    WITHOUT glue  0|0
+
+所以 glue 边是一个**参数**：`ifds_reach_rel(gen, kill, node, facts, glue : Bool)`。一个不能把被测
+对象关掉的测量，测不了它——而把 glue 关掉之后，同一棵树除了 `0|0` 什么都到不了。
+
+### 表格算法填满爆炸超级图，而且它复现了这棵树自己的分析
+
+0598 在爆炸超级图上跑讲义的表格算法，再把结果和 `reaching_in`——这棵树自己的到达定值分析——
+逐节点对照。两者一致：`IN[2] = {x@1}`、`IN[3] = {x@2}`、`IN[4] = {x@2, y@3}`。
+
+**对照才是重点。** 把关系式里的 `(0,0)` 子句去掉——也就是 0597 第一版那个缺陷——表格算法的答案
+是**空的**。两半能对上，是因为这棵树自己的迁移函数**就是**这棵树自己的关系式，只是写成了配对
+的样子。
+
+### 而且这个界是被测出来的，不是被抄下来的
+
+p.141 的界是 `O(E·D³)`。在这棵树自己的爆炸超级图上：`E = 14`、`D = 4`，于是界是
+`14 × 4³ = 896`。这次遍历跟了 14 条边里的 **8** 条。注记的第一版写的是 10；测量纠正了它，
+注记也就就地改掉了。
+
+### 可分配性问的是**迁移函数**，不是格
+
+p.156-164 与 p.165-172 向常量传播和指针分析问的是同一个问题：这个迁移函数在事实的并上可分配
+吗？讲义自己的代数是 `F(x ∧ y) = F(x) ∧ F(y)`，读作「输出是不是每个事实各自产生的输出的
+并」——在这棵树自己的 `cprop` 和 `pta` 上测量。
+
+    cprop  z = x + y    reads=2   z:all=5   one=⊥   distributes=false
+    cprop  y = x        reads=1   y:all=2   one=2   distributes=true
+    cprop  y = 2x + 3   reads=1   y:all=9   one=9   distributes=true
+    cprop  z = 5        reads=0   z:all=5   one=5   distributes=true
+
+    pta    x -> {o1}   y -> {o1}   z -> {o1}   o1.f -> {o1}
+    alias  x, y     alias(x,y)=true   facts=4   one=false   distributes=false
+    alias  x, x     alias(x,x)=true   facts=4   one=true    distributes=TRUE   <- 对照
+    load   y.f      load(y.f)={o1}     facts=4   one={}      distributes=false
+
+`alias(x,x)` 那一行是对照：一个永远只回答「否」的函数，压根没在测这个问题。
+
+### 而且可实现路径是一门语言，不是一条路径
+
+0600 转到 CFL 可达性。识别器是一个栈，而这个栈**就是**从左往右读的文法——另写一个解析器只会是
+同一门语言的第二份实现。
+
+讲义自己的词裁决，按幻灯片印出来的样子引用：
+
+    p.29   (1 (2 e )2 )1 (3              可实现——尽管它并不平衡
+    p.39   e e (1 (2 e e e )2 )1 (3 (4 e  可实现——尽管它并不平衡
+    p.41   e(1eee)1e                      可实现
+    p.42   e(1eee)1e(2eee)1               不可实现
+
+然后用同一个识别器去量这棵树**自己**的超级图。这棵树的边标签是
+
+    0: 1:e,)0,)1 2: 3:e 4: 5:e,)2 6: 7:e,(0 8:e 9: 10:e 11: 12:e,(1 13:e,(2 14:e
+
+程序的入口是**推出来的**，不是假设的——没有任何调用能到达的那个函数，节点 **14**。从那里出发，
+搜索给出的见证词是
+
+    e (2 e (0 e )1
+
+栈上 `2` 压在 `0` 上面；而配对计数是
+
+    ordinary pairs      82
+    realizable pairs    57
+    EXCLUDED pairs      25
+
+第三个数字就是差值，它在这儿是因为可实现路径**就是**路径：这棵树本来就有的那个可分配超级图——
+它带着 call-to-return 边，这正是 0599 那一半测到的东西——装着一些不是调用序列的路径。
+
+**测量在这个增量自己的代码里找出了两个缺陷**，而且两个都不是被钉住的缺陷——两个都**修好了**。
+搜索保留的是**最后一个**见证，而它自己的注释承诺的是**第一个**；现在保留的是第一个，于是给出上面
+那个规范见证。而名为「p.42 的词」的那一行断言的却是一个**任何幻灯片上都没有**的词，尽管这一行
+自己的注释引用的是幻灯片上的词——幻灯片的词是 `e(1eee)1e(2eee)1`，现在这一行构造的就是**那个**
+词。一个声称自己在测某张幻灯片、却不测那张幻灯片的行，什么也钉不住；而唯一还没被覆盖的讲义词
+——p.39 讲义自己的那份推导——现在也成了单独的一行。
+
+### 那些测量
+
+    the exploded supergraph   src/flow/ifds.mbt
+    the tabulation            src/flow/ifds_tab.mbt
+    the distributivity        src/flow/ifds_distrib.mbt
+    the CFL recognizer        src/flow/cfl.mbt
+
+    the glue edge             4 edges;  with it 14, without it 10
+    the reach sets            with glue  0|0 1|0 2|0 3|0 4|0 2|x@1 3|x@2 4|x@2 4|y@3
+                              without     0|0
+    the tabulation            reproduces reaching_in node by node
+                              IN[2]={x@1}  IN[3]={x@2}  IN[4]={x@2,y@3}
+                              without (0,0): EMPTY
+    the bound                 p.141  O(E·D^3)  E=14  D=4  -> 896;  the walk followed 8 of 14 edges
+    the distributivity        cprop  z=x+y false;  y=x, y=2x+3, z=5 true
+                              pta    alias(x,y) false;  alias(x,x) true (the control)
+                              pta    load(y.f) false
+    the CFL words             p.29 realizable, p.39 realizable, p.41 realizable,
+                              p.42 NOT realizable
+    this tree's supergraph    the entry is derived = node 14
+                              witness  e (2 e (0 e )1
+                              ordinary 82, realizable 57, excluded 25
+
+**移动的钉子**是这次发布自己的源码，七个语料没动：
+
+    own-source files         258 -> 266
+    own-source notices     2,013 -> 2,052
+    own-source printed       157 -> 157   (UNCHANGED)
+    own-source aggregated  1,856 -> 1,895
+    the eight-tree total   23,358 -> 23,397
+    the eight-tree split     3,971 + 19,387 -> 3,971 + 19,426
+    the test counts         1,699 -> 1,731 on wasm, 1,557 -> 1,589 on js and wasm-gc
+    the NARRATIVE chapters    106 -> 111
+
 ## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
 
 0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是
