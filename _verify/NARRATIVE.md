@@ -20481,3 +20481,113 @@ bound, p.140 for the readable rendering.
 
 ### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
+
+## 0599: THE DISTRIBUTIVITY BOUNDARY IS MEASURED, ON THE TWO ANALYSES THIS TREE ALREADY HAS
+
+THE DECK'S CHAPTER 6 (p.155-172) is "Understanding the Distributivity of IFDS", and its two
+questions are on p.156-157:
+
+    Can we do constant propagation using IFDS?
+    Can we do pointer analysis using IFDS?
+
+AND THE DECK'S ALGEBRA, p.158:
+
+    Distributivity
+    F(x ^ y) = F(x) ^ F(y)
+
+AND THE DECK'S RULE, p.162, verbatim:
+
+    Given a statement S, besides S itself, if we need to consider multiple input data facts to
+    create correct outputs, then the analysis is not distributive and should not be expressed
+    in IFDS.
+
+    In IFDS, each data fact (circle) and its propagation (edges) could be handled independently,
+    and doing so will not affect the correctness of the final results.
+
+AND THE DECK'S OWN EXAMPLE, p.158-159, is `z = x + y` with "z's value depends on both y's and x's".
+
+### THE MEASUREMENT: THE OUTPUT ON THE WHOLE STATE, AGAINST THE JOIN OF THE ONE-FACT OUTPUTS
+
+THE TEST IS THE DECK'S ALGEBRA, EVALUATED ON THIS TREE'S OWN TRANSFER. A fact is a (name, value)
+pair for the constant propagation and a (pointer, object) pair for the pointer analysis, and the
+question is whether the output with all the facts is the join of the outputs each fact produces
+alone.
+
+MEASURED, `z = x + y` WITH x=2 AND y=3:
+
+    reads=2 z:all=5 one=⊥ distributes=false
+
+AND `⊥` AND NOT `NAC`: with only x known, `x + y` is "nothing has been computed here yet", and ⊥
+absorbs. That is this tree's own rule, not a choice.
+
+### AND THE DECK'S OWN HARDER QUESTION, p.164, HAS AN ANSWER
+
+    Regardless of the infinite domain issue, think about whether we could do linear constant
+    propagation, e,g., y = 2x + 3, or copy constant propagation, e.g., x = 2, y = x, using
+    IFDS-style analysis?
+
+BOTH CAN, AND THE MEASUREMENT IS WHY. Each of those statements reads ONE fact, so the output with
+that fact alone IS the output:
+
+    copy      reads=1 y:all=2 one=2 distributes=true
+    linear    reads=1 y:all=9 one=9 distributes=true
+
+### AND THE POINTER-ANALYSIS HALF, p.171-172, IS THE DECK'S CONCLUSION AS AN EXECUTABLE QUESTION
+
+THE DECK'S PROGRAM:
+
+    x = new T
+    y = x
+    x.f = x
+    z = y.f
+
+MEASURED ON THIS TREE'S OWN pta, the map is
+
+    x -> {o1}; y -> {o1}; z -> {o1}; o1.f -> {o1}
+
+which is p.171's "z and y.f should have pointed to object [new T]" -- with this tree's own naming,
+where an object is named by its allocation site's LINE.
+
+AND THE RELATION, p.172:
+
+    If we want to obtain alias information in IFDS, say alias(x,y), to produce correct outputs, we
+    need to consider multiple input data facts, x and y, which cannot be done in standard IFDS as
+    flow functions handle input facts independently (one fact per time).
+
+MEASURED:
+
+    alias(x,y)=true facts=4 one=false distributes=false
+    alias(x,x)=true facts=4 one=true distributes=true
+
+THE SECOND LINE IS THE CONTROL, and it is in the same row: `alias(x,x)` IS a one-fact fact, so a
+function that only ever answered "false" would not be measuring the question.
+
+### AND THE ANSWER AT z TRACKS THE RELATION
+
+CHANGE ONE LINE of the deck's program -- `y = x` becomes `y = new U` -- and:
+
+    x -> {o1}; y -> {o2}; o1.f -> {o1}          and z points to NOTHING
+
+while `alias(x,y)` goes from true to false. That is p.171's "we need alias information to produce
+correct outputs" measured: the output is right exactly when the relation holds, and the relation is
+a fact about TWO variables.
+
+AND THE LOAD ITSELF, p.171:
+
+    load(y.f)={o1} facts=4 one={} distributes=false
+
+### EIGHT ROWS, EACH NAMING ITS SLIDE
+
+p.158-163 for the deck's example, p.164 for its own harder question, p.162 for the rule's
+boundary, p.165-172 for the pointer program.
+
+### AND THIS IS NOT THE TREE'S CONFLUENCE ROW
+
+`cprop_intra_test.mbt` pins the OTHER deck's confluence -- `F(X meet Y) != F(X) meet F(Y)`, over
+the LATTICE's meet, a statement about the lattice. What is measured here is the distributivity
+over the DATA FACTS, a statement about the transfer. Two questions, two rows, and neither borrows
+the other's name.
+
+### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+

@@ -45,6 +45,10 @@ pub fn cprop_assign(Map[String, Cpv], NodeKind) -> Map[String, Cpv]
 
 pub fn cprop_const_branches(Cfg, Array[Map[String, Cpv]]) -> Array[ConstBranch]
 
+pub fn cprop_distributes(Array[NodeKind], Int32, Map[String, Cpv]) -> Bool
+
+pub fn cprop_distribution_report(Array[NodeKind], Int32, Map[String, Cpv]) -> String
+
 pub fn cprop_edge_transfer(EdgeKind, Int32, Int32, Map[String, Cpv]) -> Map[String, Cpv]
 
 pub fn cprop_eval(Map[String, Cpv], @ast.Expr) -> Cpv
@@ -311,6 +315,10 @@ pub fn pred_of(Array[Array[Int32]]) -> Array[Array[Int32]]
 
 pub fn pta_alias(Map[String, Map[String, Bool]], String, String) -> Bool
 
+pub fn pta_alias_distributes(Map[String, Map[String, Bool]], String, String) -> Bool
+
+pub fn pta_alias_distribution_report(Map[String, Map[String, Bool]], String, String) -> String
+
 pub fn pta_alloc_of(NodeKind) -> Array[(String, @ast.Expr)]?
 
 pub fn pta_alloc_type(NodeKind) -> String
@@ -359,11 +367,17 @@ pub fn pta_inter_text(PtaInterResult) -> String
 
 pub fn pta_join(Map[String, Map[String, Bool]], String, Map[String, Bool]) -> Bool
 
+pub fn pta_load_distributes(Map[String, Map[String, Bool]], String, String) -> Bool
+
+pub fn pta_load_distribution_report(Map[String, Map[String, Bool]], String, String) -> String
+
 pub fn pta_map_lattice() -> Lattice[Map[String, Map[String, Bool]]]
 
 pub fn pta_of(Map[String, Map[String, Bool]], String) -> Map[String, Bool]
 
 pub fn pta_of_expr(Map[String, Map[String, Bool]], Map[String, Map[String, Bool]], @ast.Expr) -> Map[String, Bool]
+
+pub fn pta_points_to_text(Map[String, Map[String, Bool]], String) -> String
 
 pub fn pta_run(Array[Cfg]) -> Array[Map[String, Map[String, Bool]]]
 

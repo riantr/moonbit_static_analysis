@@ -617,12 +617,12 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (262 files), with the per-file printing cap lifted so the count is the
+project's own source (264 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1715 | | `const` declaration | 7 |
+| `test` declaration | 1723 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
 | `struct` declaration | 116 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -631,7 +631,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1877** sit outside every function's
+audit off, so they are printed one per line; the other **1885** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,379** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,387** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,408** as aggregated — which is 3,971 + 19,408 = 23,379, the same number — and the 3,971
+**19,416** as aggregated — which is 3,971 + 19,416 = 23,387, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1558,6 +1558,63 @@ readable rendering.
 **AND THE INCREMENT'S OWN ARITHMETIC WAS CORRECTED BY MEASUREMENT**: the first draft of the work
 row said the walk followed **ten** edges, and the measurement says **eight**.
 
+### And the DISTRIBUTIVITY BOUNDARY is MEASURED, on the two analyses this tree already has
+
+The lecture's **chapter 6** (p.155-172) is "Understanding the Distributivity of IFDS", and it asks
+two questions on p.156-157: *"Can we do constant propagation using IFDS?"* and *"Can we do pointer
+analysis using IFDS?"*
+
+**AND THE TEST IS THE DECK'S OWN ALGEBRA, p.158: `F(x ^ y) = F(x) ^ F(y)`.** So the question is not
+"does the transfer read two names" but "is the output the join of the outputs each fact produces
+alone" — and `src/flow/ifds_distrib.mbt` measures exactly that, on **this tree's own** constant
+propagation (`cprop.mbt`) and pointer analysis (`pta.mbt`).
+
+**THE DECK'S RULE, p.162, verbatim:**
+
+> Given a statement S, besides S itself, if we need to consider multiple input data facts to create
+> correct outputs, then the analysis is not distributive and should not be expressed in IFDS.
+
+**AND THE DECK'S OWN EXAMPLE IS NOT DISTRIBUTIVE — MEASURED.** `z = x + y` with `x=2`, `y=3`: the
+value `z` defines is **5**, and the join of the values the two facts produce alone is **⊥**. The
+report reads `reads=2 z:all=5 one=⊥ distributes=false`.
+
+**AND `⊥` AND NOT `NAC`, and that is worth saying.** With only `x` known, `x + y` is not "not a
+constant" — it is "nothing has been computed yet", and `⊥` absorbs. The two are different answers.
+
+**AND THE DECK'S OWN HARDER QUESTION, p.164, HAS AN ANSWER.** *"think about whether we could do
+linear constant propagation, e.g., y = 2x + 3, or copy constant propagation, e.g., x = 2, y = x,
+using IFDS-style analysis?"* **BOTH CAN**, and the measurement is why: each of those statements
+reads **one** fact, so the output with that fact alone *is* the output — `reads=1 y:all=9 one=9
+distributes=true` for the linear one.
+
+**AND THE POINTER-ANALYSIS HALF IS THE DECK'S CONCLUSION, p.172, AS AN EXECUTABLE QUESTION.** The
+deck says that to obtain alias information in IFDS "we need to consider multiple input data facts,
+x and y". MEASURED on the deck's own program (`x = new T; y = x; x.f = x; z = y.f`), the relation
+`alias(x,y)` holds on the whole state and on **no** one-fact state: `alias(x,y)=true facts=4
+one=false distributes=false`.
+
+**AND THE CONTROL IS IN THE SAME ROW, because a test that only ever says "false" is not measuring
+the question.** `alias(x,x)` **is** a one-fact fact, and the same function says so on the same
+state: `alias(x,x)=true facts=4 one=true distributes=true`.
+
+**AND THE ANSWER AT `z` TRACKS THE ALIAS RELATION.** Change **one line** of the deck's program —
+`y = x` becomes `y = new U` — and `z` points to **nothing** instead of to the new object, while
+`alias(x,y)` goes from true to false. That is the deck's p.171 sentence measured: the output is
+right exactly when the relation holds, and the relation is a fact about **two** variables.
+
+**AND THE LOAD ITSELF NEEDS TWO FACTS, which is p.171's sentence in the deck's own terms.** The
+load `z = y.f` produces `{o1}` on the whole state and `{}` from any one fact, so the join of the
+one-fact outputs is not the output: `load(y.f)={o1} facts=4 one={} distributes=false`.
+
+**EIGHT ROWS, EACH NAMING ITS SLIDE**, in `src/flow/ifds_distrib_test.mbt` — p.158-163 for the
+deck's example, p.164 for its own harder question, p.162 for the rule's boundary, and p.165-172
+for the pointer program.
+
+**AND THIS IS NOT THE TREE'S "CONFLUENCE" ROW.** `cprop_intra_test.mbt` pins the *other* deck's
+confluence — `F(X meet Y) != F(X) meet F(Y)`, over the **lattice's** meet, which is a statement
+about the lattice. What is measured here is the distributivity over the **data facts**, which is a
+statement about the transfer. Two questions, two rows, and neither borrows the other's name.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1659,25 +1716,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 244 files, 1,356 functions, 8,896
-instructions of 3AC — the same measurement gives **1,092** variables becoming **2,659** versions,
+would need **16** copies. Over this project's own source — 246 files, 1,378 functions, 8,948
+instructions of 3AC — the same measurement gives **1,114** variables becoming **2,688** versions,
 **939** phi-functions and **2,330** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=244	unreadable=0	functions=1356	converted=5	partial=1351	declined=6254	…
+SSA-COST	files=246	unreadable=0	functions=1378	converted=5	partial=1373	declined=6328	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,254
+number: the files read, the functions measured, and the statements the lowering declined (6,328
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1715/1715 on wasm; 1573/1573 on js and wasm-gc
+moon test --deny-warn                # 1723/1723 on wasm; 1581/1581 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
