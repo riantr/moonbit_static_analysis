@@ -20410,3 +20410,74 @@ pin.
 
 ### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
+
+## 0598: THE TABULATION IS RUN, AND IT AGREES WITH THE ANALYSIS THIS TREE ALREADY HAS
+
+THE DECK'S THIRD STEP (p.52-56), verbatim:
+
+    3. Q can be solved as graph reachability problems (find out MRP solutions)
+       via applying Tabulation algorithm on G#
+
+AND p.139-140:
+
+    Given an exploded supergraph G#, Tabulation algorithm determines the MRP
+    solution by finding out all realizable paths starting from <smain, 0>
+
+    Let n be a program point, data fact d in MRPn, iff there is a realizable
+    path in G# from <smain, 0> to <n, d>. (then d's white circle turns to blue)
+
+AND p.141 PRINTS THE COST: O(ED3). p.142-143 says the deck does NOT cover the whole algorithm
+-- "No time to cover the whole algorithm. But we will introduce its core working mechanism by a
+simple example" -- and p.144-150 are that example, over the call/return structure (SP, eP, CallP,
+RetP).
+
+SO THIS INCREMENT IS THE INTRAPROCEDURAL TABULATION, and it says so rather than pretending to be
+the whole one.
+
+### THE MEASUREMENT THE INCREMENT EXISTS FOR: THE TWO READINGS AGREE
+
+`reaching_out` / `reaching_in` ARE THE TRADITIONAL REACHING-DEFINITIONS ANALYSIS, and they solve
+a fixed-point equation over sets. The tabulation WALKS A GRAPH. Two readings of the same
+transfer functions, so they have to AGREE -- node by node, fact by fact.
+
+MEASURED, THEY DO:
+
+    node 0  entry   IN = {}            the tabulated definitions = {}
+    node 1  x = 1   IN = {}            {}
+    node 2  x = 2   IN = {x@1}         {x@1}
+    node 3  y = 3   IN = {x@2}         {x@2}
+    node 4  exit    IN = {x@2, y@3}    {x@2, y@3}
+
+AND x@1 IS NOT AT NODE 3, because node 2 kills it -- which is the kill, MEASURED and not assumed.
+
+### AND THE GLUE EDGE'S EFFECT IS A DIFFERENCE IN THE ANSWER
+
+THE DECK'S CLAIM (p.92-96) is about the ANSWER, and 0597 built the graph that makes it
+measurable. MEASURED: WITHOUT the (0,0) clause the tabulation's answer is EMPTY -- the start node
+carries the zero fact and nothing else, and every other node carries NOTHING AT ALL, not even the
+zero fact. The traditional analysis, on the same graph, finds THREE definitions.
+
+SO p.95's sentence is measured rather than quoted: "Thus IFDS cannot produce correct solutions
+via such disconnected representation relations."
+
+### AND THE DECK'S OWN BOUND, BESIDE THE MEASURED WORK
+
+p.141 PRINTS O(ED3). E IS THE NUMBER OF EDGES OF THE EXPLODED SUPERGRAPH and D is the number of
+facts the analysis knows -- the definitions plus the zero fact -- so on the five-node graph the
+bound is 14 * 4^3 = 896.
+
+AND THE WALK FOLLOWED EIGHT OF THE FOURTEEN EDGES, and the six it did NOT follow all tell one
+story: their SOURCE pair was never reached. Three of them leave the ENTRY node with a definition
+as their source, and no definition reaches the entry -- the walk starts at the entry's ZERO fact.
+Two more leave node 1, whose definitions never arrived there either. And the sixth is the edge
+that would carry x@1 past the node that kills it.
+
+AND THE FIRST DRAFT OF THAT ROW SAID TEN. The measurement is what the count is.
+
+### FIVE ROWS, EACH NAMING ITS SLIDE
+
+p.139-140 for the tabulation and the comparison, p.92-96 for the empty answer, p.141 for the
+bound, p.140 for the readable rendering.
+
+### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+

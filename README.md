@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (260 files), with the per-file printing cap lifted so the count is the
+project's own source (262 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1710 | | `const` declaration | 7 |
+| `test` declaration | 1715 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 115 | | `type` declaration | 7 |
+| `struct` declaration | 116 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 32 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1871** sit outside every function's
+audit off, so they are printed one per line; the other **1877** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,373** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,379** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,402** as aggregated — which is 3,971 + 19,402 = 23,373, the same number — and the 3,971
+**19,408** as aggregated — which is 3,971 + 19,408 = 23,379, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1519,6 +1519,45 @@ used a space separator while `"CallToReturn"` **contains** the substring `"Ret"`
 the self-scan's `if expression` row at 102 instead of 100; and one row's expectation was a guess
 rather than a measurement. A false positive is fixed and never pinned.
 
+### And the TABULATION is RUN, and it agrees with the analysis this tree already has
+
+The lecture's third step (p.52-56) is the one that turns the exploded supergraph into an
+answer: *"Q can be solved as graph reachability problems (find out MRP solutions) via applying
+Tabulation algorithm on G#"*. p.139-140 says what the algorithm does — *"Given an exploded
+supergraph G#, Tabulation algorithm determines the MRP solution by finding out all realizable
+paths starting from ⟨smain, 0⟩"* — and p.141 prints its cost: **O(E·D³)**.
+
+`src/flow/ifds_tab.mbt` is that tabulation, and it is the **intraprocedural** one: the deck
+itself says on p.142-143 that it does not cover the whole algorithm.
+
+**AND THE MEASUREMENT IS THAT IT REPRODUCES THE ANALYSIS THIS TREE ALREADY COMPUTES.**
+`reaching_out` / `reaching_in` are the traditional reaching-definitions analysis, and they solve a
+fixed-point equation over sets; the tabulation **walks a graph**. The two are **two readings of
+the same transfer functions**, so they have to agree — node by node, fact by fact. MEASURED, they
+do: `IN[2]` = `{x@1}`, `IN[3]` = `{x@2}`, `IN[4]` = `{x@2, y@3}`, and `x@1` is **not** at node 3,
+because node 2 kills it.
+
+**AND THE GLUE EDGE'S EFFECT IS A DIFFERENCE IN THE ANSWER, which is the deck's own claim.**
+Without the `(0,0)` clause the tabulation's answer is **empty**: the start node carries the zero
+fact and nothing else, and every other node carries **nothing at all** — not even the zero fact.
+The traditional analysis, on the same graph, finds three definitions. So p.95's sentence is
+measured rather than quoted: *"Thus IFDS cannot produce correct solutions via such disconnected
+representation relations."*
+
+**AND THE DECK'S OWN BOUND IS PRINTED BESIDE THE MEASURED WORK**, with the coverage next to it:
+E = 14 edges, D = 4 facts (three definitions and the zero fact), so the bound is 14 · 4³ =
+**896**, and the walk followed **8** of the fourteen edges. The six it did not follow all tell
+one story: their source pair was never reached — three of them leave the entry node with a
+definition as their source, and no definition reaches the entry, because the walk starts at the
+entry's zero fact.
+
+**FIVE ROWS, EACH NAMING ITS SLIDE**, in `src/flow/ifds_tab_test.mbt` — p.139-140 for the
+tabulation and the comparison, p.92-96 for the empty answer, p.141 for the bound, p.140 for the
+readable rendering.
+
+**AND THE INCREMENT'S OWN ARITHMETIC WAS CORRECTED BY MEASUREMENT**: the first draft of the work
+row said the walk followed **ten** edges, and the measurement says **eight**.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1620,25 +1659,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 242 files, 1,350 functions, 8,867
-instructions of 3AC — the same measurement gives **1,084** variables becoming **2,645** versions,
-**936** phi-functions and **2,324** copies. The claim is not a figure of speech.
+would need **16** copies. Over this project's own source — 244 files, 1,356 functions, 8,896
+instructions of 3AC — the same measurement gives **1,092** variables becoming **2,659** versions,
+**939** phi-functions and **2,330** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=242	unreadable=0	functions=1350	converted=5	partial=1345	declined=6225	…
+SSA-COST	files=244	unreadable=0	functions=1356	converted=5	partial=1351	declined=6254	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,225
+number: the files read, the functions measured, and the statements the lowering declined (6,254
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1710/1710 on wasm; 1568/1568 on js and wasm-gc
+moon test --deny-warn                # 1715/1715 on wasm; 1573/1573 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

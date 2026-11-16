@@ -207,6 +207,8 @@ pub fn icfg_of(Array[IFn]) -> Icfg
 
 pub fn ifds_definitions(Array[Map[String, Bool]]) -> Array[String]
 
+pub fn ifds_defs_at(Map[String, Bool]) -> Map[String, Bool]
+
 pub fn ifds_explode(Cfg, Array[Map[String, Bool]], Array[Map[String, Bool]], Bool) -> Exploded
 
 pub fn ifds_exploded_text(Exploded) -> String
@@ -224,6 +226,12 @@ pub fn ifds_supergraph_calls(Icfg) -> Array[String]
 pub fn ifds_supergraph_returns(Icfg) -> Array[String]
 
 pub fn ifds_supergraph_text(Icfg) -> String
+
+pub fn ifds_tabulate(Exploded, Int32) -> Tabulation
+
+pub fn ifds_tabulate_bound(Exploded) -> Int32
+
+pub fn ifds_tabulate_text(Tabulation) -> String
 
 pub fn ifds_zero() -> String
 
@@ -998,6 +1006,11 @@ pub(all) struct SsaIr {
   cost : SsaCost
 }
 pub fn SsaIr::dump(Self) -> String
+
+pub(all) struct Tabulation {
+  states : Array[Map[String, Bool]]
+  visited : Int32
+}
 
 pub(all) struct TaintFlow {
   src_line : Int32
