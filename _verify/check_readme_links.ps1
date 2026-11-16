@@ -465,6 +465,67 @@ foreach ($e in $more) {
   if (-not $ok) { $fail++ }
 }
 
+# --- the SSA COST, DERIVED FROM THE PIN ---------------------------------------
+#
+# The READMEs quote the SSA cost of this project's own source TWICE -- once in
+# prose and once in a sample output line -- and BOTH copies were written once, at
+# 0572, and never re-measured. The pin moved at 0573 and again at 0595, and the
+# READMEs kept publishing the numbers that were true when the paragraph was
+# written. MEASURED, the drift was 32 files (208 -> 240 -> 242), and the two copies
+# did not even agree WITH EACH OTHER: the sample line said `declined=5080` and the
+# prose said "4,979 of them".
+#
+# => THE SAME VERDICT AS THE PARAGRAPH ABOVE: A NUMBER WRITTEN DOWN TWICE IS A
+# NUMBER THAT WILL DISAGREE WITH ITSELF. So the SSA cost is DERIVED from the pin
+# here, and the READMEs have to say what the pin says.
+$ssaM = [regex]::Match($relTxt2, "\`$SSA_COST\s*=\s*'([^']*)'")
+if (-not $ssaM.Success) {
+  Write-Output '  FAIL: release.ps1 no longer carries the $SSA_COST pin this gate derives from.'
+  Write-Output '        Restore it, or this gate has nothing to check the READMEs against.'
+  $fail++
+} else {
+  $ssa = @{}
+  foreach ($part in ($ssaM.Groups[1].Value -split '\|')) {
+    $kv = $part -split '='
+    $ssa[$kv[0]] = $kv[1]
+  }
+  $n0 = { param([string]$k) ([int]$ssa[$k]).ToString('N0') }
+  $ssaLine = ('SSA-COST files=' + $ssa['files'] + ' unreadable=' + $ssa['unreadable'] +
+              ' functions=' + $ssa['functions'] + ' converted=' + $ssa['converted'] +
+              ' partial=' + $ssa['partial'] + ' declined=' + $ssa['declined'])
+  $ssaExpect = @(
+    @{ F = 'README.md';    S = $ssaLine; N = 'the SSA cost line' }
+    @{ F = 'README.md';    S = ($ssa['files'] + ' files, ' + (& $n0 'functions') + ' functions, ' + (& $n0 'instructions') + ' instructions of 3AC'); N = 'the SSA cost, the coverage' }
+    @{ F = 'README.md';    S = ('**' + (& $n0 'variables') + '** variables becoming **' + (& $n0 'versions') + '** versions'); N = 'the SSA cost, the variables and the versions' }
+    @{ F = 'README.md';    S = ('**' + (& $n0 'phis') + '** phi-functions and **' + (& $n0 'copies') + '** copies'); N = 'the SSA cost, the phi-functions and the copies' }
+    @{ F = 'README.md';    S = ('lowering declined (' + (& $n0 'declined')); N = 'the SSA cost, the declined statements' }
+    @{ F = 'README.zh.md'; S = $ssaLine; N = 'the SSA cost line (zh)' }
+    @{ F = 'README.zh.md'; S = ($ssa['files'] + ' 个文件、' + (& $n0 'functions') + ' 个函数、' + (& $n0 'instructions') + ' 条三地址码指令'); N = 'the SSA cost, the coverage (zh)'; Tight = $true }
+    @{ F = 'README.zh.md'; S = ('**' + (& $n0 'variables') + '** 个变量变成 **' + (& $n0 'versions') + '** 个版本、**' + (& $n0 'phis') + '** 个 φ 函数、'); N = 'the SSA cost, the variables and the versions (zh)'; Tight = $true }
+    @{ F = 'README.zh.md'; S = ('**' + (& $n0 'copies') + '** 条拷贝'); N = 'the SSA cost, the copies (zh)'; Tight = $true }
+    @{ F = 'README.zh.md'; S = ('（' + (& $n0 'declined') + ' 条'); N = 'the SSA cost, the declined statements (zh)'; Tight = $true }
+  )
+  foreach ($e in $ssaExpect) {
+    $p = Join-Path $root $e.F
+    $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+    # THE WHITESPACE IS NORMALIZED, because the READMEs WRAP their prose and the
+    # sample line is separated by TABS -- and a check that cannot match a wrapped
+    # sentence is a check that fails on the wrapping and not on the number.
+    $flat = [regex]::Replace($txt, '\s+', ' ')
+    $ok = $flat.Contains($e.S)
+    # AND THE CHINESE PROSE IS COMPARED WITH THE WHITESPACE REMOVED, because the
+    # Chinese sentence WRAPS MID-PHRASE and Chinese has no meaningful spaces: the
+    # needle "242 个文件、1,349 个函数" is split across a line break in the file,
+    # so the collapsed form still carries a space the file does not have.
+    # MEASURED: this check failed on exactly that, which is why it is here.
+    if (-not $ok -and $e.ContainsKey('Tight')) {
+      $ok = ([regex]::Replace($txt, '\s+', '')).Contains([regex]::Replace($e.S, '\s+', ''))
+    }
+    Write-Output ("  {0,-14} {1,-34} {2}" -f $e.F, $e.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $e.S }))
+    if (-not $ok) { $fail++ }
+  }
+}
+
 
 # --- 6  the stages the release gate RUNS, and the README NAMES --------------------
 #

@@ -20246,3 +20246,167 @@ for byte, and that is where a MoonBit user gets it.
 taint analysis (0594), its first chapter and its last two pages (0595). The other two decks in
 the same directory -- `15_IFDS.pdf` and `16_Soundiness.pdf` -- have not been read, and this
 chapter does not pretend otherwise.
+
+
+## 0597: THE SUPERGRAPH IS MEASURED, AND THE EXPLODED SUPERGRAPH IS BUILT
+
+THE DECK IS `CFL-Reachability and IFDS` (Yue Li, Nanjing University, 2021) -- 174 pages. Its p.3
+carries SIX CHAPTERS, and its p.174 names the three things to understand: "Understand
+CFL-Reachability", "Understand the basic idea of IFDS", "Understand what problems can be solved by
+IFDS".
+
+THIS INCREMENT COVERS ITS CHAPTER 4 (p.58-81, the SUPERGRAPH and the FLOW FUNCTIONS) AND THE FIRST
+HALF OF ITS CHAPTER 5 (p.83-97, the EXPLODED SUPERGRAPH and the GLUE EDGE).
+
+### THE DECK'S RECIPE, IN THREE STEPS, AND THE THEOREM THAT MAKES THE THIRD AN ANSWER
+
+p.52-56, verbatim:
+
+    1. Build a supergraph G* for P and define flow functions for edges in G*
+       based on Q
+    2. Build exploded supergraph G# for P by transforming flow functions to
+       representation relations (graphs)
+    3. Q can be solved as graph reachability problems (find out MRP solutions)
+       via applying Tabulation algorithm on G#
+
+AND p.55-56:
+
+    Let n be a program point, data fact d in MRPn, iff there is a REALIZABLE PATH
+    in G# from <smain, 0> to <n, d>.
+
+STEP 3 IS 0598. THIS INCREMENT IS STEPS 1 AND 2.
+
+### THE AUDIT: CHAPTER 4 WAS ALREADY IN THIS TREE
+
+THE DECK'S SUPERGRAPH (p.58-65) is a collection of flow graphs, one per procedure, each with a
+unique start node and a unique exit node; a procedure call is a CALL NODE and a RETURN-SITE NODE;
+and G* has THREE edges for each procedure call:
+
+    - an intraprocedural call-to-return-site edge from Callp to Retp
+    - an interprocedural call-to-start edge from Callp to sp
+    - an interprocedural exit-to-return-site edge from ep to Retp
+
+AND `src/flow/icfg.mbt` BUILDS EXACTLY THAT -- `EdgeKind::CallToReturn`, `EdgeKind::Call` and
+`EdgeKind::Ret` -- so chapter 4 was a MEASUREMENT and not a second implementation. A second
+supergraph would have been a second implementation of a concept this tree already owns, and that is
+the defect the house rule names.
+
+SO 0597 MEASURES IT: `ifds_supergraph_text` counts the three edge kinds and the call sites, and
+`ifds_supergraph_calls` says, per call site, which of the two edges that leave the call node are
+there. AND THE THIRD EDGE IS COUNTED SEPARATELY (`ifds_supergraph_returns`), because it leaves the
+CALLEE'S EXIT and arrives at the CALLER'S RETURN SITE -- a reader who looks for it on the call node
+will not find it and should not conclude that it is missing.
+
+### WHAT WAS ABSENT, AND IS THIS INCREMENT: THE REPRESENTATION RELATION AND THE EXPLODED SUPERGRAPH
+
+p.53 says the exploded supergraph is built "by transforming flow functions to representation
+relations (graphs)", and there was NO WAY to ask this tree for a flow function as a GRAPH.
+
+AND IT IS THE DECK'S OWN FORMULA, p.84, AND NOT A REWORDING OF IT:
+
+    Rf = { (0,0) } U { (0,y) | y in f(EMPTY) } U { (x,y) | y not in f(EMPTY)
+                    and y in f({x}) }
+
+READ OFF THIS TREE'S OWN TRANSFER `OUT[B] = gen_B U (IN[B] - kill_B)` (p.48), that formula is
+three kinds of pair:
+
+    (0 -> 0)   at every node                                 THE GLUE EDGE
+    (0 -> g)   for every g in gen[B]                         the constant part
+    (x -> x)   for every x not in gen[B] and not in kill[B]   the fact survives
+
+AND `ifds_reach_rel` GETS THEM BY CALLING `reaching_gen` and `reaching_kill` RATHER THAN
+RE-IMPLEMENTING THEM, so the exploded supergraph and the traditional analysis are TWO READINGS OF
+THE SAME TRANSFER FUNCTIONS. That is what makes 0598's comparison mean something.
+
+THE THIRD CLAUSE EXCLUDES THE GENERATED FACTS, and that is the FORMULA and not a choice: the
+deck's own examples on p.85-87 show it, where `lambda S.{a}` has the edges `0->0`, `0->a` and
+`b->b` -- and NOT `a->a`. A fact the node generates is already carried by the constant part.
+
+### AND THE GLUE EDGE IS THE RELATION'S FIRST CLAUSE, SO THE SWITCH IS ON THE RELATION
+
+THE DECK'S CLAIM (p.92-96), in its own words:
+
+    lambda S.{a} says a holds at p regardless of input S; however, without edge 0->0,
+    the representation relation for each edge cannot be connected or "pasted" together,
+    like flow functions cannot be composed together in traditional data flow analysis.
+
+SO A MEASUREMENT OF THAT CLAIM NEEDS A RELATION WITHOUT THE (0,0) CLAUSE, and a measurement that
+cannot turn the thing off cannot measure it. `ifds_reach_rel` takes the glue edge as a PARAMETER,
+and the glue edges are counted back OUT of the exploded graph (`ifds_glue_edges`) rather than
+stored beside it -- the same fact written down twice is a fact that will disagree with itself.
+
+### AND THE FIRST DRAFT HAD IT WRONG, AND THE MEASUREMENT IS WHAT FOUND IT
+
+THIS IS THE PART THAT MATTERS, because the increment was supposed to MEASURE the deck's claim and
+it nearly measured the deck's FAILURE CASE instead.
+
+THE FIRST DRAFT kept the (0,0) pair OUT of the relation and put a 0->0 SELF-LOOP at every node
+instead. And A SELF-LOOP CARRIES THE ZERO FACT NOWHERE: it keeps the fact at the node it is on
+instead of carrying it to the next one.
+
+MEASURED, THE EXPLODED SUPERGRAPH THAT BUILT WAS DISCONNECTED. The reachable set from the start
+pair <entry, 0> was <entry, 0> and NOTHING ELSE -- one pair, out of a graph with thirteen edges.
+And the deck's own p.84 formula says where the (0,0) belongs: it is the FIRST CLAUSE OF Rf, so it
+becomes an edge from (v, 0) to (s, 0) on every edge of the flow graph, and THAT is what lets the
+relations be pasted together.
+
+SO THE FIX IS THE DECK'S FORMULA AND NOT A TWEAK: the (0,0) pair is in the relation, the glue
+switch is on the relation, and the glue edges are counted out of the graph rather than stored
+beside it.
+
+AND THE MEASUREMENT AFTER THE FIX, on the five-node graph the rows pin:
+
+    reach WITH the glue edge    0|0  1|0  2|0  3|0  4|0  2|x@1  3|x@2  4|x@2  4|y@3
+    reach WITHOUT the glue edge 0|0
+
+AND THE FACTS IN THAT FIRST LINE ARE THE TRADITIONAL ANALYSIS'S OWN: `IN[2]` = {x@1}, `IN[3]` =
+{x@2}, `IN[4]` = {x@2, y@3}, and `x@1` is NOT at node 3 because node 2 kills it. The second line
+is p.95's failure case, measured.
+
+### THE MEASURED COUNTS
+
+EACH NODE CONTRIBUTES ITS RELATION'S PAIRS TIMES ITS SUCCESSORS:
+
+    node 0  entry   glue + 3 survivors,           1 successor  ->  4 with / 3 without
+    node 1  x = 1   glue + constant + 1 survivor,  1 successor  ->  3 with / 2 without
+    node 2  x = 2   glue + constant + 1 survivor,  1 successor  ->  3 with / 2 without
+    node 3  y = 3   glue + constant + 2 survivors, 1 successor  ->  4 with / 3 without
+    node 4  exit    glue + 3 survivors,            0 successors ->  0 with / 0 without
+
+                                                 total  14 with / 10 without
+
+AND THE EXIT NODE HAS NO SUCCESSOR, SO THE GLUE EDGE APPEARS FOUR TIMES AND NOT FIVE.
+
+ELEVEN ROWS, EACH NAMING ITS SLIDE: p.58-65 for the three edges, p.46 and p.48 for the relation
+and the kill, p.84 for the formula, p.95 and p.96 for the glue edge, and p.53 for the edges of the
+exploded graph.
+
+### AND FIVE MORE OF THE INCREMENT'S OWN DEFECTS, FOUND BY MEASUREMENT AND FIXED, NOT PINNED
+
+    `with` is a RESERVED KEYWORD, so the field was renamed `exploded`.
+    An unused `facts` binding was removed.
+    The per-call edge list used a SPACE separator, and "CallToReturn" CONTAINS the
+    substring "Ret" -- so a test looking for "Ret" matched the WRONG edge without
+    looking wrong. The separator is a `+` now, and the test names the edge it means.
+    Two `if` expressions used as VALUES put the self-scan's `if expression` row at 102
+    instead of 100. A FALSE POSITIVE is FIXED and never pinned: both are statements now,
+    and the row is back at 100.
+    One row expected EIGHT exploded edges. It is THIRTEEN without the glue edge and
+    FOURTEEN with it, and the arithmetic is above.
+
+### AND A SECOND DEFECT THE MEASUREMENT SURFACED: THE READMEs' SSA NUMBERS HAD DRIFTED
+
+THE INCREMENT'S OWN PIN MOVE TOOK THE SSA COST WITH IT -- files 240 -> 242 -- and the READMEs quote
+that cost in PROSE and in a SAMPLE OUTPUT LINE. MEASURED, both copies were written once, at 0572,
+and had not been re-measured since: they still said 208 files and 961 functions, and the prose and
+the sample line did not even agree WITH EACH OTHER (the line said `declined=5080` and the prose
+said "4,979 of them").
+
+THE VERDICT IS THE ONE THIS GATE'S OWN COMMENT ALREADY STATES: A NUMBER WRITTEN DOWN TWICE IS A
+NUMBER THAT WILL DISAGREE WITH ITSELF. So both READMEs now carry the MEASURED numbers, and
+`_verify/check_readme_links.ps1` now DERIVES what they must say from the `$SSA_COST` pin -- so the
+next increment that moves the pin has to move the prose on purpose, exactly as it has to move the
+pin.
+
+### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+

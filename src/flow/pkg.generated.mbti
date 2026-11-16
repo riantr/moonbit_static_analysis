@@ -205,6 +205,28 @@ pub fn eval_sub(Interval, Interval) -> Interval
 
 pub fn icfg_of(Array[IFn]) -> Icfg
 
+pub fn ifds_definitions(Array[Map[String, Bool]]) -> Array[String]
+
+pub fn ifds_explode(Cfg, Array[Map[String, Bool]], Array[Map[String, Bool]], Bool) -> Exploded
+
+pub fn ifds_exploded_text(Exploded) -> String
+
+pub fn ifds_glue_edges(Exploded) -> Array[ExplodeEdge]
+
+pub fn ifds_reach_rel(Array[Map[String, Bool]], Array[Map[String, Bool]], Int32, Array[String], Bool) -> FlowRel
+
+pub fn ifds_rel_empty() -> FlowRel
+
+pub fn ifds_rel_text(FlowRel) -> String
+
+pub fn ifds_supergraph_calls(Icfg) -> Array[String]
+
+pub fn ifds_supergraph_returns(Icfg) -> Array[String]
+
+pub fn ifds_supergraph_text(Icfg) -> String
+
+pub fn ifds_zero() -> String
+
 pub fn interval_at_least(Int32) -> Interval
 
 pub fn interval_at_most(Int32) -> Interval
@@ -738,6 +760,23 @@ pub(all) enum EdgeKind {
   Ret(@ast.Expr?, String?)
 }
 
+pub(all) struct ExplodeEdge {
+  from_node : Int32
+  from_fact : String
+  to_node : Int32
+  to_fact : String
+}
+
+pub(all) struct Exploded {
+  nodes : Int32
+  edges : Array[ExplodeEdge]
+  facts : Int32
+}
+
+pub(all) struct FlowRel {
+  rel : Array[RelEdge]
+}
+
 pub(all) struct HeapCtxCompare {
   plain : PtaCtxResult
   cs_heap : PtaCtxResult
@@ -892,6 +931,11 @@ pub(all) struct PtaInterResult {
 pub(all) struct Redundant {
   node : Int32
   key : String
+}
+
+pub(all) struct RelEdge {
+  from : String
+  to : String
 }
 
 #derive(Eq)

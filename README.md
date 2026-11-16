@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (258 files), with the per-file printing cap lifted so the count is the
+project's own source (260 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1699 | | `const` declaration | 7 |
+| `test` declaration | 1710 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 111 | | `type` declaration | 7 |
+| `struct` declaration | 115 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
 | `enum` declaration | 32 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1856** sit outside every function's
+audit off, so they are printed one per line; the other **1871** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,358** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,373** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,387** as aggregated — which is 3,971 + 19,387 = 23,358, the same number — and the 3,971
+**19,402** as aggregated — which is 3,971 + 19,402 = 23,373, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1421,6 +1421,104 @@ why.
 **p.93 IS THREE THINGS, AND EACH NAMES THE INCREMENT THAT DID IT**: the language (0592), the pointer
 analysis via Datalog (0593) and the taint analysis via Datalog (0594).
 
+### And the supergraph is MEASURED, and the exploded supergraph is BUILT
+
+The lecture is `CFL-Reachability and IFDS` (Yue Li, Nanjing University, 2021) — 174 pages, six
+chapters on p.3, and p.174 names the three things to understand: *Understand CFL-Reachability*,
+*Understand the basic idea of IFDS*, *Understand what problems can be solved by IFDS*.
+`src/flow/ifds.mbt` covers its **chapter 4** (p.58-81, the supergraph and the flow functions) and
+the first half of its **chapter 5** (p.83-97, the exploded supergraph and the glue edge).
+
+**THE DECK'S RECIPE HAS THREE STEPS, AND THIS INCREMENT IS THE FIRST TWO.** p.52-56 gives them:
+build a supergraph `G*` and define flow functions over its edges; transform the flow functions
+into **representation relations** (graphs) to get the **exploded supergraph** `G#`; then solve the
+problem as graph reachability by running **tabulation** on `G#`. The theorem that makes the third
+step an answer is on p.55-56: a fact `d` is in `MRPn` **iff** there is a **realizable path** in
+`G#` from `⟨smain, 0⟩` to `⟨n, d⟩`. Tabulation is 0598.
+
+**CHAPTER 4 WAS ALREADY HERE, SO 0597 MEASURES IT INSTEAD OF WRITING A SECOND COPY.** The deck's
+p.63-65 gives the supergraph **three edges for every procedure call** — an intraprocedural
+call-to-return-site edge, an interprocedural call-to-start edge, and an interprocedural
+exit-to-return-site edge — and `src/flow/icfg.mbt` builds exactly those three
+(`EdgeKind::CallToReturn`, `EdgeKind::Call`, `EdgeKind::Ret`). A second supergraph would have been
+a second implementation of a concept the tree already owns, so the increment **counts** the three
+edges: `ifds_supergraph_text` reports the call sites and the edge kinds, and
+`ifds_supergraph_calls` says, per call site, which of the two edges that leave the call node are
+there.
+
+**AND THE THIRD EDGE IS COUNTED SEPARATELY, because it does not leave the call node.** The deck's
+exit-to-return-site edge leaves the **callee's exit** and arrives at the **caller's return site**
+(p.65), so a reader who looks for it on the call node will not find it — `ifds_supergraph_returns`
+reports it where it is, one line per edge.
+
+**WHAT WAS ABSENT IS THE REPRESENTATION RELATION, and it is the deck's step 2.** p.53 says the
+exploded supergraph is built "by transforming flow functions to representation relations
+(graphs)", and there was no way to ask this tree for a flow function as a graph.
+
+**AND IT IS THE DECK'S OWN FORMULA, p.84, NOT A REWORDING OF IT:**
+
+```
+Rf = { (0,0) } U { (0,y) | y in f(EMPTY) } U { (x,y) | y not in f(EMPTY) and y in f({x}) }
+```
+
+Read off this tree's own transfer `OUT[B] = gen_B U (IN[B] - kill_B)` (p.48), that formula is
+three kinds of pair:
+
+```
+(0 -> 0)   at every node                                  THE GLUE EDGE
+(0 -> g)   for every g in gen[B]                          the constant part
+(x -> x)   for every x not in gen[B] and not in kill[B]    the fact survives
+```
+
+and `ifds_reach_rel` gets them by **calling** `reaching_gen` and `reaching_kill` rather than
+re-implementing them, so the exploded supergraph and the traditional analysis are **two readings
+of the same transfer functions** — which is what makes the next increment's comparison mean
+something.
+
+**THE THIRD CLAUSE EXCLUDES THE GENERATED FACTS, and that is the formula and not a choice.** The
+deck's own examples on p.85-87 show it: `lambda S.{a}` has the edges `0->0`, `0->a` and `b->b` —
+and **not** `a->a`. A fact the node generates is already carried by the constant part, so it gets
+no `(x,x)` pair of its own.
+
+**THE GLUE EDGE IS THE RELATION'S FIRST CLAUSE, and so the switch is on the relation.** p.84's
+`{ (0,0) }` is a clause of `Rf` and not an edge added beside it, so `ifds_reach_rel` takes the
+glue edge as a **parameter** — a measurement that cannot turn the thing off cannot measure it, and
+the deck's p.92-96 is a claim *about* that clause.
+
+**AND WITHOUT IT, THE SUPERGRAPH IS DISCONNECTED — which is the deck's own failure case.** MEASURED
+on the five-node graph the rows pin, **no edge leaves the start pair** `⟨entry, 0⟩`: the exploded
+supergraph is not subtly wrong, it is **disconnected**. That is p.95's own sentence — without the
+edge `0->0` "the representation relation for each edge cannot be connected or 'pasted' together …
+Thus IFDS cannot produce correct solutions via such disconnected representation relations."
+
+**AND WITH IT, THE SUPERGRAPH CONNECTS, AND THE FACTS IT REACHES ARE THE ANALYSIS'S OWN.** The
+`(0,0)` pair is the edge that carries the zero fact from one relation to the next, so the next
+relation's constant part has a zero fact to fire on — that is what "pasted together" means.
+MEASURED, the reachable facts at each node are exactly the traditional analysis's `IN[n]`: `x@1`
+at node 2, `x@2` at nodes 3 and 4, `y@3` at node 4, and `x@1` **not** at node 3, because node 2
+kills it.
+
+**AND THE COUNT IS THE ARITHMETIC, WRITTEN OUT.** Each node contributes its relation's pairs times
+its successors, so the exploded supergraph has **14** edges with the glue and **10** without it:
+node 0 contributes 4, node 1 contributes 3, node 2 contributes 3, node 3 contributes 4 and node 4
+contributes 0 — and the exit node has no successor, so the glue edge appears **four** times, not
+five.
+
+**ELEVEN ROWS, EACH NAMING ITS SLIDE**, in `src/flow/ifds_test.mbt` — p.58-65 for the three edges,
+p.46 and p.48 for the relation and the kill, p.84 for the formula, p.95 and p.96 for the glue
+edge, and p.53 for the edges of the exploded graph.
+
+**AND SIX OF THE INCREMENT'S OWN DEFECTS WERE FOUND BY MEASUREMENT AND FIXED, NOT PINNED.** The
+biggest one: the first draft kept `(0,0)` **out** of the relation and put a `0->0` **self-loop** at
+every node instead — and a self-loop carries the zero fact *nowhere*, so the exploded supergraph
+it built reached nothing at all. MEASURED, the reachable set was one pair. The deck's own p.84
+formula puts the `(0,0)` **inside** the relation, and the code now does what the formula says.
+The other five: `with` is a reserved keyword; an unused `facts` binding; the per-call edge list
+used a space separator while `"CallToReturn"` **contains** the substring `"Ret"`, so a test for
+`"Ret"` matched the wrong edge without looking wrong; two `if` expressions used as **values** put
+the self-scan's `if expression` row at 102 instead of 100; and one row's expectation was a guess
+rather than a measurement. A false positive is fixed and never pinned.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1522,25 +1620,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 208 files, 961 functions, 7,487
-instructions of 3AC — the same measurement gives **837** variables becoming **2,087** versions,
-**756** phi-functions and **1,860** copies. The claim is not a figure of speech.
+would need **16** copies. Over this project's own source — 242 files, 1,350 functions, 8,867
+instructions of 3AC — the same measurement gives **1,084** variables becoming **2,645** versions,
+**936** phi-functions and **2,324** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=208	unreadable=0	functions=961	converted=5	partial=956	declined=5080	…
+SSA-COST	files=242	unreadable=0	functions=1350	converted=5	partial=1345	declined=6225	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (4,979
+number: the files read, the functions measured, and the statements the lowering declined (6,225
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1699/1699 on wasm; 1557/1557 on js and wasm-gc
+moon test --deny-warn                # 1710/1710 on wasm; 1568/1568 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
