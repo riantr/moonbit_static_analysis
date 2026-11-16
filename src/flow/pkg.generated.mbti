@@ -33,6 +33,24 @@ pub fn call_sites_of(CgFn) -> Array[CgCall]
 
 pub fn cfg_of(Array[@ast.Stmt]) -> Cfg
 
+pub fn cfl_edge_symbol(Icfg, Int32, Int32) -> CflSym
+
+pub fn cfl_ordinary_from(Icfg, Int32) -> Array[Bool]
+
+pub fn cfl_pair_counts(Icfg, Int32) -> (Int32, Int32, Int32)
+
+pub fn cfl_path_word(Icfg, Array[(Int32, Int32)]) -> Array[CflSym]
+
+pub fn cfl_program_entry(Icfg) -> Int32
+
+pub fn cfl_search_from(Icfg, Int32, Int32) -> CflSearch
+
+pub fn cfl_sym_text(CflSym) -> String
+
+pub fn cfl_word_realizable(Array[CflSym]) -> Bool
+
+pub fn cfl_word_text(Array[CflSym]) -> String
+
 pub fn cg_fns_of(Array[@ast.Stmt]) -> Array[CgFn]
 
 pub fn cg_node_call(NodeKind) -> CgCall?
@@ -576,6 +594,22 @@ pub(all) struct Cfg {
 pub fn Cfg::dump(Self) -> String
 pub fn Cfg::kind_label(Self, Int32) -> String
 pub fn Cfg::source_order(Self) -> Array[Int32]
+
+pub(all) struct CflSearch {
+  reachable : Array[Bool]
+  states : Int32
+  bounded : Bool
+  found : Bool
+  path : Array[(Int32, Int32)]
+  word : Array[CflSym]
+  stack : Array[Int32]
+}
+
+pub(all) enum CflSym {
+  E
+  Open(Int32)
+  Close(Int32)
+}
 
 #derive(Eq)
 pub(all) struct CgCall {

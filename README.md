@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (264 files), with the per-file printing cap lifted so the count is the
+project's own source (266 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1723 | | `const` declaration | 7 |
+| `test` declaration | 1731 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 116 | | `type` declaration | 7 |
+| `struct` declaration | 117 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
-| `enum` declaration | 32 | | | |
+| `enum` declaration | 33 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1885** sit outside every function's
+audit off, so they are printed one per line; the other **1895** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,10 +664,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,387** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,397** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,416** as aggregated — which is 3,971 + 19,416 = 23,387, the same number — and the 3,971
+**19,426** as aggregated — which is 3,971 + 19,426 = 23,397, the same number — and the 3,971
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1615,6 +1615,56 @@ confluence — `F(X meet Y) != F(X) meet F(Y)`, over the **lattice's** meet, whi
 about the lattice. What is measured here is the distributivity over the **data facts**, which is a
 statement about the transfer. Two questions, two rows, and neither borrows the other's name.
 
+### And CFL-REACHABILITY is EXECUTED, on this tree's own supergraph
+
+The lecture's **p.24-42** is "CFL-Reachability", and p.174 names *Understand CFL-Reachability* as
+one of the three things the lecture is about.
+
+**AND THE DECK'S DEFINITION, p.24, verbatim:**
+
+> A path is considered to connect two nodes A and B, or B is reachable from A, only if the
+> concatenation of the labels on the edges of the path is a word in a specified context-free
+> language.
+
+**AND THE DECK'S LABELLING, p.27, verbatim:**
+
+> Every right parenthesis ")i" is balanced by a preceding left parenthesis "(i", but the converse
+> needs not hold. For each call site i, label its call edge "(i" and return edge ")i". Label all
+> other edges with symbol "e"
+
+**AND `src/flow/cfl.mbt` IS THAT RULE, APPLIED TO THE EDGES THIS TREE ALREADY HAS.** The call
+edges are `(i`, the return edges `)i`, everything else `e` — and the `i` is the index into the
+graph's own call-site list, so an edge and its partner carry the same number because they come from
+the same place.
+
+**AND THE RECOGNISER IS THE GRAMMAR, p.34-38, READ LEFT TO RIGHT.** The deck's language has
+`realizable` and `matched`; the recogniser keeps a stack of unmatched opening parentheses and
+rejects a `)i` that does not close the innermost one. The deck's own examples decide it: p.29's
+path `(1 (2 e )2 )1 (3` is realizable although it is **not balanced** — that is p.27's "the
+converse needs not hold" — p.39's own derivation `e e (1 (2 e e e )2 )1 (3 (4 e` is realizable
+for the same reason, p.41's `e(1eee)1e` is in the language, and p.42's `e(1eee)1e(2eee)1` is
+not, because its final `)1` closes the `(2` that is still open.
+
+**AND THE MEASUREMENT IS ON THE TREE'S OWN SUPERGRAPH, AND IT IS NOT ZERO.** A function called from
+two places has **one** value exit and **two** return edges, so the graph holds a path that enters
+the callee through one call and leaves through the other's return edge. MEASURED, on a
+three-function program, the witness word is `e (2 e (0 e )1`: the path takes `caller` through call
+site 2 and `leaf` through call site 0, and leaves through call site 1's return edge — and the
+stack's top is site 0, so the `)1` closes the wrong parenthesis.
+
+**AND THE COST OF THE DEFINITION IS COUNTED IN PAIRS, because p.24 speaks about PAIRS.** The
+graph's own connections are **82**; the language keeps **57**; **25** are dropped. Every one of
+them is a connection that exists in the graph and is not a call sequence.
+
+**AND THIS IS WHERE 0599 AND 0600 MEET.** The tree's supergraph is the **distributive** one — it
+has the call-to-return edge, which is what distributivity buys — and the CFL formulation does not
+need that edge. The price of having it is visible here: the supergraph holds paths that are not
+call sequences, and the CFL definition is what excludes them.
+
+**EIGHT ROWS, EACH NAMING ITS SLIDE**, in `src/flow/cfl_test.mbt` — p.29 and p.27 for the
+recogniser, p.39, p.41 and p.42 for the three membership rows, p.27 for the labelling of the tree's
+own graph, and p.24 for the witness and the pair counts.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1716,25 +1766,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 246 files, 1,378 functions, 8,948
-instructions of 3AC — the same measurement gives **1,114** variables becoming **2,688** versions,
-**939** phi-functions and **2,330** copies. The claim is not a figure of speech.
+would need **16** copies. Over this project's own source — 248 files, 1,402 functions, 9,141
+instructions of 3AC — the same measurement gives **1,149** variables becoming **2,780** versions,
+**975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=246	unreadable=0	functions=1378	converted=5	partial=1373	declined=6328	…
+SSA-COST	files=248	unreadable=0	functions=1402	converted=5	partial=1397	declined=6435	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,328
+number: the files read, the functions measured, and the statements the lowering declined (6,435
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1723/1723 on wasm; 1581/1581 on js and wasm-gc
+moon test --deny-warn                # 1731/1731 on wasm; 1589/1589 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

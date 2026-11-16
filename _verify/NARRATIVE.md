@@ -20591,3 +20591,118 @@ the other's name.
 ### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
 
 
+## 0600: CFL-REACHABILITY IS EXECUTED, ON THIS TREE'S OWN SUPERGRAPH
+
+THE DECK'S p.24-42 is "CFL-Reachability", and p.174 names *Understand CFL-Reachability* as one of
+the three things the lecture is about.
+
+AND THE DECK'S DEFINITION, p.24, verbatim:
+
+    A path is considered to connect two nodes A and B, or B is reachable from A, only if the
+    concatenation of the labels on the edges of the path is a word in a specified context-free
+    language.
+
+AND THE DECK'S LABELLING, p.27, verbatim:
+
+    Every right parenthesis ")i" is balanced by a preceding left parenthesis "(i", but the
+    converse needs not hold
+    For each call site i, label its call edge "(i" and return edge ")i"
+    Label all other edges with symbol "e"
+
+AND THE GRAMMAR, p.34-38:
+
+    realizable -> matched realizable
+                -> (i realizable
+                -> eps
+
+    matched   -> (i matched )i
+                -> e
+                -> eps
+                -> matched matched
+
+### THE RECOGNISER IS THE GRAMMAR, READ LEFT TO RIGHT
+
+THE STACK IS THE DERIVATION: a word is realizable iff no `)i` in it fails to close the innermost
+unmatched `(i`. The deck's own examples decide it, and they are quoted the way the SLIDES print
+them -- p.29 and p.39 in the spaced spelling, p.41 and p.42 in the compact one:
+
+    p.29   (1 (2 e )2 )1 (3                    realizable -- and NOT BALANCED
+    p.39   e e (1 (2 e e e )2 )1 (3 (4 e       realizable -- and NOT BALANCED
+    p.41   e(1eee)1e                           realizable
+    p.42   e(1eee)1e(2eee)1                    NOT realizable
+
+AND p.29's word is the one that says why the rule is a STACK and not a balance check: its `(3` is
+never closed, and p.27's "the converse needs not hold" is exactly that. And p.39's word is the
+deck's own DERIVATION, and it ends with an opened `(3` and an opened `(4` that are never closed
+-- which is the grammar's `realizable -> (i realizable` at work.
+
+AND p.42's word is worth reading, because the reason it fails is not "a closing parenthesis with
+no opening one": there are two opening ones. The final `)1` closes the `(2` that is still open,
+and the `(1` was closed long ago.
+
+AND THE FIRST DRAFT OF THIS CHAPTER QUOTED TWO WORDS THAT ARE ON NO SLIDE, and the test row
+that goes with them asserted one of them under the name "p.42's word". The slide's own word is
+`e(1eee)1e(2eee)1`, and the row now builds THAT word; the earlier row's word was a different
+word, and a row that claims a slide and does not test it is a row that pins nothing. The
+correction is recorded here because the wrong spelling was here first.
+
+### AND THE MEASUREMENT IS ON THE TREE'S OWN SUPERGRAPH
+
+THE FIXTURE IS THREE FUNCTIONS, and `leaf` IS CALLED FROM TWO PLACES:
+
+    fn leaf()   -> Int { return 7 }
+    fn caller() -> Int { let a = leaf(); return a }
+    fn top()    -> Int { let b = caller(); let c = leaf(); return b }
+
+A function called from two places has ONE value exit and TWO return edges, so the graph holds a
+path that enters the callee through one call and leaves through the other's return edge.
+
+MEASURED, THE LABELS OF THE TREE'S OWN GRAPH ARE:
+
+    0: 1:e,)0,)1 2: 3:e 4: 5:e,)2 6: 7:e,(0 8:e 9: 10:e 11: 12:e,(1 13:e,(2 14:e
+
+AND THE LINE THAT MATTERS IS `1:e,)0,)1`: node 1 is leaf's value exit and it carries TWO return
+edges, because leaf is called from two places.
+
+### AND THE WITNESS: A PATH THAT IS NOT A CALL SEQUENCE
+
+THE PROGRAM'S ENTRY IS DERIVED, NOT ASSUMED: `top` is the function no call reaches, so it is the
+one the deck's single entry node stands for. FROM THERE THE SEARCH FINDS:
+
+    e (2 e (0 e )1
+
+READ IT: the path takes `caller` through call site 2 -- the `(2` -- then `leaf` through call site 0
+-- the `(0` -- and leaves through the return edge of call site 1 -- the `)1`. The stack holds TWO open
+parentheses when the `)1` arrives, and the top of it is site 0, so the `)1` closes the wrong one.
+
+AND THE WITNESS IS THE FIRST ONE, KEPT. The search carries on -- the question is not "is there a bad
+path" but "what does the tree's own graph contain" -- but a result that changed with the search
+order would be a result with no order at all. The first draft of the code kept the LAST witness
+while its own comment promised the first; the measurement found it, and the code now keeps the
+first.
+
+### AND THE COST OF THE DEFINITION, COUNTED IN PAIRS
+
+p.24 SPEAKS ABOUT PAIRS -- "A path is considered to connect two nodes A and B" -- so the question
+is how many of the graph's own connections survive the language test:
+
+    ordinary 82   realizable 57   excluded 25
+
+AND THE THIRD NUMBER IS THE DIFFERENCE, not a third opinion: a realizable path IS a path, so the
+language can only DROP connections. Every one of the 25 is a connection that exists in the graph and
+is not a call sequence.
+
+### AND THIS IS WHERE 0599 AND 0600 MEET
+
+THE TREE'S SUPERGRAPH IS THE DISTRIBUTIVE ONE: it has the call-to-return edge, which is what
+distributivity buys, and the CFL formulation does not need that edge. The price of having it is
+visible here.
+
+### EIGHT ROWS, EACH NAMING ITS SLIDE
+
+p.29 and p.27 for the recogniser, p.39, p.41 and p.42 for the three membership rows, p.27 for
+the labelling of the tree's own graph, and p.24 for the witness and the pair counts.
+
+### AND NO NEW FAMILY, AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
