@@ -79,6 +79,33 @@ priv struct Infer {
   /// COUNTING happens once per site.
   mut n_calls : Int32
   mut n_checked : Int32
+  /// 0603. THE CALLS WHOSE TARGET IS RESOLVABLE -- the cross-file calls this
+  /// lens could not check, whose callee the `.mbti` DECLARES A SIGNATURE FOR.
+  ///
+  /// AND THIS IS THE DECK'S p.35 SHAPE: "When string arguments cannot be
+  /// resolved statically, infer the reflective targets at their usage points!"
+  /// The target was resolvable all along -- the `.mbti` carries the parameter
+  /// list -- and what was missing was the reading of it.
+  ///
+  /// IT COUNTS VISITS, like `n_unchecked` beside it, because it is counted in
+  /// the same place. The pair below is the deck's p.40 pair: how many targets
+  /// were inferred, and how many of them were RIGHT.
+  mut n_sig_available : Int32
+  /// 0603. How many of those targets' DECLARED ARITY agrees with the call's own
+  /// argument count.
+  ///
+  /// AND IT IS THE PRECISION FIGURE. "Infer 50 reflective target methods and 48
+  /// methods are true!" -- the deck counts the inferences and then counts how
+  /// many were right, because an inference with no precision is a guess. So the
+  /// two are counted together and printed together: a signature that disagrees
+  /// with the call is a signature the analyzer would have MIS-checked.
+  ///
+  /// IT IS A COUNT, NOT A CHECK. The signature is read here so the analyzer can
+  /// say how much of its own silence is removable; turning it into an argument
+  /// check is a change to what the analyzer FINDS, and that belongs to a release
+  /// that re-measures the corpora rather than to the increment that made the
+  /// signature reachable.
+  mut n_arity_agrees : Int32
   /// The call sites already counted, keyed by the node's own start position.
   /// Two distinct call sites cannot share one: a start line and column
   /// identify a node in a file, which is what makes the span a safe key.
@@ -119,6 +146,8 @@ fn new_infer(extern_iface : @core.IfaceSymTab, partial : Bool) -> Infer {
     n_unchecked: 0,
     n_calls: 0,
     n_checked: 0,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
     seen_sites: Map([]),
   }
 }
@@ -160,10 +189,23 @@ fn Infer::lookup(self : Infer, name : String) -> Ty? {
       // Measured on 0.4.4 against moonbitlang/core: this used to return
       // `TFunc(name, [TUnknown], TUnknown)`, and the one-element parameter
       // list was documented as deliberate ("the arity check still fires past
-      // 1 arg"). It is not sound — a `.mbti` gives us the NAME, never the
-      // parameter list — so every cross-file call with two or more arguments
+      // 1 arg"). It is not sound, and the reason it was written down was a
+      // sentence that was WRONG: "a `.mbti` gives us the NAME, never the
+      // parameter list". The `.mbti` GIVES THE PARAMETER LIST --
+      // `pub fn action_mask_to_action_vec(UInt) -> Array[Action]` carries it,
+      // and the corpus's own interfaces carry it on thousands of method
+      // signatures. So every cross-file call with two or more arguments
       // reported "too many arguments to 'f': expected 1, got 2". 12 of those
       // on a clean 882-file stdlib that `moon check` accepts with 0 errors.
+      //
+      // 0603. THE SENTENCE IS CORRECTED AND THE LIST IS KEPT. The `.mbti`
+      // reader now keeps the parameter list, in `IfaceSymTab.sigs`, and the
+      // lens counts how many of the calls it could not check have a target
+      // whose arity it can read -- the deck's p.35, "infer the reflective
+      // targets at their usage points". The lens still returns `TUnknownFn`
+      // here, because turning the signature into a CHECK is a change to what
+      // the analyzer FINDS, and that belongs to a release that re-measures
+      // the corpora.
       if self.extern_iface.has_value(name) {
         // A cross-file CONSTANT is a value we know is not callable. Typing it as
         // `TUnknownFn` made ordinary arithmetic on it an operator mismatch —
@@ -414,6 +456,33 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
           // discloses instead of rounding "I could not check this" down to
           // "nothing to report".
           self.n_unchecked += 1
+          // 0603. THE TARGET IS RESOLVABLE. The callee is a cross-file value
+          // whose NAME the interface table knows, and the `.mbti` declares its
+          // PARAMETER LIST -- which the reader used to throw away. So the
+          // table can now say whether this call has a target with a known
+          // arity, and whether that arity AGREES with the call's own argument
+          // count.
+          //
+          // AND IT IS THE DECK'S p.39 QUESTION: "The reflective target method
+          // at line 175 must have one parameter and its declared type must be
+          // FrameworkCommandInterpreter or its sub/supertypes." The arity is
+          // the first half of it, and it is counted, not enforced: enforcing
+          // it is a change to what the analyzer FINDS, and that belongs to a
+          // release that re-measures the corpora.
+          //
+          // THE NAME IS RESOLVED THE WAY `has_value` RESOLVES IT -- the bare
+          // spelling and the re-exported forms -- because a `.mbti` declares
+          // `pub fn Type::method(..)` while a use site writes
+          // `@pkg.Type::method(..)`, and the table is flat.
+          match self.extern_iface.sig(name) {
+            Some(sg) => {
+              self.n_sig_available += 1
+              if sg.arity() == args.length() {
+                self.n_arity_agrees += 1
+              }
+            }
+            None => ()
+          }
           for arg in args {
             ignore(self.ty_of(arg, TUnknown))
           }
@@ -1220,5 +1289,7 @@ pub fn infer_full(
     n_unchecked: inf.n_unchecked,
     n_calls: inf.n_calls,
     n_checked: inf.n_checked,
+    n_sig_available: inf.n_sig_available,
+    n_arity_agrees: inf.n_arity_agrees,
   }
 }

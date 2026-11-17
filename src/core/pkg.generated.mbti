@@ -114,11 +114,20 @@ pub(all) struct Frame {
   line : Int32
 }
 
+pub(all) struct IfaceSig {
+  params : Array[Array[String]]
+  ret : Array[String]
+}
+pub fn IfaceSig::arity(Self) -> Int32
+pub fn IfaceSig::param_types(Self, Int32) -> Array[String]
+
 pub struct IfaceSymTab {
   types : Map[String, Bool]
   values : Map[String, Bool]
+  sigs : Map[String, IfaceSig]
   aliases : Map[String, String]
 }
+pub fn IfaceSymTab::add_sig(Self, String, IfaceSig) -> Unit
 pub fn IfaceSymTab::add_value(Self, String) -> Unit
 pub fn IfaceSymTab::all_values(Self) -> Map[String, Bool]
 pub fn IfaceSymTab::empty() -> Self
@@ -126,8 +135,10 @@ pub fn IfaceSymTab::has_type(Self, String) -> Bool
 pub fn IfaceSymTab::has_value(Self, String) -> Bool
 pub fn IfaceSymTab::is_const(Self, String) -> Bool
 pub fn IfaceSymTab::merge(Self, Self) -> Self
+pub fn IfaceSymTab::n_sigs(Self) -> Int32
 pub fn IfaceSymTab::n_types(Self) -> Int32
 pub fn IfaceSymTab::n_values(Self) -> Int32
+pub fn IfaceSymTab::sig(Self, String) -> IfaceSig?
 pub fn IfaceSymTab::union(Self, Self) -> Self
 
 #derive(Eq)

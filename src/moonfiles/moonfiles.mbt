@@ -418,6 +418,10 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // adverse ratio here would be "0 of 0", which is not a regression.
     n_calls: 0,
     n_checked: 0,
+    // 0603. Same reason again: no type lens ran, so no call was visited, and a
+    // call it never visited has no target to infer.
+    n_sig_available: 0,
+    n_arity_agrees: 0,
     // 0541. Same reason again: a Markdown document runs no behavioral lens, so
     // it executed no function body in any context. Zero is the measurement, not
     // a placeholder.
@@ -878,18 +882,37 @@ fn type_names(s : String) -> Array[String] {
 }
 
 ///|
-/// The shapes `moon info` actually emits for a value signature. Returns
-/// (name, referenced types, bound type params) or None when the line is not
-/// a signature at all:
+/// ONE SIGNATURE LINE, read out of a `.mbti`.
+///
+/// AND THE PARAMETER LIST IS IN HERE. It used to be thrown away: the reader
+/// parsed it, took the SET of type names the whole line mentions, and dropped
+/// the list itself -- so no arity could be read off a cross-file callee. See
+/// `src/core/iface_sig.mbt` for the deck this answers and for the sentence
+/// that was wrong.
+priv struct IfaceSigLine {
+  /// The declared name: `Type::method`, `&Trait::method` or a plain function.
+  name : String
+  /// Every type name the line mentions, the parameters' and the return type's.
+  types : Array[String]
+  /// The bound type parameters (`fn[W : Writer]`).
+  bound : Array[String]
+  /// A `const` or a `let`, not a function.
+  is_const : Bool
+  /// The parameter types, ONE ARRAY PER PARAMETER, in order.
+  params : Array[Array[String]]
+  /// The return type's referenced type names.
+  ret : Array[String]
+}
+
+///|
+/// The shapes `moon info` actually emits for a value signature. Returns None
+/// when the line is not a signature at all:
 ///   pub fn f(Int) -> Int
 ///   pub async fn[W : Writer] T::flush(Self[W]) -> Unit
 ///   pub extern "C" fn put(Int) -> Unit
 ///   pub fn &Data::text(Self) -> String raise
 ///   pub const HEADER_SIZE : Int = 10
-/// (name, referenced type names, bound type params, is_const)
-fn iface_signature(
-  line : String,
-) -> (String, Array[String], Array[String], Bool)? {
+fn iface_signature(line : String) -> IfaceSigLine? {
   let t = trim_sp(line)
   if t == "" || t.has_prefix("//") || t.has_prefix("#") {
     return None
@@ -903,7 +926,18 @@ fn iface_signature(
     if name == "" {
       return None
     }
-    return Some((name, type_names(type_annotation_of(ty)), [], true))
+    let names = type_names(type_annotation_of(ty))
+    return Some(IfaceSigLine::{
+      name,
+      types: names,
+      bound: [],
+      is_const: true,
+      // A CONSTANT HAS NO PARAMETER LIST, and its declared type is not a
+      // return type -- but it is the only type the line gives, so it is kept
+      // and the arity stays zero.
+      params: [],
+      ret: names,
+    })
   }
   // `pub let NAME : T` — a value declaration (no body), emitted by moon info
   // for package-level constants and re-exports. A constant, not a function.
@@ -914,7 +948,15 @@ fn iface_signature(
     if name == "" {
       return None
     }
-    return Some((name, type_names(type_annotation_of(ty)), [], true))
+    let names = type_names(type_annotation_of(ty))
+    return Some(IfaceSigLine::{
+      name,
+      types: names,
+      bound: [],
+      is_const: true,
+      params: [],
+      ret: names,
+    })
   }
   let rest = strip_fn_modifiers(body)
   if !(rest.has_prefix("fn ") || rest.has_prefix("fn[")) {
@@ -938,14 +980,22 @@ fn iface_signature(
   }
   // parameters: strip the wrapping parens, then keep only each segment's
   // type half (a labeled parameter's name is not a type)
-  let (params, ret) = paren_parts(tail)
+  let (params_text, ret_text) = paren_parts(tail)
   let types : Array[String] = []
-  for seg in split_top_commas(params) {
+  // 0603. THE PARAMETERS' OWN TYPES, ONE ARRAY PER PARAMETER, in order.
+  //
+  // AND THIS IS WHAT WAS THROWN AWAY. The set of type names the whole line
+  // mentions cannot say WHICH parameter has which type, and that is the whole
+  // content of an argument check -- and the whole content of an arity.
+  let params : Array[Array[String]] = []
+  for seg in split_top_commas(params_text) {
     if seg == "" {
       continue
     }
     let (_label, ty) = label_type(seg)
-    for n in type_names(ty) {
+    let names = type_names(ty)
+    params.push(names)
+    for n in names {
       if !types.contains(n) {
         types.push(n)
       }
@@ -954,12 +1004,20 @@ fn iface_signature(
   // return type: whatever follows the closing paren. A trailing `?`, a
   // `(A, B)` tuple and the error-type modifiers need no cleanup —
   // type_names ignores non-ident characters and the modifiers are noise.
-  for n in type_names(ret) {
+  let ret = type_names(ret_text)
+  for n in ret {
     if !types.contains(n) {
       types.push(n)
     }
   }
-  Some((clean_name, types, bound, false))
+  Some(IfaceSigLine::{
+    name: clean_name,
+    types,
+    bound,
+    is_const: false,
+    params,
+    ret,
+  })
 }
 
 ///|
@@ -1142,6 +1200,16 @@ pub fn collect_iface_names(src : String) -> @core.IfaceSymTab {
       tab.values.set(n, result.const_names.contains(n))
     }
   }
+  // 0603. THE SIGNATURES GO IN TOO. The table used to hold the NAMES of the
+  // cross-file values and nothing else, so a cross-file call had no arity to
+  // check and no declared types to check it against -- and the `.mbti` declares
+  // both, and the reader used to throw them away.
+  for pair in result.sigs {
+    let (n, sg) = pair
+    if !tab.sigs.contains(n) {
+      tab.sigs.set(n, sg)
+    }
+  }
   // Enum constructors are values, and they are declared inside a body this
   // frontend skips. Without this, a `.mbt` that writes `TFunc("f", [TInt],
   // TInt)` reports `no visible binding for 'TFunc'` — the binding is real, it
@@ -1212,6 +1280,14 @@ priv struct IfaceScan {
   /// declared inside the trait's body -- a body this reader skips. See the
   /// comment where they are collected for the corpus sites they unblock.
   trait_members : Array[String]
+  /// 0603. THE SIGNATURES, as `(name, signature)`: the parameter list and the
+  /// return type the `.mbti` declares.
+  ///
+  /// AND THIS IS THE PART THAT WAS THROWN AWAY. The reader parsed the
+  /// parameter list and kept only the set of type names the line mentions, so
+  /// no arity could be read off a cross-file callee and every cross-file call
+  /// was "unchecked" with nothing to check it against.
+  sigs : Array[(String, @core.IfaceSig)]
 }
 
 ///|
@@ -1223,6 +1299,8 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
   let sig_names : Array[String] = []
   let const_names : Array[String] = []
   let aliases : Array[(String, String)] = []
+  // 0603. The signatures, kept. See the `IfaceScan.sigs` note.
+  let sigs : Array[(String, @core.IfaceSig)] = []
   let referenced : Array[(String, Int32, Int32)] = []
   let lines = split_lines(text)
   let mut decl_depth = 0
@@ -1316,11 +1394,18 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       // -- and the name it declares is a VALUE.
       if trait_name != "" {
         match iface_signature(t) {
-          Some((mname, _, _, _)) => {
-            let qualified = trait_name + "::" + mname
+          Some(sig) => {
+            let qualified = trait_name + "::" + sig.name
             if !trait_members.contains(qualified) {
               trait_members.push(qualified)
             }
+            // 0603. A TRAIT'S METHOD HAS A SIGNATURE TOO, and it is read with
+            // the same reader the top-level signatures use. It is kept under
+            // the QUALIFIED name, because that is the name a use site resolves
+            // to.
+            sigs.push(
+              (qualified, @core.IfaceSig::{ params: sig.params, ret: sig.ret, }),
+            )
           }
           None => ()
         }
@@ -1510,7 +1595,11 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
       continue
     }
     match iface_signature(t) {
-      Some((name, types, bound, is_const)) => {
+      Some(sig) => {
+        let name = sig.name
+        let types = sig.types
+        let bound = sig.bound
+        let is_const = sig.is_const
         if is_const && !const_names.contains(name) {
           const_names.push(name)
         }
@@ -1539,6 +1628,14 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
           })
         } else {
           sig_names.push(name)
+          // 0603. THE SIGNATURE IS KEPT, not just the name. The `.mbti` line
+          // says how many arguments this callee takes and what their types
+          // are, and the reader used to throw that away. It is the deck's p.35
+          // shape: the target was resolvable all along, and the thing that was
+          // missing was the TARGET's shape.
+          sigs.push(
+            (name, @core.IfaceSig::{ params: sig.params, ret: sig.ret, }),
+          )
         }
         for ty in types {
           referenced.push((ty, lineno, 1))
@@ -1594,6 +1691,7 @@ fn parse_iface(src : String, extern_names : @core.IfaceSymTab) -> IfaceScan {
     const_names,
     aliases,
     trait_members,
+    sigs,
   }
 }
 

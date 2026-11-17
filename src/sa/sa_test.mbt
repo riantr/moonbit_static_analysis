@@ -39,6 +39,8 @@ fn v_parsed() -> @sa.Verdict {
     // identity, not the type lens's coverage.
     n_calls: 0,
     n_checked: 0,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
   }
 }
 
@@ -64,6 +66,8 @@ fn v_partial_with_findings() -> @sa.Verdict {
     n_unchecked: 0,
     n_calls: 0,
     n_checked: 0,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
   }
 }
 
@@ -89,6 +93,8 @@ fn v_partial_empty() -> @sa.Verdict {
     n_unchecked: 0,
     n_calls: 0,
     n_checked: 0,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
   }
 }
 
@@ -413,6 +419,8 @@ fn v_partial_at(path : String, reason : String) -> @sa.Verdict {
     n_unchecked: 0,
     n_calls: 0,
     n_checked: 0,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
   }
 }
 

@@ -392,6 +392,8 @@ $soM  = [regex]::Match($relTxt2, "\`$SOUNDINESS_SOUND\s*=\s*'(\d+)'")
 $syM  = [regex]::Match($relTxt2, "\`$SOUNDINESS_SOUNDY\s*=\s*'(\d+)'")
 $suM  = [regex]::Match($relTxt2, "\`$SOUNDINESS_UNSOUND\s*=\s*'(\d+)'")
 $suIM = [regex]::Match($relTxt2, "\`$SOUNDINESS_UNSOUND_IDS\s*=\s*'([^']*)'")
+$isaM = [regex]::Match($relTxt2, "\`$IFACE_SIG_AVAILABLE\s*=\s*'(\d+)'")
+$isgM = [regex]::Match($relTxt2, "\`$IFACE_SIG_AGREES\s*=\s*'(\d+)'")
 if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
   Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives from.'
   Write-Output '        Restore them, or this gate has nothing to check the README against.'
@@ -419,6 +421,20 @@ if (-not ($soM.Success -and $syM.Success -and $suM.Success -and $suIM.Success)) 
   $su = $suM.Groups[1].Value
   $suIds = $suIM.Groups[1].Value
   Write-Output ('  (release.ps1 pins: soundiness sound ' + $so + ', soundy ' + $sy + ', unsound ' + $su + ')')
+}
+
+# 0603. THE DECK'S p.40 PAIR, derived from the pins the corpus stage checks
+# against the ANALYZER'S OWN line. Two numbers, and the second one is
+# meaningless without the first -- a count of agreements with no count of
+# opportunities is a number about nothing.
+if (-not ($isaM.Success -and $isgM.Success)) {
+  Write-Output '  FAIL: release.ps1 no longer carries the iface-sig pins.'
+  $fail++
+  $sigAvailable = '?'; $sigAgrees = '?'
+} else {
+  $sigAvailable = ([int]$isaM.Groups[1].Value).ToString('N0')
+  $sigAgrees = ([int]$isgM.Groups[1].Value).ToString('N0')
+  Write-Output ('  (release.ps1 pins: cross-file targets ' + $sigAvailable + ', arities agreeing ' + $sigAgrees + ')')
 }
 
 # The kind -> the label each README prints it under. The labels are PRESENTATION
@@ -466,6 +482,12 @@ foreach ($id in ($suIds -split '\|')) {
   $more.Add(@{ F = 'README.md';    S = $id; N = 'the deliberate (unsound) treatment' })
   $more.Add(@{ F = 'README.zh.md'; S = $id; N = 'the deliberate (unsound) treatment (zh)' })
 }
+# 0603. THE DECK'S p.40 PAIR, in the READMEs' own tables. The numbers come from
+# the same pins the corpus stage checks against the analyzer's line.
+$more.Add(@{ F = 'README.md';    S = ('cross-file calls whose callee the `.mbti` declares a signature for | **' + $sigAvailable + '**'); N = 'the resolvable cross-file targets' })
+$more.Add(@{ F = 'README.md';    S = ('whose declared arity agrees with the argument count of the call | **' + $sigAgrees + '**'); N = 'the agreeing arities' })
+$more.Add(@{ F = 'README.zh.md'; S = ('被调用者的 `.mbti` 声明了签名的数量 | **' + $sigAvailable + '**'); N = 'the resolvable cross-file targets (zh)' })
+$more.Add(@{ F = 'README.zh.md'; S = ('声明的 arity 与该调用的实参个数一致的数量 | **' + $sigAgrees + '**'); N = 'the agreeing arities (zh)' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count' })
 $more.Add(@{ F = 'README.zh.md'; S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count (zh)' })

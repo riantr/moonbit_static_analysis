@@ -272,6 +272,24 @@ function Get-NoticeLineCount {
   return @([regex]::Matches($Text, '(?m)^\d+:\d+ - notice: ')).Count
 }
 
+# 0603. THE DECK'S p.40 PAIR, as the analyzer prints it: the unchecked calls
+# whose callee the `.mbti` declares a signature for, and how many of those
+# signatures' arities agree with the call's own argument count.
+#
+# IT IS READ FROM THE ANALYZER'S OWN LINE, and not recomputed here, for the
+# reason every other number in this file is not recomputed: a second
+# implementation of the measurement is a second number that can disagree with
+# the first.
+function Get-IfaceSig {
+  param([string]$Text)
+  $m = [regex]::Match($Text, '(?m)^METRICS\tiface-sig\tavailable=(\d+)\tagrees=(\d+)')
+  if (-not $m.Success) { return $null }
+  return [pscustomobject]@{
+    Available = [int]$m.Groups[1].Value
+    Agrees = [int]$m.Groups[2].Value
+  }
+}
+
 # The ParseError-family findings that are NOT notices: a genuine defect of
 # that family. Zero is the only acceptable answer, and it is measured on every
 # tree the gate scans.
@@ -509,7 +527,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # test rows + 2 enums + 1 struct = 2,061. The layer adds the two enums of the
 # deck's three-way verdict -- Soundiness and ExclusionCause -- and the one
 # struct of an exclusion.
-$NOTICE_TOTAL = '23406'
+$NOTICE_TOTAL = '23418'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -630,8 +648,8 @@ $NOTICE_TOTAL = '23406'
 # ALL, for the same reason. The corpora did not move.
 # 0602. AND AGAIN: 3971 + 19426 -> 3971 + 19435. The PRINTED half did not move AT
 # ALL, for the same reason. The corpora did not move.
-$NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19435'
+$NOTICE_SPLIT_PRINTED = '3972'
+$NOTICE_SPLIT_AGGREGATED = '19446'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -761,10 +779,37 @@ $NOTICE_SPLIT_AGGREGATED = '19435'
 # move AGAIN, and the notice table's moving rows are the `test` declaration row
 # (1731 -> 1737, the six new rows), the `enum` declaration row (33 -> 35, the two
 # new enums) and the `struct` declaration row (117 -> 118, the one new struct).
-$SELF_FILES = '268'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=100|short lambda=8|struct declaration=118|test declaration=1737|try expression=1|type declaration=7'
-$SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1904'
+$SELF_FILES = '271'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=120|test declaration=1746|try expression=1|type declaration=7'
+$SELF_PRINTED = '158'
+$SELF_AGGREGATED = '1915'
+#   $IFACE_SIG_AVAILABLE   the deck's p.40 pair, over the eight trees: how many
+#   $IFACE_SIG_AGREES      of the cross-file calls the type lens could NOT check
+#                          have a callee whose `.mbti` declares a signature, and
+#                          how many of those signatures' arities AGREE with the
+#                          call's own argument count.
+#
+# 0603. MEASURED over the eight trees, and the FIRST number is the point of the
+# increment: the reflective target WAS resolvable -- the `.mbti` declares the
+# parameter list -- and the reader used to throw that list away. So every one
+# of these calls had a target whose shape was known and the analyzer never
+# read it.
+#
+# AND THE SECOND NUMBER IS THE DECK'S PRECISION FIGURE: "Infer 50 reflective
+# target methods and 48 methods are true!" An inference with no precision is
+# a guess, so the two are counted together.
+#
+# AND THE 679 THAT DISAGREE ARE NOT AN ARITHMETIC BUG. The interface table is
+# FLAT: every `.mbti` under `.repos` is merged into ONE table and a `.mbti`
+# declares its names unqualified, so a name declared in one package can match
+# a call in another. MEASURED: moonbit_image declares NO `.mbti` of its own and
+# 73 of its 74 targets disagree, while the corpora that declare their own
+# interfaces agree at 77-80%. So the disagreement rate is a property of the
+# TABLE, and it is precisely the deck's p.39 warning -- an inferred target has
+# to be constrained by its TYPE, not by its name alone. That is why 0603 COUNTS
+# the inference and does not ENFORCE it.
+$IFACE_SIG_AVAILABLE = '2958'
+$IFACE_SIG_AGREES = '2279'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -974,7 +1019,22 @@ $SUPPOFF_PARAM = '1341'
 # instructions 9141 -> 9158, variables 1149 -> 1154, versions 2780 -> 2790,
 # phis 975 (unchanged), copies 2408 (unchanged), undef_operands 202 (unchanged),
 # dead_blocks 464 -> 465, undef_uses 1287 -> 1288.
-$SSA_COST = 'files=250|unreadable=0|functions=1412|converted=5|partial=1407|declined=6469|instructions=9158|variables=1154|versions=2790|phis=975|copies=2408|undef_operands=202|dead_blocks=465|undef_uses=1288'
+# 0603. AND IT MOVED AGAIN WITH THE THREE NEW FILES: files 250 -> 253,
+# functions 1412 -> 1418, partial 1407 -> 1413, declined 6469 -> 6485,
+# instructions 9158 -> 9169, variables 1154 -> 1158, versions 2790 -> 2795,
+# phis 975 (unchanged), copies 2408 (unchanged), undef_operands 202
+# (unchanged), dead_blocks 465 (unchanged), undef_uses 1288 -> 1291.
+#
+# AND THEN IT MOVED AGAIN, AND THE ORDER IS THE POINT: that measurement was
+# taken with the signature merge INLINED, and mutation gate 0447's M4 aborted
+# on its anchor. The merge became its own function, called BEFORE the alias
+# merge -- and `declined` WENT DOWN, because the inlined merge was code the
+# converter DECLINED to translate and the call is code it TRANSLATES.
+# functions 1418 -> 1419, partial 1413 -> 1414, declined 6485 -> 6483,
+# instructions 9169 -> 9172, variables 1158 (unchanged), versions 2795
+# (unchanged), phis 975 (unchanged), copies 2408 (unchanged), undef_operands
+# 202 (unchanged), dead_blocks 465 (unchanged), undef_uses 1291 -> 1295.
+$SSA_COST = 'files=253|unreadable=0|functions=1419|converted=5|partial=1414|declined=6483|instructions=9172|variables=1158|versions=2795|phis=975|copies=2408|undef_operands=202|dead_blocks=465|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -989,11 +1049,12 @@ $SSA_COST = 'files=250|unreadable=0|functions=1412|converted=5|partial=1407|decl
 # twice. It was 100 through 0589, moved to 101 with chapter 0590 and to 102 with
 # chapter 0591, to 106 with chapter 0595, and to 107 with chapter 0596, to 108 with
 # chapter 0597, to 109 with chapter 0598, to 110 with chapter 0599, and to 111
-# with chapter 0600, to 112 with chapter 0601, and to 113 with chapter 0602.
+# with chapter 0600, to 112 with chapter 0601, to 113 with chapter 0602, and
+# to 114 with chapter 0603.
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '113'
+$NARRATIVE_CHAPTERS = '114'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1051,6 +1112,8 @@ if ([string]::IsNullOrWhiteSpace($SSA_COST))      { $emptyPins += 'SSA_COST' }
 if ([string]::IsNullOrWhiteSpace($NARRATIVE_CHAPTERS)) { $emptyPins += 'NARRATIVE_CHAPTERS' }
 if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_PRINTED)) { $emptyPins += 'NOTICE_SPLIT_PRINTED' }
 if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_AGGREGATED)) { $emptyPins += 'NOTICE_SPLIT_AGGREGATED' }
+if ([string]::IsNullOrWhiteSpace($IFACE_SIG_AVAILABLE)) { $emptyPins += 'IFACE_SIG_AVAILABLE' }
+if ([string]::IsNullOrWhiteSpace($IFACE_SIG_AGREES)) { $emptyPins += 'IFACE_SIG_AGREES' }
 if ($emptyPins.Count -gt 0) {
   Write-Output ('FATAL: the pins ' + ($emptyPins -join ', ') + ' are empty.')
   Write-Output '  A gate that compares against an empty pin compares against nothing.'
@@ -1178,7 +1241,13 @@ if ($failed.Count -eq 0) {
     # 0542. `_verify` is excluded, and the reason is in `Scan-Tree`: the
     # untracked scratch copies under it are not the project's source, and the
     # published file count has to be reproducible from a clean checkout.
-    $text = Scan-Tree $wasm $root '_verify'
+    #
+    # 0603. `--metrics` is added HERE, and only here and in the corpus stage,
+    # because the deck's p.40 pair is printed in the metrics block and the gate
+    # has to MEASURE it rather than assert it. The SUMMARY line is the same
+    # either way -- the metrics block is opt-in and prints after it -- so
+    # adding the flag changes no number this stage already reads.
+    $text = Scan-Tree $wasm $root '_verify' @('--metrics')
     $sum = Get-Summary $text
     Write-Output ('  ' + $sum)
     $files  = [int]([regex]::Match($sum, 'files=(\d+)').Groups[1].Value)
@@ -1251,6 +1320,22 @@ if ($failed.Count -eq 0) {
     $script:selfNotices = $sumNotices
     $script:selfPrinted = $tab.Printed
     $script:selfAggregated = $tab.Aggregated
+
+    # 0603. THE DECK'S p.40 PAIR, over this repository's own source. The
+    # corpus stage adds the seven corpora to these two numbers, so the pin is
+    # the EIGHT-TREE pair and this is its own-source half.
+    $sig = Get-IfaceSig $text
+    if ($null -eq $sig) {
+      Write-Output '  FAIL: the scan printed no iface-sig metrics line.'
+      $script:stageOk = $false
+      $script:selfSigAvailable = 0
+      $script:selfSigAgrees = 0
+    } else {
+      $script:selfSigAvailable = $sig.Available
+      $script:selfSigAgrees = $sig.Agrees
+      Write-Output ('  the cross-file targets this source could have had: ' +
+        $sig.Available + ' available, ' + $sig.Agrees + ' agreeing on the arity')
+    }
 
     # THE OWN-SOURCE NOTICES BY KIND. The README publishes this table, so the
     # table is measured here and PINNED.
@@ -2443,10 +2528,17 @@ if ($failed.Count -eq 0) {
     # stage's numbers, because that stage measured them already.
     $splitPrinted = $script:selfPrinted
     $splitAggregated = $script:selfAggregated
+    # 0603. The deck's p.40 pair, accumulated over the same seven corpora and
+    # this repository's own source. The own-source half starts at the
+    # self-scan stage's numbers, because that stage measured them already.
+    $sigAvailable = $script:selfSigAvailable
+    $sigAgrees = $script:selfSigAgrees
     foreach ($k in $TARGETS.Keys) {
       $p = Join-Path $repos $TARGETS[$k]
       if (-not (Test-Path $p)) { Write-Output ("  [ABSENT] {0,-16}" -f $k); $drift++; continue }
-      $text = Scan-Tree $wasm $p
+      # 0603. `--metrics` is added here for the same reason it is added to the
+      # self-scan: the iface-sig pair is printed in the metrics block.
+      $text = Scan-Tree $wasm $p '' @('--metrics')
       $sum = Get-Summary $text
       # THE ANALYZER'S OWN NOTICE NUMBERS, and the reconciliation.
       #
@@ -2491,6 +2583,16 @@ if ($failed.Count -eq 0) {
       $parseErr += $nt
       $splitPrinted += $tab.Printed
       $splitAggregated += $tab.Aggregated
+      # 0603. The deck's p.40 pair, per corpus. The line is the ANALYZER's own
+      # measurement, read here and not recomputed.
+      $sig = Get-IfaceSig $text
+      if ($null -eq $sig) {
+        Write-Output ("  [DRIFT ] {0,-16} the scan printed no iface-sig metrics line" -f $k)
+        $drift++
+      } else {
+        $sigAvailable += $sig.Available
+        $sigAgrees += $sig.Agrees
+      }
       $want = $PINNED[$k]
       if ($sum -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $k, $sum) }
       else {
@@ -2540,6 +2642,26 @@ if ($failed.Count -eq 0) {
       $drift++
     } else {
       Write-Output ('  the eight-tree split adds up to the eight-tree total (' + $parseErr + ')')
+    }
+    # 0603. THE DECK'S p.40 PAIR, over the eight trees.
+    #
+    # TWO NUMBERS, AND THE SECOND ONE IS THE POINT. `available` is how many of
+    # the cross-file calls the type lens could not check have a callee whose
+    # `.mbti` declares a signature -- the reflective target WAS resolvable, and
+    # the reader used to throw its shape away. `agrees` is how many of those
+    # signatures' arities match the call's own argument count, which is the
+    # deck's "48 methods are true!".
+    #
+    # AND THEY ARE PINNED TOGETHER, because the second one is meaningless
+    # without the first: a count of agreements with no count of opportunities
+    # is a number about nothing.
+    if ("$sigAvailable" -ne $IFACE_SIG_AVAILABLE -or "$sigAgrees" -ne $IFACE_SIG_AGREES) {
+      Write-Output ('  [DRIFT ] the eight trees resolve ' + $sigAvailable + ' cross-file targets and ' +
+                    $sigAgrees + ' of their arities agree, pinned ' + $IFACE_SIG_AVAILABLE + ' / ' + $IFACE_SIG_AGREES + '.')
+      $drift++
+    } else {
+      Write-Output ('  [MATCH ] the eight trees resolve ' + $sigAvailable + ' cross-file targets and ' +
+                    $sigAgrees + ' of their arities agree')
     }
     if ($drift -eq 0) { return }
     if ($AllowCorpusDrift) { Write-Output '  (-AllowCorpusDrift: drift reported, not failed)'; return }

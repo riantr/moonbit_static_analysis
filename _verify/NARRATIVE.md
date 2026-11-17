@@ -9479,17 +9479,17 @@ the gate reads; `_verify/check_transfer_scope.ps1` resolves every line of it
 against this tree, so it cannot rot without the gate saying so.
 
     --- TRANSFER MAP ---
-    row 1  src/core/core.mbt:481        enum Confidence
+    row 1  src/core/core.mbt:605        enum Confidence
     row 1  src/report/report.mbt:214    fn Report::confidence
     row 1  src/jsoncli/main.mbt:50      confidence : String
-    row 2  src/core/core.mbt:537        enum Family
-    row 2  src/core/core.mbt:640        fn Family::id
-    row 2  src/core/core.mbt:680        fn family_by_id
+    row 2  src/core/core.mbt:661        enum Family
+    row 2  src/core/core.mbt:764        fn Family::id
+    row 2  src/core/core.mbt:804        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
     row 3  src/sa/profile.mbt:224       fn parse_nosec
     row 3  src/sa/profile.mbt:296       fn apply_nosec
     row 3  src/sa/profile.mbt:341       fn stale_report
-    row 3  src/sa/main.mbt:1308         fn filtered_reports
+    row 3  src/sa/main.mbt:1353         fn filtered_reports
     --- END TRANSFER MAP ---
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
 and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
@@ -9506,7 +9506,7 @@ finding, and a finding's vocabulary lives with the rest of it.
 "P1 `core.mbt:491`", and MEASURED at the tree the review read (`9763dfd^`, the
 commit before the transfers landed) `src/core/core.mbt:491` was
 `pub(all) enum Family {`. The prediction WAS the line. The enum is now at line
-538, because the `Confidence` enum -- the vocabulary of the new axis -- was
+661, because the `Confidence` enum -- the vocabulary of the new axis -- was
 added above it by that same commit; the `Lens` enum was already there, at line
 455, and moved down with it -- the id table `Family::id`, the inverse
 `family_by_id`, and the checked profile `validate_profile` are the other half of
@@ -20940,5 +20940,124 @@ which is the deck's p.10 answered in the shape the deck asks for.
 
 ### NO NEW FAMILY. The roster stays at eighteen: this is a VERDICT about the families, not a
 ### new family. AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+
+## 0603: THE CROSS-FILE SIGNATURE THE `.mbti` READER USED TO THROW AWAY
+
+The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), 68 pages, and
+its p.4 names three chapters. This is its SECOND one: "Hard Language Feature: Java
+Reflection".
+
+### THE DECK'S PROBLEM, VERBATIM (p.32)
+
+    Problem: Reflection targets cannot be resolved if the string values are statically unknown
+
+### AND THE DECK'S ANSWER, VERBATIM (p.35)
+
+    When string arguments cannot be resolved statically, infer the reflective targets at their
+    usage points!
+
+### AND THE CONSTRAINT THAT MAKES THE INFERENCE SOUND, VERBATIM (p.39)
+
+    The reflective target method at line 175 must have one parameter and its declared type
+    must be FrameworkCommandInterpreter or its sub/supertypes
+
+### AND THE PRECISION FIGURE, VERBATIM (p.40)
+
+    Infer 50 reflective target methods and 48 methods are true!
+
+### THE ANALOGUE IN THIS TREE, AND IT IS NOT A STRETCH
+
+A `.mbti` IS ANOTHER PACKAGE'S INTERFACE, and this analyzer reads it to learn which names
+exist across the package boundary. So the `.mbti` is this tree's reflective target: a name
+that resolves only because a string was written down somewhere else.
+
+AND WHAT THE READER DID WITH IT: it parsed the PARAMETER LIST and then dropped it, keeping
+only the SET of type names the whole line mentions. So:
+
+    pub fn action_mask_to_action_vec(UInt) -> Array[Action]
+
+became the set {UInt, Array, Action} -- which cannot say which parameter has which type,
+and cannot say how many parameters there are.
+
+### AND THE SENTENCE THAT DROPPED IT WAS WRONG, AND IT WAS WRITTEN DOWN AS A FACT
+
+`src/types/infer.mbt` said, in a comment, and it was quoted as the reason:
+
+    a `.mbti` gives us the NAME, never the parameter list
+
+THAT SENTENCE WAS THE CAUSE, and it is FALSE. The interface gives the parameter list -- on
+every method signature it declares. The correction is IN PLACE, in that same comment, with
+the measurement that refutes it.
+
+### SO THE SIGNATURE IS KEPT
+
+    src/core/iface_sig.mbt      IfaceSig { params, ret }
+                                IfaceSig::arity  IfaceSig::param_types
+    src/core/core.mbt           IfaceSymTab.sigs  IfaceSymTab::sig  IfaceSymTab::n_sigs
+                                IfaceSymTab::add_sig
+    src/moonfiles/moonfiles.mbt iface_signature keeps the parameter list, one array per
+                                parameter, in order; IfaceScan.sigs; collect_iface_names
+                                puts them in the table
+
+AND THE ORDER IS THE POINT. A set of type names cannot say "the first argument is a UInt
+and the second is an Action", which is the whole content of an argument check -- and of an
+arity.
+
+### AND THE LENS ASKS THE TABLE WHETHER THE TARGET IS RESOLVABLE
+
+At every call the type lens could NOT check, it asks the table whether the callee's `.mbti`
+declares a signature, and it counts how many of those signatures' arities AGREE with the
+call's own argument count. Two counters, and they ride the same path `n_unchecked` and
+`n_calls` already ride, so they print in the same `--metrics` block and the release gate
+pins them against the analyzer's OWN line.
+
+### MEASURED OVER THE EIGHT TREES
+
+    cross-file calls whose callee the .mbti declares a signature for   2,958
+    of those, the ones whose declared arity agrees with the call      2,279
+
+AND THE FIRST NUMBER IS THE POINT OF THE INCREMENT: the reflective target WAS resolvable.
+The name was in the table all along; what was missing was the TARGET's SHAPE.
+
+### AND THE 679 THAT DISAGREE ARE NOT AN ARITHMETIC BUG -- THEY ARE A WARNING ABOUT THE TABLE
+
+THE INTERFACE TABLE IS FLAT. Every `.mbti` under `.repos` is merged into ONE table, and a
+`.mbti` declares its names UNQUALIFIED, so a name declared in one package can match a call
+in another.
+
+MEASURED, and the measurement localises the effect exactly:
+
+    moonbit_image    0 .mbti of its own    74 targets    1 agrees    1.3%
+    moonbit_labeler  0 .mbti of its own   133 targets  104 agrees   78.1%
+    moui            56 .mbti of its own  1896 targets 1465 agrees   77.3%  (own only)
+    moonbit_core   263 .mbti of its own   411 targets  327 agrees   79.6%  (own only)
+
+So the disagreement rate is a property of the TABLE, and the corpora that declare their
+own interfaces agree at 77-80% while the ones that declare none collapse.
+
+### WHICH IS WHY THE INFERENCE IS COUNTED AND NOT ENFORCED
+
+THE DECK'S p.39 IS THE REASON, and it is not a dodge: an inferred target has to be
+constrained by its TYPE, not by its NAME alone. This table has the name. It does not have
+the type the call site's argument actually has -- that is a whole different analysis, and
+one the interface table alone cannot answer.
+
+SO 0603 COUNTS the inference and says how often it would be RIGHT, and it does NOT turn the
+arity into a check. Turning it on is a change to what the analyzer FINDS, and that belongs
+to a release that re-measures the corpora.
+
+### AND THE PINS THAT MOVED ARE THIS INCREMENT'S OWN SOURCE
+
+    own-source files         268 -> 271
+    own-source notices     2,061 -> 2,073
+    own-source aggregated  1,904 -> 1,915
+    the eight-tree total   23,406 -> 23,418
+    the eight-tree split   3,971 + 19,435 -> 3,972 + 19,446
+    the test counts         1,731 -> 1,746 on wasm, 1,589 -> 1,604 on js and wasm-gc
+
+### NO NEW FAMILY. The roster stays at eighteen: this is a MEASUREMENT about the analyzer's
+### own reach, not a new family. AND NO VERSION, AND NO CHANGELOG ENTRY. This is an
+### increment.
 
 

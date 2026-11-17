@@ -382,6 +382,15 @@ pub(all) struct TypeResult {
   n_unchecked : Int32
   n_calls : Int32
   n_checked : Int32
+  /// 0603. The unchecked calls whose target the `.mbti` declares a signature
+  /// for, and how many of those signatures' arities AGREE with the call's own
+  /// argument count.
+  ///
+  /// NOT A FINDING COUNT, for the same reason `n_unchecked` is not: these two
+  /// say how much of the analyzer's own silence is removable, not how much is
+  /// wrong.
+  n_sig_available : Int32
+  n_arity_agrees : Int32
 }
 
 ///|

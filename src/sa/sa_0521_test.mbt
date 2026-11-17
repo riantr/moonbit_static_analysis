@@ -28,6 +28,8 @@ fn mk_v0521(
     n_unchecked: 0,
     n_calls: calls,
     n_checked: checked,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
   }
 }
 

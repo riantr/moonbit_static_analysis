@@ -101,14 +101,29 @@ pub struct IfaceSymTab {
   types : Map[String, Bool]
   /// Declared value names: `pub fn new(...) -> ...`, `pub const X : ... = ...`.
   ///
-  /// A hit returns `TUnknownFn` (we know it is a value; we do not model its
-  /// signature, so no arity or argument check may run against it). The `.mbti`
-  /// DOES declare the parameter list -- `iface_signature` parses it
-  /// (`src/moonfiles/moonfiles.mbt:918-932`) -- and this table is what drops
-  /// it: there is no slot here for a signature. So an arity invented from the
-  /// name alone would still be a guess the checks would report as fact, but the
-  /// guess is OURS and not the format's. Measured 2026-10-28; see the 0508
-  /// block of `_verify/NARRATIVE.md`.
+  /// A hit returns `TUnknownFn` (we know it is a value; the type lens does not
+  /// model its signature, so no arity or argument check may run against it).
+  ///
+  /// 0603. THE PARAMETER LIST IS NOT THROWN AWAY ANY MORE. It used to be: the
+  /// `.mbti` DOES declare the parameter list -- `iface_signature` parses it,
+  /// in `src/moonfiles/moonfiles.mbt` -- and this table was what dropped it,
+  /// because there was no slot here for a signature. The sentence that said so
+  /// was "a `.mbti` gives us the NAME, never the parameter list", and it was
+  /// WRONG: the corpus's own interfaces carry the parameter list on thousands
+  /// of method signatures. The correction is in place, with the measurement
+  /// that refutes it.
+  ///
+  /// THE SLOT IS HERE NOW, in `sigs`. AND THE LENS STILL RETURNS `TUnknownFn`
+  /// for a cross-file call, because turning the signature into a CHECK is a
+  /// change to what the analyzer FINDS, and that has to be measured over the
+  /// corpora rather than asserted. What 0603 does is MEASURE it: the lens asks
+  /// the table whether the callee it could not check has a signature to check
+  /// it against, and how many of those signatures agree with the call.
+  ///
+  /// The 0508 note below is kept because it is still true of the CHECK: an
+  /// arity invented from the name alone would be a guess the checks would
+  /// report as fact. Measured 2026-10-28; see the 0508 block of
+  /// `_verify/NARRATIVE.md`.
   ///
   /// THE BOOL IS `is_const` (since 0.4.16). It used to be written `true` and
   /// read by nobody. It carries a distinction the type lens needs: a `const`
@@ -122,6 +137,20 @@ pub struct IfaceSymTab {
   /// A const gets `TUnknown` instead: we do not know its type, but we DO know
   /// it is not callable, and `TUnknown` absorbs without claiming anything.
   values : Map[String, Bool]
+  /// 0603. THE SIGNATURES, as the `.mbti` files declare them: the parameter
+  /// list and the return type, per value.
+  ///
+  /// AND THIS IS THE PART THAT WAS DROPPED. The reader parsed the parameter
+  /// list -- `pub fn action_mask_to_action_vec(UInt) -> Array[Action]` says
+  /// exactly how many arguments the callee takes -- and kept only the set of
+  /// type names the line mentions. So an arity could not be read off a
+  /// cross-file callee, and every cross-file call was "unchecked" with nothing
+  /// to check it against.
+  ///
+  /// THE KEY IS THE BARE NAME, the same key `values` uses: a `.mbti` declares
+  /// `pub fn Type::method(..)`, and a use site resolves to `Type::method` once
+  /// the package qualifier is dropped.
+  sigs : Map[String, IfaceSig]
   /// Types a module RE-EXPORTS under a different name, mapped to the qualified
   /// name they really are: `CondVar` -> `@cond_var.Cond`, written by async
   /// 0.22.4 `src/pkg.generated.mbti:111` as
@@ -154,7 +183,77 @@ pub struct IfaceSymTab {
 
 ///|
 pub fn IfaceSymTab::empty() -> IfaceSymTab {
-  IfaceSymTab::{ types: Map([]), values: Map([]), aliases: Map([]), }
+  IfaceSymTab::{
+    types: Map([]),
+    values: Map([]),
+    aliases: Map([]),
+    sigs: Map([]),
+  }
+}
+
+///|
+/// THE SIGNATURE of one value, if this table has it.
+///
+/// AND THE QUESTION IT ANSWERS IS THE DECK'S p.35: the reflective target could
+/// not be resolved because the string was statically unknown. Here the name IS
+/// known -- it is a key of this table -- and the question is whether the
+/// TARGET behind it carries a signature.
+///
+/// IT RESOLVES THE NAME THE WAY `has_value` DOES -- the bare spelling, and the
+/// re-exported forms -- because a signature that could not be found under the
+/// name the caller asked for would be a signature the caller never sees. The
+/// two are the same lookup on purpose: `has_value` says the name IS a value,
+/// and this says whether that value's shape is known.
+pub fn IfaceSymTab::sig(self : IfaceSymTab, name : String) -> IfaceSig? {
+  match self.sigs.get(name) {
+    Some(s) => Some(s)
+    None =>
+      match self.sigs.get(unqualified(name)) {
+        Some(s) => Some(s)
+        None => self.sig_of_alias(name)
+      }
+  }
+}
+
+///|
+/// The signature of a name reached THROUGH a re-exported type alias, and
+/// nothing else. The `alias_forms` note explains why there is one form and
+/// not two.
+fn IfaceSymTab::sig_of_alias(self : IfaceSymTab, name : String) -> IfaceSig? {
+  for alt in self.alias_forms(name) {
+    match self.sigs.get(alt) {
+      Some(s) => return Some(s)
+      None => ()
+    }
+    match self.sigs.get(unqualified(alt)) {
+      Some(s) => return Some(s)
+      None => ()
+    }
+  }
+  None
+}
+
+///|
+/// HOW MANY SIGNATURES this table holds, which is the number of cross-file
+/// targets the `.mbti` files RESOLVE to a signature.
+pub fn IfaceSymTab::n_sigs(self : IfaceSymTab) -> Int32 {
+  self.sigs.length()
+}
+
+///|
+/// Record the SIGNATURE of a value this table has not seen yet.
+///
+/// FIRST ONE WINS, like the aliases: the table is flat, so two interfaces that
+/// declare the same bare name carry two signatures, and the one that claimed
+/// the name first is the one the analyzer reads.
+pub fn IfaceSymTab::add_sig(
+  self : IfaceSymTab,
+  name : String,
+  sig : IfaceSig,
+) -> Unit {
+  if !self.sigs.contains(name) {
+    self.sigs.set(name, sig)
+  }
 }
 
 ///|
@@ -230,6 +329,9 @@ pub fn IfaceSymTab::merge(
       self.values.set(k, v)
     }
   }
+  // 0603. THE SIGNATURES MERGE WITH THE NAMES THEY BELONG TO, and FIRST ONE
+  // WINS, like the aliases below.
+  merge_sigs(self, other)
   // FIRST ONE WINS, deliberately: two modules re-exporting the same bare name
   // under different types is the collision the `aliases` note records, and
   // overwriting would make the outcome depend on directory-walk order rather
@@ -240,6 +342,22 @@ pub fn IfaceSymTab::merge(
     }
   }
   self
+}
+
+///|
+/// THE SIGNATURES MERGE WITH THE NAMES THEY BELONG TO, and FIRST ONE WINS.
+///
+/// AND IT IS A SEPARATE FUNCTION so that the `merge` above keeps its shape:
+/// mutation gate 0447's M4 anchors on the alias loop being followed by the
+/// `return`, and a signature merge inlined between them would move that
+/// anchor for no reason -- the mutation is about the ALIAS map, and it should
+/// keep pointing at the alias map.
+fn merge_sigs(tab : IfaceSymTab, other : IfaceSymTab) -> Unit {
+  for k, v in other.sigs {
+    if !tab.sigs.contains(k) {
+      tab.sigs.set(k, v)
+    }
+  }
 }
 
 ///|
@@ -285,6 +403,11 @@ pub fn IfaceSymTab::union(
   for k, v in self.aliases {
     out.aliases.set(k, v)
   }
+  // 0603. The signatures travel with the names, on the same FIRST ONE WINS rule
+  // the aliases use: the table is flat, so two interfaces declaring the same
+  // bare name carry two signatures, and the one that claimed the name first is
+  // the one the analyzer reads.
+  merge_sigs(out, self)
   for k, _ in other.types {
     if !out.types.contains(k) {
       out.types.set(k, true)
@@ -300,6 +423,7 @@ pub fn IfaceSymTab::union(
       out.aliases.set(k, v)
     }
   }
+  merge_sigs(out, other)
   out
 }
 

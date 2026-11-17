@@ -60,6 +60,8 @@ fn mm_verdict(
     n_unchecked: 0,
     n_calls: 0,
     n_checked: 0,
+    n_sig_available: 0,
+    n_arity_agrees: 0,
   }
 }
 

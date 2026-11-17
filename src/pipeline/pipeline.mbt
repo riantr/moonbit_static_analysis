@@ -79,6 +79,16 @@ pub(all) struct PipelineResult {
   /// all. Both are claimed by their own families.
   n_calls : Int32
   n_checked : Int32
+  /// 0603. The unchecked calls whose target the `.mbti` declares a signature
+  /// for, and how many of those signatures' arities AGREE with the call's own
+  /// argument count.
+  ///
+  /// NOT A FINDING COUNT and NOT part of the SUMMARY sum, for the same reason
+  /// `n_unchecked` is not: they describe the analysis, not the program. They
+  /// are the deck's p.40 pair -- how many targets were inferred at their usage
+  /// points, and how many of them were right.
+  n_sig_available : Int32
+  n_arity_agrees : Int32
   /// 0541. What the BEHAVIORAL lens actually executed, in how many contexts
   /// (§8.3/§8.4). `@core.CtxLedger::zero()` unless the caller asked for it via
   /// `run_tracked`, and zero for every file kind that runs no interp at all --
@@ -387,6 +397,8 @@ fn run_core(
     n_unchecked: tr.n_unchecked,
     n_calls: tr.n_calls,
     n_checked: tr.n_checked,
+    n_sig_available: tr.n_sig_available,
+    n_arity_agrees: tr.n_arity_agrees,
     ctx,
   }
 }

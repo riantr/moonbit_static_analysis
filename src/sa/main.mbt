@@ -348,6 +348,16 @@ pub(all) struct Verdict {
   /// whose arguments it matched against that signature.
   n_calls : Int32
   n_checked : Int32
+  /// 0603. The unchecked calls whose target the `.mbti` declares a signature
+  /// for, and how many of those signatures' arities AGREE with the call's own
+  /// argument count.
+  ///
+  /// NOT A FINDING COUNT, for the same reason `n_unchecked` is not: they say
+  /// how much of the analyzer's own silence is removable, not how much is
+  /// wrong. And they are the deck's p.40 pair -- how many targets were
+  /// inferred at their usage points, and how many of them were right.
+  n_sig_available : Int32
+  n_arity_agrees : Int32
 }
 
 ///|
@@ -391,6 +401,16 @@ pub struct Summary {
   /// only honest answer to "how much of this program did the analyzer verify".
   n_calls : Int32
   n_checked : Int32
+  /// 0603. The unchecked calls whose target the `.mbti` declares a signature
+  /// for, over every file, and how many of those signatures' arities AGREE
+  /// with the call's own argument count.
+  ///
+  /// NOT PART OF THE SUM, for the same reason `n_unchecked` is not: an
+  /// unchecked call is not a finding. They are printed beside it because they
+  /// are the deck's p.40 pair -- how many targets were inferred at their usage
+  /// points, and how many of those inferences were RIGHT.
+  n_sig_available : Int32
+  n_arity_agrees : Int32
 }
 
 ///|
@@ -411,6 +431,8 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
   let mut n_unchecked = 0
   let mut n_calls = 0
   let mut n_checked = 0
+  let mut n_sig_available = 0
+  let mut n_arity_agrees = 0
   for v in verdicts {
     let n = v.findings.length()
     total += v.total
@@ -418,6 +440,8 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
     n_unchecked += v.n_unchecked
     n_calls += v.n_calls
     n_checked += v.n_checked
+    n_sig_available += v.n_sig_available
+    n_arity_agrees += v.n_arity_agrees
     // Per-file contribution to the pre-boundary totals. When n == 0 and the
     // file is partial, v.notices is 0 (notices are a count within findings),
     // so the addition below is a no-op and does not skew the totals.
@@ -446,6 +470,8 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
     n_unchecked,
     n_calls,
     n_checked,
+    n_sig_available,
+    n_arity_agrees,
   }
 }
 
@@ -546,6 +572,25 @@ pub fn metrics_lines(
   }
   out.push(
     "METRICS\tcalls\tsites=\{s.n_calls}\tchecked=\{s.n_checked}\tnot-verified=\{other}\tchecked-share=\{share}\t(sites = call sites the lens REACHED, so the share is an UPPER bound; not-verified = callee not callable, or name unresolved; SUMMARY's unchecked= counts VISITS undeduplicated, so the two are not arithmetically related)",
+  )
+  // 0603. THE DECK'S p.40 PAIR. How many of the calls the lens could not check
+  // have a target the `.mbti` DECLARES A SIGNATURE FOR, and how many of those
+  // signatures' arities AGREE with the call's own argument count.
+  //
+  // IT IS A COUNT, NOT A CHECK, and the line says so. The `.mbti` used to
+  // have its parameter list thrown away, so a cross-file call had no arity to
+  // check against; the list is kept now, and the two numbers say how much of
+  // the analyzer's own silence is removable and how often the removal would
+  // have been RIGHT. Enforcing the arity is a change to what the analyzer
+  // FINDS, and that belongs to a release that re-measures the corpora.
+  let agree = if s.n_sig_available == 0 {
+    "n/a (no unchecked call had a declared signature)"
+  } else {
+    let t = s.n_arity_agrees * 1000 / s.n_sig_available
+    "\{t / 10}.\{t % 10}%"
+  }
+  out.push(
+    "METRICS\tiface-sig\tavailable=\{s.n_sig_available}\tagrees=\{s.n_arity_agrees}\tagree-share=\{agree}\t(available = unchecked calls whose callee the .mbti declares a signature for; agrees = those whose declared arity matches the call's argument count; a COUNT, not a check)",
   )
   let hi : Map[String, Int32] = Map([])
   let lo : Map[String, Int32] = Map([])
@@ -1417,6 +1462,10 @@ async fn analyze(
           n_unchecked: 0,
           n_calls: 0,
           n_checked: 0,
+          // 0603. No type lens ran for this file kind, so no call was visited
+          // and no target was inferred.
+          n_sig_available: 0,
+          n_arity_agrees: 0,
         },
         @core.CtxLedger::zero(),
       )
@@ -1440,6 +1489,10 @@ async fn analyze(
           n_unchecked: 0,
           n_calls: 0,
           n_checked: 0,
+          // 0603. No type lens ran for this file kind, so no call was visited
+          // and no target was inferred.
+          n_sig_available: 0,
+          n_arity_agrees: 0,
         },
         @core.CtxLedger::zero(),
       )
@@ -1485,6 +1538,10 @@ async fn analyze(
           n_unchecked: 0,
           n_calls: 0,
           n_checked: 0,
+          // 0603. No type lens ran for this file kind, so no call was visited
+          // and no target was inferred.
+          n_sig_available: 0,
+          n_arity_agrees: 0,
         },
         r.ctx,
       )
@@ -1539,6 +1596,8 @@ async fn analyze(
           n_unchecked: r.n_unchecked,
           n_calls: r.n_calls,
           n_checked: r.n_checked,
+          n_sig_available: r.n_sig_available,
+          n_arity_agrees: r.n_arity_agrees,
         },
         r.ctx,
       )
