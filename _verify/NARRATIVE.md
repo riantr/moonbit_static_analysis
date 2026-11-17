@@ -21448,3 +21448,93 @@ because a README that says one thing and a gate that says another is how 0.4.38 
 ### are what changed, and the artifact on the registry is what it is.
 
 
+## 0607: FORTY-FOUR GATES BLAMED THE CODE, AND THE TREE WAS NOT THE CODE'S
+
+A release run reported **44 consecutive mutation gates** as FAILED. Every one of them carried the
+same line, and every one of them carried the same six failures:
+
+    ABORT: the suite is RED on unmutated code. Every count below would be meaningless.
+    Baseline: 1603/1609 passed, 6 failed.
+
+and the six were the analyzer's REGION tests, the same six every time:
+
+    0501: a local declared before a region is not reported
+    0501: a local read only inside a region is not reported unused
+    0501: a parameter in a function with a region is not reported
+    0501: a frame with a region judges the binding after it and spares the one before
+    0570: a catch arm's guard reads the parameter
+    0570: a catch arm's guard reads an enclosing local
+
+### AND EVERY PIECE OF THE EVIDENCE SAYS THE TREE WAS NOT IN THE STATE THE BASELINE ASSUMED
+
+    the release gate's OWN `moon test --target js`, in the SAME run:   1609/1609
+    the same gate, standalone, on the same tree:                       1609/1609, all 7 mutations KILLED
+    a clean re-run of the whole gate:                                   every mutation gate green
+    the tree afterwards:                                                byte-identical to HEAD
+
+So the baseline was measuring a tree nobody intended to measure, and the gates were reporting it
+as a verdict about the code.
+
+### THE MECHANISM IS THE HARNESS'S OWN DOCUMENTED HAZARD, IN ITS OWN WORDS
+
+`_verify/mutate_lib.ps1` says it, at the rule about the restore:
+
+> it cannot see a SECOND process: two gates mutating `src/parser/parser.mbt` concurrently read,
+> rewrite and restore ... the one that APPLIES a mutation -- it could have been the RESTORE. A
+> restore that throws leaves the target file MUTATED, and the next gate then measures a tree
+> nobody intended to measure.
+
+AND THE HARNESS'S OWN SELF-TEST IS THE STAGE THAT MUTATES THE REAL TREE. `_verify/mutate_lib_selftest.ps1`
+writes a demonstration gate whose `File` is `src\parser\parser.mbt` and whose `-Root` is the
+**real** repository root -- so the demonstration patches the real parser and relies on the
+harness's restore to put it back.
+
+AND THE DEMONSTRATION IS EXPECTED TO FAIL, so a restore that throws is INVISIBLE to it: the
+assertion is that the demonstration gate EXITS NON-ZERO, and a throw in the restore exits
+non-zero too. The failure of the wrong kind looks exactly like the failure of the right kind.
+
+### THE FIX IS IN THE ORCHESTRATOR, AND IT IS SMALL
+
+    THE TREE MUST BE BACK WHERE IT WAS.
+
+`git diff --name-only HEAD -- src/` is the check, and git is the right reader for it: it
+normalises the line endings, so it reports a CONTENT change and nothing else, and it names the
+FILE. An untracked file under `src/` is not reported, which is right -- an untracked scratch
+file is not a mutation.
+
+AND THE CHECK RUNS IN THE TWO PLACES THAT MATTER:
+
+  * after EVERY mutation gate, so the row that names the culprit is the row that says so; and
+  * after the harness's own self-test, which is the one stage that patches the real tree on
+    purpose.
+
+AND A GATE THAT LEAVES THE TREE PATCHED IS RESTORED FROM HEAD BEFORE THE RUN CONTINUES, so one
+bad restore cannot poison the forty-four gates after it.
+
+### AND THE CHECK IS SHOWN TO GO RED, IN THE RELEASE GATE'S OWN SELF-TEST
+
+A gate that has never been shown to go red is a comment. So the release gate's self-test now has
+a fourth assertion: a source file is perturbed ON PURPOSE, the check must report it, and the
+file is restored in a `finally` -- because the self-test must not leave the tree patched, which
+is the very failure the check exists to catch.
+
+    A. a stage whose body FAILS must report FAILED
+    B. a stage whose body throws must report FAILED
+    C. a stage whose body succeeds must report ok
+    D. a PATCHED source file must be REPORTED by the tree-restored check
+
+### AND NOTHING ABOUT THE JUDGEMENT CHANGED
+
+A gate that leaves the tree patched is a **FAILED MEASUREMENT** of the tree, not a verdict about
+the code. The row that says so -- with the gate's name and the file's name on it -- is worth
+more than forty-four rows that blame the code.
+
+AND THIS IS NOT THE FIRST TIME. `release.ps1` already records the flake class from an earlier
+run: "a release run reported four gates FAILED (0433, 0434, 0441, 0442), and every one of them
+passes standalone on the same tree with the same 626/626 baseline. Six gates have now flaked this
+way across two runs." Forty-four is the same failure in a bigger window, and the difference is
+that now it is NAMED.
+
+### NO NEW FAMILY, AND NO VERSION.
+
+

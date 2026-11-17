@@ -125,6 +125,35 @@ function Run-Gate {
   }
 }
 
+# 0607. THE TREE MUST BE BACK WHERE IT WAS.
+#
+# MEASURED 2026-11-17: a release run reported 44 CONSECUTIVE mutation gates
+# as FAILED, every one with "ABORT: the suite is RED on unmutated code", and
+# every one with the SAME six failures -- the analyzer's region tests. The
+# release gate's own `moon test --target js` in the SAME run was 1609/1609,
+# the same gate standalone was 1609/1609 with all seven mutations KILLED, and
+# the tree afterwards was byte-identical to HEAD.
+#
+# So the baseline was measuring a tree nobody intended to measure, and the
+# harness's own comment names the mechanism: a RESTORE that throws leaves the
+# target file MUTATED, and "it cannot see a SECOND process".
+#
+# The check is `git diff --name-only HEAD -- src/`, and git is the right
+# reader for it: it normalises the line endings, so it reports a CONTENT
+# change and nothing else, and it names the FILE. An untracked file under
+# `src/` is not reported, which is right: an untracked scratch file is not a
+# mutation.
+function Get-SourceTreeDrift {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $names = @(& git -C $root diff --name-only HEAD -- src/ 2>$null)
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  # GIT FAILED IS NOT A VERDICT. A reader that could not read says so by
+  # saying nothing, and the run's own verdict is the one that matters.
+  if ($code -ne 0) { return @() }
+  return @($names | Where-Object { ([string]$_).Trim() -ne '' })
+}
+
 function Read-TextWhenFree {
   # `Start-Process -Wait` waits for the PROCESS. It does not promise the
   # redirected output file's handle is already closed, and on this machine it is
@@ -1161,10 +1190,15 @@ $SSA_COST = 'files=255|unreadable=0|functions=1422|converted=5|partial=1417|decl
 # source did not move the SOURCE pins either: it changed a contract file, a
 # gate and two READMEs, and a contract symbol is not a notice, a declaration or
 # an instruction.
+# 0607. THE PIN MOVED TO 118 with chapter 0607, which is the tree-restored
+# check: after every mutation gate the tree must be back at HEAD, so a gate
+# that leaves it patched is NAMED instead of poisoning the gates after it.
+# 0607's source did not move the SOURCE pins either: it changed this file and
+# the NARRATIVE, and a check is not a notice, a declaration or an instruction.
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '117'
+$NARRATIVE_CHAPTERS = '118'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1263,8 +1297,41 @@ if ($SelfTest) {
   Write-Output ("   lastOk = {0}  -> {1}" -f $script:lastOk, $(if ($c) { 'PASS' } else { 'FAIL' }))
 
   Write-Output ''
-  if ($a -and $b -and $c) {
-    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one.'
+  Write-Output 'D. a PATCHED source file must be REPORTED by the tree-restored check'
+  # 0607. The check is a gate, and a gate that has never been shown to go red is
+  # a comment. So the check is shown to go red: a source file is perturbed on
+  # purpose, the check must report it, and the file is restored in a `finally`
+  # so the self-test cannot leave the tree patched -- which is the very failure
+  # the check exists to catch.
+  $probe = 'src\core\core.mbt'
+  $probePath = Join-Path $root $probe
+  $probeBytes = $null
+  $d = $false
+  if (-not (Test-Path -LiteralPath $probePath)) {
+    Write-Output '   FAIL: the probe file is missing, so the check was not exercised.'
+  } else {
+    $probeBytes = [System.IO.File]::ReadAllBytes($probePath)
+    try {
+      $perturbed = New-Object byte[] ($probeBytes.Length + 1)
+      [Array]::Copy($probeBytes, $perturbed, $probeBytes.Length)
+      $perturbed[$probeBytes.Length] = 0x0A
+      [System.IO.File]::WriteAllBytes($probePath, $perturbed)
+      $drift = Get-SourceTreeDrift
+      $d = ($drift.Count -gt 0)
+      Write-Output ('   the check reported {0} file(s) -> {1}' -f $drift.Count, $(if ($d) { 'PASS' } else { 'FAIL' }))
+    } finally {
+      if ($null -ne $probeBytes) { [System.IO.File]::WriteAllBytes($probePath, $probeBytes) }
+    }
+    $after = Get-SourceTreeDrift
+    if ($after.Count -gt 0) {
+      Write-Output ('   FAIL: the self-test left the tree patched: ' + ($after -join ', '))
+      $d = $false
+    }
+  }
+
+  Write-Output ''
+  if ($a -and $b -and $c -and $d) {
+    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, and a patched tree is reported.'
     exit 0
   }
   Write-Output 'SELF TEST FAILED: this gate cannot tell a failure from a pass. Do not trust a run.'
@@ -1670,6 +1737,20 @@ if ($failed.Count -eq 0) {
         if ($code -ne 0) { $script:stageOk = $false }
       }
       if (-not $script:lastOk) { $failed += 'harness-selftest' }
+      # 0607. THIS STAGE MUTATES THE REAL TREE ON PURPOSE. `_verify/mutate_lib_selftest.ps1`
+      # writes a demonstration gate whose `File` is `src\parser\parser.mbt` and whose
+      # `-Root` is the REAL repository root, and its own assertion is that the
+      # demonstration EXITS NON-ZERO -- which is what a restore that throws ALSO
+      # does. So the throw is invisible to it. The tree check is here.
+      $drift0 = Get-SourceTreeDrift
+      if ($drift0.Count -gt 0) {
+        Write-Output '  FAIL: the tree is not back at HEAD after the harness self-test:'
+        $drift0 | Select-Object -First 8 | ForEach-Object { Write-Output ('      ' + $_.Trim()) }
+        Write-Output '      The demonstration mutates the REAL parser on purpose, and a restore that'
+        Write-Output '      throws is invisible to a gate that is EXPECTED to fail.'
+        & git -C $root checkout HEAD -- src/ 2>$null | Out-Null
+        $failed += 'harness-selftest-restore'
+      }
       $stageName = 'the shared harness: the INCONCLUSIVE verdict, shown to go red'
       $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
       if ($seen -ne 1) {
@@ -1925,6 +2006,22 @@ if ($SkipMutations) {
     if (-not (Test-Path $p)) { Write-Output ("MISSING GATE: " + $p); $failed += ('missing-gate:' + $g); continue }
     Stage ("mutation gate " + $g) { Run-Gate $p }
     if (-not $script:lastOk) { $failed += ('mutate:' + $g) }
+    # 0607. AND THE TREE MUST BE BACK WHERE IT WAS. A restore that throws
+    # leaves the file MUTATED, and the NEXT gate then measures a tree nobody
+    # intended to measure -- which is how one release run reported 44
+    # consecutive gates as failed on a tree that passes every one of them
+    # standalone. The row that names the culprit is worth more than the
+    # forty-four rows that blame the code.
+    $drift = Get-SourceTreeDrift
+    if ($drift.Count -gt 0) {
+      Write-Output ('  FAIL: the tree is not back at HEAD after mutation gate ' + $g + ':')
+      $drift | Select-Object -First 8 | ForEach-Object { Write-Output ('      ' + $_.Trim()) }
+      Write-Output '      A restore that throws leaves the file MUTATED, and the next gate then'
+      Write-Output '      measures a tree nobody intended to measure. THIS gate is named; the tree'
+      Write-Output '      is restored from HEAD before the run continues.'
+      & git -C $root checkout HEAD -- src/ 2>$null | Out-Null
+      $failed += ('mutate-restore:' + $g)
+    }
   }
 }
 
