@@ -121,6 +121,22 @@ function Run-Gate {
   }
   if ($code -ne 0) {
     $script:stageOk = $false
+    # 0609. A GATE THAT WAS TERMINATED PRODUCED NO VERDICT, AND NO VERDICT IS
+    # NOT A FAILED GATE.
+    #
+    # MEASURED 2026-11-17: a release run's mutation gate died with exit
+    # 0x40010004 (terminated) and every later stage's child died instantly
+    # with 0xC0000409 -- the whole process tree was killed underneath the run.
+    # The transcripts held no verdict, and the run reported TWELVE stages as
+    # FAILED, which reads as a verdict about the code. It was not one: the
+    # machine was killed, and a reader of that log would have gone looking for
+    # a defect that does not exist.
+    #
+    # The exit code ALONE cannot carry this fact -- MEASURED: a child killed
+    # with `taskkill /F` reports 1, the same as a gate that failed on purpose.
+    # The TRANSCRIPT can: a gate that ran to its verdict prints "GATE OK" or
+    # "GATE FAILED", and a gate that was terminated before it could speak
+    # prints neither.
     Write-Output ('  [child exit ' + $code + '; full transcript: _verify\_gatelogs\' + $logName + '.log]')
   }
 }
@@ -143,15 +159,189 @@ function Run-Gate {
 # change and nothing else, and it names the FILE. An untracked file under
 # `src/` is not reported, which is right: an untracked scratch file is not a
 # mutation.
+#
+# 0608. BUT A CHECK THAT CANNOT READ IS NOT A CLEAN TREE.
+#
+# MEASURED 2026-11-17, with this function's own body:
+#
+#     git works, the tree is clean         -> 0 files  -> the check passes
+#     git works, the tree carries a mutant -> 1 file   -> the check fails and
+#                                                              names it
+#     git RUNS and EXITS NON-ZERO          -> 0 files  -> the check PASSES
+#     git is NOT ON THE PATH               -> 0 files  -> the check PASSES
+#
+# The last two rows are the defect: the 0607 body ended with
+# `if ($code -ne 0) { return @() }`, so a reader that could not read said
+# nothing, and the caller could not tell "the tree is clean" from "the tree
+# could not be read". "GIT FAILED IS NOT A VERDICT" was right and was applied
+# in the one way that makes a broken reader look like a clean tree.
+#
+# AND IT WAS NOT HYPOTHETICAL. A release run on 2026-11-17 had its whole
+# process tree killed underneath it: the mutation gate's child died with
+# 0x40010004 (terminated), every later stage's child died instantly with
+# 0xC0000409, and the `git` INSIDE this check was one of them. The check
+# reported a tree that was still PATCHED as clean, the run carried on, and it
+# ended with twelve failing stages and `src/sa/main.mbt` left MUTATED --
+# `if show_notices || total <= 0` -> `if total <= 0` -- which a human found by
+# hand afterwards.
+#
+# So the check now returns a VERDICT and not a list: Ok, Files, Reason. A
+# reader that could not read says so, and the caller treats that as a FAILED
+# MEASUREMENT. "The machine misbehaved" is not a verdict -- and a silent pass
+# is not a verdict either.
 function Get-SourceTreeDrift {
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  $names = @(& git -C $root diff --name-only HEAD -- src/ 2>$null)
-  $code = $LASTEXITCODE
+  $files = @()
+  $notes = @()
+  $out = @()
+  $code = $null
+  $why = ''
+  # GIT MUST BE THERE. A missing git is not a clean tree either, and the
+  # command-not-found error does not set `$LASTEXITCODE`, so the exit code
+  # alone cannot carry this fact.
+  $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+  if ($null -eq $gitCmd) {
+    $ErrorActionPreference = $prev
+    return [pscustomobject]@{ Ok = $false; Files = @(); Reason = 'git is not on the PATH -- the tree could not be read' }
+  }
+  try {
+    $out = @(& git -C $root diff --name-only HEAD -- src/ 2>&1)
+    $code = $LASTEXITCODE
+  } catch {
+    $code = -1
+    $why = $_.Exception.Message
+  }
   $ErrorActionPreference = $prev
-  # GIT FAILED IS NOT A VERDICT. A reader that could not read says so by
-  # saying nothing, and the run's own verdict is the one that matters.
-  if ($code -ne 0) { return @() }
-  return @($names | Where-Object { ([string]$_).Trim() -ne '' })
+  foreach ($l in $out) {
+    $s = ([string]$l).Trim()
+    if ($s -eq '') { continue }
+    # git writes its warnings and its errors to stderr, and they arrive here
+    # merged in. A path under `src/` never begins with one of these words.
+    if ($s -match '^(warning|fatal|error):') { $notes += $s; continue }
+    $files += $s
+  }
+  if ($null -eq $code) { $code = 1; $why = 'git did not run at all' }
+  if ($code -ne 0) {
+    if ($why -eq '') { $why = 'git exited ' + $code }
+    if ($notes.Count -gt 0) { $why = $why + ' -- ' + ($notes -join '; ') }
+    return [pscustomobject]@{ Ok = $false; Files = @(); Reason = $why }
+  }
+  return [pscustomobject]@{ Ok = $true; Files = $files; Reason = '' }
+}
+
+# 0608. THE RESTORE MUST BE BYTE-FOR-BYTE, AND THE OLD ONE WAS NOT.
+#
+# MEASURED 2026-11-17: `git checkout HEAD -- src/` writes the file it restores
+# with the CHECKOUT filter applied -- on this machine, CRLF -- while every
+# other file under `src/` is LF and byte-identical to its blob. Measured on
+# `src/core/core.mbt`: the blob is 61,242 bytes with 1,178 LF; after
+# `git checkout HEAD -- src/` the file is 62,420 bytes with 1,178 CRLF and no
+# LF at all -- and `git diff --name-only HEAD -- src/` says the tree is
+# CLEAN. So the old restore rewrote 1,178 line endings, left the tree MIXED,
+# and the check could not see it, because git reads the normalised tree.
+#
+# The blob is the truth, and it is read as BYTES.
+function Get-HeadBlobBytes {
+  param([string]$Rel)
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = 'git'
+  $psi.Arguments = '-C "' + $root + '" cat-file blob "HEAD:' + $Rel + '"'
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $proc = New-Object System.Diagnostics.Process
+  $proc.StartInfo = $psi
+  [void]$proc.Start()
+  $ms = New-Object System.IO.MemoryStream
+  $proc.StandardOutput.BaseStream.CopyTo($ms)
+  $err = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+  if ($proc.ExitCode -ne 0) {
+    throw ('git cat-file failed for ' + $Rel + ' (exit ' + $proc.ExitCode + '): ' + $err)
+  }
+  # The comma keeps the byte array an array. PowerShell unrolls a returned
+  # array into the pipeline, and a byte[] that arrives one byte at a time is
+  # an object[] of numbers, which WriteAllBytes cannot take.
+  return ,$ms.ToArray()
+}
+
+function Get-Sha256OfBytes {
+  param([byte[]]$Bytes)
+  $h = [System.Security.Cryptography.SHA256]::Create()
+  try { return [System.BitConverter]::ToString($h.ComputeHash($Bytes)).Replace('-', '') } finally { $h.Dispose() }
+}
+
+# Restore each named file from its HEAD blob, byte for byte, and VERIFY it.
+# A restore that is not verified is a restore that might not have happened.
+#
+# 0608. IT PRINTS AND IT ANSWERS, SO IT DOES NOT DO BOTH. A function that
+# speaks and answers has to choose, and in PowerShell the speaking wins: the
+# answer would arrive as the last element of an array of messages. So the
+# answer lives in a script-scope variable, exactly like `Stage`'s.
+$script:restoreOk = $false
+function Restore-SourceFiles {
+  param([string[]]$Files)
+  $script:restoreOk = $false
+  foreach ($rel in $Files) {
+    $path = Join-Path $root ($rel -replace '/', '\')
+    $bytes = Get-HeadBlobBytes $rel
+    [System.IO.File]::WriteAllBytes($path, $bytes)
+    $want = Get-Sha256OfBytes $bytes
+    $got = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    if ($want -ne $got) {
+      Write-Output ('      FAIL: the restore of ' + $rel + ' is not byte-for-byte (sha ' + $got + ' != ' + $want + ')')
+      return
+    }
+  }
+  $script:restoreOk = $true
+}
+
+# THE ONE CALL THE MUTATION LOOP AND THE HARNESS SELF-TEST MAKE. It prints its
+# reading every time -- a green row that measured nothing is worth less than a
+# red row that names its cause -- and it fails the gate it is about when the
+# tree is not back where it was, or when the tree could not be read at all.
+#
+# 0608. The answer is `$script:treeRestoredOk`, for the reason above.
+$script:treeRestoredOk = $false
+function Assert-SourceTreeRestored {
+  param([string]$Label)
+  $script:treeRestoredOk = $false
+  $d = Get-SourceTreeDrift
+  if (-not $d.Ok) {
+    Write-Output ('  FAIL: the tree-restored check could not read the tree after ' + $Label + ': ' + $d.Reason)
+    Write-Output '      A check that could not read is NOT a clean tree. This measurement is INVALID, not passed.'
+    $script:stageOk = $false
+    if ($script:results.Count -gt 0) { $script:results[$script:results.Count - 1].Ok = $false }
+    return
+  }
+  if ($d.Files.Count -eq 0) {
+    Write-Output ('  the tree is back at HEAD after ' + $Label + ' (0 file(s) differ)')
+    $script:treeRestoredOk = $true
+    return
+  }
+  Write-Output ('  FAIL: the tree is not back at HEAD after ' + $Label + ':')
+  $d.Files | Select-Object -First 8 | ForEach-Object { Write-Output ('      ' + $_) }
+  Write-Output '      A restore that throws leaves the file MUTATED, and the next gate then measures a'
+  Write-Output '      tree nobody intended to measure. THIS gate is named; the file is restored from'
+  Write-Output '      the HEAD blob, byte for byte, and the restore is verified.'
+  $script:stageOk = $false
+  if ($script:results.Count -gt 0) { $script:results[$script:results.Count - 1].Ok = $false }
+  Restore-SourceFiles -Files $d.Files
+  if (-not $script:restoreOk) {
+    Write-Output '  FAIL: the tree could not be restored byte-for-byte.'
+    return
+  }
+  # AND THE RESTORE IS CHECKED, not assumed: the tree is read again.
+  $after = Get-SourceTreeDrift
+  if (-not $after.Ok) {
+    Write-Output ('  FAIL: the tree could not be re-read after the restore: ' + $after.Reason)
+    return
+  }
+  if ($after.Files.Count -gt 0) {
+    Write-Output ('  FAIL: the tree is STILL patched after the restore: ' + ($after.Files -join ', '))
+    return
+  }
+  Write-Output ('      the tree is back at HEAD (restored ' + $d.Files.Count + ' file(s), byte for byte)')
 }
 
 function Read-TextWhenFree {
@@ -1198,7 +1388,7 @@ $SSA_COST = 'files=255|unreadable=0|functions=1422|converted=5|partial=1417|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '118'
+$NARRATIVE_CHAPTERS = '119'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1317,21 +1507,85 @@ if ($SelfTest) {
       $perturbed[$probeBytes.Length] = 0x0A
       [System.IO.File]::WriteAllBytes($probePath, $perturbed)
       $drift = Get-SourceTreeDrift
-      $d = ($drift.Count -gt 0)
-      Write-Output ('   the check reported {0} file(s) -> {1}' -f $drift.Count, $(if ($d) { 'PASS' } else { 'FAIL' }))
+      $d = ($drift.Ok -and $drift.Files.Count -gt 0)
+      Write-Output ('   the check reported {0} file(s) -> {1}' -f $drift.Files.Count, $(if ($d) { 'PASS' } else { 'FAIL' }))
     } finally {
       if ($null -ne $probeBytes) { [System.IO.File]::WriteAllBytes($probePath, $probeBytes) }
     }
     $after = Get-SourceTreeDrift
-    if ($after.Count -gt 0) {
-      Write-Output ('   FAIL: the self-test left the tree patched: ' + ($after -join ', '))
+    if (-not $after.Ok -or $after.Files.Count -gt 0) {
+      Write-Output ('   FAIL: the self-test left the tree patched: ' + ($after.Files -join ', '))
       $d = $false
     }
   }
 
   Write-Output ''
-  if ($a -and $b -and $c -and $d) {
-    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, and a patched tree is reported.'
+  Write-Output 'E. a tree-restored check that CANNOT READ must FAIL LOUDLY, not pass silently'
+  # 0608. The 0607 body ended with `if ($code -ne 0) { return @() }`, so a git
+  # that could not read the tree left the caller with an empty list -- and an
+  # empty list reads as a CLEAN tree. MEASURED: a git that exits non-zero and
+  # a git that is not on the PATH both read 0 files and both passed silently.
+  #
+  # So the check is shown to go red HERE, with a stub `git` that exits 1: the
+  # reader must report that it could not read, and the assertion must fail.
+  $e = $false
+  $stub = Join-Path $env:TEMP ('gitstub_' + [guid]::NewGuid().ToString('N').Substring(0,8))
+  New-Item -ItemType Directory -Force -Path $stub | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $stub 'git.cmd'), "@echo off`r`nexit /b 1`r`n")
+  $savedPath = $env:PATH
+  $savedStageOk = $script:stageOk
+  try {
+    $env:PATH = $stub + ';' + $savedPath
+    $broken = Get-SourceTreeDrift
+    $readFailed = (-not $broken.Ok) -and ($broken.Reason -ne '')
+    Write-Output ('   the reader said: Ok={0} Reason="{1}" -> {2}' -f $broken.Ok, $broken.Reason, $(if ($readFailed) { 'PASS' } else { 'FAIL' }))
+    Assert-SourceTreeRestored 'the self-test (with a git that cannot read)'
+    $e = $readFailed -and (-not $script:treeRestoredOk)
+    Write-Output ('   the assertion reported a clean tree -> {0}' -f $(if ($e) { 'PASS' } else { 'FAIL' }))
+  } finally {
+    $env:PATH = $savedPath
+    $script:stageOk = $savedStageOk
+    if ($script:results.Count -gt 0) { $script:results[$script:results.Count - 1].Ok = $true }
+  }
+
+  Write-Output ''
+  Write-Output 'F. the restore must be BYTE-FOR-BYTE, not a checkout that rewrites the line endings'
+  # 0608. MEASURED: `git checkout HEAD -- src/` restored `src/core/core.mbt` as
+  # 62,420 bytes of CRLF while its blob is 61,242 bytes of LF, and `git diff`
+  # then called the tree CLEAN. So the restore has to come from the blob, read
+  # as bytes, and it has to be VERIFIED -- a restore that is not verified is a
+  # restore that might not have happened.
+  $f = $false
+  if (-not (Test-Path -LiteralPath $probePath)) {
+    Write-Output '   FAIL: the probe file is missing, so the restore was not exercised.'
+  } else {
+    $probeBytes = [System.IO.File]::ReadAllBytes($probePath)
+    try {
+      $perturbed = New-Object byte[] ($probeBytes.Length + 1)
+      [Array]::Copy($probeBytes, $perturbed, $probeBytes.Length)
+      $perturbed[$probeBytes.Length] = 0x0A
+      [System.IO.File]::WriteAllBytes($probePath, $perturbed)
+      Restore-SourceFiles -Files @('src/core/core.mbt')
+      $restored = $script:restoreOk
+      $now = [System.IO.File]::ReadAllBytes($probePath)
+      $blob = Get-HeadBlobBytes 'src/core/core.mbt'
+      $same = ($now.Length -eq $blob.Length)
+      if ($same) { for ($i = 0; $i -lt $now.Length; $i++) { if ($now[$i] -ne $blob[$i]) { $same = $false; break } } }
+      $f = ($restored -and $same)
+      Write-Output ('   the restore reported {0}; the file is byte-identical to the blob: {1} -> {2}' -f $restored, $same, $(if ($f) { 'PASS' } else { 'FAIL' }))
+    } finally {
+      if ($null -ne $probeBytes) { [System.IO.File]::WriteAllBytes($probePath, $probeBytes) }
+    }
+    $afterF = Get-SourceTreeDrift
+    if (-not $afterF.Ok -or $afterF.Files.Count -gt 0) {
+      Write-Output ('   FAIL: the self-test left the tree patched: ' + ($afterF.Files -join ', '))
+      $f = $false
+    }
+  }
+
+  Write-Output ''
+  if ($a -and $b -and $c -and $d -and $e -and $f) {
+    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, a patched tree is reported, a tree that cannot be read is refused, and the restore is byte-for-byte.'
     exit 0
   }
   Write-Output 'SELF TEST FAILED: this gate cannot tell a failure from a pass. Do not trust a run.'
@@ -1742,15 +1996,11 @@ if ($failed.Count -eq 0) {
       # `-Root` is the REAL repository root, and its own assertion is that the
       # demonstration EXITS NON-ZERO -- which is what a restore that throws ALSO
       # does. So the throw is invisible to it. The tree check is here.
-      $drift0 = Get-SourceTreeDrift
-      if ($drift0.Count -gt 0) {
-        Write-Output '  FAIL: the tree is not back at HEAD after the harness self-test:'
-        $drift0 | Select-Object -First 8 | ForEach-Object { Write-Output ('      ' + $_.Trim()) }
-        Write-Output '      The demonstration mutates the REAL parser on purpose, and a restore that'
-        Write-Output '      throws is invisible to a gate that is EXPECTED to fail.'
-        & git -C $root checkout HEAD -- src/ 2>$null | Out-Null
-        $failed += 'harness-selftest-restore'
-      }
+      #
+      # 0608. AND THE CHECK MUST NOT BE ABLE TO PASS BY NOT READING. The
+      # assertion below fails the run when the tree could not be read at all.
+      Assert-SourceTreeRestored 'the harness self-test'
+      if (-not $script:treeRestoredOk) { $failed += 'harness-selftest-restore' }
       $stageName = 'the shared harness: the INCONCLUSIVE verdict, shown to go red'
       $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
       if ($seen -ne 1) {
@@ -2012,16 +2262,13 @@ if ($SkipMutations) {
     # consecutive gates as failed on a tree that passes every one of them
     # standalone. The row that names the culprit is worth more than the
     # forty-four rows that blame the code.
-    $drift = Get-SourceTreeDrift
-    if ($drift.Count -gt 0) {
-      Write-Output ('  FAIL: the tree is not back at HEAD after mutation gate ' + $g + ':')
-      $drift | Select-Object -First 8 | ForEach-Object { Write-Output ('      ' + $_.Trim()) }
-      Write-Output '      A restore that throws leaves the file MUTATED, and the next gate then'
-      Write-Output '      measures a tree nobody intended to measure. THIS gate is named; the tree'
-      Write-Output '      is restored from HEAD before the run continues.'
-      & git -C $root checkout HEAD -- src/ 2>$null | Out-Null
-      $failed += ('mutate-restore:' + $g)
-    }
+    #
+    # 0608. AND THE CHECK MUST BE ABLE TO SAY IT COULD NOT READ. The assertion
+    # below FAILS the gate when the tree is patched, and it FAILS the run when
+    # the tree could not be read at all -- a check that could not read is not a
+    # clean tree, and a silent pass is not a verdict.
+    $treeOk = Assert-SourceTreeRestored ("mutation gate " + $g)
+    if (-not $script:treeRestoredOk) { $failed += ('mutate-restore:' + $g) }
   }
 }
 

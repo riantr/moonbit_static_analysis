@@ -21538,3 +21538,96 @@ that now it is NAMED.
 ### NO NEW FAMILY, AND NO VERSION.
 
 
+## 0608: A CHECK THAT COULD NOT READ WAS REPORTED AS A CLEAN TREE
+
+MEASURED 2026-11-17, with the 0607 check's OWN body, four conditions and the reading each one gave:
+
+    git works, the tree is clean          ->  0 files  ->  the check passes
+    git works, the tree carries a mutant  ->  1 file   ->  the check fails and names it
+    git RUNS and EXITS NON-ZERO           ->  0 files  ->  the check PASSES
+    git is NOT ON THE PATH                ->  0 files  ->  the check PASSES
+
+The last two rows are the defect, and they are the same defect twice. The 0607 body ended with
+
+    if ($code -ne 0) { return @() }
+
+so a reader that COULD NOT READ left the caller with an empty list -- and an empty list reads as a
+CLEAN tree. "GIT FAILED IS NOT A VERDICT" was the right sentence, applied in the one way that
+makes a broken reader look like a clean tree: the failure was swallowed, and the check's silence
+was indistinguishable from a pass.
+
+### AND IT WAS NOT HYPOTHETICAL: IT IS THE RUN THAT 0607 WAS WRITTEN FOR
+
+The release run of 2026-11-17 came back FAILED with TWELVE stages named as failed, and the tree at
+the end of it was PATCHED. The run's own log says what happened to the children:
+
+    [child exit 1073807364; full transcript: _verify\_gatelogs\mutate_0506.log]
+    [child exit -1073741205; full transcript: _verify\_gatelogs\mutate_0507.log]
+
+1073807364 is 0x40010004, DBG_TERMINATE_PROCESS: the child was TERMINATED. -1073741205 is
+0xC0000409. And every stage after the first failed in ZERO seconds -- the shape of a child that
+cannot even start. So the whole process tree was killed underneath the run, and the twelve rows
+named a defect in the code that does not exist.
+
+AND THE MUTANT WAS LEFT IN `src/sa/main.mbt`:
+
+    -  if show_notices || total <= 0 {
+    +  if total <= 0 {
+
+which is the flag that decides whether the notices are printed at all. The harness's restore never
+ran, because the harness was killed, and nobody was left to put the file back. A human found it
+with `git diff --name-only HEAD -- src/` and restored it from the HEAD blob.
+
+### THE FIX IS THREE THINGS, AND THE FIRST IS THE ONE THAT MATTERS
+
+THE CHECK NOW RETURNS A VERDICT AND NOT A LIST:
+
+    Ok      -- the tree was read, and these are the files that differ
+    Files   -- the files that differ
+    Reason  -- why the tree could not be read, when it could not be
+
+A reader that could not read SAYS SO, and the caller treats that as a FAILED MEASUREMENT: the run
+fails, the row names the cause, and nobody reads a poisoned tree as a clean one. "The machine
+misbehaved" is not a verdict -- and a silent pass is not a verdict either.
+
+AND THE READING IS PRINTED EVERY TIME, not only when it is red. A green row that measured nothing
+is worth less than a red row that names its cause, and 87 mutation gates that each say "the tree
+is back at HEAD (0 file(s) differ)" are 87 rows of evidence.
+
+### AND THE RESTORE IS BYTE-FOR-BYTE, BECAUSE THE OLD ONE WAS NOT
+
+The 0607 restore was `git checkout HEAD -- src/`, and that command writes the file it restores with
+the CHECKOUT filter applied -- on this machine, CRLF -- while every other file under `src/` is LF
+and byte-identical to its blob. MEASURED on `src/core/core.mbt`:
+
+    the blob                             61,242 bytes, 1,178 LF
+    after `git checkout HEAD -- src/`    62,420 bytes, 1,178 CRLF and no LF at all
+    `git diff --name-only HEAD -- src/`  (clean)
+
+So the old restore rewrote 1,178 line endings, left the tree MIXED -- one file in CRLF and 286 in
+LF -- and the check could not see it, because git reads the NORMALISED tree. MEASURED over all
+287 tracked files under `src/`: 287 are LF in the working tree and 287 are byte-identical to their
+blobs. So the blob is the truth.
+
+So the restore now reads the blob as BYTES -- `git cat-file blob`, through a redirected stream,
+because PowerShell's own redirection writes UTF-16 and would corrupt it -- writes those bytes, and
+VERIFIES the result against the blob's SHA256. A restore that is not verified is a restore that
+might not have happened. And the tree is READ AGAIN afterwards, so a restore that silently did
+nothing is caught too.
+
+### AND THE CHECK IS SHOWN TO GO RED, TWICE
+
+A gate that has never been shown to go red is a comment. The release gate's self-test now has two
+more assertions, and both of them are the defect shown to the reader:
+
+    E. a tree-restored check that CANNOT READ must FAIL LOUDLY, not pass silently
+    F. the restore must be BYTE-FOR-BYTE, not a checkout that rewrites the line endings
+
+E puts a stub `git` that exits 1 at the front of the PATH and requires the reader to say it could
+not read -- the measured "git exits non-zero" row -- and requires the assertion to FAIL the gate
+rather than pass it. F perturbs a source file, restores it from the blob, and compares the bytes to
+the blob's.
+
+### NO NEW FAMILY, AND NO VERSION.
+
+
