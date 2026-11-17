@@ -66,12 +66,17 @@ function Stage {
   Write-Output ('=== ' + $Name + ' ===')
   $t0 = Get-Date
   $script:stageOk = $true
+  # 0609. A STAGE WHOSE CHILD WAS TERMINATED IS NOT A STAGE THAT FAILED, and
+  # the row has to say which one it was.
+  $script:stageKilled = $false
   $msg = ''
   try { $msg = (& $Body | Out-String) } catch { $msg = $_.Exception.Message; $script:stageOk = $false }
   $dt = [int]((Get-Date) - $t0).TotalSeconds
   if ($msg) { Write-Output $msg.TrimEnd() }
   $script:results += [pscustomobject]@{ Stage = $Name; Ok = $script:stageOk; Seconds = $dt }
-  Write-Output ('  -> ' + $(if ($script:stageOk) { 'ok' } else { 'FAILED' }) + ", ${dt}s")
+  $verdictWord = 'ok'
+  if (-not $script:stageOk) { $verdictWord = $(if ($script:stageKilled) { 'KILLED' } else { 'FAILED' }) }
+  Write-Output ('  -> ' + $verdictWord + ", ${dt}s")
   $script:lastOk = $script:stageOk
 }
 
@@ -137,7 +142,26 @@ function Run-Gate {
     # The TRANSCRIPT can: a gate that ran to its verdict prints "GATE OK" or
     # "GATE FAILED", and a gate that was terminated before it could speak
     # prints neither.
-    Write-Output ('  [child exit ' + $code + '; full transcript: _verify\_gatelogs\' + $logName + '.log]')
+    $verdict = ''
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '^\s*GATE (OK|FAILED)\b') { $verdict = $Matches[1]; break }
+    }
+    # A gate whose OWN SCRIPT died is a different thing again: it ran, it
+    # crashed, and it left a PowerShell error behind. That is the gate's own
+    # fault and it is not the machine's.
+    $crashed = ($o -match 'CategoryInfo|FullyQualifiedErrorId|Unhandled exception|At line:')
+    if ($verdict -eq '') {
+      if ($crashed) {
+        Write-Output ('  [the gate produced NO verdict and CRASHED (exit ' + $code + '); full transcript: _verify\_gatelogs\' + $logName + '.log]')
+      } else {
+        $script:stageKilled = $true
+        Write-Output ('  [the child was TERMINATED (exit ' + $code + ') and produced NO verdict -- this is NOT a verdict about the code; full transcript: _verify\_gatelogs\' + $logName + '.log]')
+      }
+    } elseif ($verdict -eq 'OK') {
+      Write-Output ('  [the gate said GATE OK and exited ' + $code + ' -- the gate and its exit code disagree; full transcript: _verify\_gatelogs\' + $logName + '.log]')
+    } else {
+      Write-Output ('  [child exit ' + $code + '; full transcript: _verify\_gatelogs\' + $logName + '.log]')
+    }
   }
 }
 
@@ -1388,7 +1412,7 @@ $SSA_COST = 'files=255|unreadable=0|functions=1422|converted=5|partial=1417|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '119'
+$NARRATIVE_CHAPTERS = '120'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1584,8 +1608,50 @@ if ($SelfTest) {
   }
 
   Write-Output ''
-  if ($a -and $b -and $c -and $d -and $e -and $f) {
-    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, a patched tree is reported, a tree that cannot be read is refused, and the restore is byte-for-byte.'
+  Write-Output 'G. a gate that was TERMINATED produced no verdict, and that is not a FAILED gate'
+  # 0609. The exit code cannot carry this fact -- a child killed with
+  # `taskkill /F` reports 1, the same as a gate that failed on purpose -- so
+  # the TRANSCRIPT carries it: a gate that ran to its verdict prints "GATE OK"
+  # or "GATE FAILED", and a gate that was terminated prints neither.
+  $gOk = $false
+  $hOk = $false
+  $iOk = $false
+  $tmpGate = Join-Path $env:TEMP ('selftest_gate_' + [guid]::NewGuid().ToString('N').Substring(0,8) + '.ps1')
+  $savedOk = $script:stageOk
+  $savedKilled = $script:stageKilled
+  $savedLast = $script:lastOk
+  $savedResults = $script:results
+  try {
+    # G: no output at all, and a non-zero exit -- the shape of a terminated child.
+    [System.IO.File]::WriteAllText($tmpGate, "exit 1`r`n")
+    $script:results = @()
+    Stage 'selftest: a gate that was terminated' { Run-Gate $tmpGate }
+    $gOk = ($script:stageKilled -and (-not $script:stageOk))
+    Write-Output ("   stageKilled = {0}, stageOk = {1} -> {2}" -f $script:stageKilled, $script:stageOk, $(if ($gOk) { 'PASS' } else { 'FAIL' }))
+
+    # H: the gate RAN and printed its verdict -- a real failure.
+    [System.IO.File]::WriteAllText($tmpGate, "Write-Output 'GATE FAILED: selftest'`r`nexit 1`r`n")
+    $script:results = @()
+    Stage 'selftest: a gate that failed on purpose' { Run-Gate $tmpGate }
+    $hOk = ((-not $script:stageKilled) -and (-not $script:stageOk))
+    Write-Output ("   stageKilled = {0}, stageOk = {1} -> {2}" -f $script:stageKilled, $script:stageOk, $(if ($hOk) { 'PASS' } else { 'FAIL' }))
+
+    # I: the gate's OWN SCRIPT died -- a crash, not a termination.
+    [System.IO.File]::WriteAllText($tmpGate, "throw 'the gate's own fault'`r`n")
+    $script:results = @()
+    Stage 'selftest: a gate that crashed' { Run-Gate $tmpGate }
+    $iOk = ((-not $script:stageKilled) -and (-not $script:stageOk))
+    Write-Output ("   stageKilled = {0}, stageOk = {1} -> {2}" -f $script:stageKilled, $script:stageOk, $(if ($iOk) { 'PASS' } else { 'FAIL' }))
+  } finally {
+    $script:stageOk = $savedOk
+    $script:stageKilled = $savedKilled
+    $script:lastOk = $savedLast
+    $script:results = $savedResults
+  }
+
+  Write-Output ''
+  if ($a -and $b -and $c -and $d -and $e -and $f -and $gOk -and $hOk -and $iOk) {
+    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, a patched tree is reported, a tree that cannot be read is refused, the restore is byte-for-byte, and a terminated gate is not reported as a failed gate.'
     exit 0
   }
   Write-Output 'SELF TEST FAILED: this gate cannot tell a failure from a pass. Do not trust a run.'
@@ -2255,7 +2321,12 @@ if ($SkipMutations) {
     $p = Join-Path $root ("_verify\mutate_" + $g + ".ps1")
     if (-not (Test-Path $p)) { Write-Output ("MISSING GATE: " + $p); $failed += ('missing-gate:' + $g); continue }
     Stage ("mutation gate " + $g) { Run-Gate $p }
-    if (-not $script:lastOk) { $failed += ('mutate:' + $g) }
+    if (-not $script:lastOk) {
+      # 0609. A GATE THAT WAS TERMINATED IS NAMED AS TERMINATED, so the run's
+      # summary says "the machine was killed here" and not "the code is broken
+      # here".
+      if ($script:stageKilled) { $failed += ('mutate:' + $g + ':KILLED') } else { $failed += ('mutate:' + $g) }
+    }
     # 0607. AND THE TREE MUST BE BACK WHERE IT WAS. A restore that throws
     # leaves the file MUTATED, and the NEXT gate then measures a tree nobody
     # intended to measure -- which is how one release run reported 44

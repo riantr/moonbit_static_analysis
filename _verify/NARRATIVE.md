@@ -21631,3 +21631,61 @@ the blob's.
 ### NO NEW FAMILY, AND NO VERSION.
 
 
+## 0609: TWELVE STAGES WERE REPORTED AS FAILED, AND THE MACHINE HAD BEEN KILLED
+
+The twelve rows of 0608's run named a defect in the code that does not exist. The children were
+TERMINATED -- 0x40010004 -- and every stage after the first one could not even start, and the run
+reported all twelve as FAILED.
+
+A FAILED row reads as a verdict about the code. And "the machine misbehaved is not a verdict" is
+already this tree's own rule, so a row that blames the code for a killed process breaks it.
+
+### THE EXIT CODE CANNOT CARRY THE FACT
+
+MEASURED: a child killed with `taskkill /F` reports exit 1 -- the same exit code as a gate that
+failed on purpose. So the exit code cannot tell "the gate ran and failed" from "the gate never
+finished", and a table of magic termination codes would be a table of one machine's behaviour.
+
+### THE TRANSCRIPT CAN
+
+A gate that runs to its verdict prints one of two lines, and the harness owns both:
+
+    GATE OK: 0465
+    GATE FAILED: 0465
+
+A gate that was TERMINATED before it could speak prints NEITHER. So the transcript carries the
+fact, and the exit code only refines the wording:
+
+    a verdict of FAILED                  -> the gate ran and failed: a real failure
+    a verdict of OK, and a non-zero exit -> the gate and its exit code disagree, and that is said
+                                            out loud
+    no verdict, and the transcript holds a PowerShell error
+                                         -> the gate's OWN SCRIPT died: a crash, which is the
+                                            gate's fault and not the machine's
+    no verdict, and no error             -> the child was TERMINATED: the machine, not the code
+
+### AND THE ROW SAYS WHICH ONE IT WAS
+
+The stage line reads
+
+    -> KILLED, 35s
+
+and not
+
+    -> FAILED, 35s
+
+and the run's summary names it `mutate:0506:KILLED`, so a reader of the log is told that the
+machine was killed HERE rather than left to go looking for a defect that is not there.
+
+### AND IT IS SHOWN TO GO RED, THREE TIMES
+
+A gate that has never been shown to go red is a comment. The self-test now runs three gates that it
+builds itself, and requires the three different readings:
+
+    G. a gate that was TERMINATED produced no verdict, and that is not a FAILED gate
+    H. a gate that RAN and printed GATE FAILED is a real failure, not a killed gate
+    I. a gate's OWN SCRIPT died -- a crash, not a termination
+
+### NO NEW FAMILY, AND NO VERSION.
+
+
