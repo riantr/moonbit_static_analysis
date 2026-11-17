@@ -83,18 +83,35 @@ import {
 
 ### The host your toolchain has to be
 
-The published wasm is **not self-contained**. It imports **93 symbols** from
+The published wasm is **not self-contained**. It imports a **set of symbols** from
 `moonbitlang/async` — the file IO, the process calls, the event loop — and the **host** has to
 supply every one of them when the module is instantiated. `moonx` supplies them from the
 async runtime that ships with **your** MoonBit toolchain.
 
-So the artifact has a **floor**, and the floor is a property of the published *bytes*:
+**The set is measured, not stated, and it is a FLOOR rather than a mirror.** The published
+0.4.52 artifact imports **92** symbols; this tree's own release build of the *same source*
+imports **93**, and the two sets differ by **three** symbols: the published build asks for
+`thread_pool/make_openat_job` where the local build asks for `thread_pool/make_fsync_job`
+and `thread_pool/make_open_stat_job`. The reason is that `moon publish` uploads the **source** and
+mooncakes compiles it **server-side**, so the artifact's exact import set belongs to the
+registry's builder toolchain rather than to this repository. The contract is therefore the
+union of both, **94 symbols**, and the gate checks that the artifact's imports are a **subset**
+of it — a symbol *outside* the contract is a failure (that is the direction that drops users),
+and a symbol *inside* it that one build does not ask for is a note.
+
+So the artifact has a **floor**, and the floor is a property of the **toolchain** — and the
+published *bytes* have to fit inside it:
 
 | what | where |
 |---|---|
-| the symbols the artifact is allowed to require from a host | `_verify/host_requirements.txt` |
+| the symbols a host has to be able to provide — the **floor** | `_verify/host_requirements.txt` |
 | the gate that holds the artifact to them | `_verify/check_host_requirements.ps1` |
 | the same check against the **published** bytes | `_verify/selfscan_published.ps1` |
+
+The floor is checked against the **toolchain**, and the toolchain has two layers: the bundled
+`moonbitlang/core` declares **215** host externs, and the toolchain's C runtime implements
+**288** `moonbit_rt_*` names — one of them, `moonbit_rt_make_openat_job`, is the file-IO job
+the registry's builder emitted and **no core declares it**. Together they cover all **94**.
 
 **Since 0.4.45 the runtime comes from `moonbitlang/core/async` — the copy bundled with
 your toolchain — and this package depends on nothing at all.** No `moon.mod` import
@@ -105,7 +122,8 @@ toolchain has" is what broke 0.4.38.
 **THE HOST ABI NAME DID NOT CHANGE, AND THE SYMBOL SET GOT BIGGER.** A wasm import's
 module name comes from the FFI declaration in the source, and `moonbitlang/core/async`
 still declares its host externs under the name `moonbitlang/async` — so the host
-supplies the same module as before. What changed is the set: **90 → 93**.
+supplies the same module as before. What changed is the set: **90 → 93**, and the contract is
+now **94** — the floor that serves both the local build and the published one.
 
 | | symbols |
 |---|---|

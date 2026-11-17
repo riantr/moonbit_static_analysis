@@ -21332,3 +21332,119 @@ published-package stage caught this, which is the gate working, and the next inc
 fixes the contract and the check rather than pinning the red row.
 
 
+## 0606: THE HOST CONTRACT WAS A MIRROR, AND THE BUILDER DECIDES WHAT A MIRROR CAN BE
+
+The published 0.4.52 artifact made the release gate's published-package stage go red, and the
+red row was not a defect in the analyzer. It was a defect in the CONTRACT.
+
+### THE RED ROW, VERBATIM
+
+    FAIL: it requires 1 host symbol(s) the contract does not allow:
+          + thread_pool/make_openat_job
+    FAIL: the contract lists 2 symbol(s) the artifact no longer requires:
+          - thread_pool/make_fsync_job
+          - thread_pool/make_open_stat_job
+    ABORT: 2 check(s) failed.
+    FAIL: the published bytes do not satisfy the host contract. A user whose toolchain is
+           older cannot run them.
+
+and the message is wrong in the same way the check is: **no user was harmed**, and the red
+row says a user was.
+
+### THE MEASUREMENT, AND IT IS NOT THIS TREE
+
+MEASURED on the published 0.4.52 bytes and on this tree's own release build, of the SAME
+source:
+
+    the LOCAL release build   107 imports, 93 from `moonbitlang/async`
+    the PUBLISHED 0.4.52       106 imports, 92 from `moonbitlang/async`
+
+    in the published and not in the local:   thread_pool/make_openat_job
+    in the local and not in the published:   thread_pool/make_fsync_job
+                                              thread_pool/make_open_stat_job
+
+AND PUBLISHED 0.4.50 AND 0.4.51 BOTH MATCHED THE MIRROR EXACTLY -- 107 imports, 93 each --
+so this arrived with 0.4.52.
+
+THE CAUSE IS MEASURED, and it is a fact about the DELIVERY PATH: `moon publish` uploads the
+**source**, and mooncakes compiles it **server-side**, so the published artifact links against
+the REGISTRY's builder toolchain and not against this machine's. The source is identical --
+the same tree, built here, produces exactly the contracted 93 -- and the two toolchains are
+one generation apart in ONE place: the async file-IO job.
+
+### AND NO USER IS BROKEN, AND THAT IS MEASURED TOO
+
+    the published 0.4.52 artifact RUNS on this machine
+    this machine IS the contracted floor: moon 0.1.20261104, bundled core 0.10.20+65efd5b93
+    and the toolchain's runtime implements the file-IO job, as
+        moonbit_rt_make_openat_job   in  ~/.moon/lib/runtime/fs.c
+
+So the red row said "a user whose toolchain is older cannot run them" about an artifact that
+runs on the floor toolchain. The row was not measuring users. It was measuring set equality.
+
+### THE FIX, AND IT IS A FLOOR, NOT A MIRROR
+
+A HOST CONTRACT says what a host has to be able to PROVIDE. It is not a statement about what
+one particular build happens to ask for, because the build is not this repository's to
+choose -- the registry's builder compiles the source. So:
+
+    the artifact's imports must be a SUBSET of the contract   -> a FAIL when they are not
+    the contract may be WIDER than any one build              -> a NOTE, not a failure
+
+THE "ADDED" DIRECTION STAYS HARD, because that is the direction that DROPS USERS: a symbol
+outside the contract is one an older toolchain does not have. THE "MISSING" DIRECTION BECOMES
+A NOTE, because a floor is allowed to be wider than one build, and MEASUREMENT is what showed
+that it has to be.
+
+AND THE CONTRACT IS WIDENED TO 94 -- the union of the local build's 93 and the published
+build's 92 -- so it serves BOTH:
+
+    the LOCAL build     asks for 93 of the 94
+    the PUBLISHED build asks for 92 of the 94
+    and the three symbols the two builds disagree about are all IN the contract
+
+### AND THE FLOOR IS THE TOOLCHAIN, NOT ONLY ITS CORE
+
+ONE of the 94 is not the core's to provide. `thread_pool/make_openat_job` -- the file-IO job
+the registry's builder emitted -- is declared by NO core: the bundled core's wasm backend
+declares `thread_pool/make_open_stat_job` instead. The toolchain's C RUNTIME implements it.
+
+MEASURED on this host:
+
+    the bundled core declares    215 host externs
+    the toolchain's runtime implements  288 `moonbit_rt_*` names
+    and the UNION of the two covers all 94
+
+So the gate now reads the runtime as well as the core, and the contract carries a
+`min-host-toolchain` line beside its `min-host-core` one -- because the runtime belongs to
+the toolchain and not to the core module.
+
+### AND THE SELF-TEST NOW ASSERTS BOTH DIRECTIONS
+
+A GATE THAT ONLY CHECKS THE HARD DIRECTION would pass a contract that is a mirror -- which is
+the property that was wrong. So the self-test has TWO obligations now:
+
+      ok  rejected a contract that does not allow a symbol the artifact requires (added=1)
+      ok  accepted a contract that lists a symbol the artifact does not require as a NOTE
+          (missing=2), because the contract is a floor
+
+AND THE FIRST PASS OF THE FIX WAS WRONG, AND ITS OWN SELF-TEST CAUGHT IT: `ok` still meant
+EXACT EQUALITY, so the "missing" case was rejected as a failure. A gate that has never been
+shown to go red is a comment, and this one had not been shown to go green in its NEW
+meaning either.
+
+### AND THE README'S NUMBER WAS WRONG, AND IS CORRECTED IN PLACE
+
+The README said the published wasm "imports **93 symbols**". The published 0.4.52 artifact
+imports **92**. The claim was true of 0.4.50 and 0.4.51 and became false with this release,
+and the README now says the measured pair, names the three symbols the two builds disagree
+about, and says that the contract is the union and the check is a subset.
+
+### AND THE SAME FIX LANDED IN BOTH READMEs, IN CHINESE AND IN ENGLISH
+
+because a README that says one thing and a gate that says another is how 0.4.38 happened.
+
+### NO NEW FAMILY. The roster stays at eighteen. AND NO VERSION: the contract and the gate
+### are what changed, and the artifact on the registry is what it is.
+
+

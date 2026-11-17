@@ -1155,15 +1155,16 @@ $SSA_COST = 'files=255|unreadable=0|functions=1422|converted=5|partial=1417|decl
 # chapter 0591, to 106 with chapter 0595, and to 107 with chapter 0596, to 108 with
 # chapter 0597, to 109 with chapter 0598, to 110 with chapter 0599, and to 111
 # with chapter 0600, to 112 with chapter 0601, to 113 with chapter 0602, to 114
-# with chapter 0603, and to 115 with chapter 0604.
-# 0605. THE PIN MOVED TO 116 with chapter 0605, which is the 0.4.52 post-publish
-# record. 0605's source did not move the SOURCE pins either: it added one
-# chapter of prose and the `published 0.4.52 wasm ...` row, and a chapter of
-# markdown is not a notice, a declaration or an instruction.
+# with chapter 0603, to 115 with chapter 0604, and to 116 with chapter 0605.
+# 0606. THE PIN MOVED TO 117 with chapter 0606, which is the host-contract fix:
+# the contract became a FLOOR and the check became a SUBSET check. 0606's
+# source did not move the SOURCE pins either: it changed a contract file, a
+# gate and two READMEs, and a contract symbol is not a notice, a declaration or
+# an instruction.
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '116'
+$NARRATIVE_CHAPTERS = '117'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
