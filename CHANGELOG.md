@@ -4580,6 +4580,82 @@ belongs to a release that re-measures the seven corpora.
     the test counts         1,731 -> 1,751 on wasm, 1,589 -> 1,609 on js and wasm-gc
     the NARRATIVE chapters    111 -> 115
 
+### PUBLISHED
+
+0.4.52 is tagged at `99ebfa5` on both remotes, CI's `gate` and `publish` are green on that
+commit, and the registry serves it with `latest_version = 0.4.52`.
+
+    published 0.4.52  wasm C1989B4C443B19F195D0014F2B690942A87DB012815A7CFD64D9FAF5B7B0DC3E  728514 bytes  checksum 6f051bb393f36f1ec4bba7c960b9f0984f807590aae9b7457c24c202f3adfca4  2026-11-17T12:51:03.713114+00:00
+
+**AND THE ARTIFACT CHANGED BY 628,310 BYTES, BECAUSE THE NEW CODE IS IN IT.** MEASURED, byte
+for byte: published 0.4.51 was 706965 bytes and published 0.4.52 is **728514** bytes
+(+21,549), and **628,310** of the bytes in the common prefix differ. The two releases before
+this one changed by TWO bytes and by ONE, and both of those were the version digit inside
+the embedded coordinate. This one changed the code.
+
+AND THE PROOF IS NOT THE SIZE, IT IS THE OUTPUT: the published artifact prints the two lines
+this release added.
+
+    published 0.4.52, --metrics
+        METRICS  iface-sig  available=218  agrees=218  agree-share=100.0%
+        METRICS  native-surface  modelled=1344  declared=0  covered=0  missing=0
+                 modelled-only=1344
+
+**AND THE PUBLISHED PACKAGE DOES CARRY THE LAYER'S SOURCE, AND IT IS THE SAME SOURCE.**
+
+    published 0.4.52 carries 254 .mbt files; published 0.4.51 carried 247
+    the difference is SEVEN, and the seven are exactly the seven new files
+    and EVERY ONE of the 254 published .mbt files is BYTE-IDENTICAL to the local tree
+
+**AND THE PUBLISHED TREE SCANS ITS OWN SHIPPED SOURCE CLEAN**: 272/272 files parsed,
+`actionable=0`, notices 2079 — 158 printed and 1921 aggregated, the same three numbers this
+tree's own pins carry.
+
+**AND THE PUBLISHED ARTIFACT MEASURES moonbit_core THE SAME WAY THIS TREE DOES**, run with
+the gate's own flags so the numbers are comparable and not merely similar: `actionable=30`,
+`notices=13520`, `total=14366`, and the 0604 native surface `declared=1123 covered=1076
+missing=47` — the local pin, digit for digit.
+
+**AND THE SOUNDINESS VERDICT IS IN THE SHIPPED ARTIFACT**: `--explain-all` prints every
+family's verdict with the cause of every exclusion, and `--explain MSA-007` prints
+`soundiness unsound` together with both of its exclusions. The deck's p.10 complaint is
+answered in the artifact a user installs, and not only in this repository's source.
+
+**AND THE PUBLISHED ARTIFACT STILL FIRES THE FAMILY**, measured at the published coordinate:
+
+    published 0.4.52, with --taint-source readInput --taint-sink log:0
+
+        11:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+               'readInput' (TaintFlow) [structural, MSA-018, high]
+        SUMMARY  files=1  parsed=1  actionable=1
+
+and the SAME published artifact on the SAME program WITHOUT the specification reports
+`actionable=0` — so the zero is the specification's doing and not the analyzer's.
+
+**AND THE HOST CONTRACT IS RED, AND THE CAUSE IS THE REGISTRY'S BUILDER, NOT THIS TREE.**
+MEASURED on the published bytes and on this tree's own release build, of the SAME source:
+
+    the LOCAL release build   107 imports, 93 from `moonbitlang/async`
+    the PUBLISHED 0.4.52       106 imports, 92 from `moonbitlang/async`
+
+    in the published and not in the local:   thread_pool/make_openat_job
+    in the local and not in the published:   thread_pool/make_fsync_job
+                                              thread_pool/make_open_stat_job
+
+`moon publish` uploads the SOURCE and mooncakes compiles it SERVER-SIDE, so the published
+artifact links against the registry's builder toolchain — and that toolchain is one
+generation apart in the async file-IO job. Published 0.4.50 and 0.4.51 both matched the
+contract exactly, so this arrived with this release.
+
+**AND NO USER IS BROKEN BY THE RENAME, AND THAT IS MEASURED TOO**: the published 0.4.52
+artifact RUNS on this machine, which IS the contracted floor (moon 0.1.20261104, bundled
+core 0.10.20+65efd5b93), and the toolchain's runtime implements the file-IO job as
+`moonbit_rt_make_openat_job`. What is red is the RECORD and the GATE: the contract demands
+EXACT set equality in both directions, which is the wrong property when the BUILDER decides
+the set, and the published-package stage of the release gate caught it. The next increment
+widens the contract and turns the check into a subset check, which is the property a host
+contract actually has.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

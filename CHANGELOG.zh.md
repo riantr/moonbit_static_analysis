@@ -3960,6 +3960,74 @@ actionable，其中 0 条是 `undefined function`，47 个里 0 个出现在任�
     the test counts         1,731 -> 1,751 on wasm, 1,589 -> 1,609 on js and wasm-gc
     the NARRATIVE chapters    111 -> 115
 
+### 已发布
+
+0.4.52 在两个远端都打上了 `99ebfa5` 这个标签，CI 的 `gate` 和 `publish` 在那个提交上都是绿的，
+registry 也用 `latest_version = 0.4.52` 提供它。
+
+    published 0.4.52  wasm C1989B4C443B19F195D0014F2B690942A87DB012815A7CFD64D9FAF5B7B0DC3E  728514 bytes  checksum 6f051bb393f36f1ec4bba7c960b9f0984f807590aae9b7457c24c202f3adfca4  2026-11-17T12:51:03.713114+00:00
+
+**而且产物变了 628,310 个字节，因为新代码就在里面。** 逐字节量出来的：发布出去的 0.4.51 是
+706965 字节，0.4.52 是 **728514** 字节（+21,549），公共前缀里有 **628,310** 个字节不一样。
+再往前两次发布分别只变了两个字节和一个字节，而那两个都是嵌在坐标里的版本号那一位。这一次
+变的是代码。
+
+**而证明不是那个大小，是那个输出**：发布出去的产物会打印这次发布新增的两行。
+
+    published 0.4.52, --metrics
+        METRICS  iface-sig  available=218  agrees=218  agree-share=100.0%
+        METRICS  native-surface  modelled=1344  declared=0  covered=0  missing=0
+                 modelled-only=1344
+
+**而且发布出去的包里确实带着这一层的源码，而且就是同一份源码。**
+
+    published 0.4.52 带 254 个 .mbt 文件；published 0.4.51 带 247 个
+    差的是七个，而七个正好就是那七个新文件
+    而发布出去的 254 个 .mbt 文件，每一个都和本地树**逐字节相同**
+
+**而且发布出去的树扫自己出货的源码是干净的**：272/272 个文件解析成功，`actionable=0`，
+2079 条 notice——158 条打印、1921 条聚合——和这棵树自己的钉住值是同样三个数。
+
+**而且发布出去的产物量 moonbit_core 的方式和这棵树一样**，用的是门禁自己的参数，所以数字是可
+比的而不只是相似：`actionable=30`、`notices=13520`、`total=14366`，以及 0604 的原生接口面
+`declared=1123 covered=1076 missing=47`——和本地的钉住值逐位相同。
+
+**而且 soundiness 的判定就在出货的产物里**：`--explain-all` 会打印每个家族的判定和每一条排除
+项的原因，`--explain MSA-007` 会打印 `soundiness unsound` 和它的两条排除项。讲义 p.10 抱怨的
+那件事，是在用户装到的那个产物里被回答的，不只是在这份仓库的源码里。
+
+**而且发布出去的产物仍然会报出那个家族**，在发布坐标上量出来的：
+
+    published 0.4.52, with --taint-source readInput --taint-sink log:0
+
+        11:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+               'readInput' (TaintFlow) [structural, MSA-018, high]
+        SUMMARY  files=1  parsed=1  actionable=1
+
+而同一个发布产物、同一个程序、**不带**那个规范时报的是 `actionable=0`——所以那个零是规范做
+的，不是分析器做的。
+
+**而且宿主契约是红的，而原因在 registry 的构建器，不在这棵树。** 在发布出去的字节和这棵树
+自己构建的 release 产物上量出来的，**是同一份源码**：
+
+    本地 release 构建物    107 个 import，其中 93 个来自 `moonbitlang/async`
+    发布出去的 0.4.52       106 个 import，其中 92 个来自 `moonbitlang/async`
+
+    在发布出去的那份里有、而本地没有的：  thread_pool/make_openat_job
+    在本地有、而发布出去的那份没有的：    thread_pool/make_fsync_job
+                                           thread_pool/make_open_stat_job
+
+`moon publish` 上传的是**源码**，wasm 是 mooncakes **在服务端**编译出来的，所以发布出去的产
+物链接的是 registry 的构建器工具链——而那个工具链在 async 的文件 IO 作业上差了整整一代。发布
+出去的 0.4.50 和 0.4.51 都和契约完全吻合，所以这件事是随这次发布来的。
+
+**而且这个改名没有弄坏任何用户，这一条也是量出来的**：发布出去的 0.4.52 产物在这台机器上跑得
+起来，而这台机器**就是**契约的下限（moon 0.1.20261104，自带的 core 0.10.20+65efd5b93），工具
+链的 runtime 把那个文件 IO 作业实现成了 `moonbit_rt_make_openat_job`。红的是**记录**和**门
+禁**：契约要求两个方向都完全相等，而当集合由**构建器**决定时，那不是宿主契约该有的性质；发布
+门禁的出货那一级把它抓到了。下一个增量会把契约放宽，并把那个检查改成子集检查——那才是宿主契
+约真正有的性质。
+
 ## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
 
 0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是

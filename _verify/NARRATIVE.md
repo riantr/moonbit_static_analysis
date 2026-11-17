@@ -21185,3 +21185,150 @@ re-measures the seven corpora, not to an increment that measures.
 ### increment.
 
 
+## 0605: 0.4.52 SHIPPED, AND THE PUBLISHED ARTIFACT GREW BY 21,549 BYTES
+
+The release is out, so the numbers that can only be read AFTER a publish are recorded: the
+registry's own checksum and created_at, and the SHA-256 and size of the wasm the registry
+actually serves.
+
+    tag        v0.4.52  ->  99ebfa5  on BOTH remotes
+    CI         gate     44086779783  (master push)   success
+               gate     44086945118  (tag push)      success
+               publish  44086945158  (tag push)      success
+    registry   latest_version = 0.4.52   build_status = success
+                checksum    6f051bb393f36f1ec4bba7c960b9f0984f807590aae9b7457c24c202f3adfca4
+                created_at  2026-11-17T12:51:03.713114+00:00
+
+    published 0.4.52  wasm C1989B4C443B19F195D0014F2B690942A87DB012815A7CFD64D9FAF5B7B0DC3E  728514 bytes  checksum 6f051bb393f36f1ec4bba7c960b9f0984f807590aae9b7457c24c202f3adfca4  2026-11-17T12:51:03.713114+00:00
+
+THE HASH IS READ, NOT TYPED, and the reader is SELF-CHECKED before it is trusted: it reproduced
+the 0.4.51 row (wasm D57E80AE..., 706965 bytes) byte for byte BEFORE it was applied to
+0.4.52. A reader that has never reproduced a known row is not a reader, it is a guess.
+
+AND THE READER HAS A SECOND, INDEPENDENT PATH. The bytes were fetched TWICE -- once by the
+toolchain's own registry cache and once from the registry's prebuild URL -- and the two
+hashes are identical: C1989B4C... and 728514 bytes, both times. One fetch path can be a
+cache that is wrong; two agreeing ones are a fact.
+
+### AND THE ARTIFACT GREW, AND IT GREW BECAUSE THE NEW CODE IS IN IT
+
+    published 0.4.51  706965 bytes
+    published 0.4.52  728514 bytes      (+21549)
+    bytes differing in the 706965-byte common prefix: 628310
+
+THAT IS NOT A VERSION DIGIT. 0.4.50 changed the artifact by TWO bytes and 0.4.51 by ONE,
+and both were the version digit inside the embedded coordinate -- the coordinate string
+starts at offset 728406 in the 0.4.52 artifact. This release changed 628310 of them.
+
+AND THE STRONGEST STATEMENT AVAILABLE IS NOT THE SIZE, IT IS THE OUTPUT: the published
+artifact PRINTS THE TWO LINES THIS RELEASE ADDED.
+
+    published 0.4.52, --metrics
+        METRICS  iface-sig  available=218  agrees=218  agree-share=100.0%
+        METRICS  native-surface  modelled=1344  declared=0  covered=0  missing=0
+                 modelled-only=1344
+
+A version digit cannot add a line to a METRICS block. The 0603 signature counter and the
+0604 native-surface coverage are IN THE SHIPPED ARTIFACT, and a user who installs this
+release gets them.
+
+### AND THE PUBLISHED PACKAGE CARRIES THE LAYER'S SOURCE, AND IT IS THE SAME SOURCE
+
+    published 0.4.51 carries 247 .mbt files; published 0.4.52 carries 254
+    the difference is SEVEN, and the seven are exactly the seven new files
+      src/core/soundiness.mbt               src/core/core_0602_test.mbt
+      src/core/iface_sig.mbt                src/core/core_0603_test.mbt
+      src/core/native_surface.mbt           src/core/core_0604_test.mbt
+      src/moonfiles/moonfiles_0603_test.mbt
+      src/pipeline/pipeline_0603_test.mbt
+
+    and TEN of the 247 the two packages have in common DIFFER -- the files this
+    release edited: core.mbt, moonfiles.mbt, pipeline.mbt, explain.mbt, main.mbt,
+    infer.mbt, types.mbt and three test files
+
+    and EVERY ONE of the 254 published .mbt files is BYTE-IDENTICAL to this tree's
+
+### AND THE PUBLISHED TREE SCANS ITS OWN SHIPPED SOURCE CLEAN
+
+    published 0.4.52   272 files, 272/272 parsed, actionable=0, notices=2079,
+                        printed=158, aggregated=1921
+
+and those are the SAME three numbers this tree's own pins carry -- 2079 notices, 158
+printed, 1921 aggregated -- so the published artifact and the local build agree about the
+source they were both made from.
+
+### AND THE PUBLISHED ARTIFACT MEASURES moonbit_core THE SAME WAY THIS TREE DOES
+
+run with the GATE'S OWN flags, so the numbers are comparable rather than merely similar:
+
+    published 0.4.52 on moonbit_core
+        actionable=30  notices=13520  unreliable=816  withheld=103
+        unchecked=14322  total=14366
+        METRICS  native-surface  modelled=1344  declared=1123  covered=1076
+                 missing=47  modelled-only=268
+
+and every one of those is the LOCAL pin, digit for digit -- including the 0604 native
+surface, measured at the PUBLISHED coordinate.
+
+### AND THE SOUNDINESS VERDICT IS IN THE SHIPPED ARTIFACT TOO
+
+    published 0.4.52, --explain-all
+        MSA-007  ArgTypeMismatch  --  unsound  (2 exclusions)
+        MSA-008  OperatorMismatch  --  unsound  (2 exclusions)
+        MSA-012  StaleNosec        --  unsound  (1 exclusion)
+        ... and fifteen soundy
+
+    published 0.4.52, --explain MSA-007
+        property    an argument's type is not assignable to the callee's parameter
+        assumption  the callee's signature is known: declared in this file, or in the extern .mbti tables
+        excluded    calls to a callee with no visible signature -- those are counted unchecked, not reported; and named-call arity
+        soundiness  unsound
+        exclusion   X-ARG-TYPE-NO-SIGNATURE  hard feature  --  calls to a callee with no visible signature
+        exclusion   X-ARG-TYPE-NAMED-ARITY  deliberate  --  named-call arity
+
+SO THE DECK'S p.10 COMPLAINT -- that treatments to hard language features are "usually
+omitted or only mentioned in an off-hand manner in some impl/eval parts in papers" -- is
+answered IN THE ARTIFACT A USER INSTALLS, and not only in this repository's source.
+
+### AND THE ARTIFACT STILL FIRES THE FAMILY, WITH THE CONTROL THAT MAKES IT MEAN SOMETHING
+
+    published 0.4.52, with --taint-source readInput --taint-sink log:0
+        11:3 - error: the sensitive argument 0 of 'log' may receive tainted data from
+               'readInput' (TaintFlow) [structural, MSA-018, high]
+        SUMMARY  files=1  parsed=1  actionable=1
+
+and the SAME published artifact on the SAME program WITHOUT the specification reports
+`actionable=0` -- so the zero is the specification's doing and not the analyzer's.
+
+### AND THE HOST CONTRACT IS RED, AND THE CAUSE IS NOT THIS TREE
+
+MEASURED, on the published bytes and on this tree's own release build, of the SAME source:
+
+    the LOCAL release build   107 imports, 93 from `moonbitlang/async`
+    the PUBLISHED 0.4.52       106 imports, 92 from `moonbitlang/async`
+
+    in the published and not in the local:   thread_pool/make_openat_job
+    in the local and not in the published:   thread_pool/make_fsync_job
+                                              thread_pool/make_open_stat_job
+
+AND PUBLISHED 0.4.50 AND 0.4.51 BOTH MATCHED THE CONTRACT EXACTLY -- 107 imports, 93 each
+-- so this arrived with this release.
+
+THE CAUSE IS NOT THIS TREE. `moon publish` uploads the SOURCE and mooncakes compiles it
+SERVER-SIDE, so the published artifact links against the REGISTRY'S builder toolchain and
+not against this machine's. The source is identical -- the same tree, built here, produces
+exactly the contracted 93 -- and the two toolchains are one generation apart in ONE place:
+the async file-IO job.
+
+AND NO USER IS BROKEN BY THE RENAME, AND THAT IS MEASURED TOO: the published 0.4.52
+artifact RUNS on this machine, which IS the contracted floor (moon 0.1.20261104, bundled
+core 0.10.20+65efd5b93), and the toolchain's runtime implements the file-IO job as
+`moonbit_rt_make_openat_job` in `~/.moon/lib/runtime/fs.c`.
+
+WHAT IS RED IS THE RECORD AND THE GATE. `_verify/host_requirements.txt` calls itself "THE
+HOST CONTRACT OF THE SHIPPED ARTIFACT", and the gate enforces EXACT set equality in both
+directions -- which is the wrong property when the BUILDER decides the set. The gate's
+published-package stage caught this, which is the gate working, and the next increment
+fixes the contract and the check rather than pinning the red row.
+
+
