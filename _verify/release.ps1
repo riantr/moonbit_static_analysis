@@ -290,6 +290,41 @@ function Get-IfaceSig {
   }
 }
 
+# 0604. THE DECK'S p.57 QUESTION, as the analyzer prints it: the hand-modelled
+# native surface measured against the DECLARED one.
+#
+# FIVE NUMBERS, and they are FIVE QUESTIONS rather than one ratio -- so they
+# are read as five fields and compared as a tuple, in the order the analyzer
+# prints them.
+#
+# IT IS READ FROM THE ANALYZER'S OWN LINE, for the reason every other number in
+# this file is not recomputed: a second implementation of the measurement is a
+# second number that can disagree with the first.
+function Get-NativeSurface {
+  param([string]$Text)
+  $m = [regex]::Match($Text, '(?m)^METRICS\tnative-surface\t(.+)$')
+  if (-not $m.Success) { return $null }
+  $kv = @{}
+  $order = @()
+  foreach ($p in ($m.Groups[1].Value -split "`t")) {
+    if ($p -match '^(modelled|declared|covered|missing|modelled-only)=(\d+)$') {
+      $kv[$Matches[1]] = $Matches[2]
+      $order += ($Matches[1] + '=' + $Matches[2])
+    }
+  }
+  # The raw tuple, in the analyzer's own order, is what the pin carries: a pin
+  # that re-ordered the fields would compare a different string to the same
+  # numbers, and a reader would not be able to see which field moved.
+  return [pscustomobject]@{
+    Raw          = ($order -join '|')
+    Modelled     = [int]$kv['modelled']
+    Declared     = [int]$kv['declared']
+    Covered      = [int]$kv['covered']
+    Missing      = [int]$kv['missing']
+    ModelledOnly = [int]$kv['modelled-only']
+  }
+}
+
 # The ParseError-family findings that are NOT notices: a genuine defect of
 # that family. Zero is the only acceptable answer, and it is measured on every
 # tree the gate scans.
@@ -527,7 +562,16 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # test rows + 2 enums + 1 struct = 2,061. The layer adds the two enums of the
 # deck's three-way verdict -- Soundiness and ExclusionCause -- and the one
 # struct of an exclusion.
-$NOTICE_TOTAL = '23418'
+# 0604. AND THE PIN MOVED AGAIN, 23418 -> 23424, and THE MOVEMENT IS THIS
+# INCREMENT'S OWN SOURCE and nothing else: the seven corpora carry 21,345
+# notices, exactly what they carried before -- each one still MATCHes its
+# pinned baseline, MEASURED -- and this repository's own source carries 2079
+# (it carried 2073). The six notices are the native-surface layer and its test
+# file, and they are ALL AGGREGATED: a declaration sits outside every
+# function's extent, so the PRINTED half of the split did not move.
+#
+# AND THE COUNT OF SIX IS SIX: 5 test rows + 1 struct (NativeSurface) = 6.
+$NOTICE_TOTAL = '23424'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -648,8 +692,14 @@ $NOTICE_TOTAL = '23418'
 # ALL, for the same reason. The corpora did not move.
 # 0602. AND AGAIN: 3971 + 19426 -> 3971 + 19435. The PRINTED half did not move AT
 # ALL, for the same reason. The corpora did not move.
+# 0603. AND AGAIN: 3972 + 19435 -> 3972 + 19446. The PRINTED half moved by ONE --
+# the 0603 layer's own call to the new lens is inside a function's extent -- and
+# the AGGREGATED half by ELEVEN.
+# 0604. AND AGAIN: 3972 + 19446 -> 3972 + 19452. The PRINTED half did not move AT
+# ALL, for the same reason -- a declaration sits outside every function's extent.
+# The corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3972'
-$NOTICE_SPLIT_AGGREGATED = '19446'
+$NOTICE_SPLIT_AGGREGATED = '19452'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -779,10 +829,53 @@ $NOTICE_SPLIT_AGGREGATED = '19446'
 # move AGAIN, and the notice table's moving rows are the `test` declaration row
 # (1731 -> 1737, the six new rows), the `enum` declaration row (33 -> 35, the two
 # new enums) and the `struct` declaration row (117 -> 118, the one new struct).
-$SELF_FILES = '271'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=120|test declaration=1746|try expression=1|type declaration=7'
+# 0603. AND THEY MOVED AGAIN: 268 -> 271 files (the signature layer and its two
+# test files), 1904 -> 1915 aggregated, and 2061 -> 2073 notices. The PRINTED half
+# moved by ONE, and the notice table's moving rows are the `test` declaration row
+# (1737 -> 1746, the nine new rows), the `if expression` row (100 -> 101, the new
+# lens's own `if` used as a value) and the `struct` declaration row (118 -> 120,
+# the two new structs).
+# 0604. AND THEY MOVED AGAIN: 271 -> 273 files (the native-surface layer and its
+# test file), 1915 -> 1921 aggregated, and 2073 -> 2079 notices. The PRINTED half
+# did NOT move AT ALL, and the notice table's moving rows are the `test`
+# declaration row (1746 -> 1751, the five new rows) and the `struct` declaration
+# row (120 -> 121, the one new struct).
+$SELF_FILES = '273'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1751|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
-$SELF_AGGREGATED = '1915'
+$SELF_AGGREGATED = '1921'
+#   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
+#                   the hand-modelled native surface measured against the
+#                   DECLARED one.
+#
+# 0604. AND THIS ROW IS ZERO IN THREE OF ITS FIVE FIELDS, and that is the
+# MEASUREMENT rather than a failure: this repository declares NO method of the
+# forty built-in types, so there is nothing for its own interfaces to carry and
+# the whole of the hand-modelled table is outside what the target declares.
+# The corpus table below is where the surface is actually declared -- and it is
+# declared by exactly ONE of the eight trees, because the built-in surface is
+# the STANDARD LIBRARY's, and only the standard library declares it.
+$SELF_SURFACE = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
+#   $SURFACE_DECLARED   the deck's p.57 question, over the EIGHT trees: how many
+#   $SURFACE_COVERED     methods they declare for the forty built-in types, how
+#   $SURFACE_MISSING     many of those the hand-written table holds, and how
+#                        many it does not.
+#
+# 0604. AND THE EIGHT-TREE AGGREGATE, over the seven corpora AND this
+# repository's own source -- the three numbers that VARY, because `modelled` is
+# the analyzer's constant and `modelled-only` is the table's size less what
+# each tree declares.
+#
+# 1,133 declared, of which 1,076 the hand-written table holds and 57 it does
+# not. THE 57 ARE A FALLBACK GAP AND NOT A LIVE FALSE POSITIVE, and that is
+# MEASURED rather than assumed: none of the 57 appears in an `undefined
+# function` finding, because the interfaces carry them.
+#
+# THE PER-CORPUS TABLE that this aggregate is made of is `$PINNED_SURFACE`,
+# further down beside `$TARGETS`.
+$SURFACE_DECLARED = '1133'
+$SURFACE_COVERED = '1076'
+$SURFACE_MISSING = '57'
 #   $IFACE_SIG_AVAILABLE   the deck's p.40 pair, over the eight trees: how many
 #   $IFACE_SIG_AGREES      of the cross-file calls the type lens could NOT check
 #                          have a callee whose `.mbti` declares a signature, and
@@ -808,8 +901,15 @@ $SELF_AGGREGATED = '1915'
 # TABLE, and it is precisely the deck's p.39 warning -- an inferred target has
 # to be constrained by its TYPE, not by its name alone. That is why 0603 COUNTS
 # the inference and does not ENFORCE it.
-$IFACE_SIG_AVAILABLE = '2958'
-$IFACE_SIG_AGREES = '2279'
+#
+# 0604. AND THE PAIR MOVED BY THREE: 2958 -> 2961 and 2279 -> 2282. The three
+# are this repository's own source, which is the only tree whose SOURCE changed:
+# the 0604 layer calls the new lens three times inside a function's extent, and
+# all three of those calls have a callee the `.mbti` declares a signature for
+# whose arity agrees. The corpora did not move, and the corpora are the ones the
+# pair is about.
+$IFACE_SIG_AVAILABLE = '2961'
+$IFACE_SIG_AGREES = '2282'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -1034,7 +1134,12 @@ $SUPPOFF_PARAM = '1341'
 # instructions 9169 -> 9172, variables 1158 (unchanged), versions 2795
 # (unchanged), phis 975 (unchanged), copies 2408 (unchanged), undef_operands
 # 202 (unchanged), dead_blocks 465 (unchanged), undef_uses 1291 -> 1295.
-$SSA_COST = 'files=253|unreadable=0|functions=1419|converted=5|partial=1414|declined=6483|instructions=9172|variables=1158|versions=2795|phis=975|copies=2408|undef_operands=202|dead_blocks=465|undef_uses=1295'
+# 0604. AND IT MOVED AGAIN WITH THE TWO NEW FILES AND THE NEW LENS: files
+# 253 -> 255, functions 1419 -> 1422, partial 1414 -> 1417, declined 6483 ->
+# 6496, instructions 9172 -> 9179, variables 1158 -> 1164, versions 2795 ->
+# 2801, phis 975 (unchanged), copies 2408 (unchanged), undef_operands 202
+# (unchanged), dead_blocks 465 (unchanged), undef_uses 1295 (unchanged).
+$SSA_COST = 'files=255|unreadable=0|functions=1422|converted=5|partial=1417|declined=6496|instructions=9179|variables=1164|versions=2801|phis=975|copies=2408|undef_operands=202|dead_blocks=465|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1054,7 +1159,7 @@ $SSA_COST = 'files=253|unreadable=0|functions=1419|converted=5|partial=1414|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '114'
+$NARRATIVE_CHAPTERS = '115'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1114,6 +1219,10 @@ if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_PRINTED)) { $emptyPins += 'NOTICE
 if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_AGGREGATED)) { $emptyPins += 'NOTICE_SPLIT_AGGREGATED' }
 if ([string]::IsNullOrWhiteSpace($IFACE_SIG_AVAILABLE)) { $emptyPins += 'IFACE_SIG_AVAILABLE' }
 if ([string]::IsNullOrWhiteSpace($IFACE_SIG_AGREES)) { $emptyPins += 'IFACE_SIG_AGREES' }
+if ([string]::IsNullOrWhiteSpace($SELF_SURFACE)) { $emptyPins += 'SELF_SURFACE' }
+if ([string]::IsNullOrWhiteSpace($SURFACE_DECLARED)) { $emptyPins += 'SURFACE_DECLARED' }
+if ([string]::IsNullOrWhiteSpace($SURFACE_COVERED)) { $emptyPins += 'SURFACE_COVERED' }
+if ([string]::IsNullOrWhiteSpace($SURFACE_MISSING)) { $emptyPins += 'SURFACE_MISSING' }
 if ($emptyPins.Count -gt 0) {
   Write-Output ('FATAL: the pins ' + ($emptyPins -join ', ') + ' are empty.')
   Write-Output '  A gate that compares against an empty pin compares against nothing.'
@@ -1335,6 +1444,32 @@ if ($failed.Count -eq 0) {
       $script:selfSigAgrees = $sig.Agrees
       Write-Output ('  the cross-file targets this source could have had: ' +
         $sig.Available + ' available, ' + $sig.Agrees + ' agreeing on the arity')
+    }
+
+    # 0604. THE DECK'S p.57 QUESTION, over this repository's own source. The
+    # corpus stage adds the seven corpora to these numbers, so the pin is the
+    # EIGHT-TREE pair and this is its own-source half.
+    $surf = Get-NativeSurface $text
+    if ($null -eq $surf) {
+      Write-Output '  FAIL: the scan printed no native-surface metrics line.'
+      $script:stageOk = $false
+      $script:selfSurface = ''
+      $script:selfSurfDeclared = 0
+      $script:selfSurfCovered = 0
+      $script:selfSurfMissing = 0
+    } else {
+      $script:selfSurface = $surf.Raw
+      $script:selfSurfDeclared = $surf.Declared
+      $script:selfSurfCovered = $surf.Covered
+      $script:selfSurfMissing = $surf.Missing
+      if ($surf.Raw -ne $SELF_SURFACE) {
+        Write-Output '  FAIL: the native surface drifted from the pin.'
+        Write-Output ('      pinned : ' + $SELF_SURFACE)
+        Write-Output ('      actual : ' + $surf.Raw)
+        $script:stageOk = $false
+      } else {
+        Write-Output ('  the native surface matches the pin (' + $surf.Raw + ')')
+      }
     }
 
     # THE OWN-SOURCE NOTICES BY KIND. The README publishes this table, so the
@@ -2486,6 +2621,49 @@ $TARGETS = [ordered]@{
   'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
 }
 
+# 0604. THE DECK'S p.57 QUESTION, per corpus: the HAND-MODELLED native surface
+# measured against the DECLARED one.
+#
+# AND THE TABLE IS MOSTLY ZEROS, and that is the MEASUREMENT rather than a
+# failure. The hand-modelled table is the STANDARD LIBRARY's surface -- forty
+# types, 1,344 methods -- and a user's own package declares no method of it.
+# So only the tree that IS the standard library declares anything, and the
+# other seven say nothing about the built-in surface because they have nothing
+# to say.
+#
+# `async` is the interesting second case: it declares TEN methods of a built-in
+# type (`Buffer`), and the hand-modelled table holds NONE of them. Those ten
+# are the FALSE-POSITIVE direction -- names the toolchain declares and the
+# hand-written table does not -- and they are also ten of `moonbit_core`'s 47.
+#
+# `moonbit_core` is the row that answers the deck's question: of the 1,123
+# methods it declares for the forty modelled types, the hand-written table
+# holds 1,076 and misses 47. AND THE 268 ARE THE OTHER DIRECTION: names the
+# table holds that the target no longer declares, which is the MISSED-REPORT
+# direction the table's own header says it accepts on purpose.
+$PINNED_SURFACE = [ordered]@{
+  'moui'            = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
+  'moonbit_labeler' = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
+  'moonbit_image'   = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
+  'async'           = 'modelled=1344|declared=10|covered=0|missing=10|modelled-only=1344'
+  'proton'          = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
+  'proton_contract' = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
+  'moonbit_core'    = 'modelled=1344|declared=1123|covered=1076|missing=47|modelled-only=268'
+}
+# 0604. AND THE EIGHT-TREE AGGREGATE, over the seven corpora AND this
+# repository's own source -- the three numbers that VARY, because `modelled` is
+# the analyzer's constant and `modelled-only` is the table's size less what
+# each tree declares.
+#
+# THE AGGREGATE PINS ARE `$SURFACE_DECLARED`, `$SURFACE_COVERED` and
+# `$SURFACE_MISSING`, further UP beside `$SELF_SURFACE` -- because a pin has to
+# be DEFINED ABOVE the stage that reads it, and the empty-pin check says so.
+#
+# 1,133 declared, of which 1,076 the hand-written table holds and 57 it does
+# not. THE 57 ARE A FALLBACK GAP AND NOT A LIVE FALSE POSITIVE, and that is
+# MEASURED rather than assumed: none of the 57 appears in an `undefined
+# function` finding, because the interfaces carry them.
+
 # --- 6a  THE NOTICE RECONCILIATION CAN GO RED ---------------------------------
 # A gate that has never been seen to go red is a comment.
 #
@@ -2533,6 +2711,12 @@ if ($failed.Count -eq 0) {
     # self-scan stage's numbers, because that stage measured them already.
     $sigAvailable = $script:selfSigAvailable
     $sigAgrees = $script:selfSigAgrees
+    # 0604. The deck's p.57 pair, accumulated over the same seven corpora and
+    # this repository's own source. The own-source half starts at the
+    # self-scan stage's numbers, because that stage measured them already.
+    $surfDeclared = $script:selfSurfDeclared
+    $surfCovered = $script:selfSurfCovered
+    $surfMissing = $script:selfSurfMissing
     foreach ($k in $TARGETS.Keys) {
       $p = Join-Path $repos $TARGETS[$k]
       if (-not (Test-Path $p)) { Write-Output ("  [ABSENT] {0,-16}" -f $k); $drift++; continue }
@@ -2592,6 +2776,27 @@ if ($failed.Count -eq 0) {
       } else {
         $sigAvailable += $sig.Available
         $sigAgrees += $sig.Agrees
+      }
+      # 0604. The hand-modelled native surface against the DECLARED one, per
+      # corpus. The line is the ANALYZER's own measurement, read here and not
+      # recomputed.
+      $surf = Get-NativeSurface $text
+      if ($null -eq $surf) {
+        Write-Output ("  [DRIFT ] {0,-16} the scan printed no native-surface metrics line" -f $k)
+        $drift++
+      } else {
+        $wantSurf = $PINNED_SURFACE[$k]
+        if ($surf.Raw -ne $wantSurf) {
+          $drift++
+          Write-Output ("  [DRIFT ] {0,-16} the native surface drifted" -f $k)
+          Write-Output ('      pinned : ' + $wantSurf)
+          Write-Output ('      actual : ' + $surf.Raw)
+        } else {
+          Write-Output ("  [MATCH ] {0,-16} native-surface {1}" -f $k, $surf.Raw)
+        }
+        $surfDeclared += $surf.Declared
+        $surfCovered += $surf.Covered
+        $surfMissing += $surf.Missing
       }
       $want = $PINNED[$k]
       if ($sum -eq $want) { Write-Output ("  [MATCH ] {0,-16} {1}" -f $k, $sum) }
@@ -2662,6 +2867,25 @@ if ($failed.Count -eq 0) {
     } else {
       Write-Output ('  [MATCH ] the eight trees resolve ' + $sigAvailable + ' cross-file targets and ' +
                     $sigAgrees + ' of their arities agree')
+    }
+    # 0604. THE DECK'S p.57 QUESTION, over the eight trees.
+    #
+    # THREE NUMBERS, AND THE THIRD IS THE POINT. `declared` is how many methods
+    # the eight trees declare for the forty built-in types, `covered` is how
+    # many of those the hand-written table holds, and `missing` is how many it
+    # does not -- the FALSE-POSITIVE direction, and the one that hurts.
+    #
+    # AND THEY ARE PINNED TOGETHER, because `missing` without `declared` is a
+    # number about nothing: a table that covered nothing would report the same
+    # 57 missing.
+    if ("$surfDeclared" -ne $SURFACE_DECLARED -or "$surfCovered" -ne $SURFACE_COVERED -or "$surfMissing" -ne $SURFACE_MISSING) {
+      Write-Output ('  [DRIFT ] the eight trees declare ' + $surfDeclared + ' methods of the modelled types, the table covers ' +
+                    $surfCovered + ' and misses ' + $surfMissing + ', pinned ' + $SURFACE_DECLARED + ' / ' +
+                    $SURFACE_COVERED + ' / ' + $SURFACE_MISSING + '.')
+      $drift++
+    } else {
+      Write-Output ('  [MATCH ] the eight trees declare ' + $surfDeclared + ' methods of the modelled types, the table covers ' +
+                    $surfCovered + ' and misses ' + $surfMissing)
     }
     if ($drift -eq 0) { return }
     if ($AllowCorpusDrift) { Write-Output '  (-AllowCorpusDrift: drift reported, not failed)'; return }

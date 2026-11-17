@@ -793,7 +793,9 @@ pub async fn scan(
   for d in extern_iface_dirs {
     iface_dirs.push(d)
   }
-  let (iface_tab, skipped_dot) = collect_iface_symtabs(iface_dirs)
+  let (iface_tab, own_iface_tab, skipped_dot) = collect_iface_symtabs(
+    iface_dirs,
+  )
   if iface_tab.n_types() + iface_tab.n_values() > 0 {
     println(
       "IFACE\ttypes=\{iface_tab.n_types()}\tvalues=\{iface_tab.n_values()}\t(dirs=\{iface_dirs.length()})",
@@ -1056,6 +1058,20 @@ pub async fn scan(
     for line in metrics_lines(verdicts, s, files.length()) {
       println(line)
     }
+    // 0604. THE HAND-MODELLED NATIVE SURFACE, MEASURED AGAINST THE DECLARED
+    // ONE -- the deck's p.57 against the toolchain's own interfaces.
+    //
+    // IT IS ITS OWN LINE and not one of `metrics_lines`, because
+    // `metrics_lines` is a PURE function of the verdicts and the Summary, and
+    // this is a function of the TARGET'S INTERFACES.
+    let declared : Array[String] = []
+    for k, _ in own_iface_tab.all_values() {
+      declared.push(k)
+    }
+    let ns = @core.native_surface_coverage(declared)
+    println(
+      "METRICS\tnative-surface\tmodelled=\{ns.modelled}\tdeclared=\{ns.declared}\tcovered=\{ns.covered}\tmissing=\{ns.missing}\tmodelled-only=\{ns.modelled_only}\t(the hand-modelled builtin table against the methods the target's OWN interfaces declare for those types)",
+    )
   }
   // 0541. THE CALL-CONTEXT BLOCK, also opt-in, and its own flag rather than a
   // line in the block above. Two reasons, and the second is the one that
@@ -1947,8 +1963,16 @@ fn ok_segment(chars : Array[Char], from : Int32, to : Int32) -> Bool {
 /// "never looked".
 async fn collect_iface_symtabs(
   roots : Array[String],
-) -> (@core.IfaceSymTab, Int32) {
+) -> (@core.IfaceSymTab, @core.IfaceSymTab, Int32) {
   let tab = @core.IfaceSymTab::empty()
+  // 0604. THE TARGET'S OWN INTERFACES, accumulated SEPARATELY and in the SAME
+  // walk.
+  //
+  // AND IT IS THE SAME WALK ON PURPOSE. A second walk could disagree about
+  // which files are in the tree, and the question 0604 asks -- what does the
+  // TARGET declare about the built-in types -- is a question about the
+  // target's own tree.
+  let own = @core.IfaceSymTab::empty()
   let mut skipped_dot = 0
   for ri, root in roots {
     // the target is roots[0]; anything else was named by the user
@@ -1978,11 +2002,18 @@ async fn collect_iface_symtabs(
           let text = @fs.read_text(p) catch { _ => continue }
           let sub = @moonfiles.collect_iface_names(text)
           let _ = tab.merge(sub)
+          // 0604. The TARGET's own interfaces, and not the user's extra
+          // directories: the built-in surface is measured against what the
+          // target declares, and a table that merges every fetched package's
+          // interfaces cannot answer that.
+          if !user_named {
+            let _ = own.merge(sub)
+          }
         }
       }
     }
   }
-  (tab, skipped_dot)
+  (tab, own, skipped_dot)
 }
 
 ///|

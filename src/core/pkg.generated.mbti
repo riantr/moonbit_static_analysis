@@ -10,7 +10,11 @@ pub fn ambient_names() -> Array[String]
 
 pub fn builtin_method_names() -> Array[String]
 
+pub fn builtin_type_names() -> Array[String]
+
 pub fn family_by_id(String) -> Family?
+
+pub fn native_surface_coverage(Array[String]) -> NativeSurface
 
 pub fn path_tail(String) -> String
 
@@ -27,6 +31,8 @@ pub fn soundiness_roster() -> String
 pub fn soundiness_verdict() -> Soundiness
 
 pub fn span_at(Int32, Int32, Int32) -> Span
+
+pub fn type_prefix(String) -> String
 
 pub fn unqualified(String) -> String
 
@@ -150,6 +156,14 @@ pub(all) enum Lens {
 pub fn Lens::lower(Self, Self) -> Bool
 pub fn Lens::name(Self) -> String
 pub fn Lens::rank(Self) -> Int32
+
+pub(all) struct NativeSurface {
+  modelled : Int32
+  declared : Int32
+  covered : Int32
+  missing : Int32
+  modelled_only : Int32
+}
 
 #derive(Eq)
 pub(all) struct Pos {
