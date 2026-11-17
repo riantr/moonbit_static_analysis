@@ -256,10 +256,175 @@ foreach ($part in @('property', 'assumption', 'excluded', 'reach')) {
   }
 }
 
+# ------------------------------------------ 6. the SOUNDINESS classification ------
+#
+# 0602. The deck is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021
+# Fall), and its p.14 gives three verdicts -- sound, soundy, unsound -- whose
+# difference is the CAUSE of the gap, not its size:
+#
+#   A sound analysis requires to capture all dynamic behaviors
+#   A soundy analysis aims to capture all dynamic behaviors with certain hard
+#   language features unsoundly handled within reason
+#   An unsound analysis deliberately ignores certain behaviors in its design
+#   for better efficiency, precision or accessibility
+#
+# And p.10 is the complaint the tree answers: "Treatments to hard language
+# features are usually omitted or only mentioned in an off-hand manner in some
+# impl/eval parts in papers."
+#
+# So the tree declares, per family, its EXCLUSIONS with the cause of each, and
+# the VERDICT IS DERIVED. This section derives it AGAIN, from the SOURCE, and
+# compares it with the pin -- which is the point: a verdict written out by
+# hand in the code could drift from the causes, and nothing would say so.
+#
+# AND THE EXCLUSION'S `text` IS A QUOTE of the family's own `excluded`
+# contract, and this section checks that it really is a quote. Without that
+# check the exclusion list would be a SECOND table, written down twice, and
+# the two would drift -- the exact failure this gate was built for.
+Write-Output ''
+Write-Output '=== 6. the soundiness classification (0602) ==='
+$sn = Join-Path $root 'src\core\soundiness.mbt'
+if (-not (Test-Path -LiteralPath $sn)) {
+  Write-Output '  MISSING: src/core/soundiness.mbt is not in the tree.'
+  Write-Output '           The deck''s three-way verdict is derived in that file, and this gate has nothing to derive.'
+  $fail++
+} else {
+  $snTxt = [System.IO.File]::ReadAllText($sn, [System.Text.Encoding]::UTF8)
+
+  # --- the two vocabularies ------------------------------------------------
+  foreach ($v in @(@('Soundiness', 3), @('ExclusionCause', 2))) {
+    $vm = [regex]::Match($snTxt, '(?s)pub\(all\) enum ' + $v[0] + ' \{(.*?)\n\}')
+    if (-not $vm.Success) {
+      Write-Output ('  MISSING: the ' + $v[0] + ' enum was not found.')
+      $fail++
+      continue
+    }
+    $vals = @()
+    foreach ($l in ($vm.Groups[1].Value -split "`r?`n")) {
+      $t = $l.Trim()
+      if ($t -match '^[A-Z][A-Za-z]+$') { $vals += $t }
+    }
+    Write-Output ('  ' + $v[0] + ': ' + $vals.Count + ' values: ' + ($vals -join ', '))
+    if ($vals.Count -ne $v[1]) {
+      Write-Output ('  FAIL: the ' + $v[0] + ' axis has ' + $vals.Count + ' values, and it must have ' + $v[1] + '.')
+      $fail++
+    }
+  }
+
+  # --- the per-family exclusions -------------------------------------------
+  $exM = [regex]::Match($snTxt, '(?s)pub fn Family::exclusions\(self : Family\)\s*->\s*Array\[Exclusion\]\s*\{(.*?)\n\}')
+  if (-not $exM.Success) {
+    Write-Output '  MISSING: Family::exclusions was not found.'
+    $fail++
+  } else {
+    $armStarts = [regex]::Matches($exM.Groups[1].Value, '(?m)^\s*(F[A-Za-z0-9]+)\s*=>')
+    $arms = @{}
+    for ($i = 0; $i -lt $armStarts.Count; $i++) {
+      $tag = $armStarts[$i].Groups[1].Value
+      $from = $armStarts[$i].Index
+      $to = if ($i + 1 -lt $armStarts.Count) { $armStarts[$i + 1].Index } else { $exM.Groups[1].Value.Length }
+      $body = $exM.Groups[1].Value.Substring($from, $to - $from)
+      $exs = @()
+      foreach ($p in [regex]::Matches($body, '(?s)Exclusion::\{(.*?)\n\s*\},')) {
+        $idM = [regex]::Match($p.Groups[1].Value, 'id:\s*"([^"]+)"')
+        $cM = [regex]::Match($p.Groups[1].Value, 'cause:\s*([A-Za-z]+)')
+        $tM = [regex]::Match($p.Groups[1].Value, '(?s)text:\s*"((?:[^"\\]|\\.)*)"')
+        if (-not $idM.Success -or -not $cM.Success -or -not $tM.Success) {
+          Write-Output ('  FAIL: an exclusion of ' + $tag + ' is missing its id, its cause or its text.')
+          $fail++
+          continue
+        }
+        $exs += @{ id = $idM.Groups[1].Value; cause = $cM.Groups[1].Value; text = $tM.Groups[1].Value }
+      }
+      $arms[$tag] = $exs
+    }
+    Write-Output ('  Family::exclusions: ' + $arms.Count + ' arm(s) for ' + $tags.Count + ' families')
+    if ($arms.Count -ne $tags.Count) {
+      Write-Output ('  FAIL: Family::exclusions has ' + $arms.Count + ' arms for ' + $tags.Count + ' families.')
+      $fail++
+    }
+
+    # the family's own `excluded` contract, read the same way section 5 reads it
+    $exclM = [regex]::Match($src, '(?s)pub fn Family::excluded\(self : Family\) -> String \{(.*?)\n\}')
+    $contract = @{}
+    foreach ($m in [regex]::Matches($exclM.Groups[1].Value, '(?s)F([A-Za-z]+)\s*=>\s*"((?:[^"\\]|\\.)*)"')) {
+      $contract['F' + $m.Groups[1].Value] = $m.Groups[2].Value
+    }
+
+    # --- the derivation, and the pin -----------------------------------------
+    $seenIds = @{}
+    $counts = @{ sound = 0; soundy = 0; unsound = 0 }
+    $unsoundIds = @()
+    foreach ($t in $tags) {
+      if (-not $arms.ContainsKey($t)) {
+        Write-Output ('  FAIL: the family ' + $t + ' declares no exclusion, so it has no verdict.')
+        $fail++
+        continue
+      }
+      $exs = $arms[$t]
+      if ($exs.Count -eq 0) {
+        Write-Output ('  FAIL: the family ' + $t + ' declares an empty exclusion list.')
+        $fail++
+        continue
+      }
+      $verdict = 'soundy'
+      foreach ($e in $exs) {
+        if ($seenIds.ContainsKey($e.id)) {
+          Write-Output ('  FAIL: the exclusion id ' + $e.id + ' is used twice.')
+          $fail++
+        }
+        $seenIds[$e.id] = $true
+        if ($e.cause -ne 'HardFeature' -and $e.cause -ne 'Deliberate') {
+          Write-Output ('  FAIL: the exclusion ' + $e.id + ' has the cause ' + $e.cause + ', which is neither HardFeature nor Deliberate.')
+          $fail++
+        }
+        if ($e.cause -eq 'Deliberate') {
+          $verdict = 'unsound'
+          $unsoundIds += $e.id
+        }
+        # THE QUOTE: the exclusion's text must be IN the family's own contract.
+        if (-not $contract.ContainsKey($t) -or -not $contract[$t].Contains($e.text)) {
+          Write-Output ('  FAIL: the exclusion ' + $e.id + ' quotes "' + $e.text + '", which is not in the family''s own excluded contract.')
+          $fail++
+        }
+      }
+      $counts[$verdict] = $counts[$verdict] + 1
+    }
+    Write-Output ('  derived: sound=' + $counts['sound'] + '  soundy=' + $counts['soundy'] + '  unsound=' + $counts['unsound'])
+    Write-Output ('  the deliberate treatments: ' + ($unsoundIds -join ', '))
+    # THE PIN, read from release.ps1 so there is one authority for a number.
+    $relTxt = [System.IO.File]::ReadAllText((Join-Path $root '_verify\release.ps1'), [System.Text.Encoding]::UTF8)
+    foreach ($pair in @(@('SOUNDINESS_SOUND', $counts['sound']), @('SOUNDINESS_SOUNDY', $counts['soundy']), @('SOUNDINESS_UNSOUND', $counts['unsound']))) {
+      $pm = [regex]::Match($relTxt, "\`$" + $pair[0] + "\s*=\s*'(\d+)'")
+      if (-not $pm.Success) {
+        Write-Output ('  FAIL: release.ps1 has no $' + $pair[0] + ' pin, so the derived count cannot be checked.')
+        $fail++
+        continue
+      }
+      if ([int]$pm.Groups[1].Value -ne $pair[1]) {
+        Write-Output ('  FAIL: $' + $pair[0] + ' is pinned at ' + $pm.Groups[1].Value + ' and the source derives ' + $pair[1] + '.')
+        $fail++
+      }
+    }
+    $unPin = [regex]::Match($relTxt, "\`$SOUNDINESS_UNSOUND_IDS\s*=\s*'([^']*)'")
+    if (-not $unPin.Success) {
+      Write-Output '  FAIL: release.ps1 has no $SOUNDINESS_UNSOUND_IDS pin.'
+      $fail++
+    } else {
+      $want = ($unPin.Groups[1].Value -split '\|')
+      if (($want -join ',') -ne ($unsoundIds -join ',')) {
+        Write-Output ('  FAIL: $SOUNDINESS_UNSOUND_IDS is pinned at "' + $unPin.Groups[1].Value + '" and the source derives "' + ($unsoundIds -join '|') + '".')
+        $fail++
+      }
+    }
+  }
+}
+
 Write-Output ''
 if ($fail -eq 0) {
   Write-Output ('ROSTER OK: ' + $tags.Count + ' families, one id each, contiguous from MSA-001, the two tables are exact inverses,')
-  Write-Output '           and every family declares a non-empty property, assumption and excluded.'
+  Write-Output '           every family declares a non-empty property, assumption and excluded, and every family''s'
+  Write-Output '           soundiness verdict is DERIVED from the cause of its exclusions and matches the pin.'
   exit 0
 }
 Write-Output ('ROSTER FAILED: ' + $fail + ' problem(s).')

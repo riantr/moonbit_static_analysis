@@ -20815,3 +20815,130 @@ session left in the tree. The self-scan counts it; the published package does no
 ### NO CHANGE TO THE VERSION, AND NO NEW FAMILY. This is the record of a release already cut.
 
 
+## 0602: SOUNDINESS -- THE DECK'S THREE-WAY VERDICT, DERIVED PER FAMILY
+
+The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), 68 pages, and
+its p.4 names three chapters -- Soundness and Soundiness, Java Reflection, Native Code. This
+increment is its FIRST chapter, and p.66 names what the lecture is about: "Understand soundiness:
+its motivation and concept".
+
+### THE DECK'S THREE VERDICTS, VERBATIM (p.14)
+
+    A soundy analysis aims to capture all dynamic behaviors with certain hard language features
+    unsoundly handled within reason
+    A sound analysis requires to capture all dynamic behaviors
+    An unsound analysis deliberately ignores certain behaviors in its design for better efficiency,
+    precision or accessibility
+
+AND p.13 adds the qualifier that makes the middle class a class and not a compromise:
+
+    A soundy analysis typically means that the analysis is mostly sound, with well-identified
+    unsound treatments to hard/specific language features
+
+### AND p.10 IS THE COMPLAINT THIS INCREMENT ANSWERS, VERBATIM
+
+    Treatments to hard language features are usually omitted or only mentioned in an off-hand
+    manner in some impl/eval parts in papers
+
+    Then claiming soundness in papers may mislead readers: ... For experts, it is still hard for
+    them to interpret the analysis results (how sound, fast, precise is the analysis) without a
+    clear explanation about how they treat those important and hard language features
+
+SO THE TREE SAYS WHAT THE DECK SAYS IS MISSING: EVERY unsound treatment it has, NAMED, with the
+CAUSE that decides the verdict.
+
+### THE THREE VERDICTS DIFFER BY THE CAUSE OF THE GAP, NOT BY ITS SIZE
+
+AND THAT IS WHAT MAKES THE VERDICT COMPUTABLE rather than a matter of taste:
+
+    Sound       the family excludes nothing: it covers every behaviour it can reach.
+    Soundy      the gap is caused by a HARD LANGUAGE FEATURE the analyzer cannot model -- an
+                unknown type, an unread region, a construct outside the declared subset, a callee
+                whose signature was never read, or a question that is undecidable in general.
+                The deck's p.13 calls this a "well-identified unsound treatment to a hard/specific
+                language feature", and the gap is DISCLOSED, so the family is soundy rather than
+                unsound.
+    Unsound     the gap is a DELIBERATE choice -- for efficiency, precision or accessibility.
+                The deck's p.14: "deliberately ignores certain behaviors in its design for better
+                efficiency, precision or accessibility".
+
+A FAMILY WITH BOTH IS UNSOUND, because one deliberate gap is enough: the reader has to know about
+it, and a family that hides it behind a hard feature is exactly the case the deck's p.10 is about.
+
+### AND THE VERDICT IS DERIVED, NOT TYPED PER FAMILY
+
+EACH FAMILY DECLARES ITS EXCLUSIONS, and the verdict is computed from their causes:
+
+    src/core/soundiness.mbt    Soundiness { Sound, Soundy, Unsound }
+                               ExclusionCause { HardFeature, Deliberate }
+                               Exclusion { id, cause, text }
+                               Family::exclusions    Family::soundiness
+                               soundiness_counts     soundiness_verdict
+                               unsound_treatments     soundiness_roster
+
+AND A VERDICT WRITTEN OUT BY HAND WOULD BE A THIRD TABLE to keep right, and this tree has already
+been bitten by a hand-written table that rotted -- `Family::id` and `family_by_id` are two tables
+written down twice, which is why `check_family_roster.ps1` exists at all. So the derivation is in
+the code, and the GATE DERIVES IT AGAIN, from the SOURCE, and compares it with the pin: a verdict
+that drifted from its causes would fail the gate rather than ship.
+
+### AND EVERY EXCLUSION QUOTES ITS OWN FAMILY'S CONTRACT
+
+THE EXCLUSION'S `text` IS A QUOTE of the family's `excluded` string, and the gate checks that it
+really is a quote:
+
+    X-ARG-TYPE-NAMED-ARITY    "named-call arity"
+    X-OP-PIPE-EXEMPT          "the pipe operator and regex-match operands are exempt"
+    X-NOSEC-REALITY           "whether the suppressed finding was real"
+
+WITHOUT THAT CHECK the exclusion list would be a SECOND table, written down twice, and the two
+would drift -- the exact failure this gate was built for.
+
+### THE MEASURED RESULT, OVER THE EIGHTEEN FAMILIES
+
+    sound=0  soundy=15  unsound=3
+
+AND THE THREE DELIBERATE TREATMENTS ARE NAMED:
+
+    X-ARG-TYPE-NAMED-ARITY    MSA-007  ArgTypeMismatch
+                              the arity of a NAMED call is not checked -- a deliberate leniency,
+                              kept because the alternative produced false positives
+    X-OP-PIPE-EXEMPT          MSA-008  OperatorMismatch
+                              the operands of the pipe operator and of regex-match are exempt
+    X-NOSEC-REALITY           MSA-012  StaleNosec
+                              the finding a `// nosec` silenced is REMOVED, and whether it was
+                              real is never re-checked
+
+AND NO FAMILY IS SOUND, which is the honest answer rather than a disappointing one: every one of
+the eighteen excludes something, so the middle class is where the tree lives, and the third class
+is where it is honest about a choice it made.
+
+### AND THE ANALYSIS AS A WHOLE IS `unsound`, WHICH IS THE DECK'S p.6 ANSWER
+
+    Can we achieve a fully sound analysis for real-world programs?
+
+MEASURED, NOT QUOTED: the tree is unsound in the deck's sense, and the number that says it is
+THREE families out of EIGHTEEN, each for a named reason. The deck's p.6 says "Virtually all
+published whole-program analyses are unsound when applied to real programming languages"; this
+tree now says WHICH three of its own families make it so, and why.
+
+### AND `--explain` PRINTS IT
+
+`--explain MSA-007` now prints the verdict and every exclusion with its cause, and
+`--explain-all` prints the roster of eighteen verdicts, the counts, and the three deliberate
+treatments. The answer to "how sound is this tool?" is a COMMAND, not a paragraph in a paper --
+which is the deck's p.10 answered in the shape the deck asks for.
+
+### AND THE PINS THAT MOVED ARE THIS INCREMENT'S OWN SOURCE
+
+    own-source files         266 -> 268
+    own-source notices     2,052 -> 2,061
+    own-source aggregated  1,895 -> 1,904
+    the eight-tree total   23,397 -> 23,406
+    the eight-tree split     3,971 + 19,426 -> 3,971 + 19,435
+    the test counts         1,731 -> 1,737 on wasm, 1,589 -> 1,595 on js and wasm-gc
+
+### NO NEW FAMILY. The roster stays at eighteen: this is a VERDICT about the families, not a
+### new family. AND NO VERSION, AND NO CHANGELOG ENTRY. This is an increment.
+
+

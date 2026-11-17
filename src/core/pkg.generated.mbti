@@ -2,6 +2,8 @@
 package "riantr/moonbit_static_analysis/src/core"
 
 // Values
+pub fn all_exclusions() -> Array[Exclusion]
+
 pub fn all_families() -> Array[Family]
 
 pub fn ambient_names() -> Array[String]
@@ -16,9 +18,19 @@ pub fn pos(Int32, Int32) -> Pos
 
 pub fn snapshot_vst(Array[Frame]) -> Array[Frame]
 
+pub fn soundiness_counts() -> (Int32, Int32, Int32)
+
+pub fn soundiness_family(Family) -> String
+
+pub fn soundiness_roster() -> String
+
+pub fn soundiness_verdict() -> Soundiness
+
 pub fn span_at(Int32, Int32, Int32) -> Span
 
 pub fn unqualified(String) -> String
+
+pub fn unsound_treatments() -> Array[Exclusion]
 
 pub fn zero_span() -> Span
 
@@ -49,6 +61,19 @@ pub(all) struct CtxLedger {
 pub fn CtxLedger::plus(Self, Self) -> Self
 pub fn CtxLedger::zero() -> Self
 
+pub(all) struct Exclusion {
+  id : String
+  cause : ExclusionCause
+  text : String
+}
+
+#derive(Eq)
+pub(all) enum ExclusionCause {
+  HardFeature
+  Deliberate
+}
+pub fn ExclusionCause::name(Self) -> String
+
 #derive(Eq)
 pub(all) enum Family {
   FParse
@@ -73,12 +98,14 @@ pub(all) enum Family {
 pub fn Family::advice(Self) -> Advice
 pub fn Family::assumption(Self) -> String
 pub fn Family::excluded(Self) -> String
+pub fn Family::exclusions(Self) -> Array[Exclusion]
 pub fn Family::id(Self) -> String
 pub fn Family::merge_group(Self) -> String
 pub fn Family::name(Self) -> String
 pub fn Family::property(Self) -> String
 pub fn Family::reach(Self) -> String
 pub fn Family::severity(Self) -> Severity
+pub fn Family::soundiness(Self) -> Soundiness
 
 #derive(Eq)
 pub(all) struct Frame {
@@ -125,6 +152,14 @@ pub(all) enum Severity {
   Warning
   Hint
 }
+
+#derive(Eq)
+pub(all) enum Soundiness {
+  Sound
+  Soundy
+  Unsound
+}
+pub fn Soundiness::name(Self) -> String
 
 #derive(Eq)
 pub(all) struct Span {

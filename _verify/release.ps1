@@ -497,7 +497,19 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # arithmetic is the arithmetic: 2,042 + 8 test rows + 1 enum + 1 struct = 2,052.
 # A comment that cannot be derived from the pins is a comment that rots, so it
 # is derived here, and the correction is recorded in place.
-$NOTICE_TOTAL = '23397'
+# 0602. AND THE PIN MOVED AGAIN, 23397 -> 23406, and THE MOVEMENT IS THIS
+# INCREMENT'S OWN SOURCE and nothing else: the seven corpora carry 21,345 notices,
+# exactly what they carried before -- each one still MATCHes its pinned baseline,
+# MEASURED -- and this repository's own source carries 2061 (it carried 2052).
+# The nine notices are the soundiness layer and its test file, and they are ALL
+# AGGREGATED: a declaration sits outside every function's extent, so the PRINTED
+# half of the split did not move.
+#
+# AND THE COUNT OF NINE IS NINE, and the arithmetic is the arithmetic: 2,052 + 6
+# test rows + 2 enums + 1 struct = 2,061. The layer adds the two enums of the
+# deck's three-way verdict -- Soundiness and ExclusionCause -- and the one
+# struct of an exclusion.
+$NOTICE_TOTAL = '23406'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -616,8 +628,10 @@ $NOTICE_TOTAL = '23397'
 # ALL, for the same reason. The corpora did not move.
 # 0600. AND AGAIN: 3971 + 19416 -> 3971 + 19426. The PRINTED half did not move AT
 # ALL, for the same reason. The corpora did not move.
+# 0602. AND AGAIN: 3971 + 19426 -> 3971 + 19435. The PRINTED half did not move AT
+# ALL, for the same reason. The corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3971'
-$NOTICE_SPLIT_AGGREGATED = '19426'
+$NOTICE_SPLIT_AGGREGATED = '19435'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -742,10 +756,15 @@ $NOTICE_SPLIT_AGGREGATED = '19426'
 # move AGAIN, and the notice table's moving rows are the `test` declaration row
 # (1723 -> 1731, the eight new rows), the `enum` declaration row (32 -> 33, the
 # one new enum) and the `struct` declaration row (116 -> 117, the one new struct).
-$SELF_FILES = '266'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=33|if expression=100|short lambda=8|struct declaration=117|test declaration=1731|try expression=1|type declaration=7'
+# 0602. AND THEY MOVED AGAIN: 266 -> 268 files (the soundiness layer and its test
+# file), 1895 -> 1904 aggregated, and 2052 -> 2061 notices. The PRINTED half did NOT
+# move AGAIN, and the notice table's moving rows are the `test` declaration row
+# (1731 -> 1737, the six new rows), the `enum` declaration row (33 -> 35, the two
+# new enums) and the `struct` declaration row (117 -> 118, the one new struct).
+$SELF_FILES = '268'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=100|short lambda=8|struct declaration=118|test declaration=1737|try expression=1|type declaration=7'
 $SELF_PRINTED = '157'
-$SELF_AGGREGATED = '1895'
+$SELF_AGGREGATED = '1904'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -950,7 +969,12 @@ $SUPPOFF_PARAM = '1341'
 # instructions 8948 -> 9141, variables 1114 -> 1149, versions 2688 -> 2780,
 # phis 939 -> 975, copies 2330 -> 2408, undef_operands 195 -> 202,
 # dead_blocks 457 -> 464, undef_uses 1273 -> 1287.
-$SSA_COST = 'files=248|unreadable=0|functions=1402|converted=5|partial=1397|declined=6435|instructions=9141|variables=1149|versions=2780|phis=975|copies=2408|undef_operands=202|dead_blocks=464|undef_uses=1287'
+# 0602. AND IT MOVED AGAIN WITH THE TWO NEW FILES: files 248 -> 250,
+# functions 1402 -> 1412, partial 1397 -> 1407, declined 6435 -> 6469,
+# instructions 9141 -> 9158, variables 1149 -> 1154, versions 2780 -> 2790,
+# phis 975 (unchanged), copies 2408 (unchanged), undef_operands 202 (unchanged),
+# dead_blocks 464 -> 465, undef_uses 1287 -> 1288.
+$SSA_COST = 'files=250|unreadable=0|functions=1412|converted=5|partial=1407|declined=6469|instructions=9158|variables=1154|versions=2790|phis=975|copies=2408|undef_operands=202|dead_blocks=465|undef_uses=1288'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -965,11 +989,35 @@ $SSA_COST = 'files=248|unreadable=0|functions=1402|converted=5|partial=1397|decl
 # twice. It was 100 through 0589, moved to 101 with chapter 0590 and to 102 with
 # chapter 0591, to 106 with chapter 0595, and to 107 with chapter 0596, to 108 with
 # chapter 0597, to 109 with chapter 0598, to 110 with chapter 0599, and to 111
-# with chapter 0600.
+# with chapter 0600, to 112 with chapter 0601, and to 113 with chapter 0602.
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '112'
+$NARRATIVE_CHAPTERS = '113'
+
+#   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
+#   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
+#   $SOUNDINESS_UNSOUND  pinned here so the derivation has something to be
+#   $SOUNDINESS_UNSOUND_IDS  checked against. The deck is `Soundiness` (Yue Li
+#                        and Tian Tan, Nanjing University, 2021 Fall), p.14:
+#                        "A soundy analysis aims to capture all dynamic
+#                        behaviors with certain hard language features unsoundly
+#                        handled within reason"; "A sound analysis requires to
+#                        capture all dynamic behaviors"; "An unsound analysis
+#                        deliberately ignores certain behaviors in its design
+#                        for better efficiency, precision or accessibility".
+#                        The three differ by the CAUSE of the gap, so the gate
+#                        derives the verdict from the declared causes and a
+#                        hand-written verdict could not drift from them.
+# 0602. THE COUNTS ARE 0 / 15 / 3, and the third number is the one the deck's
+# p.10 is about: every family has at least one exclusion, three of them have a
+# DELIBERATE one, and the three are named. The pin is on the IDS, not only on
+# the count, because a count that moves without the ids moving is a count
+# whose reason changed.
+$SOUNDINESS_SOUND = '0'
+$SOUNDINESS_SOUNDY = '15'
+$SOUNDINESS_UNSOUND = '3'
+$SOUNDINESS_UNSOUND_IDS = 'X-ARG-TYPE-NAMED-ARITY|X-OP-PIPE-EXEMPT|X-NOSEC-REALITY'
 
 #   $RAISEQ_REACH   the reach of the `raise?` construct 0503 fixed, measured by
 #                   `_verify/measure_0503_reach.ps1`: the return-position sites

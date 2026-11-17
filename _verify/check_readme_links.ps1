@@ -382,6 +382,16 @@ $sxM  = [regex]::Match($relTxt2, "\`$SELF_PRINTED\s*=\s*'(\d+)'")
 $sdM  = [regex]::Match($relTxt2, "\`$SELF_AGGREGATED\s*=\s*'(\d+)'")
 $loM  = [regex]::Match($relTxt2, "\`$SUPPOFF_LOCAL\s*=\s*'(\d+)'")
 $paM  = [regex]::Match($relTxt2, "\`$SUPPOFF_PARAM\s*=\s*'(\d+)'")
+# 0602. THE SOUNDINESS COUNTS, derived from the pins the family roster gate
+# checks against the SOURCE. The deck is `Soundiness` (Yue Li and Tian Tan,
+# Nanjing University, 2021 Fall), and its p.14 gives three verdicts whose
+# difference is the CAUSE of a gap rather than its size. The README publishes
+# the counts, so the counts are derived here from the same pins the roster
+# gate derives them from -- one authority for a number.
+$soM  = [regex]::Match($relTxt2, "\`$SOUNDINESS_SOUND\s*=\s*'(\d+)'")
+$syM  = [regex]::Match($relTxt2, "\`$SOUNDINESS_SOUNDY\s*=\s*'(\d+)'")
+$suM  = [regex]::Match($relTxt2, "\`$SOUNDINESS_UNSOUND\s*=\s*'(\d+)'")
+$suIM = [regex]::Match($relTxt2, "\`$SOUNDINESS_UNSOUND_IDS\s*=\s*'([^']*)'")
 if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
   Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives from.'
   Write-Output '        Restore them, or this gate has nothing to check the README against.'
@@ -398,6 +408,17 @@ if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -an
   Write-Output ('  (release.ps1 pins: notices ' + $peTotal + ', own-source files ' + $sf + ', notice table ' + (@($sn -split '\|').Count) +
                 ' kinds, printed ' + $sx + ', aggregated ' + $sd +
                 ', suppression off ' + $lo + ' / ' + $pa + ')')
+}
+if (-not ($soM.Success -and $syM.Success -and $suM.Success -and $suIM.Success)) {
+  Write-Output '  FAIL: release.ps1 no longer carries the soundiness pins.'
+  $fail++
+  $so = '?'; $sy = '?'; $su = '?'; $suIds = ''
+} else {
+  $so = $soM.Groups[1].Value
+  $sy = $syM.Groups[1].Value
+  $su = $suM.Groups[1].Value
+  $suIds = $suIM.Groups[1].Value
+  Write-Output ('  (release.ps1 pins: soundiness sound ' + $so + ', soundy ' + $sy + ', unsound ' + $su + ')')
 }
 
 # The kind -> the label each README prints it under. The labels are PRESENTATION
@@ -434,6 +455,17 @@ if ($sn -ne '') {
 }
 $more.Add(@{ F = 'README.md';    S = ('**' + $peTotal + '**'); N = 'the notice count over the eight trees' })
 $more.Add(@{ F = 'README.zh.md'; S = ('**' + $peTotal + '**'); N = 'the notice count over the eight trees (zh)' })
+# 0602. THE SOUNDINESS COUNTS, and the three deliberate treatments. The deck's
+# p.10 is the complaint this answers -- "Treatments to hard language features
+# are usually omitted or only mentioned in an off-hand manner in some impl/eval
+# parts in papers" -- so the README publishes the tree's own unsound choices,
+# and the numbers come from the same pins the roster gate derives them from.
+$more.Add(@{ F = 'README.md';    S = ('sound=' + $so + '  soundy=' + $sy + '  unsound=' + $su); N = 'the soundiness counts' })
+$more.Add(@{ F = 'README.zh.md'; S = ('sound=' + $so + '  soundy=' + $sy + '  unsound=' + $su); N = 'the soundiness counts (zh)' })
+foreach ($id in ($suIds -split '\|')) {
+  $more.Add(@{ F = 'README.md';    S = $id; N = 'the deliberate (unsound) treatment' })
+  $more.Add(@{ F = 'README.zh.md'; S = $id; N = 'the deliberate (unsound) treatment (zh)' })
+}
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count' })
 $more.Add(@{ F = 'README.zh.md'; S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count (zh)' })

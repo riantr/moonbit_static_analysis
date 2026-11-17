@@ -617,21 +617,21 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (266 files), with the per-file printing cap lifted so the count is the
+project's own source (268 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1731 | | `const` declaration | 7 |
+| `test` declaration | 1737 | | `const` declaration | 7 |
 | `if` expression | 100 | | `short lambda` | 8 |
-| `struct` declaration | 117 | | `type` declaration | 7 |
+| `struct` declaration | 118 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
-| `enum` declaration | 33 | | | |
+| `enum` declaration | 35 | | | |
 
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **157** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1895** sit outside every function's
+audit off, so they are printed one per line; the other **1904** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -664,7 +664,7 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,397** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,406** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
 **19,426** as aggregated — which is 3,971 + 19,426 = 23,397, the same number — and the 3,971
@@ -1665,6 +1665,48 @@ call sequences, and the CFL definition is what excludes them.
 recogniser, p.39, p.41 and p.42 for the three membership rows, p.27 for the labelling of the tree's
 own graph, and p.24 for the witness and the pair counts.
 
+### And this analyzer says whether it is SOUND, SOUNDY, or UNSOUND
+
+The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), and its p.14
+gives three verdicts — and the difference between them is the **cause** of a gap, not its size:
+
+> A soundy analysis aims to capture all dynamic behaviors with certain hard language features
+> unsoundly handled within reason
+> A sound analysis requires to capture all dynamic behaviors
+> An unsound analysis deliberately ignores certain behaviors in its design for better
+> efficiency, precision or accessibility
+
+**AND THE VERDICT IS DERIVED, NOT ASSERTED.** Each family declares its **exclusions** with the
+cause of each, and the verdict is computed from those causes — so a verdict cannot drift from the
+contract it summarises. A family with no exclusion is **sound**; a family whose exclusions are
+all caused by a hard language feature the analyzer cannot model is **soundy**; a family with even
+**one** deliberate exclusion is **unsound**, however many hard features it also has.
+
+**MEASURED over the eighteen families**, and the counts are derived from the source by
+`check_family_roster.ps1` and pinned in `_verify/release.ps1`:
+
+    sound=0  soundy=15  unsound=3
+
+**AND THE THREE DELIBERATE TREATMENTS ARE NAMED**, because the lecture's p.10 is the complaint
+this answers — *"Treatments to hard language features are usually omitted or only mentioned in an
+off-hand manner in some impl/eval parts in papers"*, and *"for experts, it is still hard for them
+to interpret the analysis results (how sound, fast, precise is the analysis) without a clear
+explanation about how they treat those important and hard language features"*:
+
+| the exclusion | the family | what the analyzer chose not to do |
+|---|---|---|
+| `X-ARG-TYPE-NAMED-ARITY` | MSA-007 ArgTypeMismatch | the arity of a **named-call** is not checked — a deliberate leniency, kept because the alternative produced false positives |
+| `X-OP-PIPE-EXEMPT` | MSA-008 OperatorMismatch | the operands of the **pipe operator** and of regex-match are exempt |
+| `X-NOSEC-REALITY` | MSA-012 StaleNosec | the finding a `// nosec` silenced is **removed**, and whether it was real is never re-checked |
+
+**AND `--explain` PRINTS IT**, per family and over the whole roster: the verdict, and every
+exclusion with its cause. So the answer to *"how sound is this tool?"* is a command, not a
+paragraph in a paper.
+
+**AND THE ANALYSIS AS A WHOLE IS `unsound`** — the deck's p.6 answer, measured rather than
+quoted: *"Can we achieve a fully sound analysis for real-world programs?"* No, and the count
+that says it is **three families out of eighteen**, each for a named reason.
+
 ### And under the CFG there are basic blocks
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
@@ -1766,25 +1808,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 248 files, 1,402 functions, 9,141
-instructions of 3AC — the same measurement gives **1,149** variables becoming **2,780** versions,
+would need **16** copies. Over this project's own source — 250 files, 1,412 functions, 9,158
+instructions of 3AC — the same measurement gives **1,154** variables becoming **2,790** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=248	unreadable=0	functions=1402	converted=5	partial=1397	declined=6435	…
+SSA-COST	files=250	unreadable=0	functions=1412	converted=5	partial=1407	declined=6469	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,435
+number: the files read, the functions measured, and the statements the lowering declined (6,469
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1731/1731 on wasm; 1589/1589 on js and wasm-gc
+moon test --deny-warn                # 1737/1737 on wasm; 1595/1595 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

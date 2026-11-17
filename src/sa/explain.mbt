@@ -25,11 +25,19 @@
 ///
 /// The three labels are printed even when a part is a sentence, because a
 /// reader comparing two families is comparing the same three slots.
+///
+/// AND THE SOUNDINESS LINE, because the deck's p.10 is the complaint this
+/// answers: "for experts, it is still hard for them to interpret the analysis
+/// results (how sound, fast, precise is the analysis) without a clear
+/// explanation about how they treat those important and hard language
+/// features". The verdict and the exclusions that decided it are part of the
+/// contract, so a reader gets them with the contract and not by asking.
 pub fn explain_family(f : @core.Family) -> String {
   let mut s = "\{f.id()}  \{f.name()}\n"
   s = s + "\n  property    \{f.property()}\n"
   s = s + "\n  assumption  \{f.assumption()}\n"
   s = s + "\n  excluded    \{f.excluded()}\n"
+  s = s + "\n" + @core.soundiness_family(f)
   s
 }
 
@@ -39,6 +47,11 @@ pub fn explain_family(f : @core.Family) -> String {
 /// This is the page a reader wants FIRST -- "what can this tool tell me at
 /// all" -- and it is derived from `@core.all_families()`, so it cannot list a
 /// family the analyzer does not have.
+///
+/// AND THE SOUNDINESS ROSTER FOLLOWS IT, because the deck's p.10 asks for
+/// exactly this: a reader who wants to know how sound the tool is gets the
+/// per-family verdict and the exclusions that decided it, from the same
+/// command that lists the families.
 pub fn explain_roster() -> String {
   let mut s = "families: id, name, and the property each one asserts\n\n"
   for f in @core.all_families() {
@@ -46,6 +59,7 @@ pub fn explain_roster() -> String {
   }
   s = s +
     "\n--explain MSA-0NN prints one family's full contract: what it asserts, the assumption under which that is sound, and what it does not cover.\n"
+  s = s + "\n" + @core.soundiness_roster()
   s
 }
 
