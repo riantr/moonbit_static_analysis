@@ -4440,6 +4440,146 @@ and the SAME published artifact on the SAME program without the specification re
 `actionable=0` — so the zero is the specification's doing and not the analyzer's. The published
 0.4.50 answers the same question the same way, which is what a one-byte difference predicts.
 
+## 0.4.52 — the Soundiness deck: a three-way verdict, the signature the `.mbti` reader threw away, and the hand-modelled surface measured against the declared one
+
+**WHAT THIS RELEASE IS.** The sixth NJU lecture deck, `16_Soundiness.pdf` (*Soundiness*, Yue
+Li and Tian Tan, Nanjing University, 2021 Fall, 68 pages), is read against this tree cell by
+cell. Three increments close it, and they are three different kinds of thing.
+
+| increment | what it is | does it reach a user's report? |
+|---|---|---|
+| 0602 | the deck's three-way verdict — sound / soundy / unsound — DERIVED per family from the CAUSE of each exclusion | no — a verdict about the families |
+| 0603 | the cross-file signature the `.mbti` reader threw away, KEPT and MEASURED against the deck's p.40 pair | no — a measurement |
+| 0604 | the hand-modelled native surface, MEASURED against the declared one — the deck's p.57 against the toolchain's own interfaces | no — a measurement |
+
+**NO NEW FINDING FAMILY.** The deck's own vocabulary is read and applied to this tree, and
+the numbers are compared with the numbers this tree already gives. The roster stays at
+eighteen families.
+
+### THE VERDICT IS DERIVED, NOT TYPED PER FAMILY
+
+p.14 gives three verdicts, and p.13 the qualifier that makes the middle class a class:
+
+    A soundy analysis aims to capture all dynamic behaviors with certain hard
+    language features unsoundly handled within reason
+    An unsound analysis deliberately ignores certain behaviors in its design
+    for better efficiency, precision or accessibility
+
+p.10 is the complaint this answers:
+
+    Treatments to hard language features are usually omitted or only mentioned
+    in an off-hand manner in some impl/eval parts in papers
+
+So the tree now says what the deck says is missing: every unsound treatment it has, NAMED,
+with the cause that decides the verdict. Each family declares its exclusions with a cause,
+and `Family::soundiness` computes the verdict from those causes — no exclusion is sound, every
+exclusion a hard feature is soundy, any deliberate exclusion is unsound — and
+`check_family_roster.ps1` re-derives it from the SOURCE and compares it with the pin.
+
+    sound=0  soundy=15  unsound=3
+
+    X-ARG-TYPE-NAMED-ARITY    MSA-007  ArgTypeMismatch
+    X-OP-PIPE-EXEMPT          MSA-008  OperatorMismatch
+    X-NOSEC-REALITY           MSA-012  StaleNosec
+
+A hand-written verdict would be a THIRD table to keep right, and this tree has already been
+bitten by a hand-written table that rotted — `Family::id` and `family_by_id` are two tables
+written down twice, which is why the roster gate exists at all.
+
+### THE SIGNATURE THE READER THREW AWAY IS KEPT, AND MEASURED
+
+p.32 is the problem, and it is a problem about what a reader KEEPS:
+
+    Problem: Reflection targets cannot be resolved
+    if the string values are statically unknown
+
+p.35 is the answer, and it is an answer about WHERE the resolution happens:
+
+    When string arguments cannot be resolved statically,
+    infer the reflective targets at their usage points!
+
+p.39 says what a resolved target has to SATISFY — and notice that it is a TYPE and an ARITY,
+not a name:
+
+    The reflective target method at line 175 must have one parameter and its
+    declared type must be FrameworkCommandInterpreter or its sub/supertypes
+
+AND THIS TREE HAD THE SAME DEFECT, IN THE SAME SHAPE. A `.mbti` declares a function's
+PARAMETER LIST, and this tree's reader threw it away: it kept the NAME and dropped the
+signature. The sentence that recorded the loss was written down in `src/types/infer.mbt`, and
+it was FALSE — so it was corrected in place, with the measurement that refutes it.
+
+MEASURED over the eight trees, and it is a PAIR, because a count of agreements with no count
+of opportunities is a number about nothing:
+
+    cross-file calls whose callee the .mbti declares a signature for   2,961
+    of those, the ones whose declared arity agrees with the call      2,282
+
+AND THE INFERENCE IS COUNTED AND NOT ENFORCED, and that is the deck's p.39 lesson rather
+than a dodge: an inferred target has to be constrained by its TYPE, not by its NAME alone, and
+this table has only the name.
+
+### THE HAND-MODELLED SURFACE IS MEASURED AGAINST THE DECLARED ONE
+
+p.57 names the practice:
+
+    Current practice
+    Manually models the critical native code
+
+and p.60-61 give the ALTERNATIVE — the same behaviour written out in the high-level language
+instead of modelled by hand — and p.63 names the newer way of reading the truth:
+
+    Recent work
+    Identifying Java Calls in Native Code via Binary Scanning (ISSTA 2020)
+
+AND THIS TREE DOES THE FIRST THING: `src/core/builtin_methods.mbt` is a table of **1,344**
+`Type::method` names over **40** built-in types, generated by `tools/gen_builtin_methods.ps1`
+and stamped with the toolchain it was last read against. So 0604 measures it — against what
+the interfaces DECLARE, which is the deck's alternative applied to this tree's own question.
+
+    tree                declared  covered  missing  modelled-only
+    moui                       0        0        0           1344
+    moonbit_labeler            0        0        0           1344
+    moonbit_image              0        0        0           1344
+    async                     10        0       10           1344
+    proton                     0        0        0           1344
+    proton_contract            0        0        0           1344
+    moonbit_core            1,123    1,076       47            268
+    this repository            0        0        0           1344
+    --------------------------------------------------------
+    the eight trees         1,133    1,076       57
+
+AND THE ZEROS ARE THE MEASUREMENT, NOT A GAP IN THE MEASUREMENT: the hand-modelled table is
+the STANDARD LIBRARY's surface, and a user's own package declares no method of it — so only
+the tree that IS the standard library says anything about it.
+
+AND THE 47 ARE THE FALSE-POSITIVE DIRECTION, AND THEY DO NOT FIRE TODAY: MEASURED on
+`moonbit_core`, 10 actionable findings, 0 of them `undefined function`, and 0 of the 47 named
+in any finding. So the 47 are a FALLBACK gap, not a live false-positive generator, because
+the `.mbti` files resolve them. And the 268 are the other direction — the MISSED-REPORT one,
+which the table's own header says it accepts on purpose.
+
+AND THE TABLE IS ONE TOOLCHAIN GENERATION BEHIND, WHICH IS MEASURED TOO: this host's
+toolchain is `moon 0.1.20261104`, and its 139 `.mbti` files declare THE SAME 1,123 with THE
+SAME 47 missing.
+
+**SO 0604 PUBLISHES THE COVERAGE AND DOES NOT REGENERATE THE TABLE.** Regenerating it is a
+release that changes what the analyzer FINDS — the table only ever SUPPRESSES — and that
+belongs to a release that re-measures the seven corpora.
+
+### AND THE PINS THAT MOVED are this release's own source, and the seven corpora did not move:
+
+    own-source files         268 -> 273
+    own-source notices     2,061 -> 2,079
+    own-source printed       157 -> 158
+    own-source aggregated  1,904 -> 1,921
+    the eight-tree total   23,406 -> 23,424
+    the eight-tree split     3,971 + 19,435 -> 3,972 + 19,452
+    the p.40 pair          2,958 / 2,279 -> 2,961 / 2,282
+    the native surface        -- -> 1,133 declared / 1,076 covered / 57 missing
+    the test counts         1,731 -> 1,751 on wasm, 1,589 -> 1,609 on js and wasm-gc
+    the NARRATIVE chapters    111 -> 115
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

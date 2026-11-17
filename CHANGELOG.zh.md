@@ -3833,6 +3833,133 @@ notice 2052——正是这棵树自己的钉子上的那三个数字（2052 条 
 带来的，不是分析器带来的。发布的 0.4.50 对同样的问题给出同样的答案，这正是一个字节之差所预测
 的。
 
+## 0.4.52 —— Soundiness 那一讲：三方判定、被 `.mbti` 读者丢掉的签名，以及拿声明出来的那部分量一量手写建模的接口面
+
+**这次发布是什么。** 第六份 NJU 讲义 `16_Soundiness.pdf`（*Soundiness*，李玥、谭天，南京大学，
+2021 秋季，68 页）被逐格拿来和这棵树对读。三个增量把它关掉，而它们是三种不同的东西。
+
+| 增量 | 是什么 | 会到达用户的报告吗 |
+|---|---|---|
+| 0602 | 讲义的三方判定——sound / soundy / unsound——按每个家族排除项的**原因**推导出来 | 不会——这是关于家族的一个判定 |
+| 0603 | 被 `.mbti` 读者丢掉的跨文件签名，**留下来**并按讲义 p.40 的那一对来量 | 不会——这是一个测量 |
+| 0604 | 手写建模的原生接口面，拿**声明出来的那部分**来量——讲义 p.57 对上工具链自己的接口 | 不会——这是一个测量 |
+
+**没有新的发现家族。** 讲义自己的词汇被读出来、用在这棵树上，数字和这棵树本来就给出的数字
+逐个对比。家族数仍是十八个。
+
+### 判定是推导出来的，不是逐家族手写的
+
+p.14 给出三种判定，p.13 给出让中间那一类成为一类的那个限定：
+
+    A soundy analysis aims to capture all dynamic behaviors with certain hard
+    language features unsoundly handled within reason
+    An unsound analysis deliberately ignores certain behaviors in its design
+    for better efficiency, precision or accessibility
+
+p.10 是这次增量回答的抱怨：
+
+    Treatments to hard language features are usually omitted or only mentioned
+    in an off-hand manner in some impl/eval parts in papers
+
+所以这棵树现在说出了讲义说被漏掉的东西：它每一个不健全的处理都被**命名**，连同决定判定的
+原因。每个家族用原因声明自己的排除项，`Family::soundiness` 从这些原因把判定算出来——没有
+排除项就是 sound，全部排除项都是硬特性就是 soundy，只要有一个是刻意的就是 unsound——而
+`check_family_roster.ps1` 从**源码**重新推导一遍，再和钉住的值比。
+
+    sound=0  soundy=15  unsound=3
+
+    X-ARG-TYPE-NAMED-ARITY    MSA-007  ArgTypeMismatch
+    X-OP-PIPE-EXEMPT          MSA-008  OperatorMismatch
+    X-NOSEC-REALITY           MSA-012  StaleNosec
+
+手写一张判定表会是**第三张**要维护对的表，而这棵树已经被一张烂掉的手写表咬过——`Family::id`
+和 `family_by_id` 是同一个东西写了两遍，正是为了这件事才有了名册门禁。
+
+### 读者丢掉的签名留下来了，而且被量了
+
+p.32 是问题，而它是一个关于读者**保留什么**的问题：
+
+    Problem: Reflection targets cannot be resolved
+    if the string values are statically unknown
+
+p.35 是答案，而它是一个关于解析**在哪里**发生的答案：
+
+    When string arguments cannot be resolved statically,
+    infer the reflective targets at their usage points!
+
+p.39 说一个解析出来的目标必须**满足**什么——注意它是类型和元数，不是名字：
+
+    The reflective target method at line 175 must have one parameter and its
+    declared type must be FrameworkCommandInterpreter or its sub/supertypes
+
+而这棵树有**同一个缺陷、同一个形状**。`.mbti` 声明了函数的**参数表**，而这棵树的读者把它
+丢掉了：它留下了名字，丢掉了签名。记下这件事的那句话被写在 `src/types/infer.mbt` 里，而且
+是**错的**——所以它在原地被改正，并附上推翻它的那个测量。
+
+在八棵树上量出来，而且它是**一对**，因为只有一致数而没有机会数的数字是关于空的数字：
+
+    cross-file calls whose callee the .mbti declares a signature for   2,961
+    of those, the ones whose declared arity agrees with the call      2,282
+
+而这个推断是**只数不执行**的，这不是推托，正是讲义 p.39 的教训：推断出来的目标必须由它的
+**类型**约束，不能只靠**名字**，而这张表只有名字。
+
+### 手写建模的接口面，被拿声明出来的那部分量了
+
+p.57 写明当前的做法：
+
+    Current practice
+    Manually models the critical native code
+
+p.60-61 给出**另一种**建模——同样的行为用高级语言写出来，而不是手写建模——p.63 点出更新的
+读法：
+
+    Recent work
+    Identifying Java Calls in Native Code via Binary Scanning (ISSTA 2020)
+
+而这棵树做的正是第一件事：`src/core/builtin_methods.mbt` 是一张 **1,344** 个 `Type::method`
+名字、覆盖 **40** 个内建类型的表，由 `tools/gen_builtin_methods.ps1` 生成。所以 0604 量它——
+拿接口**声明出来的那部分**来量，也就是把讲义的替代建模落到这棵树自己的问题上。
+
+    tree                declared  covered  missing  modelled-only
+    moui                       0        0        0           1344
+    moonbit_labeler            0        0        0           1344
+    moonbit_image              0        0        0           1344
+    async                     10        0       10           1344
+    proton                     0        0        0           1344
+    proton_contract            0        0        0           1344
+    moonbit_core            1,123    1,076       47            268
+    this repository            0        0        0           1344
+    --------------------------------------------------------
+    the eight trees         1,133    1,076       57
+
+而这些零是**测量结果**，不是测量的漏洞：手写的那张表是**标准库**的接口面，用户自己的包不会
+为它声明任何方法——所以只有那棵**就是**标准库的树才对此说得上话。
+
+而这 47 个是**假阳性方向**，而且**今天不会真的报出来**：在 `moonbit_core` 上实测，10 条
+actionable，其中 0 条是 `undefined function`，47 个里 0 个出现在任何一条发现里。所以这 47
+个是**兜底**缺口，不是活的假阳性发生器，因为 `.mbti` 把它们解析了。而 268 个是另一个方向
+——**漏报**方向，表头自己说了这是故意接受的。
+
+而这张表落后一个工具链世代，这一条也是量出来的：这台机器的工具链是 `moon 0.1.20261104`，
+它的 139 个 `.mbti` 声明的是**同样的 1,123** 个，缺的也是**同样的 47** 个。
+
+**所以 0604 只公布覆盖面，不重建那张表。** 重建它是一次会改变分析器**发现了什么**的发布
+——这张表只会压制——那属于一次要重新量七个语料的发布。
+
+### 而移动了的钉子都是这次发布自己的源码，七个语料没有动：
+
+    own-source files         268 -> 273
+    own-source notices     2,061 -> 2,079
+    own-source printed       157 -> 158
+    own-source aggregated  1,904 -> 1,921
+    the eight-tree total   23,406 -> 23,424
+    the eight-tree split     3,971 + 19,435 -> 3,972 + 19,452
+    the p.40 pair          2,958 / 2,279 -> 2,961 / 2,282
+    the native surface        -- -> 1,133 declared / 1,076 covered / 57 missing
+    the test counts         1,731 -> 1,751 on wasm, 1,589 -> 1,609 on js and wasm-gc
+    the NARRATIVE chapters    111 -> 115
+
 ## 0.4.13 —— 最后 5 条：三种成因，其中一种是「把检查调窄」的陷阱
 
 0.4.12 剩 5 条。**全部是分析器的缺陷，pyroduct 的代码没错**——三条都是
