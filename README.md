@@ -89,7 +89,7 @@ supply every one of them when the module is instantiated. `moonx` supplies them 
 async runtime that ships with **your** MoonBit toolchain.
 
 **The set is measured, not stated, and it is a FLOOR rather than a mirror.** The published
-0.4.52 artifact imports **92** symbols; this tree's own release build of the *same source*
+0.5.0 artifact imports **92** symbols; this tree's own release build of the *same source*
 imports **93**, and the two sets differ by **three** symbols: the published build asks for
 `thread_pool/make_openat_job` where the local build asks for `thread_pool/make_fsync_job`
 and `thread_pool/make_open_stat_job`. The reason is that `moon publish` uploads the **source** and

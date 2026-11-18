@@ -4767,6 +4767,66 @@ The bytes do not exist until CI publishes them, so the `published 0.5.0 wasm <ha
 written in the follow-up commit, after the publish — which is what 0.4.52 did too, and a hash
 that did not exist yet would be a fiction.
 
+### PUBLISHED
+
+0.5.0 is tagged at `e11da29` on both remotes, CI's `gate` and `publish` are green on that
+commit, and the registry serves it with `latest_version = 0.5.0`.
+
+    published 0.5.0  wasm 2094215E25BE62B78994818407CD94F3635D17FFC3006778DDA41CBAB2DDB586  728513 bytes  checksum b7b76393766bdc61973bcce6c52441e48576893246050c6380cc404b79085e17  2026-11-18T13:38:17.131204+00:00
+
+**AND THE ARTIFACT IS ONE BYTE SMALLER, AND EVERY BYTE THAT DIFFERS IS THE VERSION
+COORDINATE.** MEASURED, byte for byte: published 0.4.52 was **728514** bytes and published
+0.5.0 is **728513** bytes (**-1**), and **72** bytes differ in the 728513-byte common
+prefix. That is more bytes than a version digit, so the difference is NAMED rather than
+summarised -- and it is one thing: the embedded coordinate in the wasm `name` custom
+section.
+
+    the coordinate in 0.4.52   riantr/moonbit_static_analysis@0.4.52   37 characters
+    the coordinate in 0.5.0   riantr/moonbit_static_analysis@0.5.0    36 characters
+    the version string         "0.4.52" is SIX characters, "0.5.0" is FIVE
+
+So the coordinate is one character shorter, the section's length prefixes shrink with it,
+and everything after the coordinate MOVES by one byte -- which is why 72 bytes differ
+while the code does not differ at all. The `producers`, `language` and `processed-by`
+metadata is byte-identical on both sides (`v0.10.21+06da1ed44`), and the toolchain that
+compiled them is the same one.
+
+**AND THAT IS THE POINT: NO ANALYSIS CODE CHANGED.** 0.5.0's analysis is 0.4.52's
+analysis. The four increments it carries (0606-0609) are about the CONTRACT between the
+artifact and the host, and about the GATE that holds the two to it -- not about what the
+analyzer finds. So the artifact's bytes are the same code, and the only thing that differs
+is the coordinate that names it.
+
+AND THE SOURCE SAYS THE SAME THING FROM THE OTHER SIDE. The 0.4.52 release commit and the
+0.5.0 release commit differ in **ZERO** files under `src/` -- the whole difference between
+them is ten files, and every one of them is a document, a `moon.mod`, or a file under
+`_verify/`. So the published source of 0.5.0 IS the published source of 0.4.52, byte for
+byte, and the artifact's one-byte difference is the coordinate and nothing else.
+
+**AND THE HOST IMPORT SURFACE IS IDENTICAL, MEASURED WITH THE GATE'S OWN READER.**
+
+    the PUBLISHED 0.4.52 artifact   106 imports, 92 from `moonbitlang/async`
+    the PUBLISHED 0.5.0 artifact   106 imports, 92 from `moonbitlang/async`
+    the symbols one asks for and the other does not, in EITHER direction: 0
+    the symbols it asks for that are OUTSIDE the 94-symbol contract: 0
+
+So the floor is still a floor, and the published 0.5.0 artifact is a SUBSET of the contract
+of 94 symbols -- the same property 0.5.0's own release is about.
+
+**AND THE PUBLISHED PACKAGE CARRIES THE LAYER'S SOURCE, AND IT IS THE SAME SOURCE.**
+
+    published 0.5.0 carries 254 .mbt files
+    and EVERY ONE of the 254 is BYTE-IDENTICAL to the local tree
+
+**AND THE PUBLISHED TREE SCANS ITS OWN SHIPPED SOURCE CLEAN**: 272/272 files parsed,
+`actionable=0`, notices=2079 -- and the family still fires at the published coordinate,
+with the control that says the specification is what makes the difference:
+
+    published 0.5.0, with --taint-source readInput --taint-sink log:0
+        11:3 - error: the sensitive argument 0 of 'log' may receive tainted data from 'readInput' (TaintFlow) [structural, MSA-018, high]
+    THE CONTROL: the same artifact, the same program, WITHOUT the specification
+        SUMMARY  files=1  parsed=1  actionable=0
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

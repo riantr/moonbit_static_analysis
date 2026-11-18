@@ -1412,7 +1412,7 @@ $SSA_COST = 'files=255|unreadable=0|functions=1422|converted=5|partial=1417|decl
 # 0589's own source did not move the SOURCE pins: it changed one string
 # literal's TEXT and two lines of markdown, and a string literal's length is
 # not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '120'
+$NARRATIVE_CHAPTERS = '121'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and

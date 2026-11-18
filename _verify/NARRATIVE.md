@@ -21689,3 +21689,92 @@ builds itself, and requires the three different readings:
 ### NO NEW FAMILY, AND NO VERSION.
 
 
+## 0610: THE PUBLISHED BYTES OF 0.5.0, AND THE ONLY THING THAT IS IN THEM
+
+The published row for 0.5.0 is not a formality. A published artifact's bytes are a fact
+that can be recorded once and re-checked forever, and the record is only worth anything if
+it says something TRUE -- so this chapter is about what the bytes actually are.
+
+    published 0.5.0  wasm 2094215E25BE62B78994818407CD94F3635D17FFC3006778DDA41CBAB2DDB586  728513 bytes  checksum b7b76393766bdc61973bcce6c52441e48576893246050c6380cc404b79085e17  2026-11-18T13:38:17.131204+00:00
+
+### THE ARTIFACT IS ONE BYTE SMALLER, AND EVERY DIFFERING BYTE IS THE COORDINATE
+
+MEASURED, byte for byte, against the published 0.4.52:
+
+    published 0.4.52   728514 bytes
+    published 0.5.0    728513 bytes      (-1)
+    bytes differing in the 728513-byte common prefix: 72
+
+Seventy-two differing bytes is MORE than a version digit, so a summary that said "only the
+version changed" would be a CLAIM where a measurement belongs. The difference is one
+thing, and it is in the wasm `name` custom section -- the metadata that carries the module
+coordinate:
+
+    the coordinate in 0.4.52   riantr/moonbit_static_analysis@0.4.52   37 characters
+    the coordinate in 0.5.0   riantr/moonbit_static_analysis@0.5.0    36 characters
+    the version string         "0.4.52" is SIX characters, "0.5.0" is FIVE
+
+The version string is one character SHORTER, so the coordinate is one character shorter, so
+the section's length prefixes shrink, so everything after the coordinate MOVES by one byte.
+That is why 72 bytes differ while the CODE does not differ at all: a reader that compared
+the two artifacts positionally would see 72 differences, and a reader that asked WHERE they
+are would find one string.
+
+AND THE REST OF THE METADATA IS UNTOUCHED: the `producers`, `language` and `processed-by`
+entries are byte-identical on both sides (`v0.10.21+06da1ed44`), and the toolchain that
+compiled them is the same one. So the builder did not drift -- the only thing that moved is
+the version it was told to stamp.
+
+### AND THAT IS THE MEASUREMENT OF THE RELEASE ITSELF
+
+0.5.0's four increments (0606-0609) are about the CONTRACT between the artifact and the
+host, and about the GATE that holds the two to it. Not one of them changes what the
+analyzer finds -- the roster stays at eighteen families, and 0.4.52's analysis IS 0.5.0's
+analysis. So the artifact's bytes are the same code, and the one-byte difference is the
+coordinate naming it.
+
+AND THE SOURCE SAYS THE SAME THING FROM THE OTHER SIDE, and it says it in git rather than
+in prose: the 0.4.52 release commit and the 0.5.0 release commit differ in **ZERO** files
+under `src/`. The whole difference between the two commits is TEN files, and every one of
+them is a document, a `moon.mod`, or a file under `_verify/`. So the published source of
+0.5.0 IS the published source of 0.4.52, byte for byte -- and the artifact's one-byte
+difference is the coordinate and nothing else.
+
+**A HOST CONTRACT IS A FLOOR, AND THE PUBLISHED ARTIFACT PROVES IT IS STILL ONE.** READ with
+the gate's OWN reader (`Get-WasmImports`), on both published artifacts:
+
+    the PUBLISHED 0.4.52 artifact   106 imports, 92 from `moonbitlang/async`
+    the PUBLISHED 0.5.0 artifact   106 imports, 92 from `moonbitlang/async`
+    the symbols one asks for and the other does not, in EITHER direction: 0
+    the symbols it asks for that are OUTSIDE the 94-symbol contract: 0
+
+So the published 0.5.0 artifact is a SUBSET of the contract of 94 symbols -- which is the
+property 0.5.0 exists to establish, measured at the published coordinate rather than
+asserted about it.
+
+### AND THE PUBLISHED PACKAGE IS THE SAME SOURCE, AND IT SCANS ITSELF CLEAN
+
+    published 0.5.0 carries 254 .mbt files
+    and EVERY ONE of the 254 is BYTE-IDENTICAL to the local tree
+
+The published tree scans its own shipped source clean: 272/272 files parsed, `actionable=0`,
+notices=2079. And the family still fires at the published coordinate, WITH the control that
+says the specification is what makes the difference -- a report with a specification and the
+same report without one are different answers, and only the pair is evidence:
+
+    published 0.5.0, with --taint-source readInput --taint-sink log:0
+        11:3 - error: the sensitive argument 0 of 'log' may receive tainted data from 'readInput' (TaintFlow) [structural, MSA-018, high]
+    THE CONTROL: the same artifact, the same program, WITHOUT the specification
+        SUMMARY  files=1  parsed=1  actionable=0
+
+### AND THE ORDER OF THE RELEASE WAS PART OF THE GATE, AGAIN
+
+The release-time gate on this tree ended with exactly ONE red row -- `published package
+self-scan` -- and that row is the ORDER, not a defect: the stage asks the registry for the
+version in `moon.mod` and asserts the tree it read IS that version, so before the tag is
+pushed it CANNOT pass. The 0.4.52 release-time gate had the SAME single red row, with the
+same 118 stage rows and the same stage names. After the publish, the same stage reads the
+published 0.5.0 tree and goes GREEN -- and it was not weakened, re-anchored or skipped to
+make either run look better.
+
+
