@@ -66,6 +66,31 @@ jobs:
         run: moon fmt --check
       - name: moon test
         run: moon test --target js --deny-warn
+      # 0611. THE WASM RUN IS NOT A SECOND COPY OF THE JS ONE, IT IS THE OTHER
+      # HALF OF THE SUITE, and this gate ran only one of them.
+      #
+      # MEASURED, on this tree, on the same commit: the js run is 1613 tests
+      # and the wasm run is 1763. The difference is 150 tests, and every one
+      # of them is in `src/sa` -- the 142 it already had, plus the 8 this
+      # increment adds. `src/jsoncli` is skipped by the js run for the same
+      # reason and carries no test file of its own. The two packages declare
+      # `supported_targets = "+wasm+native"`, because js has no async runtime
+      # and those packages need one. So the js run SKIPS them rather than
+      # failing them, and the renderer, the scanner, the mermaid drawing
+      # and the provenance were NOT RUN BY THIS GATE AT ALL.
+      #
+      # The README already says so -- "the wasm number is the only one that
+      # covers the renderer and the scanner" -- and this gate contradicted it.
+      # A regression in `src/sa` reached a tag behind a green CI badge, which
+      # is the exact failure `_verify/release.ps1` opens by saying that CI is
+      # "much smaller than what this project actually relies on".
+      #
+      # THE LOCAL GATE ALREADY RUNS BOTH (js, wasm and wasm-gc), so this
+      # change makes CI agree with the gate that ships the release rather
+      # than inventing a new rule. And it is a separate STEP, so a failure
+      # says which target failed instead of leaving one red row to interpret.
+      - name: moon test (wasm)
+        run: moon test --target wasm --deny-warn
       - name: The wasm target must build
         # This is the target mooncakes compiles server-side into the artifact
         # that skills.mooncakes.io links and moonx downloads, so a wasm-only

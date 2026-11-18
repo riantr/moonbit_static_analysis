@@ -635,12 +635,12 @@ implements, and the one place where the framework and this tree disagree — is 
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (273 files), with the per-file printing cap lifted so the count is the
+project's own source (275 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1751 | | `const` declaration | 7 |
+| `test` declaration | 1763 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -649,7 +649,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **158** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1921** sit outside every function's
+audit off, so they are printed one per line; the other **1933** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -682,10 +682,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,424** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,436** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,971** of them as printed per line and
-**19,426** as aggregated — which is 3,971 + 19,426 = 23,397, the same number — and the 3,971
+says so itself: its `NOTICES` table counts **3,972** of them as printed per line and
+**19,464** as aggregated — which is 3,972 + 19,464 = 23,436, the same number — and the 3,972
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1950,25 +1950,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 255 files, 1,422 functions, 9,179
-instructions of 3AC — the same measurement gives **1,164** variables becoming **2,801** versions,
+would need **16** copies. Over this project's own source — 257 files, 1,428 functions, 9,181
+instructions of 3AC — the same measurement gives **1,165** variables becoming **2,802** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=255	unreadable=0	functions=1422	converted=5	partial=1417	declined=6496	…
+SSA-COST	files=257	unreadable=0	functions=1428	converted=5	partial=1423	declined=6510	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,496
+number: the files read, the functions measured, and the statements the lowering declined (6,510
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1751/1751 on wasm; 1609/1609 on js and wasm-gc
+moon test --deny-warn                # 1763/1763 on wasm; 1613/1613 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

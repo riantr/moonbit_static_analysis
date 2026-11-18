@@ -146,10 +146,17 @@ jobs:
         # Same commands as gate.yml. The wasm build is the one that must pass
         # here: it is the target mooncakes compiles server-side into the
         # artifact that skills.mooncakes.io links and moonx downloads.
+        #
+        # 0611. AND THE WASM TEST RUN TOO, for the reason gate.yml carries:
+        # `src/sa` and `src/jsoncli` declare `supported_targets = "+wasm+native"`,
+        # so the js run skips them, and the js run was the only test run here.
+        # The artifact this workflow publishes is built from `src/sa`, and the
+        # tests that pin the renderer and the scanner were not running.
         run: |
           moon fmt --check
           moon check --deny-warn
           moon test --target js --deny-warn
+          moon test --target wasm --deny-warn
           moon build --target wasm
 
       - name: Publish to Mooncakes

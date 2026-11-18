@@ -382,6 +382,14 @@ $sxM  = [regex]::Match($relTxt2, "\`$SELF_PRINTED\s*=\s*'(\d+)'")
 $sdM  = [regex]::Match($relTxt2, "\`$SELF_AGGREGATED\s*=\s*'(\d+)'")
 $loM  = [regex]::Match($relTxt2, "\`$SUPPOFF_LOCAL\s*=\s*'(\d+)'")
 $paM  = [regex]::Match($relTxt2, "\`$SUPPOFF_PARAM\s*=\s*'(\d+)'")
+# 0611. THE EIGHT-TREE SPLIT, for the same reason the total is read: the
+# READMEs publish the printed and the aggregated halves of the eight trees, and
+# the paragraph they sit in was WRONG -- it said 3,971 + 19,426 = 23,397, and
+# the pins said 3,972 + 19,452 = 23,424. The prose had not moved since the split
+# was last re-pinned, and nothing read it. A published number that is not gated
+# is a number that can go missing silently.
+$spM  = [regex]::Match($relTxt2, "\`$NOTICE_SPLIT_PRINTED\s*=\s*'(\d+)'")
+$saM  = [regex]::Match($relTxt2, "\`$NOTICE_SPLIT_AGGREGATED\s*=\s*'(\d+)'")
 # 0602. THE SOUNDINESS COUNTS, derived from the pins the family roster gate
 # checks against the SOURCE. The deck is `Soundiness` (Yue Li and Tian Tan,
 # Nanjing University, 2021 Fall), and its p.14 gives three verdicts whose
@@ -397,11 +405,11 @@ $isgM = [regex]::Match($relTxt2, "\`$IFACE_SIG_AGREES\s*=\s*'(\d+)'")
 $sfdM = [regex]::Match($relTxt2, "\`$SURFACE_DECLARED\s*=\s*'(\d+)'")
 $sfcM = [regex]::Match($relTxt2, "\`$SURFACE_COVERED\s*=\s*'(\d+)'")
 $sfmM = [regex]::Match($relTxt2, "\`$SURFACE_MISSING\s*=\s*'(\d+)'")
-if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success)) {
+if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success -and $spM.Success -and $saM.Success)) {
   Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives from.'
   Write-Output '        Restore them, or this gate has nothing to check the README against.'
   $fail++
-  $peTotal = '?'; $sn = ''; $sx = '?'; $sd = '?'; $lo = '?'; $pa = '?'
+  $peTotal = '?'; $sn = ''; $sx = '?'; $sd = '?'; $lo = '?'; $pa = '?'; $sp8 = '?'; $sa8 = '?'
 } else {
   $peTotal = ([int]$peM.Groups[1].Value).ToString('N0')
   $sf = $sfM.Groups[1].Value
@@ -410,6 +418,8 @@ if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -an
   $sd = $sdM.Groups[1].Value
   $lo = $loM.Groups[1].Value
   $pa = $paM.Groups[1].Value
+  $sp8 = ([int]$spM.Groups[1].Value).ToString('N0')
+  $sa8 = ([int]$saM.Groups[1].Value).ToString('N0')
   Write-Output ('  (release.ps1 pins: notices ' + $peTotal + ', own-source files ' + $sf + ', notice table ' + (@($sn -split '\|').Count) +
                 ' kinds, printed ' + $sx + ', aggregated ' + $sd +
                 ', suppression off ' + $lo + ' / ' + $pa + ')')
@@ -490,6 +500,15 @@ if ($sn -ne '') {
 }
 $more.Add(@{ F = 'README.md';    S = ('**' + $peTotal + '**'); N = 'the notice count over the eight trees' })
 $more.Add(@{ F = 'README.zh.md'; S = ('**' + $peTotal + '**'); N = 'the notice count over the eight trees (zh)' })
+$more.Add(@{ F = 'README.md';    S = ('**' + $sp8 + '** of them as printed per line'); N = 'the eight-tree printed notices' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + $sp8 + '** 条算作逐行打印'); N = 'the eight-tree printed notices (zh)' })
+$more.Add(@{ F = 'README.md';    S = ('**' + $sa8 + '** as aggregated'); N = 'the eight-tree aggregated notices' })
+$more.Add(@{ F = 'README.zh.md'; S = ('**' + $sa8 + '** 条算作汇总'); N = 'the eight-tree aggregated notices (zh)' })
+# AND THE THREE NUMBERS ADD UP, which is the claim the paragraph makes about
+# itself. A split that does not add up to the total it is a split of is two
+# numbers that happen to be printed next to each other.
+$more.Add(@{ F = 'README.md';    S = ($sp8 + ' + ' + $sa8 + ' = ' + $peTotal); N = 'the eight-tree split adds up' })
+$more.Add(@{ F = 'README.zh.md'; S = ($sp8 + ' + ' + $sa8 + ' = ' + $peTotal); N = 'the eight-tree split adds up (zh)' })
 # 0602. THE SOUNDINESS COUNTS, and the three deliberate treatments. The deck's
 # p.10 is the complaint this answers -- "Treatments to hard language features
 # are usually omitted or only mentioned in an off-hand manner in some impl/eval

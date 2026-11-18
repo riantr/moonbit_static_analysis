@@ -21778,3 +21778,172 @@ published 0.5.0 tree and goes GREEN -- and it was not weakened, re-anchored or s
 make either run look better.
 
 
+## 0611: THE COVERAGE MEASUREMENT NAMED TWO FILES, AND ONE OF THEM WAS WRONG IN ITS OWN HEADER
+
+`moon coverage analyze` runs the suite with the toolchain's own instrumentation and reports, per
+file, how many of the instrumented statements the tests reached. On this tree, on 0.5.0's
+published source:
+
+    the whole tree        11427 / 14061 points   81.3%   over 70 files
+    src/core/advice.mbt       7 / 20            35.0%
+    src/sa/main.mbt         197 / 517            38.1%
+
+The two files the measurement named are the two a reader of this tree would also name: the
+advice table, and the formatter that prints the report.
+
+### BUT THE MEASUREMENT CANNOT REACH `scan`, AND THAT IS A HARNESS FACT, NOT A DEFECT
+
+`src/sa/main.mbt` has 242 uncovered lines, and 234 of them are inside an `async fn` -- `scan`,
+`analyze`, `collect`, `locate`, `emit_mmd`, `collect_iface_symtabs`, `collect_private_symtabs`,
+`fetch_moon_mod_imports`, `read_or`, `is_dir`, `run_exit_code` -- or behind a private `fn` that
+only those call.
+
+**`moon test` CANNOT CALL AN ASYNC FUNCTION, and that was MEASURED rather than assumed.** A
+test body that calls one does not compile:
+
+    cannot call async function in non-async function        (error 4149)
+
+And there is no async test form to reach for instead: `test "x" async {` is a parse error
+("unexpected token `async`, you may expect `{`"), and `async test "x" {` does not parse at all.
+
+So `scan` -- the public entry point, the thing `moonx riantr/moonbit_static_analysis@latest
+<target>` runs -- is NOT REACHABLE FROM THE TEST HARNESS, and the release gate is what covers
+it. That is the same shape as the five packages that have no test file of their own: the harness
+cannot see them, so their coverage number says nothing about their quality.
+
+**AND A GREEN ROW THAT MEASURED NOTHING IS WORSE THAN A RED ONE**, so the limit is stated here
+rather than left to be inferred from a percentage.
+
+### THE ADVICE TABLE: THIRTEEN FAMILIES WERE NEVER ASKED, AND THE FILE SAID "TWO"
+
+`src/core/advice.mbt` is a `match` over the eighteen families, and an arm's `Advice::{...}`
+literal is only BUILT when somebody asks that family for its advice. Thirteen of the twenty
+statements had never been reached, and the thirteen were thirteen families' advice:
+
+    FParse  FParamChanged  FAssignType  FCondBool  FUndefinedName  FUnreachable
+    FStaleNosec  FInfeasibleBranch  FRedundantGuard  FDeadStore
+    FDivisionByZero  FNegativeIndex  FTaintFlow
+
+So the advice for a family that rarely fires is the advice a reader has rarely been shown, and
+nothing checked it -- not even that it was THERE.
+
+**AND THE FILE'S OWN HEADER WAS WRONG, and it was wrong in the direction that HIDES.** It said:
+
+    Two of them carry a caveat that the tool cannot work around on its own and that a reader
+    must know before acting on the finding -- see FParse and FUndefinedName.
+
+MEASURED over all eighteen, by asking every family, FOUR advices tell the reader that the
+FINDING ITSELF may be wrong:
+
+    FParse          a .mbti type reference the lens has no cross-file awareness of:
+                    "treat that finding as unverified"
+    FUndefinedName  two limits the CLI cannot fix: a #doc(hidden) API, and a top-level
+                    @pkg.fn(1, 2) the parser does not fold
+    FUnreachable    a branch killed by the CALLER's literal argument: "the finding is then
+                    WRONG ... treat ... as unverified"
+    FAssignType     an optional argument the type lens does not model: "verify against
+                    `moon check` before acting"
+
+The header named two and said "Two of them". The other fourteen say what the family means and
+what to change, and claim no doubt about the finding itself -- which is what makes the four
+above worth naming. The header now says FOUR and names them, and the count is PINNED by
+`src/core/advice_0611_test.mbt` rather than asserted.
+
+THE FILE AFTER:
+
+    src/core/advice.mbt        20 / 20   100.0%   (it was 7 / 20, 35.0%)
+
+### AND FOLLOWING THE LAST UNCOVERED LINE FOUND A DEFECT
+
+Eight of `src/sa/main.mbt`'s uncovered lines ARE reachable -- they sit in functions that are
+PUBLIC and SYNCHRONOUS: the tie branch of the shape table, the severity spelling the adequacy
+table prints, the agreement share, the per-signature figure, the closing brace of a `moon.mod`
+import block, and the coordinate segment rules.
+
+The closing brace is the one that turned out to matter. The shape it covers is a `moon.mod` whose
+import block closes on the SAME LINE as the last coordinate:
+
+    import { "moonbitlang/core/error@0.1.2" }
+
+**THAT IS VALID `moon.mod` SYNTAX, and it was MEASURED against the toolchain's OWN parser**
+rather than assumed. Handed that line, `moon check` reports:
+
+    moon.mod only supports versioned registry dependencies in `import`,
+    found `moonbitlang/core/error`
+
+-- the same complaint the MULTI-LINE form gets, which is to say the SYNTAX was read and the
+COORDINATE was extracted.
+
+And the analyzer's reader MISSED it, silently, because the line that OPENS the block used to
+`continue` before the strings on it were read. So the dependency was never fetched, nothing said
+so, and the scan went on as if the dependency's types were in the table.
+
+**AND THAT IS THE 0.4.3 FAILURE MODE EXACTLY** -- the one the rewrite of this function was
+written to end, and the one its own docstring lists as the second bug it fixed: "a coordinate
+that could not be fetched produced no line at all here -- only moon's own stderr -- and the scan
+went on as if the dependency's types were present."
+
+The fix is to fall THROUGH to the string scan on the line that opens the block instead of
+skipping it: `import {` carries no string, so the multi-line form reads exactly as it always
+did. The defect is FIXED, and the row that pins it is `0611: an import block written on one line
+is read`.
+
+### AND CI WAS RUNNING THE OTHER HALF OF THE SUITE
+
+`moon test --target js` and `moon test --target wasm` are NOT two copies of the same run.
+MEASURED on this tree, on the same commit:
+
+    the js run    1613 tests
+    the wasm run  1763 tests
+
+The difference is 150 tests, and every one of them is in `src/sa` -- the 142 it already had,
+plus the 8 this increment adds. `src/jsoncli` is skipped by the js run for the same reason and
+carries no test file of its own. The two packages declare `supported_targets = "+wasm+native"`,
+because js has no async runtime and they need one. So the js run SKIPS them rather than failing
+them.
+
+**AND `.github/workflows/gate.yml` RAN THE JS ONE.** The renderer, the scanner, the mermaid
+drawing and the provenance were not run by CI AT ALL -- while the README says, in the tree's own
+words, that "the wasm number is the only one that covers the renderer and the scanner".
+
+The local release gate already runs js, wasm AND wasm-gc, so this change makes CI agree with
+the gate that ships the release rather than inventing a new rule.
+
+### THE NUMBERS THAT MOVED
+
+    the whole tree        11449 / 14062 points   81.4%   over 70 files
+    src/core/advice.mbt       20 / 20            100.0%
+    src/sa/main.mbt         206 / 518             39.8%
+    uncovered lines         1269, down from 1289, in 62 files, down from 63
+
+AND THE PINS THAT MOVED, every one of them MEASURED and not assumed:
+
+    $SELF_FILES              273 -> 275      two new test files
+    $SELF_NOTICES            test declaration 1751 -> 1763
+    $SELF_AGGREGATED         1921 -> 1933    the twelve new test declarations, all of
+                                               them outside every function's extent, so
+                                               all of them counted by shape
+    $NOTICE_TOTAL          23424 -> 23436    the eight trees
+    $NOTICE_SPLIT_AGGREGATED 19452 -> 19464
+    $SSA_COST          255 -> 257 files, 1422 -> 1428 functions, 6496 -> 6510
+                          declined -- the two new test files, and the six helper
+                          functions they declare
+    $NARRATIVE_CHAPTERS       121 -> 122
+
+AND THE TWO TEST COUNTS THE READMEs publish, because the suite grew:
+
+    wasm   1751/1751 -> 1763/1763
+    js     1609/1609 -> 1613/1613
+
+**AND THE README'S EIGHT-TREE PARAGRAPH WAS ALSO WRONG, and nothing checked it.** It said the
+`NOTICES` table counts "3,971 of them as printed per line and 19,426 as aggregated -- which is
+3,971 + 19,426 = 23,397, the same number". The pins say 3,972 + 19,452 = 23,424, and the
+paragraph's own three numbers did not add up to the total it claimed they added up to. The prose
+had not moved since the split was last re-pinned, and no gate read it -- which is the failure
+mode the 0550 note on that pin describes: "a published number that is not gated is a number that
+can go missing silently."
+
+So the paragraph now carries the MEASURED numbers, and the split is CHECKED like the total is,
+because the same argument applies to it.
+
+

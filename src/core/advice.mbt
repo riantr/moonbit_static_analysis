@@ -2,9 +2,20 @@
 // downstream agent reading a report does not have to guess.
 //
 // Every `why` here is written against the code that actually raises the
-// family, not against how the name reads. Two of them carry a caveat that
+// family, not against how the name reads. FOUR of them carry a caveat that
 // the tool cannot work around on its own and that a reader must know before
-// acting on the finding — see FParse and FUndefinedName.
+// acting on the finding — FParse, FUndefinedName, FUnreachable and
+// FAssignType.
+//
+// 0611. THE COUNT WAS WRONG, and it was wrong in the direction that HIDES.
+// It said "Two of them" and named FParse and FUndefinedName, and MEASURED —
+// by `src/core/advice_0611_test.mbt`, which asks all eighteen families —
+// FOUR advices tell the reader that the FINDING ITSELF may be wrong: the two
+// that were named, plus FUnreachable (a branch killed by the CALLER's literal
+// argument) and FAssignType (an optional argument the type lens does not
+// model). The other fourteen say what the family means and what to change,
+// and claim no doubt about the finding itself — which is what makes the four
+// above worth naming. The count is PINNED now rather than asserted.
 
 ///|
 /// One family's explanation: `why` the code was judged wrong, and `how` to

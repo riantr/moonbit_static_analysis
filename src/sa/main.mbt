@@ -1819,6 +1819,27 @@ async fn fetch_moon_mod_imports(root : String) -> Unit {
 /// only a coordinate that looks like `author/module` — no scheme, no empty
 /// segments. A `moon.mod` also allows a trailing `@version`, which is part
 /// of the coordinate and is kept.
+///
+/// 0611. AND THE BLOCK MAY BE ONE LINE, which this reader used to miss.
+///
+///     import { "moonbitlang/core/error@0.1.2" }
+///
+/// That is valid `moon.mod` syntax, and it is MEASURED against the
+/// toolchain's own parser rather than assumed: handed that line, `moon check`
+/// reports "moon.mod only supports versioned registry dependencies in
+/// `import`, found `moonbitlang/core/error`" — the same complaint the
+/// multi-line form gets, which is to say the SYNTAX was read and the
+/// COORDINATE was extracted.
+///
+/// And this reader SKIPPED it, silently, because the line that OPENS the
+/// block used to `continue` before the strings on it were read. So the
+/// dependency was never fetched, nothing said so, and the scan went on as if
+/// the dependency's types were in the table — which is the 0.4.3 failure
+/// mode exactly, the one the rewrite above was written to end.
+///
+/// The fix is to fall through to the string scan on the line that opens the
+/// block instead of skipping it: `import {` carries no string, so the
+/// multi-line form reads the same as it always did.
 pub fn parse_moon_mod_imports(src : String) -> Array[String] {
   let out : Array[String] = []
   let mut in_import = false
@@ -1845,8 +1866,16 @@ pub fn parse_moon_mod_imports(src : String) -> Array[String] {
         t.has_prefix("import {") ||
         t.has_prefix("import{") {
         in_import = true
+      } else {
+        // NOT an import line: skip it, so the module's own `name = "..."` and
+        // `repository = "https://..."` are never read as dependencies. That
+        // skip is the 0.4.3 fix, and it is why the line that DOES open a
+        // block falls THROUGH to the scan below rather than being skipped
+        // with the rest -- a one-line `import { "a/b" }` carries its
+        // coordinate on the opening line, and skipping that line is how the
+        // dependency went missing. See the note on this function.
+        continue
       }
-      continue
     }
     // inside the block: take each quoted string, and only if it is a
     // coordinate rather than a URL or some other value. `split` yields
