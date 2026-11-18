@@ -4656,6 +4656,117 @@ the set, and the published-package stage of the release gate caught it. The next
 widens the contract and turns the check into a subset check, which is the property a host
 contract actually has.
 
+## 0.5.0 — the host contract became a FLOOR, and the gate learned to say it could not read
+
+**WHAT THIS RELEASE IS.** A MINOR version, and the reason is a property a user can feel: what
+this package ASKS of the host it runs on. 0.4.52's own entry ended by pointing at this
+increment — *"The next increment widens the contract and turns the check into a subset check,
+which is the property a host contract actually has."* — and this is that increment.
+
+    0606  the contract is a FLOOR, not a mirror: 93 -> 94 symbols, and the check is a subset
+          check. The floor is the TOOLCHAIN's -- its bundled core AND its runtime.
+          _verify/host_requirements.txt, _verify/check_host_requirements.ps1
+    0607  the tree-restored check after every mutation gate: a gate that leaves the tree
+          patched is NAMED, instead of poisoning the gates after it
+    0608  that check must be able to FAIL LOUDLY: a reader that cannot read is not a clean
+          tree, and the restore is byte-for-byte
+    0609  a gate that was TERMINATED produced no verdict, and no verdict is not a FAILED gate
+
+**NO NEW FINDING FAMILY, AND NOTHING CHANGES IN WHAT THE ANALYZER FINDS.** The roster stays at
+eighteen families, and the code the analyzer runs is unchanged — 0.4.52's analysis is 0.5.0's
+analysis. What changed is the CONTRACT between the artifact and the host, and the gate that
+holds the two to it.
+
+### THE CONTRACT IS A FLOOR, AND THE MEASUREMENT IS WHY
+
+0.4.52's published-package stage went RED at the published coordinate, and the cause was not
+this tree:
+
+    -> FAIL: it requires 1 host symbol(s) the contract does not allow:
+    FAIL: the contract lists 2 symbol(s) the artifact no longer requires:
+
+MEASURED on the published bytes and on this tree's own release build, of the SAME source:
+
+    the LOCAL release build   107 imports, 93 from `moonbitlang/async`
+    the PUBLISHED 0.4.52       106 imports, 92 from `moonbitlang/async`
+
+`moon publish` uploads the SOURCE and mooncakes compiles it SERVER-SIDE, so the published
+artifact links against the registry's builder toolchain — and that toolchain is one generation
+apart in the async file-IO job. Published 0.4.50 and 0.4.51 both matched the old contract
+exactly — 107 imports, 93 each — so this arrived with 0.4.52.
+
+**SO THE CONTRACT IS WIDENED TO 94 — THE UNION OF THE TWO BUILDS — AND THE CHECK BECOMES A
+SUBSET CHECK.** A symbol OUTSIDE the contract is a FAILURE, because that is the direction that
+drops a user; a symbol INSIDE it that one build does not ask for is a NOTE, because the
+builder chooses the set. The gate's own self-test now asserts BOTH directions, so a check that
+is still an equality test cannot pass.
+
+**AND THE FLOOR IS THE TOOLCHAIN, NOT ONLY ITS CORE.** ONE of the 94 is not the core's to
+provide: `thread_pool/make_openat_job`, the file-IO job, is implemented by the toolchain's C
+RUNTIME as `moonbit_rt_make_openat_job` and declared by NO core.
+
+    the bundled `moonbitlang/core` 0.10.20+65efd5b93   215 host externs
+    the toolchain's C runtime                            288 `moonbit_rt_*` names
+    together they cover all 94
+
+and the contract carries `min-host-core: 0.10.20+65efd5b93` and
+`min-host-toolchain: 0.1.20261104`, so the floor is a TOOLCHAIN and not a library version.
+
+### AND NO USER IS BROKEN BY IT, AND THAT IS MEASURED TOO
+
+The published 0.4.52 artifact RUNS on this machine, which IS the contracted floor, and the
+toolchain's runtime implements the file-IO job. The union is a superset of what every build
+asks for, so a host that satisfies the floor satisfies every published artifact.
+
+### THE GATE LEARNED TO SAY IT COULD NOT MEASURE
+
+The 0607 check that the tree is back at HEAD after every mutation gate was shown to go red in
+the release gate's own self-test. Then the 0608 release run found that check's BLIND SPOT, and
+it was a real one — MEASURED with the check's own body:
+
+    git works, the tree is clean          ->  0 files  ->  the check passes
+    git works, the tree carries a mutant  ->  1 file   ->  the check fails and names it
+    git RUNS and EXITS NON-ZERO           ->  0 files  ->  the check PASSES
+    git is NOT ON THE PATH                ->  0 files  ->  the check PASSES
+
+The last two rows are the defect: a reader that COULD NOT READ left the caller with an empty
+list, and an empty list reads as a clean tree. So the check now returns a VERDICT and not a
+list — Ok, Files, Reason — and a reader that could not read says so and FAILS the run. It was
+not hypothetical: in the failed run the machine was killed underneath the gate, the `git`
+INSIDE the check was one of the victims, and the check reported a tree that was still PATCHED
+as clean.
+
+AND THE RESTORE IS BYTE-FOR-BYTE, because the old one was not: `git checkout HEAD -- src/`
+wrote the file it restored as 62,420 bytes of CRLF where the blob is 61,242 bytes of LF, and
+git then called the tree CLEAN. The restore now reads the blob as BYTES, writes them, and
+verifies the result against the blob's SHA256.
+
+AND 0609 IS THE OTHER HALF OF THE SAME LESSON: a gate that was TERMINATED produced NO VERDICT,
+and no verdict is not a failed gate. The TRANSCRIPT carries the fact — a gate that ran to its
+verdict prints `GATE OK` or `GATE FAILED`, and a gate that was killed prints neither — so the
+row says `KILLED` and the run names it.
+
+### THE DEPENDENCY STEP IS A MEASURED NO-OP, NOT A SKIPPED ONE
+
+`moon.mod` has NO import block and imports **0** path(s) in total; the registry publishes no
+dependencies for this module. The only external dependency is the toolchain-bundled
+`moonbitlang/core/async`, deliberately UNPINNED so it tracks the user's own toolchain — because
+a pin is what disagreed with the user's toolchain and broke 0.4.38. There is nothing on the
+registry to bump.
+
+### AND THE VERSION IS A MINOR ONE ON PURPOSE
+
+0.4.52 → **0.5.0**, and the reason is the property that changed: a host contract is now a
+FLOOR rather than a MIRROR, the floor is the toolchain rather than a single library, and the
+contract carries a minimum host toolchain. A reader of this file has to be able to see that
+this is not a patch.
+
+### AND THE PUBLISHED ROW IS NOT HERE
+
+The bytes do not exist until CI publishes them, so the `published 0.5.0 wasm <hash>` row is
+written in the follow-up commit, after the publish — which is what 0.4.52 did too, and a hash
+that did not exist yet would be a fiction.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and
