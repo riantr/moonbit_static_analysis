@@ -13647,8 +13647,9 @@ code.
     unchanged, MEASURED, and the eight-tree split is now checked rather than asserted.
 ## 0551: WHAT SITS UNDER THE CFG -- BASIC BLOCKS, AND THE DECK THAT PRINTS THE ANSWERS
 
-The attachment is a new lecture: Yue Li, `Intermediate Representation`, Nanjing
-University, Fall 2026 -- the same series as the `Interprocedural Analysis` deck 0546
+The attachment is a new lecture: `2_IR.pdf` -- *Intermediate Representation*, Yue Li,
+Nanjing University, Fall 2026 -- the same series as the `Interprocedural Analysis` deck
+0546
 read. It fills the layer that deck assumed: 0546's ICFG is built on "named function
 CFGs", and the CFG it used was this package's statement-level graph. THIS lecture says
 what sits UNDER a CFG.
@@ -15772,10 +15773,10 @@ This increment corrects the RECORD; the tree's behaviour is the same tree.
 
 ### THE ATTACHMENT, AND WHERE IT SITS IN THE COURSE
 
-The attachment is the course's FIRST lecture -- "Static Program Analysis", Nanjing University,
-Yue Li, Fall 2026 (p.2) -- and its p.4 gives the six sections: PL and Static Analysis, Why
-We Learn Static Analysis?, What is Static Analysis?, Static Analysis Features and Examples,
-Teaching Plan, Evaluation Criteria.
+The attachment is the course's FIRST lecture -- `1_Intro.pdf`, *Static Program Analysis*,
+Nanjing University, Yue Li, Fall 2026 (p.2) -- and its p.4 gives the six sections: PL and
+Static Analysis, Why We Learn Static Analysis?, What is Static Analysis?, Static Analysis
+Features and Examples, Teaching Plan, Evaluation Criteria.
 
 IT IS NOT THE POINTER-ANALYSIS LECTURE the previous increments used, and its own p.72 says
 where that one is: the sixteen-lecture plan lists "9. Pointer Analysis", "10. Pointer
@@ -17251,6 +17252,25 @@ every path it names has to exist in the tree -- which is what
                                                                           sink rules over the pointer
                                                                           analysis, and the deck's own
                                                                           TaintFlows triple)
+    14_Datalog.pdf (93p)        the declarative form of the pointer rules,   0592 (datalog.mbt, datalog_parse.mbt --
+                                the Datalog engine, the pointer analysis     the ENGINE), 0593 (datalog_pointer.mbt
+                                via Datalog, the taint analysis via          -- the deck's pointer rules RUN), 0594
+                                Datalog, the first chapter and the last two  (datalog_taint.mbt -- the deck's taint
+                                pages                                        rules RUN), 0595 (datalog_deck.mbt --
+                                                                             the first chapter and the last two
+                                                                             pages, counted)
+    15_IFDS.pdf (174p)          CFL-reachability, the supergraph, the        0597 (ifds.mbt -- the SUPERGRAPH
+                                exploded supergraph, the tabulation, the     measured, the EXPLODED supergraph
+                                distributivity of IFDS                       built), 0598 (ifds_tab.mbt -- the
+                                                                             TABULATION run), 0599 (ifds_distrib.mbt
+                                                                             -- the DISTRIBUTIVITY boundary
+                                                                             measured), 0600 (CFL-reachability
+                                                                             EXECUTED on this tree's own supergraph)
+    16_Soundiness.pdf (68p)     the three-way verdict (sound, soundy,        0602 (soundiness.mbt -- the THREE-WAY
+                                unsound), Java Reflection, Native Code       VERDICT derived per family), 0603
+                                                                             (iface_sig.mbt -- the CROSS-FILE
+                                                                             SIGNATURE), 0604 (native_surface.mbt --
+                                                                             the HAND-MODELLED NATIVE SURFACE)
 
 THE TWO DECKS THAT SHARE A FILE ARE 8_PTA.pdf and 9-10_PTA-FD.pdf: 8_PTA.pdf is TWO
 lectures, its p.1-92 the 2021 pointer-analysis lecture and its p.93-104 a second deck
@@ -20250,9 +20270,10 @@ chapter does not pretend otherwise.
 
 ## 0597: THE SUPERGRAPH IS MEASURED, AND THE EXPLODED SUPERGRAPH IS BUILT
 
-THE DECK IS `CFL-Reachability and IFDS` (Yue Li, Nanjing University, 2021) -- 174 pages. Its p.3
-carries SIX CHAPTERS, and its p.174 names the three things to understand: "Understand
-CFL-Reachability", "Understand the basic idea of IFDS", "Understand what problems can be solved by
+THE DECK IS `15_IFDS.pdf` -- *CFL-Reachability and IFDS* (Yue Li, Nanjing University, 2021) --
+174 pages. Its p.3 carries SIX CHAPTERS, and its p.174 names the three things to understand:
+"Understand CFL-Reachability", "Understand the basic idea of IFDS", "Understand what problems
+can be solved by
 IFDS".
 
 THIS INCREMENT COVERS ITS CHAPTER 4 (p.58-81, the SUPERGRAPH and the FLOW FUNCTIONS) AND THE FIRST
@@ -20817,10 +20838,10 @@ session left in the tree. The self-scan counts it; the published package does no
 
 ## 0602: SOUNDINESS -- THE DECK'S THREE-WAY VERDICT, DERIVED PER FAMILY
 
-The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), 68 pages, and
-its p.4 names three chapters -- Soundness and Soundiness, Java Reflection, Native Code. This
-increment is its FIRST chapter, and p.66 names what the lecture is about: "Understand soundiness:
-its motivation and concept".
+The lecture is `16_Soundiness.pdf` -- *Soundiness* (Yue Li and Tian Tan, Nanjing University,
+2021 Fall), 68 pages, and its p.4 names three chapters -- Soundness and Soundiness, Java
+Reflection, Native Code. This increment is its FIRST chapter, and p.66 names what the lecture
+is about: "Understand soundiness: its motivation and concept".
 
 ### THE DECK'S THREE VERDICTS, VERBATIM (p.14)
 
@@ -20944,9 +20965,9 @@ which is the deck's p.10 answered in the shape the deck asks for.
 
 ## 0603: THE CROSS-FILE SIGNATURE THE `.mbti` READER USED TO THROW AWAY
 
-The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), 68 pages, and
-its p.4 names three chapters. This is its SECOND one: "Hard Language Feature: Java
-Reflection".
+The lecture is `16_Soundiness.pdf` -- *Soundiness* (Yue Li and Tian Tan, Nanjing University,
+2021 Fall), 68 pages, and its p.4 names three chapters. This is its SECOND one: "Hard Language
+Feature: Java Reflection".
 
 ### THE DECK'S PROBLEM, VERBATIM (p.32)
 
@@ -21063,8 +21084,9 @@ to a release that re-measures the corpora.
 
 ## 0604: THE HAND-MODELLED NATIVE SURFACE, MEASURED AGAINST THE DECLARED ONE
 
-The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), 68 pages, and
-its p.4 names three chapters. This is its THIRD one: "Hard Language Feature: Native Code".
+The lecture is `16_Soundiness.pdf` -- *Soundiness* (Yue Li and Tian Tan, Nanjing University,
+2021 Fall), 68 pages, and its p.4 names three chapters. This is its THIRD one: "Hard Language
+Feature: Native Code".
 
 ### THE DECK'S PRACTICE, VERBATIM (p.57)
 
@@ -21945,5 +21967,87 @@ can go missing silently."
 
 So the paragraph now carries the MEASURED numbers, and the split is CHECKED like the total is,
 because the same argument applies to it.
+
+
+## 0612: THE DECKS WERE NAMED BY TITLE, AND THE MAP THAT NAMES EVERY DECK NAMED NINE
+
+### THE TWELVE FILES, AND WHERE THEY ARE
+
+The lecture series this tree follows is TWELVE `.pdf` files in ONE directory, and every
+one of them has been read: the first nine by the increments that built the analyses, and
+the last three by the ones that closed the Datalog, IFDS and Soundiness cells.
+
+MEASURED FROM THE FILES for this increment -- the page count read out of each PDF's own
+page tree, not remembered:
+
+    1_Intro.pdf (76p)        2_IR.pdf (97p)          3-4_DFA-AP.pdf (302p)
+    5-6_DFA-FD.pdf (262p)    7_Inter.pdf (108p)      8_PTA.pdf (104p)
+    9-10_PTA-FD.pdf (153p)   11-12_PTA-CS.pdf (178p)  13_Security.pdf (86p)
+    14_Datalog.pdf (93p)     15_IFDS.pdf (174p)      16_Soundiness.pdf (68p)
+
+AND THE NINE THE COURSE MAP ALREADY NAMED WERE MEASURED AGAIN, AND EVERY ONE OF THEM
+AGREED: 76, 97, 302, 262, 108, 104, 153, 178, 86. So the counts the map carried were
+RIGHT, and what was missing was not a wrong count but THREE DECKS.
+
+### THE DEFECT: THREE CHAPTERS NAMED A DECK THAT NOBODY COULD FIND
+
+0602, 0603 and 0604 each opened the same way -- the title, the authors and the page
+count, and NOT the file:
+
+    The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall),
+    68 pages, and its p.4 names three chapters -- Soundness and Soundiness, Java
+    Reflection, Native Code.
+
+THE TREE KNEW THE NAME. `16_Soundiness.pdf` appears in six EARLIER chapters, every one
+of them saying the deck had NOT been read yet -- so the record carried the filename for
+a deck it had not read, and then cited it by TITLE once it had. That is the one
+spelling a reader cannot turn into a file: the title is a phrase, and the file is a
+name.
+
+THE THREE CITATIONS NOW NAME THE FILE, in the form 0586 already used for a deck it did
+read:
+
+    The lecture is `16_Soundiness.pdf` -- *Soundiness* (Yue Li and Tian Tan, Nanjing
+    University, 2021 Fall), 68 pages, and its p.4 names three chapters -- Soundness and
+    Soundiness, Java Reflection, Native Code.
+
+### THE MAP THAT NAMES EVERY DECK NAMED NINE OF TWELVE
+
+Chapter 0572's table is titled "THE MAP THAT NAMES EVERY DECK", and it named NINE. The
+three it missed are the three read LAST -- `14_Datalog.pdf`, `15_IFDS.pdf` and
+`16_Soundiness.pdf` -- so the map was written when the course had nine decks and was
+never extended when the course grew to twelve. A table whose own title says "every" and
+whose body says nine is a claim that was never checked.
+
+THE TABLE NOW NAMES ALL TWELVE, and each row says where this tree has it: the Datalog
+engine and its two readings, the IFDS supergraph and its tabulation and its
+distributivity boundary, and the Soundiness verdict and the two hard language features.
+
+### AND THE READMEs POINTED AT A CHAPTER THAT DOES NOT CARRY THE MAP
+
+The READMEs send the reader to `_verify/NARRATIVE.md` §0564 for "the map". §0564 carries
+the course's own assignment ladder (p.73) and the one place the framework and this
+tree disagree -- both of those are true, and both are what §0564 is for -- but the DECK
+TABLE is in §0572. A reader sent to §0564 for the map found the ladder and no deck
+names at all: the English README named TWO of the twelve decks in its body
+(`9-10_PTA-FD.pdf` and `11-12_PTA-CS.pdf`), its References named NONE, and the Chinese
+README named the same two.
+
+SO THE READMEs NOW NAME THE FILE they point at -- `1_Intro.pdf` for the course's first
+lecture and `13_Security.pdf` for the security lecture in the References -- and they
+point at §0572 for the deck table, in both languages.
+
+### AND THE FIX IS GATED, BECAUSE A CITATION IS A FACT AND FACTS ROT
+
+Section 10 of `_verify/check_readme_links.ps1` reads the map table out of the NARRATIVE
+and checks it against the deck files THEMSELVES: every deck on disk is named in the
+map, and every page count in the map is the page count MEASURED out of the file. It
+also checks that the three chapters that read the Soundiness deck name
+`16_Soundiness.pdf`, and that both READMEs name the deck files they cite.
+
+WHERE THE DECK FILES ARE. They are a private lecture directory on the author's machine:
+they are not in this repository and not on CI. So the file-measuring half of that check
+runs where the directory is, and where it is not, the gate SAYS THAT IT DID NOT MEASURE.
+A green row that measured nothing is worse than a red row.
 
 

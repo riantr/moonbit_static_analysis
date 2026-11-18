@@ -1010,7 +1010,238 @@ foreach ($rf in $readmeFiles) {
     Write-Output ("  no README section is pasted in twice ({0} section(s) read in {1})  OK" -f $headings.Count, $rf)
   }
 }
+Write-Output ''
+Write-Output ''
+Write-Output '=== 10. the deck citations name the FILE, and the map names every deck ==='
+# WHY THIS CHECK EXISTS. Three defects, ONE cause -- a citation that names a deck by
+# TITLE does not tell a reader which file to open:
+#
+#   1. Chapters 0602, 0603 and 0604 each opened with "The lecture is `Soundiness` (Yue
+#      Li and Tian Tan, Nanjing University, 2021 Fall), 68 pages" -- the title, the
+#      authors and the page count, and NOT the file. The tree knew the name:
+#      `16_Soundiness.pdf` appears in six EARLIER chapters, every one of them saying
+#      the deck had NOT been read yet. So the record carried the filename for a deck
+#      it had not read, and then cited it by title once it had -- and a title is a
+#      phrase, not a name a reader can open.
+#   2. Chapter 0572's table is titled "THE MAP THAT NAMES EVERY DECK" and named NINE
+#      of the twelve. The three it missed are the three read LAST -- Datalog, IFDS and
+#      Soundiness -- so the map was written when the course had nine decks and was
+#      never extended when the course grew to twelve. A table whose own title says
+#      "every" and whose body says nine is a claim that nothing checked.
+#   3. The READMEs sent the reader to `_verify/NARRATIVE.md` §0564 for "the map".
+#      §0564 carries the course's own assignment ladder and the one place the
+#      framework and this tree disagree -- both true, and both what §0564 is for --
+#      but the DECK TABLE is in §0572, and the References named no deck file at all.
+#
+# A citation is a FACT about a file, and a fact nothing reads rots. So the map is read
+# here and checked against the deck files THEMSELVES: every deck on disk is named in
+# the map, and every page count in the map is the page count MEASURED out of the file.
+#
+# WHERE THE DECK FILES ARE. They are a private lecture directory on the author's
+# machine: they are not in this repository and not on CI. So the file-measuring half
+# of this check runs where the directory is, and where it is not the gate SAYS THAT IT
+# DID NOT MEASURE -- a green row that measured nothing is worse than a red row.
+$deckDir = 'C:\Users\31379\Documents\NJU'
+if ($env:MSA_DECK_DIR) { $deckDir = $env:MSA_DECK_DIR }
 
-if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables, the course map, the chapter headings, the family texts and the README sections all check out.'; exit 0 }
+function Get-DeckRows {
+  # the MAP's rows: the deck name sits on the FIRST line of the row, at four spaces,
+  # and the continuation lines of the row are the other two columns.
+  param([string]$Text)
+  $h = [ordered]@{}
+  foreach ($m in [regex]::Matches($Text, '(?m)^ {4}(\S+\.pdf) \((\d+)p\)')) {
+    if (-not $h.Contains($m.Groups[1].Value)) { $h[$m.Groups[1].Value] = [int]$m.Groups[2].Value }
+  }
+  return $h
+}
+function Get-DeckInventory {
+  # the INVENTORY's rows: a deck name and its page count, wherever the name sits.
+  param([string]$Text)
+  $h = [ordered]@{}
+  foreach ($m in [regex]::Matches($Text, '([A-Za-z0-9_.-]+\.pdf) \((\d+)p\)')) {
+    if (-not $h.Contains($m.Groups[1].Value)) { $h[$m.Groups[1].Value] = [int]$m.Groups[2].Value }
+  }
+  return $h
+}
+function Get-PdfPages {
+  # the page count, read out of the PDF's own page tree.
+  param([string]$Path)
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $txt = [System.Text.Encoding]::GetEncoding(28591).GetString($bytes)
+  $best = 0
+  foreach ($m in [regex]::Matches($txt, '/Type\s*/Pages[^>]*?/Count\s+(\d+)')) {
+    $v = [int]$m.Groups[1].Value
+    if ($v -gt $best) { $best = $v }
+  }
+  if ($best -gt 0) { return $best }
+  return [regex]::Matches($txt, '/Type\s*/Page(?![s])').Count
+}
+
+$mapChapM = [regex]::Match($narrTxt2, '(?ms)^## 0572:.*?(?=^## \d{4}:|\z)')
+if (-not $mapChapM.Success) {
+  Write-Output '  FAIL: the NARRATIVE has no chapter 0572, so the deck map cannot be checked.'
+  $fail++
+  $mapRows = [ordered]@{}
+} else {
+  $mapRows = Get-DeckRows $mapChapM.Value
+}
+$invChapM = [regex]::Match($narrTxt2, '(?ms)^## 0612:.*?(?=^## \d{4}:|\z)')
+if ($invChapM.Success) { $invRows = Get-DeckInventory $invChapM.Value } else { $invRows = [ordered]@{} }
+
+# 10a. THE MAP NAMES EVERY DECK, AND THE PAGE COUNTS ARE THE MEASURED ONES.
+$deckDirThere = Test-Path -LiteralPath $deckDir
+$onDisk = @()
+if ($deckDirThere) {
+  $onDisk = @(Get-ChildItem -LiteralPath $deckDir -Filter '*.pdf' -File | ForEach-Object { $_.Name })
+}
+if (-not $deckDirThere) {
+  Write-Output ('  the deck directory (' + $deckDir + ') is not on this machine: the page counts were NOT measured.')
+  Write-Output ('  (the map still names ' + $mapRows.Count + ' deck(s); set MSA_DECK_DIR to measure them)')
+} else {
+  $missed = @($onDisk | Where-Object { -not $mapRows.Contains($_) })
+  $invented = @($mapRows.Keys | Where-Object { $onDisk -notcontains $_ })
+  if ($missed.Count -gt 0) {
+    Write-Output ('  FAIL: the deck map does not name ' + $missed.Count + ' deck(s) that are on disk:')
+    foreach ($d in $missed) { Write-Output ('      ' + $d) }
+    $fail += $missed.Count
+  }
+  if ($invented.Count -gt 0) {
+    Write-Output ('  FAIL: the deck map names ' + $invented.Count + ' deck(s) that are not on disk:')
+    foreach ($d in $invented) { Write-Output ('      ' + $d) }
+    $fail += $invented.Count
+  }
+  $badPages = @()
+  foreach ($d in $onDisk) {
+    if (-not $mapRows.Contains($d)) { continue }
+    $measured = Get-PdfPages (Join-Path $deckDir $d)
+    if ($measured -ne $mapRows[$d]) {
+      $badPages += ($d + ': the map says ' + $mapRows[$d] + 'p, the file has ' + $measured + 'p')
+    }
+  }
+  if ($badPages.Count -gt 0) {
+    Write-Output ('  FAIL: ' + $badPages.Count + ' page count(s) in the deck map are not the ones the file has:')
+    foreach ($b in $badPages) { Write-Output ('      ' + $b) }
+    $fail += $badPages.Count
+  }
+  if ($missed.Count -eq 0 -and $invented.Count -eq 0 -and $badPages.Count -eq 0) {
+    Write-Output ('  the deck map names ' + $mapRows.Count + ' deck(s), and every page count is the one MEASURED from the file  OK')
+  }
+}
+
+# 10b. THE INVENTORY AND THE MAP AGREE. They are two copies of the same fact, so
+# they are both checked against the FILES rather than against each other.
+$badInv = @()
+foreach ($k in $invRows.Keys) {
+  if (-not $mapRows.Contains($k)) { $badInv += ($k + ': the inventory names it, the map does not') }
+  elseif ($invRows[$k] -ne $mapRows[$k]) {
+    $badInv += ($k + ': the inventory says ' + $invRows[$k] + 'p, the map says ' + $mapRows[$k] + 'p')
+  }
+}
+foreach ($k in $mapRows.Keys) {
+  if (-not $invRows.Contains($k)) { $badInv += ($k + ': the map names it, the inventory does not') }
+}
+if ($badInv.Count -gt 0) {
+  Write-Output ('  FAIL: the deck inventory and the deck map disagree on ' + $badInv.Count + ' deck(s):')
+  foreach ($b in $badInv) { Write-Output ('      ' + $b) }
+  $fail += $badInv.Count
+} else {
+  Write-Output ('  the deck inventory and the deck map agree on ' + $invRows.Count + ' deck(s)  OK')
+}
+
+# 10c. EVERY DECK CITATION NAMES THE FILE. A citation that names a deck by its
+# TITLE tells the reader which lecture, and not which file -- and the file is the
+# thing a reader opens. So the file has to be in the sentence that introduces the
+# deck.
+#
+# WHY THE LIST IS HERE AND NOT DERIVED. The deck files are OUTSIDE this
+# repository: they are a private lecture library on the author's machine, so the
+# gate cannot read the decks and derive the list of citations. What it CAN do is
+# read the DOCUMENTS, and check that each one names the file for the deck it
+# cites. That is what this table is: the citation, and the file it must name.
+#
+# The NARRATIVE's rows are CHAPTER-SCOPED -- the chapter that opens by naming the
+# deck is the one that has to name the file -- and the READMEs' rows are
+# DOCUMENT-SCOPED, because a README is one document.
+$DECK_CITES = @(
+  @{ Doc = '_verify/NARRATIVE.md'; Ch = '0551'; File = '2_IR.pdf' }
+  @{ Doc = '_verify/NARRATIVE.md'; Ch = '0564'; File = '1_Intro.pdf' }
+  @{ Doc = '_verify/NARRATIVE.md'; Ch = '0597'; File = '15_IFDS.pdf' }
+  @{ Doc = '_verify/NARRATIVE.md'; Ch = '0602'; File = '16_Soundiness.pdf' }
+  @{ Doc = '_verify/NARRATIVE.md'; Ch = '0603'; File = '16_Soundiness.pdf' }
+  @{ Doc = '_verify/NARRATIVE.md'; Ch = '0604'; File = '16_Soundiness.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '1_Intro.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '2_IR.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '5-6_DFA-FD.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '7_Inter.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '8_PTA.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '9-10_PTA-FD.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '11-12_PTA-CS.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '13_Security.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '14_Datalog.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '15_IFDS.pdf' }
+  @{ Doc = 'README.md';    Ch = '';     File = '16_Soundiness.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '1_Intro.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '2_IR.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '5-6_DFA-FD.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '7_Inter.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '8_PTA.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '9-10_PTA-FD.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '11-12_PTA-CS.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '13_Security.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '14_Datalog.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '15_IFDS.pdf' }
+  @{ Doc = 'README.zh.md'; Ch = '';     File = '16_Soundiness.pdf' }
+)
+$deckCiteOk = 0
+foreach ($c in $DECK_CITES) {
+  $cp = Join-Path $root ($c.Doc -replace '/', '\')
+  if (-not (Test-Path -LiteralPath $cp)) {
+    Write-Output ('  FAIL: ' + $c.Doc + ' is not in the tree, so its deck citations cannot be checked.')
+    $fail++
+    continue
+  }
+  $ct = [System.IO.File]::ReadAllText($cp, [System.Text.Encoding]::UTF8)
+  if ($c.Ch -eq '') {
+    $scope = $ct
+  } else {
+    $cm2 = [regex]::Match($ct, '(?ms)^## ' + $c.Ch + ':.*?(?=^## \d{4}:|\z)')
+    if (-not $cm2.Success) {
+      Write-Output ('  FAIL: ' + $c.Doc + ' has no chapter ' + $c.Ch + ', so its citation cannot be checked.')
+      $fail++
+      continue
+    }
+    $scope = $cm2.Value
+  }
+  if (-not $scope.Contains($c.File)) {
+    $where = if ($c.Ch -eq '') { $c.Doc } else { $c.Doc + ' chapter ' + $c.Ch }
+    Write-Output ('  FAIL: ' + $where + ' does not name the deck file `' + $c.File + '`.')
+    $fail++
+  } else {
+    $deckCiteOk++
+  }
+}
+if ($deckCiteOk -eq $DECK_CITES.Count) {
+  Write-Output ('  every deck citation names the file (' + $deckCiteOk + ' citation(s) checked)  OK')
+}
+
+# 10d. AND THE READMEs NAME THE DECKS THEY CITE. The two are the ones the
+# References list names by title, and the course-map passage names the first lecture.
+# 10d. AND THE READMEs NAME EVERY DECK THEY CITE. The two READMEs are
+# translations of one another, so the deck each one cites is the same deck -- and
+# a file named in one and not in the other is a README that has drifted from its
+# translation. This is counted, so the count says how much was checked.
+$readmeDeckFiles = @($DECK_CITES | Where-Object { $_.Doc -like 'README*' } | ForEach-Object { $_.File } | Sort-Object -Unique)
+foreach ($rf in @('README.md', 'README.zh.md')) {
+  $rt = [System.IO.File]::ReadAllText((Join-Path $root $rf), [System.Text.Encoding]::UTF8)
+  $missingHere = @($readmeDeckFiles | Where-Object { -not $rt.Contains($_) })
+  if ($missingHere.Count -gt 0) {
+    Write-Output ('  FAIL: ' + $rf + ' does not name ' + $missingHere.Count + ' deck file(s):')
+    foreach ($m in $missingHere) { Write-Output ('      ' + $m) }
+    $fail += $missingHere.Count
+  } else {
+    Write-Output ('  ' + $rf + ' names all ' + $readmeDeckFiles.Count + ' deck files it cites  OK')
+  }
+}
+if ($fail -eq 0) { Write-Output 'VERIFY OK: links, anchors, versions, corrections, counts, family tables, the course map, the chapter headings, the family texts, the README sections and the deck citations all check out.'; exit 0 }
 Write-Output ("VERIFY FAILED: " + $fail + " problem(s).")
 exit 1

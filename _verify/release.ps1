@@ -1436,7 +1436,11 @@ $SSA_COST = 'files=257|unreadable=0|functions=1428|converted=5|partial=1423|decl
 # 0611. THE PIN MOVED TO 122 with chapter 0611, which is the coverage
 # measurement: it added two test files and two source edits, and it moved the
 # SOURCE pins because a test declaration IS a notice -- twelve of them.
-$NARRATIVE_CHAPTERS = '122'
+# 0612. THE PIN MOVED TO 123 with chapter 0612, which is the deck citations:
+# it added the three deck rows the 0572 map was missing, and it moved NO SOURCE
+# pin at all -- it changed the NARRATIVE, both READMEs and two gates, and a line
+# of markdown is not a notice, a declaration or an instruction.
+$NARRATIVE_CHAPTERS = '123'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and

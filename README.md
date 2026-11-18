@@ -377,7 +377,7 @@ moonx riantr/moonbit_static_analysis@latest <target> [flags]
 | `--families MSA-007,MSA-002` | report **only** these families, by their **stable id**. The ids are the `MSA-NNN` codes every rendered finding and every JSON record carries; the full roster is in [Confidence, ids, profiles and `nosec`](#confidence-ids-profiles-and-nosec). An id this version does not know is a `WARNING` and the scan still runs -- a family added in a later release must not make an older analyzer's profile unusable, and a typo must be loud rather than fatal. |
 | `--exclude-families MSA-007` | report everything **except** these families. The same id vocabulary and the same rules. An id that is **both** included and excluded is an `ERROR` and the scan does not run at all: the two rules contradict each other, and which one won would be decided by the order of two `if`s inside the scanner. |
 | `--honor-nosec` | honour `// nosec` comments in the **analysed** source: `// nosec` silences every finding on that line, and `// nosec MSA-007` silences that one family on that line. **Off by default**, and the default is a decision rather than an omission: a tool that stops reporting a finding because of a comment in the analysed source has an output the reader cannot trust without reading that source first. A `// nosec` that suppresses **nothing** is reported as a finding of its own -- a stale suppression is a fact about the source, and the source is what this tool analyses. |
-| `--ssa-cost` | Measure what **static single assignment** would cost on the target tree and print one `SSA-COST` line: the variables the programs define, the versions SSA would give them, the phi-functions, and the copies their removal would need. It is a **query** and not a scan — it prints the line and stops, and no finding is reported. The claim it measures is the lecture's own — the *Intermediate Representation* lecture (Nanjing University, Fall 2026), p.37: *"SSA may introduce too many variables and phi-functions"* — a claim with no number in it. The line carries its **coverage** beside the numbers, because a number without its coverage is half a number. |
+| `--ssa-cost` | Measure what **static single assignment** would cost on the target tree and print one `SSA-COST` line: the variables the programs define, the versions SSA would give them, the phi-functions, and the copies their removal would need. It is a **query** and not a scan — it prints the line and stops, and no finding is reported. The claim it measures is the lecture's own — the *Intermediate Representation* lecture (`2_IR.pdf`, Nanjing University, Fall 2026), p.37: *"SSA may introduce too many variables and phi-functions"* — a claim with no number in it. The line carries its **coverage** beside the numbers, because a number without its coverage is half a number. |
 `--mmd` requires its path and `--mmd-auto` is a separate flag, on purpose: an optional
 value is ambiguous, because in `<target> --mmd <path>` the bare word after `--mmd` could
 equally be a second, unexpected target, and there is no way to tell the two apart.
@@ -626,9 +626,10 @@ promised per finding: **a finding the analyzer does not stand behind is rendered
 notice says what the tool could not read.
 
 The lecture series this tool's analyses follow is Nanjing University's *Static Program
-Analysis* (Yue Li, Fall 2026); the full map — which of the course's own analyses this tree
-implements, and the one place where the framework and this tree disagree — is in
-`_verify/NARRATIVE.md` §0564.
+Analysis* (`1_Intro.pdf`, Yue Li, Fall 2026); the map of the course's decks — what each
+one asks, and where this tree has it — is in `_verify/NARRATIVE.md` §0572, and the two
+things the course itself measures this tree against — which of its analyses this tree
+implements, and the one place where the framework and this tree disagree — are in §0564.
 
 ### The constructs the frontend reads past
 
@@ -909,7 +910,8 @@ is three-valued: `Undef` (no value yet), `C(n)` (the constant `n`) and `Nac` (no
 constant). The domain and the rules were already in this tree, and so was the
 *interprocedural* reading of them -- but that reading has no frame: no CFG to run over, no
 confluence to meet at, no fixed point to reach. `src/flow/cprop_intra.mbt` supplies the frame
-the lecture states (*Data Flow Analysis -- Foundations*, Nanjing University): a CFG, the meet
+the lecture states (*Data Flow Analysis -- Foundations*, `5-6_DFA-FD.pdf`, Nanjing
+University): a CFG, the meet
 at every confluence, and the fixed point. **Nothing is re-implemented.** The lecture's four
 meet rules -- `NAC ⊓ v = NAC`, `UNDEF ⊓ v = v`, `c ⊓ c = c`, `c₁ ⊓ c₂ = NAC` -- are exactly
 this domain's existing join, and the three transfer rules -- `x = c`, `x = y`, `x = y op z` --
@@ -949,7 +951,8 @@ family, because the family that would carry those findings already exists.
 
 **AND A SIXTH KIND: THE WHOLE-PROGRAM GRAPH OVER IT.** The call graph
 (`src/flow/callgraph.mbt`) is the deck's second section -- *Interprocedural Analysis*
-(Tian Tan, Nanjing University), p.33-39 and p.52-56 -- and it is where a method call
+(`7_Inter.pdf`, Tian Tan, Nanjing University), p.33-39 and p.52-56 -- and it is where a
+method call
 stops being a hole. The deck's `Resolve(call)` has three cases and MoonBit answers all
 three: a **static** call `f(x)` names its target; a **special** call `Type::m(x)` names
 its type in the call; and a **virtual** call `recv.m(x)` is resolved through the
@@ -974,7 +977,8 @@ resolves to nothing, and is counted as unresolved rather than connected to a gue
 **AND A SEVENTH KIND: THE SAME POINTER QUESTION, ASKED WITH A CONTEXT AND WITH A SCOPE.**
 The pointer analysis above answers *"which objects can this pointer point to?"* over the whole
 program, with every calling context merged into one answer. The deck that defines the analysis
-names that merging as a **choice**, not a fact: `Pointer Analysis` (Tian Tan, Nanjing University,
+names that merging as a **choice**, not a fact: `Pointer Analysis` (`8_PTA.pdf`, Tian Tan,
+Nanjing University,
 2021) p.34 prints the **Key Factors** table, and one of its four rows is *Context sensitivity —
 "how to model calling contexts?" — Context-sensitive | Context-insensitive*; p.49-53 develops
 the two readings and p.53 marks the merged one *"We start with this"*. A fourth row is *Analysis
@@ -1298,7 +1302,8 @@ it is written down here and not made.
 
 ### And the deck's own rules can be READ, and then RUN
 
-The `Datalog-Based Program Analysis` lecture (Tian Tan, Nanjing University, 93 pages) spends its
+The `Datalog-Based Program Analysis` lecture (`14_Datalog.pdf`, Tian Tan, Nanjing University,
+93 pages) spends its
 first chapter on a complaint: the same pointer analysis has an **imperative** form (p.9-14 — a
 worklist, a `Solve(main)` loop, and "so many implementation details") and a **declarative** form
 (p.15-16 — seven rules, "Succinct / Readable (logic-based specification) / Easy to implement"). The
@@ -1441,8 +1446,9 @@ analysis via Datalog (0593) and the taint analysis via Datalog (0594).
 
 ### And the supergraph is MEASURED, and the exploded supergraph is BUILT
 
-The lecture is `CFL-Reachability and IFDS` (Yue Li, Nanjing University, 2021) — 174 pages, six
-chapters on p.3, and p.174 names the three things to understand: *Understand CFL-Reachability*,
+The lecture is `15_IFDS.pdf` -- *CFL-Reachability and IFDS* (Yue Li, Nanjing University, 2021)
+— 174 pages, six chapters on p.3, and p.174 names the three things to understand: *Understand
+CFL-Reachability*,
 *Understand the basic idea of IFDS*, *Understand what problems can be solved by IFDS*.
 `src/flow/ifds.mbt` covers its **chapter 4** (p.58-81, the supergraph and the flow functions) and
 the first half of its **chapter 5** (p.83-97, the exploded supergraph and the glue edge).
@@ -1685,7 +1691,8 @@ own graph, and p.24 for the witness and the pair counts.
 
 ### And this analyzer says whether it is SOUND, SOUNDY, or UNSOUND
 
-The lecture is `Soundiness` (Yue Li and Tian Tan, Nanjing University, 2021 Fall), and its p.14
+The lecture is `16_Soundiness.pdf` -- *Soundiness* (Yue Li and Tian Tan, Nanjing University,
+2021 Fall), and its p.14
 gives three verdicts — and the difference between them is the **cause** of a gap, not its size:
 
 > A soundy analysis aims to capture all dynamic behaviors with certain hard language features
@@ -1853,7 +1860,8 @@ the seven corpora, not to an increment that measures.
 
 `src/flow/bb.mbt` builds the **basic blocks** of a CFG and the control-flow graph over
 them — the layer a CFG is normally drawn on top of. The lecture it is pinned to
-(`Intermediate Representation`, Nanjing University, Fall 2026) prints a worked example
+(`Intermediate Representation`, `2_IR.pdf`, Nanjing University, Fall 2026) prints a worked
+example
 and names two questions as the executable ones: *"How to build basic blocks on top of
 IR"* and *"How to construct control flow graphs on top of BBs?"*. Its twelve
 instructions come with the **leaders** and the **blocks** printed, so the layer is
@@ -2196,9 +2204,9 @@ MIT License. See [LICENSE](LICENSE) for details.
 - [riantr/pyroduct](https://mooncakes.io/docs/riantr/pyroduct) — the reference consumer of
   the machine-table audit
 - [skills.mooncakes.io](https://skills.mooncakes.io) — the published skill
-- Nanjing University, *Static Program Analysis* (Yue Li, Fall 2026) — the lecture series this
-  tool's analyses follow; the map of what this tree implements is in `_verify/NARRATIVE.md`
-  §0564
-- Nanjing University, *Static Analysis for Security* (Tian Tan) — the security lecture the
-  taint analysis (`src/flow/taint.mbt`) follows; its chapter 4 is the taint rules and its own
-  worked example is the oracle
+- Nanjing University, *Static Program Analysis* (`1_Intro.pdf`, Yue Li, Fall 2026) — the
+  lecture series this tool's analyses follow; the map of what this tree implements is in
+  `_verify/NARRATIVE.md` §0564, and the map of the course's decks in §0572
+- Nanjing University, *Static Analysis for Security* (`13_Security.pdf`, Tian Tan) — the
+  security lecture the taint analysis (`src/flow/taint.mbt`) follows; its chapter 4 is the
+  taint rules and its own worked example is the oracle
