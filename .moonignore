@@ -104,11 +104,18 @@ _verify/remeasure_out/
 #
 # `src/lexer/lexer_0488_test.mbt` is SUPERSEDED -- its rows live in
 # `src/parser/parser_0488_test.mbt`, because a test file lives in the package it
-# tests and `src/lexer` cannot see `@parser` (Error 4020). What is left is a
-# comment-only stub, and its own header says "It is NOT tracked and must not be
-# committed". It is not tracked. But `moon package` reads the WORKING TREE and
-# not git, so a LOCAL publish would ship a file the repository itself declares
-# un-committable. The published tree is built from a clean checkout, so this
-# only ever bit a local publish -- which is why it is named here rather than
-# left to the checkout being clean.
+# tests and `src/lexer` cannot see `@parser` (Error 4020). What was left in that
+# place was a comment-only stub, and its own header said "It is NOT tracked and
+# must not be committed".
+#
+# 0614. THE STUB IS DELETED, and the rule STAYS. Two reasons, and they are
+# different. The stub is gone because it was a LOCAL file inside `src/`, and the
+# release gate's self-scan walks the WORKING TREE -- so the published own-source
+# file count was one too high, and it described the maintainer's tree and not
+# the package (MEASURED: the package held 275 source files, a clean checkout of
+# HEAD held 275, and the scan read 276). The rule stays because `moon package`
+# reads the WORKING TREE and not git: a maintainer whose tree still holds the
+# file must not be able to ship it by publishing locally, and the rule is what
+# says so. `_verify/check_package_contents.ps1` asserts the file is OUT of the
+# package, and that row stays meaningful either way.
 src/lexer/lexer_0488_test.mbt

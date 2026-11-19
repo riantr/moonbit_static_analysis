@@ -646,7 +646,7 @@ implements, and the one place where the framework and this tree disagree — are
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (276 files), with the per-file printing cap lifted so the count is the
+project's own source (275 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
@@ -1968,14 +1968,14 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 258 files, 1,430 functions, 9,210
+would need **16** copies. Over this project's own source — 257 files, 1,430 functions, 9,210
 instructions of 3AC — the same measurement gives **1,165** variables becoming **2,802** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=258	unreadable=0	functions=1430	converted=5	partial=1425	declined=6518	…
+SSA-COST	files=257	unreadable=0	functions=1430	converted=5	partial=1425	declined=6518	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a

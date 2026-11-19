@@ -1115,7 +1115,17 @@ $NOTICE_SPLIT_AGGREGATED = '19473'
 # did NOT move AT ALL, and the notice table's moving row is the `test`
 # declaration row (1763 -> 1772, the nine new rows) and NOTHING ELSE -- the
 # other eight rows are byte-identical.
-$SELF_FILES = '276'
+# 0614. AND THEY MOVED DOWN, 276 -> 275, and THE MOVEMENT IS NOT A SOURCE
+# CHANGE AT ALL: no file was added and none was removed from the COMMITTED
+# tree. The scan was reading `src/lexer/lexer_0488_test.mbt` -- an UNTRACKED,
+# comment-only stub that `.moonignore` names as "must never ship" -- so the
+# count described the LOCAL tree and not the package. MEASURED before the fix:
+# the package held 275 source files, a clean checkout of HEAD held 275, and
+# the scan read 276. The stub is deleted and the count is 275, and the new
+# gate row compares the files the scan READ with the files the committed
+# tree HOLDS, so an untracked file under `src/` can never move this number
+# again without the gate naming it.
+$SELF_FILES = '275'
 $SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1772|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
 $SELF_AGGREGATED = '1942'
@@ -1425,7 +1435,17 @@ $SUPPOFF_PARAM = '1341'
 # (unchanged), phis 975 (unchanged), copies 2408 (unchanged),
 # undef_operands 202 (unchanged), dead_blocks 465 -> 470, undef_uses 1295
 # (unchanged).
-$SSA_COST = 'files=258|unreadable=0|functions=1430|converted=5|partial=1425|declined=6518|instructions=9210|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
+# 0614. AND THE FILE COUNT MOVED DOWN, 258 -> 257, and IT IS THE SAME
+# DEFECT as the own-source count above: the untracked stub was one of the
+# files this measurement walks, and it contributed NOTHING else -- it is
+# comment-only, so it has no function, no instruction and no declaration.
+# MEASURED: functions 1430 (unchanged), partial 1425 (unchanged), declined
+# 6518 (unchanged), instructions 9210 (unchanged), variables 1165
+# (unchanged), versions 2802 (unchanged), phis 975 (unchanged), copies 2408
+# (unchanged), undef_operands 202 (unchanged), dead_blocks 470 (unchanged),
+# undef_uses 1295 (unchanged). ONE field moved, and it is the one that
+# counts files.
+$SSA_COST = 'files=257|unreadable=0|functions=1430|converted=5|partial=1425|declined=6518|instructions=9210|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1466,7 +1486,11 @@ $SSA_COST = 'files=258|unreadable=0|functions=1430|converted=5|partial=1425|decl
 # false-positive fix: it added one test file and two source rules, and it
 # moved the SOURCE pins because a test declaration IS a notice -- nine of
 # them.
-$NARRATIVE_CHAPTERS = '124'
+# 0614. THE PIN MOVED TO 125 with chapter 0614, which is the file-count
+# correction: it changed NO source file, so it moved NO notice -- and the
+# file count it corrects is the one this increment's own gate row now
+# checks against the committed tree.
+$NARRATIVE_CHAPTERS = '125'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1867,6 +1891,71 @@ if ($failed.Count -eq 0) {
       $script:stageOk = $false
     } else {
       Write-Output ('  the own-source file count matches the pin (' + $files + ')')
+    }
+
+    # THE PUBLISHED FILE COUNT MUST DESCRIBE THE COMMITTED TREE, and until
+    # 0614 nothing checked that.
+    #
+    # THE CLAIM 0542's comment makes is "a published number has to be
+    # reproducible from a CLEAN CHECKOUT", and the `_verify` exclusion is the
+    # first instance of enforcing it -- but it excluded a DIRECTORY, and a
+    # file under `src/` slipped past it.
+    #
+    # MEASURED 0614, before the fix: the PACKAGE held 275 source files, a
+    # CLEAN CHECKOUT of HEAD held 275, and the scan read 276 -- because
+    # `src/lexer/lexer_0488_test.mbt` is an UNTRACKED, comment-only stub that
+    # `.moonignore` names as "must never ship". So the number the README
+    # published described neither the artifact nor a clean checkout, and the
+    # pin had been one too high since 0488 created the file.
+    #
+    # AND THE ROW BELOW IS THE FIX FOR THE CLASS, not for that one file: the
+    # files the scan READ are compared, ONE BY ONE, with the source files the
+    # COMMITTED tree holds. An untracked file under `src/` now makes the gate
+    # RED and NAMES itself, instead of quietly moving a published number.
+    #
+    # THE COMMITTED TREE is read with `git ls-tree -r HEAD`, and HEAD rather
+    # than the INDEX on purpose: a clean checkout is HEAD, so this is the
+    # count a reader of the repository would see.
+    $scanned = @()
+    foreach ($l in ($text -split "`r?`n")) {
+      if ($l -match '^(FOUND|CLEAN)\t') {
+        $p = (($l -split "`t")[-1]).Trim()
+        if ($p.StartsWith($root)) { $rel = $p.Substring($root.Length) } else { $rel = $p }
+        $scanned += (($rel.TrimStart('\', '/')) -replace '\\', '/')
+      }
+    }
+    $committed = @()
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    $lsOut = @()
+    $gitOk = $false
+    if ($null -ne $gitCmd) {
+      $prevEA = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $lsOut = @(& git -C $root ls-tree -r HEAD --name-only 2>&1)
+      $gitOk = ($LASTEXITCODE -eq 0)
+      $ErrorActionPreference = $prevEA
+    }
+    if (-not $gitOk) {
+      Write-Output '  FAIL: the committed tree could not be read, so the files the scan read could not be checked against it. A check that could not read is NOT a clean tree.'
+      $script:stageOk = $false
+    } else {
+      foreach ($p in $lsOut) {
+        $q = ([string]$p).Trim() -replace '\\', '/'
+        if ($q -eq '' -or $q.StartsWith('_verify/')) { continue }
+        # THE ANALYZER'S OWN KINDS, read out of `src/sa/main.mbt`: .mbt,
+        # .mbti, .mbtp, .mbt.md and .mbtx.
+        if ($q -match '\.(mbt|mbtx|mbti|mbtp)$' -or $q -match '\.mbt\.md$') { $committed += $q }
+      }
+      $onlyScanned = @($scanned | Where-Object { $committed -notcontains $_ })
+      $onlyCommitted = @($committed | Where-Object { $scanned -notcontains $_ })
+      if ($onlyScanned.Count -gt 0 -or $onlyCommitted.Count -gt 0) {
+        Write-Output ('  FAIL: the scan read ' + $scanned.Count + ' file(s) and the committed tree holds ' + $committed.Count + ', and the two are not the same set.')
+        foreach ($f in ($onlyScanned | Select-Object -First 8)) { Write-Output ('      read but NOT committed: ' + $f) }
+        foreach ($f in ($onlyCommitted | Select-Object -First 8)) { Write-Output ('      committed but NOT read: ' + $f) }
+        Write-Output '      A file the scan read but the committed tree does not hold is a LOCAL file: the published count would describe the local tree and not the package.'
+        $script:stageOk = $false
+      } else {
+        Write-Output ('  the ' + $scanned.Count + ' files the scan read are EXACTLY the source files the committed tree holds (a clean checkout reads the same set)')
+      }
     }
 
     # THE OWN-SOURCE NOTICES. 0506 changed what a scan RENDERS: a notice is

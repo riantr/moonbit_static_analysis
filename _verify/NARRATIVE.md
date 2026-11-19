@@ -22187,3 +22187,123 @@ files, 1,933 -> 1,942 aggregated, 2,091 -> 2,100 notices. The PRINTED half did n
 all, and the notice table's moving row is the `test` declaration row (1,763 -> 1,772) and
 NOTHING ELSE -- the other eight rows are byte-identical.
 
+
+## 0614: THE PUBLISHED FILE COUNT DESCRIBED THE LOCAL TREE, AND NEITHER THE PACKAGE NOR A CLEAN CHECKOUT
+
+### THE THREE COUNTS, AND THE ONE THAT WAS OUT
+
+This increment exists because 0613's own delivery had to report a number that did not
+add up, and the number was the one the README publishes:
+
+    Measured on this project's own source (N files)
+
+MEASURED, at 0613's HEAD, three ways:
+
+    the PACKAGE          275 source files   (moon package --list -- the command moon publish uses)
+    a CLEAN CHECKOUT     275 source files   (git worktree add --detach at HEAD, then scanned)
+    the SCAN             276 source files   (what the release gate measures, and what it published)
+
+So the published number described NEITHER the artifact NOR a clean checkout. It described
+the MAINTAINER'S TREE, and it was one too high.
+
+### THE FILE THAT WAS IN THE WAY
+
+`src/lexer/lexer_0488_test.mbt` -- an UNTRACKED, comment-only stub. 0488 wrote 0488's test
+rows there first, and they did not COMPILE there: a test file lives in the package it tests
+and refers to that package by name, so `src/lexer` cannot see `@parser` (Error 4020). The
+rows were moved to `src/parser/parser_0488_test.mbt` and `src/pipeline/pipeline_0488_test.mbt`,
+and what was left in `src/lexer` was a stub that says so and nothing else.
+
+THE STUB'S OWN HEADER SAID IT WAS SCRATCH: "It is NOT tracked and must not be committed."
+And `.moonignore` named it, because `moon package` reads the WORKING TREE and not git --
+so a LOCAL publish would have shipped a file the repository itself declares un-committable.
+
+AND NOBODY NOTICED, because the number it moved is a PIN, and a pin only says that the
+number has not changed. MEASURED: the pin was 275 at 0612's HEAD while the committed tree
+held 274 -- so the drift started when 0488 created the stub, and it survived every increment
+since, each one moving the pin UP by exactly its own file and reading the +1 as the count.
+
+### WHAT THE STUB CONTRIBUTED: NOTHING AT ALL
+
+MEASURED, the two scans are byte-identical except for the file count:
+
+    clean checkout   files=275 parsed=275 actionable=0 notices=2100 printed=158 aggregated=1942
+    working tree     files=276 parsed=276 actionable=0 notices=2100 printed=158 aggregated=1942
+
+THE SAME notice table, the same METRICS rows, and the same `SSA-COST` line except for its
+one field that counts files. A comment-only file has no declaration, no function, no
+instruction and no finding -- so it moved a PUBLISHED NUMBER and nothing else. That is the
+worst kind of drift: a number that is wrong, carrying nothing to show that it is wrong.
+
+### THE FIX, AND IT IS A DELETION
+
+THE STUB IS DELETED. It was scratch by its own header, superseded, and its only content --
+the note that 0488's rows live in `src/parser` because a test file lives in the package it
+tests -- is ALREADY IN THIS RECORD, and in the tracked test file's own header. So the
+knowledge survives the file, and the file was the only thing left to go.
+
+THE COUNTS AFTER THE FIX, measured the same three ways:
+
+    the PACKAGE          275 source files
+    a CLEAN CHECKOUT     275 source files
+    the SCAN             275 source files
+
+AND THE FILE SETS COMPARED, not just the counts: the 275 files the scan read are the SAME
+275 files the committed tree holds, and the same 275 a clean checkout reads. The measured
+lines -- the SUMMARY, the NOTICES TOTAL, the four METRICS rows -- are identical.
+
+### AND THE GUARD, WHICH IS FOR THE CLASS AND NOT FOR THAT FILE
+
+A deleted file fixes ONE count. What is needed is the rule that the count may never
+describe the local tree, so the gate now compares the files the scan READ with the source
+files the COMMITTED tree holds -- one by one, not as two numbers.
+
+    the scan read N file(s) and the committed tree holds M, and the two are not the same set.
+        read but NOT committed: src/lexer/lexer_0488_test.mbt
+        committed but NOT read: ...
+
+AND A FILE THE SCAN READ BUT THE COMMITTED TREE DOES NOT HOLD IS A LOCAL FILE, and the
+message says so, because a red row that names its cause beats a green row that measured
+nothing.
+
+THE COMMITTED TREE IS READ WITH `git ls-tree -r HEAD` and HEAD rather than the INDEX on
+purpose: a clean checkout is HEAD, so this is the count a reader of the repository sees.
+AND `_verify` IS EXCLUDED FROM BOTH SIDES, the same way the scan excludes it -- MEASURED:
+the committed tree holds ZERO source files under `_verify/`, so the exclusion is exact
+today, and it stays exact if that ever changes.
+
+### AND THE PINS THAT MOVED
+
+    $SELF_FILES              276 -> 275
+    $SSA_COST                files 258 -> 257, and NOTHING ELSE
+
+ONE field of the SSA cost moved, and it is the one that counts files: functions 1430,
+partial 1425, declined 6518, instructions 9210, variables 1165, versions 2802, phis 975,
+copies 2408, undef_operands 202, dead_blocks 470 and undef_uses 1295 are all UNCHANGED --
+because a comment-only file contributes no function and no instruction.
+
+AND NO NOTICE MOVED AT ALL. The notice table is byte-identical, the aggregated half is
+1942, the printed half is 158, and `$NOTICE_TOTAL` is 23445. A source deletion that moves
+no notice and no finding is the shape of a deletion that was always safe to make.
+
+AND THE `.moonignore` RULE STAYS, and the reason is different from the reason the file is
+gone. The file is gone because it was a LOCAL file inside `src/` that the self-scan walks;
+the rule stays because `moon package` reads the WORKING TREE, and a maintainer whose tree
+still holds the file must not be able to ship it by publishing locally.
+`_verify/check_package_contents.ps1` asserts the file is OUT of the package, and that row
+stays meaningful either way.
+
+### AND THE PACKAGE COUNT IS A CLAIM ABOUT A PACKAGE
+
+There is a judgement in this record that is worth repeating, because 0614 lived inside it
+for a long time without seeing it. It was written when 0.4.30's package was measured:
+
+    A FILE COUNT IN A PASSING GATE IS A CLAIM ABOUT A PACKAGE, NOT A NUMBER TO BE PLEASED
+    ABOUT. "143 FILES READ" IS ONLY WORTH SAYING ALONGSIDE "143 FILES EXIST", OR IT IS A
+    NUMBER THAT COULD HAVE COME FROM ANY TREE.
+
+THE CLAIM WAS RIGHT, AND THE GATE DID NOT ENFORCE IT: it measured the tree in front of it
+and pinned the number it got. 276 was a number that could have come from any tree, and the
+one in front of the gate happened to be a maintainer's.
+
+
