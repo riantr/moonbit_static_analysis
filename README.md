@@ -615,6 +615,33 @@ calls printed exactly like a clean file. Now the count is on the file's own verd
 Measured on the seven pinned corpora: **30,340** unchecked calls, against **31** actionable
 findings.
 
+**AND THE REMAINDER IS SPLIT BY REASON, BECAUSE THE TWO REASONS THE LINE NAMED ARE NOT THE
+ONES THAT DOMINATE.** `METRICS calls` reports `sites`, `checked` and `not-verified`, and for
+eight releases the sentence beside `not-verified` said it was **two** classes — *a callee
+that is not callable* and *a name that did not resolve*. Measured — one construct per file
+against a baseline of one checkable call — the remainder has **five** reasons, and the two
+the sentence named are the only two that **report** anything. The other three are
+**silent**, and they are the majority:
+
+| reason | this tree | the seven corpora | reports? |
+|---|---:|---:|---|
+| a method call — the lens has no signature for a method | **3,800** | **21,350** | silent |
+| a callee that is not callable | **498** | **7,647** | reports (`MSA-008`) |
+| a cross-file value whose signature was never read | **191** | **1,941** | silent |
+| a `..` chain link — the lens has no signature for it | **0** | **104** | silent |
+| a name that did not resolve at all | **0** | **16** | reports (`MSA-002`) |
+| **the remainder** | **4,489** | **31,058** | |
+
+So **88.9 %** of this tree's 4,489 unverified call sites are silent, **75.3 %** of the
+corpora's 31,058 are, and **84.7 %** of this tree's remainder is one reason the old
+sentence never named — a method call. Across the seven corpora and this repository's own
+source together: **35,547** unverified call sites, of which **25,150** are method calls.
+The old sentence was not wrong about the two classes it named — those are the two that
+report — but it was wrong about the **whole**, and a reader could not tell which part of
+the remainder was which. The split is printed by the analyzer as its own
+`METRICS unverified-split` row, whose `sum` is the remainder it splits, so the row checks
+itself; both figures above are pinned by the release gate.
+
 ## Coverage and limits
 
 ### What this tool does not compete with
@@ -658,12 +685,12 @@ implements, and the one place where the framework and this tree disagree — are
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (278 files), with the per-file printing cap lifted so the count is the
+project's own source (280 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1786 | | `const` declaration | 7 |
+| `test` declaration | 1800 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -672,7 +699,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **158** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1956** sit outside every function's
+audit off, so they are printed one per line; the other **1970** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -686,6 +713,26 @@ would be wrong about one of the two.
 **The `match` expression row is gone**: since 0.4.34 the arms of a `match` are read, and
 arms are ordinary code, so a `match` is no longer a region that was "read past but not
 analysed".
+
+**AND THE RATE OF THAT EXCLUSION IS MEASURED, NOT ASSUMED.** The `test` declaration row
+above is the largest one, and it is the one that hides the most: a `test` body is not
+analysed at all, so a defect planted inside one is invisible. Measured on six planted
+defects — each the same defect its family's own fixture carries, the only difference being
+that here it sits inside a `test` body — the analyzer detects **0 of 6**. The same six
+defects in a `fn` body are **6 of 6**, and the whole eighteen-family fixture set is
+**18 of 18**. The rate is pinned by `_verify/check_blindspot_rate.ps1`, and the pin is not
+vacuous: its self-test takes the `test` wrapper off a copy of the fixtures and requires
+the very same defects to be detected, each of them as its own family — so a green gate
+means *the wrapper hides them*, not *the analyzer cannot see them*.
+
+**AND THE EXCLUSION IS THE TOOL'S, NOT THE LANGUAGE'S.** `moon check` — the MoonBit
+compiler — **does** analyse a `test` body: given a file whose test body carries a type
+error, the compiler reports it, at the line inside the body. So the language permits the
+analysis and the compiler performs it. The gap is in this tool's parser, which **skips**
+a `test` body instead of parsing it, so no AST is built for the body at all — and it is
+not a one-line fix, because this tool's subset parses a file **completely** before it
+reports, and a `test` body is a construct the parser has never built an AST for. Both
+answers are reproduced by `_verify/settle_0616_blindspot_class.ps1`.
 
 ### `ParseError`: one family, two meanings
 
@@ -705,10 +752,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **24,096** notices —
+per-file printing cap lifted so the count is the whole finding set: **24,110** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **4,021** of them as printed per line and
-**20,075** as aggregated — which is 4,021 + 20,075 = 24,096, the same number — and the 4,021
+**20,089** as aggregated — which is 4,021 + 20,089 = 24,110, the same number — and the 4,021
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -732,7 +779,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **701** `UnusedLocal` and **1,339** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 278 files the notice table
+seven pinned corpora and this repository's own source — the same 280 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -1983,25 +2030,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 260 files, 1,433 functions, 9,210
-instructions of 3AC — the same measurement gives **1,165** variables becoming **2,802** versions,
+would need **16** copies. Over this project's own source — 262 files, 1,436 functions, 9,219
+instructions of 3AC — the same measurement gives **1,171** variables becoming **2,808** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=260	unreadable=0	functions=1433	converted=5	partial=1428	declined=6522	…
+SSA-COST	files=262	unreadable=0	functions=1436	converted=5	partial=1431	declined=6533	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,522
+number: the files read, the functions measured, and the statements the lowering declined (6,533
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1786/1786 on wasm; 1627/1627 on js and wasm-gc
+moon test --deny-warn                # 1800/1800 on wasm; 1635/1635 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -2036,7 +2083,7 @@ audit, and a check that a region silences only the bindings it could have read**
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; **the behavior lens's own
 table, checked against what the analyzer produces today**; and then **every mutation
-gate** — 88 of them.
+gate** — 89 of them.
 
 And these are the other stages, by the exact name each one prints — so a stage that runs
 and is not named here is a stage a reader cannot find:
@@ -2067,6 +2114,8 @@ and is not named here is a stage a reader cannot find:
     the family sweep, shown to go red (its own self-test)
     the false-positive pin: this tree has no actionable finding
     the false-positive pin, shown to go red (its own self-test)
+    the blind-spot rate: the defects inside a `test` body
+    the blind-spot rate, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
     the notice reconciliation can go red (a real defect is seen)
@@ -2151,7 +2200,7 @@ and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 88 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 89 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -2216,9 +2265,9 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **88 mutation gates**, each of which mutates
+The gate is not optional decoration: it runs **89 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **509** live mutations, **467** expect a kill; **390** of them also name the test
+Of the **519** live mutations, **477** expect a kill; **400** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing

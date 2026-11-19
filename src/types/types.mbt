@@ -391,6 +391,36 @@ pub(all) struct TypeResult {
   /// wrong.
   n_sig_available : Int32
   n_arity_agrees : Int32
+  /// 0616. THE SPLIT OF `n_calls - n_checked`, FIVE counters, one per reason.
+  ///
+  /// THE NUMBER WAS ONE, AND THE SENTENCE NAMED TWO. `n_calls - n_checked` is
+  /// the set of call SITES this lens visited and did not verify, and for eight
+  /// releases both the printed line and the doc beside it said it was TWO
+  /// classes: "callee not callable, or name unresolved". MEASURED 0616-11-21,
+  /// one construct per file against a baseline of one checkable call, the
+  /// remainder has FIVE reasons:
+  ///
+  ///   n_unknown_fn     the callee resolved to a CROSS-FILE VALUE whose
+  ///                    signature was never read (a `.mbti` name)
+  ///   n_not_callable   the callee resolved to something that is NOT a function
+  ///                    -- and this one REPORTS (FOpMismatch)
+  ///   n_unresolved     the name did not resolve at all -- and this one reports
+  ///                    too (FUndefinedName, demoted to a notice in 0508)
+  ///   n_method_call    a METHOD call: this lens has no signature for a method
+  ///   n_dotdot_call    a `..` chain link: this lens has no signature for it
+  ///
+  /// THE TWO THE SENTENCE NAMED ARE THE TWO THAT SPEAK. The other three are
+  /// SILENT, and they are the majority. So the published remainder was mostly
+  /// the classes nobody could name, and a reader could not tell which.
+  ///
+  /// SITE-BASED, like `n_calls` and `n_checked`: a call in a block's tail
+  /// position is typed twice and is one site. The five sum to the remainder,
+  /// and the sum is printed so a reader can check it.
+  n_unknown_fn : Int32
+  n_not_callable : Int32
+  n_unresolved : Int32
+  n_method_call : Int32
+  n_dotdot_call : Int32
 }
 
 ///|

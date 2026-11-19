@@ -41,6 +41,13 @@ fn v_parsed() -> @sa.Verdict {
     n_checked: 0,
     n_sig_available: 0,
     n_arity_agrees: 0,
+    // 0616. This fixture models no split: it is a hand-built verdict, and the
+    // five reasons are the LENS's measurement, not this fixture's.
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
   }
 }
 
@@ -68,6 +75,13 @@ fn v_partial_with_findings() -> @sa.Verdict {
     n_checked: 0,
     n_sig_available: 0,
     n_arity_agrees: 0,
+    // 0616. This fixture models no split: it is a hand-built verdict, and the
+    // five reasons are the LENS's measurement, not this fixture's.
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
   }
 }
 
@@ -95,6 +109,13 @@ fn v_partial_empty() -> @sa.Verdict {
     n_checked: 0,
     n_sig_available: 0,
     n_arity_agrees: 0,
+    // 0616. This fixture models no split: it is a hand-built verdict, and the
+    // five reasons are the LENS's measurement, not this fixture's.
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
   }
 }
 
@@ -421,6 +442,13 @@ fn v_partial_at(path : String, reason : String) -> @sa.Verdict {
     n_checked: 0,
     n_sig_available: 0,
     n_arity_agrees: 0,
+    // 0616. This fixture models no split: it is a hand-built verdict, and the
+    // five reasons are the LENS's measurement, not this fixture's.
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
   }
 }
 

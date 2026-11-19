@@ -358,6 +358,19 @@ pub(all) struct Verdict {
   /// inferred at their usage points, and how many of them were right.
   n_sig_available : Int32
   n_arity_agrees : Int32
+  /// 0616. THE SPLIT OF THE REMAINER, five reasons, five counters. The
+  /// remainder `n_calls - n_checked` is ONE number and the sentence beside it
+  /// named TWO of the five reasons; MEASURED 0616-11-21 it has FIVE, and the
+  /// two the sentence named are the only two that REPORT. The other three are
+  /// silent, so the remainder was mostly the classes a reader could not name.
+  ///
+  /// SITE-BASED, like `n_calls` and `n_checked`. The five sum to the
+  /// remainder, and the sum is printed so a reader can check it.
+  n_unknown_fn : Int32
+  n_not_callable : Int32
+  n_unresolved : Int32
+  n_method_call : Int32
+  n_dotdot_call : Int32
 }
 
 ///|
@@ -411,6 +424,19 @@ pub struct Summary {
   /// points, and how many of those inferences were RIGHT.
   n_sig_available : Int32
   n_arity_agrees : Int32
+  /// 0616. THE SPLIT OF THE REMAINER, five reasons, five counters. The
+  /// remainder `n_calls - n_checked` is ONE number and the sentence beside it
+  /// named TWO of the five reasons; MEASURED 0616-11-21 it has FIVE, and the
+  /// two the sentence named are the only two that REPORT. The other three are
+  /// silent, so the remainder was mostly the classes a reader could not name.
+  ///
+  /// SITE-BASED, like `n_calls` and `n_checked`. The five sum to the
+  /// remainder, and the sum is printed so a reader can check it.
+  n_unknown_fn : Int32
+  n_not_callable : Int32
+  n_unresolved : Int32
+  n_method_call : Int32
+  n_dotdot_call : Int32
 }
 
 ///|
@@ -433,6 +459,11 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
   let mut n_checked = 0
   let mut n_sig_available = 0
   let mut n_arity_agrees = 0
+  let mut n_unknown_fn = 0
+  let mut n_not_callable = 0
+  let mut n_unresolved = 0
+  let mut n_method_call = 0
+  let mut n_dotdot_call = 0
   for v in verdicts {
     let n = v.findings.length()
     total += v.total
@@ -442,6 +473,11 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
     n_checked += v.n_checked
     n_sig_available += v.n_sig_available
     n_arity_agrees += v.n_arity_agrees
+    n_unknown_fn += v.n_unknown_fn
+    n_not_callable += v.n_not_callable
+    n_unresolved += v.n_unresolved
+    n_method_call += v.n_method_call
+    n_dotdot_call += v.n_dotdot_call
     // Per-file contribution to the pre-boundary totals. When n == 0 and the
     // file is partial, v.notices is 0 (notices are a count within findings),
     // so the addition below is a no-op and does not skew the totals.
@@ -472,6 +508,11 @@ pub fn aggregate(verdicts : Array[Verdict]) -> Summary {
     n_checked,
     n_sig_available,
     n_arity_agrees,
+    n_unknown_fn,
+    n_not_callable,
+    n_unresolved,
+    n_method_call,
+    n_dotdot_call,
   }
 }
 
@@ -545,11 +586,20 @@ pub fn metrics_lines(
   out.push(
     "METRICS\tread\tfiles=\{n_files}\tparsed=\{s.parsed_files}\tpartial=\{s.partial_files}\tunderstood=\{pct / 10}.\{pct % 10}%",
   )
-  // THE TWO CLASSES THE RATIO LEAVES OUT, named honestly. `n_calls - n_checked`
-  // is the set of sites this lens visited and did not verify, and it splits into
-  // two: a callee that resolved to something NOT CALLABLE (reported as
+  // THE CLASSES THE RATIO LEAVES OUT, named honestly. `n_calls - n_checked`
+  // is the set of sites this lens visited and did not verify.
+  //
+  // 0616. AND IT IS NOT TWO CLASSES. This comment said so for eight releases
+  // -- "a callee that resolved to something NOT CALLABLE (reported as
   // `FOpMismatch`) and a callee that did not resolve at all (reported as
-  // `FUndefinedName`). Neither is type-lens blindness -- the analyzer made a
+  // `FUndefinedName`)" -- and it was wrong. MEASURED, one construct per file
+  // against a baseline of one checkable call, the remainder has FIVE reasons.
+  // The two this comment named are the only two that REPORT, and the other
+  // three are silent: a cross-file value whose signature was never read, a
+  // METHOD call, and a `..` chain link. So the published remainder was mostly
+  // the classes a reader could not name, and a reader could not tell which.
+  //
+  // The two that report are not type-lens blindness -- the analyzer made a
   // statement about both -- so folding them into "unchecked" would charge one
   // defect twice.
   //
@@ -571,7 +621,18 @@ pub fn metrics_lines(
     "\{t / 10}.\{t % 10}%"
   }
   out.push(
-    "METRICS\tcalls\tsites=\{s.n_calls}\tchecked=\{s.n_checked}\tnot-verified=\{other}\tchecked-share=\{share}\t(sites = call sites the lens REACHED, so the share is an UPPER bound; not-verified = callee not callable, or name unresolved; SUMMARY's unchecked= counts VISITS undeduplicated, so the two are not arithmetically related)",
+    "METRICS\tcalls\tsites=\{s.n_calls}\tchecked=\{s.n_checked}\tnot-verified=\{other}\tchecked-share=\{share}\t(sites = call sites the lens REACHED, so the share is an UPPER bound; not-verified = the FIVE reasons the `unverified-split` row names -- MEASURED 0616, the two this line used to name are only two of the five; SUMMARY's unchecked= counts VISITS undeduplicated, so the two are not arithmetically related)",
+  )
+  // 0616. THE SPLIT, and the five counters are the ONLY way to know which part
+  // of the remainder is which. The sum is printed so that the row CHECKS
+  // itself: it must equal the remainder the `calls` row prints.
+  let split_sum = s.n_unknown_fn +
+    s.n_not_callable +
+    s.n_unresolved +
+    s.n_method_call +
+    s.n_dotdot_call
+  out.push(
+    "METRICS\tunverified-split\tsig-unknown=\{s.n_unknown_fn}\tnot-callable=\{s.n_not_callable}\tunresolved=\{s.n_unresolved}\tmethod=\{s.n_method_call}\tdotdot=\{s.n_dotdot_call}\tsum=\{split_sum}\tnot-verified=\{other}\t(the FIVE reasons the remainder can have, MEASURED 0616; sig-unknown = the callee is a cross-file value whose signature was never read, not-callable = the callee resolved to something that is not a function, unresolved = the name did not resolve at all, method = a method call, dotdot = a `..` chain link; not-callable and unresolved REPORT, the other three are SILENT; sum must equal not-verified)",
   )
   // 0603. THE DECK'S p.40 PAIR. How many of the calls the lens could not check
   // have a target the `.mbti` DECLARES A SIGNATURE FOR, and how many of those
@@ -1482,6 +1543,11 @@ async fn analyze(
           // and no target was inferred.
           n_sig_available: 0,
           n_arity_agrees: 0,
+          n_unknown_fn: 0,
+          n_not_callable: 0,
+          n_unresolved: 0,
+          n_method_call: 0,
+          n_dotdot_call: 0,
         },
         @core.CtxLedger::zero(),
       )
@@ -1509,6 +1575,11 @@ async fn analyze(
           // and no target was inferred.
           n_sig_available: 0,
           n_arity_agrees: 0,
+          n_unknown_fn: 0,
+          n_not_callable: 0,
+          n_unresolved: 0,
+          n_method_call: 0,
+          n_dotdot_call: 0,
         },
         @core.CtxLedger::zero(),
       )
@@ -1558,6 +1629,11 @@ async fn analyze(
           // and no target was inferred.
           n_sig_available: 0,
           n_arity_agrees: 0,
+          n_unknown_fn: 0,
+          n_not_callable: 0,
+          n_unresolved: 0,
+          n_method_call: 0,
+          n_dotdot_call: 0,
         },
         r.ctx,
       )
@@ -1614,6 +1690,11 @@ async fn analyze(
           n_checked: r.n_checked,
           n_sig_available: r.n_sig_available,
           n_arity_agrees: r.n_arity_agrees,
+          n_unknown_fn: r.n_unknown_fn,
+          n_not_callable: r.n_not_callable,
+          n_unresolved: r.n_unresolved,
+          n_method_call: r.n_method_call,
+          n_dotdot_call: r.n_dotdot_call,
         },
         r.ctx,
       )

@@ -87,6 +87,13 @@ fn mk_v0611(
     n_checked: checked,
     n_sig_available: sig_available,
     n_arity_agrees: arity_agrees,
+    // 0616. This fixture models no split: it is a hand-built verdict, and the
+    // five reasons are the LENS's measurement, not this fixture's.
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
   }
 }
 

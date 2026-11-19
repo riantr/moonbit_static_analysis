@@ -106,6 +106,36 @@ priv struct Infer {
   /// that re-measures the corpora rather than to the increment that made the
   /// signature reachable.
   mut n_arity_agrees : Int32
+  /// 0616. THE SPLIT OF `n_calls - n_checked`, FIVE counters, one per reason.
+  ///
+  /// THE NUMBER WAS ONE, AND THE SENTENCE NAMED TWO. `n_calls - n_checked` is
+  /// the set of call SITES this lens visited and did not verify, and for eight
+  /// releases both the printed line and the doc beside it said it was TWO
+  /// classes: "callee not callable, or name unresolved". MEASURED 0616-11-21,
+  /// one construct per file against a baseline of one checkable call, the
+  /// remainder has FIVE reasons:
+  ///
+  ///   n_unknown_fn     the callee resolved to a CROSS-FILE VALUE whose
+  ///                    signature was never read (a `.mbti` name)
+  ///   n_not_callable   the callee resolved to something that is NOT a function
+  ///                    -- and this one REPORTS (FOpMismatch)
+  ///   n_unresolved     the name did not resolve at all -- and this one reports
+  ///                    too (FUndefinedName, demoted to a notice in 0508)
+  ///   n_method_call    a METHOD call: this lens has no signature for a method
+  ///   n_dotdot_call    a `..` chain link: this lens has no signature for it
+  ///
+  /// THE TWO THE SENTENCE NAMED ARE THE TWO THAT SPEAK. The other three are
+  /// SILENT, and they are the majority. So the published remainder was mostly
+  /// the classes nobody could name, and a reader could not tell which.
+  ///
+  /// SITE-BASED, like `n_calls` and `n_checked`: a call in a block's tail
+  /// position is typed twice and is one site. The five sum to the remainder,
+  /// and the sum is printed so a reader can check it.
+  mut n_unknown_fn : Int32
+  mut n_not_callable : Int32
+  mut n_unresolved : Int32
+  mut n_method_call : Int32
+  mut n_dotdot_call : Int32
   /// The call sites already counted, keyed by the node's own start position.
   /// Two distinct call sites cannot share one: a start line and column
   /// identify a node in a file, which is what makes the span a safe key.
@@ -148,6 +178,11 @@ fn new_infer(extern_iface : @core.IfaceSymTab, partial : Bool) -> Infer {
     n_checked: 0,
     n_sig_available: 0,
     n_arity_agrees: 0,
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
     seen_sites: Map([]),
   }
 }
@@ -447,6 +482,11 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
           ret
         }
         Some(TUnknownFn(_)) => {
+          // 0616. THE SPLIT, SITE-BASED: the "a cross-file value whose
+          // signature was never read" class.
+          if first {
+            self.n_unknown_fn += 1
+          }
           // Known to be a value, signature not read: the call is real, the
           // arguments are unchecked, and the result is unknown. Deliberately
           // does NOT fall through to the "not callable" arm below.
@@ -489,6 +529,11 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
           TUnknown
         }
         Some(t) => {
+          // 0616. THE SPLIT, SITE-BASED: the "the callee is not a function"
+          // class. It is one of the two that REPORT.
+          if first {
+            self.n_not_callable += 1
+          }
           // `TUnknown` here means the name resolved to something whose type
           // we could not determine — a cross-file type hit, most often.
           // Calling it is therefore not evidence of anything. Reporting
@@ -507,7 +552,14 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
           }
           TUnknown
         }
-        None => TUnknown
+        None => {
+          // 0616. THE SPLIT, SITE-BASED: the "the name did not resolve at all"
+          // class. It is the other of the two that REPORT.
+          if first {
+            self.n_unresolved += 1
+          }
+          TUnknown
+        }
       }
     }
     // A method call. The receiver and every argument are typed, so a wrong
@@ -520,8 +572,12 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // The result is TUnknown rather than the receiver's type. `x.f()` is not
     // necessarily an `x`.
     EMethodCall(base, _, args, _) => {
-      if self.mark_site(e.span) {
+      let first = self.mark_site(e.span)
+      if first {
         self.n_calls += 1
+        // 0616. THE SPLIT, SITE-BASED: a method call is a class of its own,
+        // because this lens has no signature for a method at all.
+        self.n_method_call += 1
       }
       if !base.is_qualifier() {
         ignore(self.ty_of(base, TUnknown))
@@ -555,8 +611,12 @@ fn Infer::ty_of(self : Infer, e : @ast.Expr, hint : Ty) -> Ty {
     // A qualifier receiver (`@pkg..f(..)`) is typed as TUnknown: `@pkg` is a
     // package and not a value, so there is no receiver type to report.
     EDotDot(base, _, args, _) => {
-      if self.mark_site(e.span) {
+      let first = self.mark_site(e.span)
+      if first {
         self.n_calls += 1
+        // 0616. THE SPLIT, SITE-BASED: a `..` link is a class of its own, for
+        // the same reason a method call is.
+        self.n_dotdot_call += 1
       }
       // 0507. The same disclosure as `EMethodCall`: a `..` link's signature is
       // not read either, so the call is counted as UNCHECKED.
@@ -1291,5 +1351,10 @@ pub fn infer_full(
     n_checked: inf.n_checked,
     n_sig_available: inf.n_sig_available,
     n_arity_agrees: inf.n_arity_agrees,
+    n_unknown_fn: inf.n_unknown_fn,
+    n_not_callable: inf.n_not_callable,
+    n_unresolved: inf.n_unresolved,
+    n_method_call: inf.n_method_call,
+    n_dotdot_call: inf.n_dotdot_call,
   }
 }

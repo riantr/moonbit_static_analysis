@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = 'Continue'
+﻿param([string]$Root = '')
+$ErrorActionPreference = 'Continue'
 # Verify the README restructure.
 #
 # WHAT THIS CHECKS, and each item is a thing that can be WRONG:
@@ -20,7 +21,7 @@
 # red was a stage added to `release.ps1` that the READMEs did not name: the
 # gate went RED until both named it. A switch that re-read the same documents
 # would only prove that the checker can read its own inputs.
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $fail = 0
 
@@ -498,6 +499,73 @@ if (-not $coreSurfM.Success) {
   Write-Output ('  (release.ps1 pins: moonbit_core native surface declared ' + $coreSurfDeclared + ', covered ' + $coreSurfCovered + ', missing ' + $coreSurfMissing + ')')
 }
 
+# 0616. THE SPLIT OF THE UNVERIFIED CALL SITES, in the two pins the corpus
+# stage checks against the ANALYZER's own `unverified-split` row.
+#
+# TWO PINS AND NOT ONE, because the READMEs publish TWO numbers: the seven
+# corpora on their own, and this repository's own source on their own.
+#
+# AND THE FIVE REASONS HAVE TO ADD UP TO THE REMAINDER THEY SPLIT. A table
+# whose rows do not add up is a list of numbers that does not split anything,
+# and the analyzer's own row checks the same identity -- so this gate checks it
+# too, from the pins.
+$uscM = [regex]::Match($relTxt2, "\`$UNVERIFIED_SPLIT_CORPORA\s*=\s*'([^']*)'")
+$useM = [regex]::Match($relTxt2, "\`$UNVERIFIED_SPLIT_EIGHT\s*=\s*'([^']*)'")
+$splitReasons = @('sig-unknown','not-callable','unresolved','method','dotdot')
+$splitCorp = @{}
+$splitEight = @{}
+$splitTree = @{}
+$splitPctTreeSilent = '?'
+$splitPctCorpSilent = '?'
+$splitPctTreeMethod = '?'
+if (-not ($uscM.Success -and $useM.Success)) {
+  Write-Output '  FAIL: release.ps1 no longer carries the unverified-split pins.'
+  $fail++
+} else {
+  foreach ($p in ($uscM.Groups[1].Value -split '\|')) {
+    $kv = $p -split '='
+    $splitCorp[$kv[0]] = [int]$kv[1]
+  }
+  foreach ($p in ($useM.Groups[1].Value -split '\|')) {
+    $kv = $p -split '='
+    $splitEight[$kv[0]] = [int]$kv[1]
+  }
+  $corpSum = 0
+  $eightSum = 0
+  foreach ($k in $splitReasons) {
+    $corpSum += $splitCorp[$k]
+    $eightSum += $splitEight[$k]
+    $splitTree[$k] = $splitEight[$k] - $splitCorp[$k]
+  }
+  # AND THE REMAINDER ITSELF, which is not one of the five reasons -- it is what
+  # they split, and the tree's own remainder is the difference between the two
+  # pins' remainders.
+  $splitTree['not-verified'] = $splitEight['not-verified'] - $splitCorp['not-verified']
+  if ($corpSum -ne $splitCorp['not-verified']) {
+    Write-Output ('  FAIL: the seven corpora split the remainder into ' + $corpSum + ' and the remainder is ' + $splitCorp['not-verified'] + '.')
+    $fail++
+  }
+  if ($eightSum -ne $splitEight['not-verified']) {
+    Write-Output ('  FAIL: the eight trees split the remainder into ' + $eightSum + ' and the remainder is ' + $splitEight['not-verified'] + '.')
+    $fail++
+  }
+  # AND THE THREE SHARES THE READMEs PUBLISH, derived from the same pins.
+  #
+  # THE SILENT REASONS ARE THREE OF THE FIVE -- the two that REPORT are
+  # not-callable and unresolved -- so the silent share is the other three.
+  $silentReasons = @('sig-unknown','method','dotdot')
+  $treeSilent = 0
+  $corpSilent = 0
+  foreach ($k in $silentReasons) {
+    $treeSilent += $splitTree[$k]
+    $corpSilent += $splitCorp[$k]
+  }
+  $splitPctTreeSilent = [math]::Round(100.0 * $treeSilent / $splitTree['not-verified'], 1, [System.MidpointRounding]::AwayFromZero).ToString('0.0')
+  $splitPctCorpSilent = [math]::Round(100.0 * $corpSilent / $splitCorp['not-verified'], 1, [System.MidpointRounding]::AwayFromZero).ToString('0.0')
+  $splitPctTreeMethod = [math]::Round(100.0 * $splitTree['method'] / $splitTree['not-verified'], 1, [System.MidpointRounding]::AwayFromZero).ToString('0.0')
+  Write-Output ('  (release.ps1 pins: the seven corpora split ' + $splitCorp['not-verified'] + ', the eight trees ' + $splitEight['not-verified'] + ', this tree ' + $splitTree['not-verified'] + ')')
+}
+
 # The kind -> the label each README prints it under. The labels are PRESENTATION
 # and the numbers are the MEASUREMENT, so the map lives here and the numbers
 # come from the pin.
@@ -566,6 +634,48 @@ $more.Add(@{ F = 'README.md';    S = ('| `moonbit_core` — the standard library
 $more.Add(@{ F = 'README.md';    S = ('| `async` | 10 | 0 | 10 |'); N = 'the async native surface row' })
 $more.Add(@{ F = 'README.zh.md'; S = ('| **八棵树** | **' + $surfDeclared + '** | **' + $surfCovered + '** | **' + $surfMissing + '** |'); N = 'the eight-tree native surface (zh)' })
 $more.Add(@{ F = 'README.zh.md'; S = ('| `moonbit_core`——标准库自己 | **' + $coreSurfDeclared + '** | **' + $coreSurfCovered + '** | **' + $coreSurfMissing + '** |'); N = 'the standard library native surface row (zh)' })
+# 0616. THE SPLIT OF THE UNVERIFIED CALL SITES, in the READMEs' own tables. The
+# labels are PRESENTATION and the numbers are the MEASUREMENT, so the labels
+# live here and the numbers come from the two pins.
+#
+# AND THE WHOLE ROW IS CHECKED, not just the number: a row whose label changed
+# and whose numbers did not is a different table, and a reader would be reading
+# a table the gate has never seen.
+if ($splitCorp.Count -gt 0) {
+  $tSig = $splitTree['sig-unknown'].ToString('N0')
+  $tNot = $splitTree['not-callable'].ToString('N0')
+  $tUnr = $splitTree['unresolved'].ToString('N0')
+  $tMet = $splitTree['method'].ToString('N0')
+  $tDot = $splitTree['dotdot'].ToString('N0')
+  $tRem = $splitTree['not-verified'].ToString('N0')
+  $cSig = $splitCorp['sig-unknown'].ToString('N0')
+  $cNot = $splitCorp['not-callable'].ToString('N0')
+  $cUnr = $splitCorp['unresolved'].ToString('N0')
+  $cMet = $splitCorp['method'].ToString('N0')
+  $cDot = $splitCorp['dotdot'].ToString('N0')
+  $cRem = $splitCorp['not-verified'].ToString('N0')
+  $more.Add(@{ F = 'README.md';    S = ('| a method call — the lens has no signature for a method | **' + $tMet + '** | **' + $cMet + '** | silent |'); N = 'the split: method calls (en)' })
+  $more.Add(@{ F = 'README.md';    S = ('| a callee that is not callable | **' + $tNot + '** | **' + $cNot + '** | reports (`MSA-008`) |'); N = 'the split: not-callable (en)' })
+  $more.Add(@{ F = 'README.md';    S = ('| a cross-file value whose signature was never read | **' + $tSig + '** | **' + $cSig + '** | silent |'); N = 'the split: sig-unknown (en)' })
+  $more.Add(@{ F = 'README.md';    S = ('| a `..` chain link — the lens has no signature for it | **' + $tDot + '** | **' + $cDot + '** | silent |'); N = 'the split: dotdot (en)' })
+  $more.Add(@{ F = 'README.md';    S = ('| a name that did not resolve at all | **' + $tUnr + '** | **' + $cUnr + '** | reports (`MSA-002`) |'); N = 'the split: unresolved (en)' })
+  $more.Add(@{ F = 'README.md';    S = ('| **the remainder** | **' + $tRem + '** | **' + $cRem + '** | |'); N = 'the split: the remainder (en)' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('| 方法调用——这个透镜没有方法的签名 | **' + $tMet + '** | **' + $cMet + '** | 哑 |'); N = 'the split: method calls (zh)' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('| 被调者不可调用 | **' + $tNot + '** | **' + $cNot + '** | 报（`MSA-008`） |'); N = 'the split: not-callable (zh)' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('| 跨文件的值，签名从来没读过 | **' + $tSig + '** | **' + $cSig + '** | 哑 |'); N = 'the split: sig-unknown (zh)' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('| `..` 链——这个透镜也没有它的签名 | **' + $tDot + '** | **' + $cDot + '** | 哑 |'); N = 'the split: dotdot (zh)' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('| 名字压根没解析出来 | **' + $tUnr + '** | **' + $cUnr + '** | 报（`MSA-002`） |'); N = 'the split: unresolved (zh)' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('| **剩下部分** | **' + $tRem + '** | **' + $cRem + '** | |'); N = 'the split: the remainder (zh)' })
+  # AND THE THREE SHARES, and the eight-tree totals the prose quotes.
+  $more.Add(@{ F = 'README.md';    S = ('**' + $splitPctTreeSilent + ' %** of this tree''s ' + $tRem + ' unverified call sites are silent'); N = 'the share of the tree''s remainder that is silent' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('**' + $splitPctTreeSilent + ' %** 是哑的'); N = 'the share of the tree''s remainder that is silent (zh)' })
+  $more.Add(@{ F = 'README.md';    S = ('corpora''s ' + $cRem + ' are'); N = 'the share of the corpora''s remainder that is silent' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('语料那 ' + $cRem + ' 个里 **' + $splitPctCorpSilent + ' %**'); N = 'the share of the corpora''s remainder that is silent (zh)' })
+  $more.Add(@{ F = 'README.md';    S = ('**' + $splitPctTreeMethod + ' %** of this tree''s remainder is one reason'); N = 'the share of the tree''s remainder that is one reason' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('本仓库剩下部分的 **' + $splitPctTreeMethod + ' %** 是老那句话从来没点过的同一个原因'); N = 'the share of the tree''s remainder that is one reason (zh)' })
+  $more.Add(@{ F = 'README.md';    S = ('**' + $splitEight['not-verified'].ToString('N0') + '** unverified call sites, of which **' + $splitEight['method'].ToString('N0') + '** are method calls'); N = 'the eight-tree remainder and its method count' })
+  $more.Add(@{ F = 'README.zh.md'; S = ('是 **' + $splitEight['not-verified'].ToString('N0') + '** 个没被验证的调用点，其中 **' + $splitEight['method'].ToString('N0') + '** 个是方法调用'); N = 'the eight-tree remainder and its method count (zh)' })
+}
 $more.Add(@{ F = 'README.zh.md'; S = ('| `async` | 10 | 0 | 10 |'); N = 'the async native surface row (zh)' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count' })

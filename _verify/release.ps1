@@ -533,6 +533,45 @@ function Get-IfaceSig {
   }
 }
 
+# 0616. THE SPLIT OF THE UNVERIFIED CALL SITES, as the analyzer prints it: five
+# counters, one per reason the remainder can have.
+#
+# MEASURED 0616-11-20, one construct per file against a baseline of one
+# checkable call, `n_calls - n_checked` has FIVE reasons -- and the sentence
+# beside it named TWO of them for eight releases. The two it named are the only
+# two that REPORT; the other three are SILENT, and they are the majority.
+#
+# IT IS READ FROM THE ANALYZER'S OWN LINE, for the reason every other number in
+# this file is not recomputed: a second implementation of the measurement is a
+# second number that can disagree with the first.
+function Get-UnverifiedSplit {
+  param([string]$Text)
+  $m = [regex]::Match($Text, '(?m)^METRICS\tunverified-split\tsig-unknown=(\d+)\tnot-callable=(\d+)\tunresolved=(\d+)\tmethod=(\d+)\tdotdot=(\d+)\tsum=(\d+)\tnot-verified=(\d+)')
+  if (-not $m.Success) { return $null }
+  return [pscustomobject]@{
+    SigUnknown = [int]$m.Groups[1].Value
+    NotCallable = [int]$m.Groups[2].Value
+    Unresolved = [int]$m.Groups[3].Value
+    Method = [int]$m.Groups[4].Value
+    DotDot = [int]$m.Groups[5].Value
+    Sum = [int]$m.Groups[6].Value
+    NotVerified = [int]$m.Groups[7].Value
+  }
+}
+
+# 0616. THE SPLIT, AS THE PINS SPELL IT. One string, five fields and the
+# remainder, in the order the analyzer prints them -- so a pin and a measurement
+# are read the same way round.
+function Get-SplitString {
+  param($Split)
+  return ('sig-unknown=' + $Split.SigUnknown +
+          '|not-callable=' + $Split.NotCallable +
+          '|unresolved=' + $Split.Unresolved +
+          '|method=' + $Split.Method +
+          '|dotdot=' + $Split.DotDot +
+          '|not-verified=' + $Split.NotVerified)
+}
+
 # 0604. THE DECK'S p.57 QUESTION, as the analyzer prints it: the hand-modelled
 # native surface measured against the DECLARED one.
 #
@@ -828,7 +867,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # (it carried 2091). The nine notices are the nine new test declarations,
 # and they are ALL AGGREGATED: a test declaration sits outside every
 # function's extent, so the PRINTED half of the split did not move.
-$NOTICE_TOTAL = '24096'
+$NOTICE_TOTAL = '24110'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -964,7 +1003,7 @@ $NOTICE_TOTAL = '24096'
 # every function's extent, so they are counted by shape and not printed. The
 # corpora did not move.
 $NOTICE_SPLIT_PRINTED = '4021'
-$NOTICE_SPLIT_AGGREGATED = '20075'
+$NOTICE_SPLIT_AGGREGATED = '20089'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -1125,10 +1164,10 @@ $NOTICE_SPLIT_AGGREGATED = '20075'
 # gate row compares the files the scan READ with the files the committed
 # tree HOLDS, so an untracked file under `src/` can never move this number
 # again without the gate naming it.
-$SELF_FILES = '278'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1786|try expression=1|type declaration=7'
+$SELF_FILES = '280'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1800|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
-$SELF_AGGREGATED = '1956'
+$SELF_AGGREGATED = '1970'
 #   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
 #                   the hand-modelled native surface measured against the
 #                   DECLARED one.
@@ -1195,6 +1234,19 @@ $SURFACE_MISSING = '90'
 # pair is about.
 $IFACE_SIG_AVAILABLE = '2943'
 $IFACE_SIG_AGREES = '2282'
+# 0616. THE SPLIT OF THE UNVERIFIED CALL SITES, pinned over the SEVEN CORPORA
+# and over the EIGHT TREES (the corpora and this repository's own source).
+#
+# TWO PINS AND NOT ONE, because the README publishes TWO numbers: the seven
+# corpora on their own, and this repository's own source on its own. One pin
+# would leave one of them un-measured, and a published number with nothing that
+# re-measures it is a number that drifts.
+#
+# MEASURED 0616-11-20 with the 0616 analyzer over the seven pinned corpora:
+# 31,058 not-verified call sites, of which 21,350 are a METHOD call -- the
+# class the old sentence never named, and 68.7 % of the whole.
+$UNVERIFIED_SPLIT_CORPORA = 'sig-unknown=1941|not-callable=7647|unresolved=16|method=21350|dotdot=104|not-verified=31058'
+$UNVERIFIED_SPLIT_EIGHT = 'sig-unknown=2132|not-callable=8145|unresolved=16|method=25150|dotdot=104|not-verified=35547'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -1445,7 +1497,7 @@ $SUPPOFF_PARAM = '1339'
 # (unchanged), undef_operands 202 (unchanged), dead_blocks 470 (unchanged),
 # undef_uses 1295 (unchanged). ONE field moved, and it is the one that
 # counts files.
-$SSA_COST = 'files=260|unreadable=0|functions=1433|converted=5|partial=1428|declined=6522|instructions=9210|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
+$SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|declined=6533|instructions=9219|variables=1171|versions=2808|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1495,7 +1547,7 @@ $SSA_COST = 'files=260|unreadable=0|functions=1433|converted=5|partial=1428|decl
 # every `check_*` gate. It changed NO source file either -- the fixtures live
 # under `_verify`, which the self-scan excludes -- so it moved NO notice, and
 # `$SELF_FILES` and `$SSA_COST` are untouched.
-$NARRATIVE_CHAPTERS = '126'
+$NARRATIVE_CHAPTERS = '127'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2024,6 +2076,30 @@ if ($failed.Count -eq 0) {
       $script:selfSigAgrees = $sig.Agrees
       Write-Output ('  the cross-file targets this source could have had: ' +
         $sig.Available + ' available, ' + $sig.Agrees + ' agreeing on the arity')
+    }
+
+    # 0616. THE SPLIT OF THE REMAINDER, over this repository's own source. The
+    # corpus stage adds the seven corpora to these five numbers, so the pin is
+    # the EIGHT-TREE split and this is its own-source half.
+    #
+    # IT IS MEASURED AND NOT ASSERTED, and it is also CHECKED AGAINST ITSELF:
+    # the row's own `sum` has to be the remainder the row splits, or the row is
+    # printing a number that is not the sum of the numbers beside it.
+    $split = Get-UnverifiedSplit $text
+    if ($null -eq $split) {
+      Write-Output '  FAIL: the scan printed no unverified-split metrics line.'
+      $script:stageOk = $false
+      $script:selfSplit = ''
+    } else {
+      $script:selfSplit = Get-SplitString $split
+      if ($split.Sum -ne $split.NotVerified) {
+        Write-Output ('  FAIL: the split row adds up to ' + $split.Sum + ' and the remainder it splits is ' + $split.NotVerified + '.')
+        $script:stageOk = $false
+      }
+      Write-Output ('  the ' + $split.NotVerified + ' call sites this lens could not verify, by reason: ' +
+        $split.SigUnknown + ' a cross-file value, ' + $split.NotCallable + ' not callable, ' +
+        $split.Unresolved + ' unresolved, ' + $split.Method + ' a method call, ' +
+        $split.DotDot + ' a `..` link')
     }
 
     # 0604. THE DECK'S p.57 QUESTION, over this repository's own source. The
@@ -2627,8 +2703,69 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4b  the blind-spot rate ---------------------------------------------------
+# `check_blindspot_rate.ps1` pins the RATE at which a planted defect is
+# invisible: the defect sits inside a `test` body, and a `test` body is outside
+# the analyzed subset. MEASURED 0616: 0 of 6 -- while the same six defects in a
+# `fn` body are 6 of 6.
+#
+# AND THE PIN IS NOT VACUOUS. Its self-test takes a COPY of the fixture set,
+# takes the `test` wrapper OFF the copy, and requires the very same defects to
+# be DETECTED -- each of them as its own family. A count of zero can mean "the
+# defects are invisible" or "the analyzer is blind", and the self-test is what
+# tells the two apart.
+#
+# It is placed here, with the other tree-reading gates and BEFORE the mutation
+# gates, for the same reason as the family sweep: a gate that reads the tree
+# must not read a mutated one.
+$BR = Join-Path $root '_verify\check_blindspot_rate.ps1'
+if (-not (Test-Path $BR)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_blindspot_rate.ps1'
+  $failed += 'blindspot-rate'
+} else {
+  Stage 'the blind-spot rate: the defects inside a `test` body' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $BR 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|RATE|OK:|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'blindspot-rate' }
+  $stageName = 'the blind-spot rate: the defects inside a `test` body'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'blindspot-rate'
+  }
+}
+if ($failed.Count -eq 0) {
+  Stage 'the blind-spot rate, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $BR -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|SELFTEST|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'blindspot-rate-selftest' }
+  $stageName = 'the blind-spot rate, shown to go red (its own self-test)'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'blindspot-rate-selftest'
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507','0508','0615')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507','0508','0615','0616')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -3453,6 +3590,15 @@ if ($failed.Count -eq 0) {
     # self-scan stage's numbers, because that stage measured them already.
     $sigAvailable = $script:selfSigAvailable
     $sigAgrees = $script:selfSigAgrees
+    # 0616. THE SPLIT, accumulated over the same seven corpora. The own-source
+    # half starts at the self-scan stage's numbers, because that stage measured
+    # them already.
+    $splitSigUnknown = 0
+    $splitNotCallable = 0
+    $splitUnresolved = 0
+    $splitMethod = 0
+    $splitDotDot = 0
+    $splitNotVerified = 0
     # 0604. The deck's p.57 pair, accumulated over the same seven corpora and
     # this repository's own source. The own-source half starts at the
     # self-scan stage's numbers, because that stage measured them already.
@@ -3518,6 +3664,20 @@ if ($failed.Count -eq 0) {
       } else {
         $sigAvailable += $sig.Available
         $sigAgrees += $sig.Agrees
+      }
+      # 0616. THE SPLIT, per corpus. The line is the ANALYZER's own measurement,
+      # read here and not recomputed.
+      $split = Get-UnverifiedSplit $text
+      if ($null -eq $split) {
+        Write-Output ("  [DRIFT ] {0,-16} the scan printed no unverified-split metrics line" -f $k)
+        $drift++
+      } else {
+        $splitSigUnknown += $split.SigUnknown
+        $splitNotCallable += $split.NotCallable
+        $splitUnresolved += $split.Unresolved
+        $splitMethod += $split.Method
+        $splitDotDot += $split.DotDot
+        $splitNotVerified += $split.NotVerified
       }
       # 0604. The hand-modelled native surface against the DECLARED one, per
       # corpus. The line is the ANALYZER's own measurement, read here and not
@@ -3609,6 +3769,54 @@ if ($failed.Count -eq 0) {
     } else {
       Write-Output ('  [MATCH ] the eight trees resolve ' + $sigAvailable + ' cross-file targets and ' +
                     $sigAgrees + ' of their arities agree')
+    }
+    # 0616. THE SPLIT OF THE UNVERIFIED CALL SITES, over the seven corpora and
+    # over the eight trees.
+    #
+    # TWO PINS, because the README publishes two numbers: the seven corpora on
+    # their own, and this repository's own source on its own. AND THE FIVE
+    # REASONS ARE PINNED TOGETHER, because a count of one reason with no count
+    # of the others is a number about nothing -- and because the whole point of
+    # this increment is that the remainder is MOSTLY a reason the old sentence
+    # never named.
+    $splitCorpora = 'sig-unknown=' + $splitSigUnknown +
+                    '|not-callable=' + $splitNotCallable +
+                    '|unresolved=' + $splitUnresolved +
+                    '|method=' + $splitMethod +
+                    '|dotdot=' + $splitDotDot +
+                    '|not-verified=' + $splitNotVerified
+    if ($splitCorpora -ne $UNVERIFIED_SPLIT_CORPORA) {
+      Write-Output ('  [DRIFT ] the seven corpora split the remainder as ' + $splitCorpora)
+      Write-Output ('      pinned : ' + $UNVERIFIED_SPLIT_CORPORA)
+      $drift++
+    } else {
+      Write-Output ('  [MATCH ] the seven corpora split the remainder as ' + $splitCorpora)
+    }
+    # AND THE EIGHT-TREE SPLIT, which is the corpora plus this repository's own
+    # source -- the half the self-scan stage measured.
+    $splitEight = ''
+    if ([string]::IsNullOrWhiteSpace($script:selfSplit)) {
+      Write-Output '  [DRIFT ] the own-source half of the split was not measured by the self-scan stage.'
+      $drift++
+    } else {
+      $selfParts = @{}
+      foreach ($p in ($script:selfSplit -split '\|')) {
+        $kv = $p -split '='
+        $selfParts[$kv[0]] = [int]$kv[1]
+      }
+      $splitEight = 'sig-unknown=' + ($splitSigUnknown + $selfParts['sig-unknown']) +
+                    '|not-callable=' + ($splitNotCallable + $selfParts['not-callable']) +
+                    '|unresolved=' + ($splitUnresolved + $selfParts['unresolved']) +
+                    '|method=' + ($splitMethod + $selfParts['method']) +
+                    '|dotdot=' + ($splitDotDot + $selfParts['dotdot']) +
+                    '|not-verified=' + ($splitNotVerified + $selfParts['not-verified'])
+      if ($splitEight -ne $UNVERIFIED_SPLIT_EIGHT) {
+        Write-Output ('  [DRIFT ] the eight trees split the remainder as ' + $splitEight)
+        Write-Output ('      pinned : ' + $UNVERIFIED_SPLIT_EIGHT)
+        $drift++
+      } else {
+        Write-Output ('  [MATCH ] the eight trees split the remainder as ' + $splitEight)
+      }
     }
     # 0604. THE DECK'S p.57 QUESTION, over the eight trees.
     #

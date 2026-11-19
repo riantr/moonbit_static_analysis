@@ -129,6 +129,11 @@ pub struct Summary {
   n_checked : Int32
   n_sig_available : Int32
   n_arity_agrees : Int32
+  n_unknown_fn : Int32
+  n_not_callable : Int32
+  n_unresolved : Int32
+  n_method_call : Int32
+  n_dotdot_call : Int32
 }
 
 pub(all) struct TreeCost {
@@ -164,6 +169,11 @@ pub(all) struct Verdict {
   n_checked : Int32
   n_sig_available : Int32
   n_arity_agrees : Int32
+  n_unknown_fn : Int32
+  n_not_callable : Int32
+  n_unresolved : Int32
+  n_method_call : Int32
+  n_dotdot_call : Int32
 }
 
 // Type aliases

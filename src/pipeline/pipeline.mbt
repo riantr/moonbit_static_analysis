@@ -73,10 +73,17 @@ pub(all) struct PipelineResult {
   /// The remainder is NOT `n_unchecked`. That count is VISIT-based (0507's, kept
   /// for the reason its own doc gives), while these two are SITE-based: a call
   /// in a block's tail position is typed twice and is one site. So do not
-  /// subtract one from the other -- `n_calls - n_checked` is the two classes
-  /// that are neither checked nor "a call I could not check": a callee that
-  /// resolved to something not callable, and a callee that did not resolve at
-  /// all. Both are claimed by their own families.
+  /// subtract one from the other.
+  ///
+  /// 0616. AND `n_calls - n_checked` IS NOT "TWO CLASSES". This comment said so
+  /// for eight releases and it was wrong. MEASURED, one construct per file
+  /// against a baseline of one checkable call, the remainder has FIVE reasons:
+  /// a callee that resolved to something not callable, a callee that did not
+  /// resolve at all, a callee that resolved to a CROSS-FILE VALUE whose
+  /// signature was never read, a METHOD call, and a `..` chain link. The two
+  /// this comment named are the only two that REPORT; the other three are
+  /// silent, and they are the majority. The five counters are carried beside
+  /// `n_checked`, and their sum is the remainder.
   n_calls : Int32
   n_checked : Int32
   /// 0603. The unchecked calls whose target the `.mbti` declares a signature
@@ -89,6 +96,19 @@ pub(all) struct PipelineResult {
   /// points, and how many of them were right.
   n_sig_available : Int32
   n_arity_agrees : Int32
+  /// 0616. THE SPLIT OF THE REMAINER, five reasons, five counters. The
+  /// remainder `n_calls - n_checked` is ONE number and the sentence beside it
+  /// named TWO of the five reasons; MEASURED 0616-11-21 it has FIVE, and the
+  /// two the sentence named are the only two that REPORT. The other three are
+  /// silent, so the remainder was mostly the classes a reader could not name.
+  ///
+  /// SITE-BASED, like `n_calls` and `n_checked`. The five sum to the
+  /// remainder, and the sum is printed so a reader can check it.
+  n_unknown_fn : Int32
+  n_not_callable : Int32
+  n_unresolved : Int32
+  n_method_call : Int32
+  n_dotdot_call : Int32
   /// 0541. What the BEHAVIORAL lens actually executed, in how many contexts
   /// (§8.3/§8.4). `@core.CtxLedger::zero()` unless the caller asked for it via
   /// `run_tracked`, and zero for every file kind that runs no interp at all --
@@ -399,6 +419,11 @@ fn run_core(
     n_checked: tr.n_checked,
     n_sig_available: tr.n_sig_available,
     n_arity_agrees: tr.n_arity_agrees,
+    n_unknown_fn: tr.n_unknown_fn,
+    n_not_callable: tr.n_not_callable,
+    n_unresolved: tr.n_unresolved,
+    n_method_call: tr.n_method_call,
+    n_dotdot_call: tr.n_dotdot_call,
     ctx,
   }
 }

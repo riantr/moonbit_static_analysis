@@ -9507,7 +9507,7 @@ against this tree, so it cannot rot without the gate saying so.
     row 3  src/sa/profile.mbt:285       fn parse_nosec
     row 3  src/sa/profile.mbt:380       fn apply_nosec
     row 3  src/sa/profile.mbt:425       fn stale_report
-    row 3  src/sa/main.mbt:1369         fn filtered_reports
+    row 3  src/sa/main.mbt:1430         fn filtered_reports
     --- END TRANSFER MAP ---
 
 AND 0613 MOVED THREE OF THE LINES, and the map moved with them. The map is a map of
@@ -9516,6 +9516,24 @@ put 61 lines in front of `parse_nosec` and 23 more between it and `apply_nosec`,
 three `profile.mbt` rows are now 285, 380 and 425. The gate says so BY ITSELF -- a row
 whose line no longer carries its symbol is a FAIL and not a note -- which is the whole
 reason the map is parsed out of the record and resolved against the tree.
+
+AND 0616 MOVED ONE OF THE LINES, and the map moved with it. The five counters of the
+unverified-split went onto four public structs in `src/sa/main.mbt` -- `sa::Verdict`,
+`sa::Summary`, `types::TypeResult`, `pipeline::PipelineResult` -- and into the
+aggregation that builds the `Summary`, and 61 lines went in FRONT of `filtered_reports`,
+so that row is now 1430. The requirement did not move: it is still in
+`src/sa/main.mbt`, and the line still carries `fn filtered_reports`. What moved is the
+DISTANCE to it.
+
+THE GATE SAID SO BY ITSELF. The release gate came back RED on `transfer-scope` -- the one
+stage of ninety that failed -- with
+
+    FAIL: row 3  src/sa/main.mbt:1369 does not carry "fn filtered_reports".
+
+and the honest fix was to RE-MEASURE the map, not to loosen the check. Matching the token
+anywhere in the file instead of at the pinned line would have made this gate green and
+the map wrong, which is the same trade the 0.4.45 sweep already refused: a pin is a
+promise about a PLACE, and a struct field is part of the distance to it.
 
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
 and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
@@ -22691,5 +22709,164 @@ reader cannot find:
 
     gate roster: self-test (eleven injected defects must be caught)
     gate roster: one harness, one list, a count that matches, and every check gate accounted for
+
+
+## 0616: THE REMAINDER WAS ONE NUMBER, AND THE SENTENCE BESIDE IT NAMED TWO OF ITS FIVE REASONS -- AND THE TWO IT NAMED WERE THE ONES THAT REPORT
+
+`QA_TODO.md` T11 asked for the unverified call sites to be split by REASON, and the task's
+own title carried the defect: **4,474**. That number was measured at `e4b3c6b`, and at this
+increment's tree the remainder is **4,489**. It had moved without anybody noticing, because
+the sentence beside it said only "callee not callable, or name unresolved" -- and a sentence
+that names two reasons reads like a reason.
+
+### THE PROBE: ONE CONSTRUCT PER FILE
+
+MEASURED, one construct per file against a baseline of one checkable call, and every one of
+them adds exactly +1 to `not-verified`:
+
+    a method call              -> +1, SILENT
+    a `..` chain link          -> +1, SILENT
+    a cross-file value call    -> +1, SILENT
+    an unresolved call         -> +1, REPORTS MSA-002
+    a not-callable callee      -> +1, REPORTS MSA-008
+
+So `n_calls - n_checked` has **five** reasons, and the two the sentence named for eight
+releases are the only two that **report** anything. The other three are **silent**, and they
+are the majority. The old sentence was not wrong about the two classes it named -- they are
+the two that report -- but it was wrong about the **whole**, and a reader had no way to tell
+which part of the remainder was which.
+
+### THE SPLIT, MEASURED ON EVERY TREE
+
+The analyzer now prints the split as its own `METRICS unverified-split` row, whose `sum` is
+the remainder it splits -- so the row checks ITSELF, and the identity is asserted in
+`src/sa/sa_0616_test.mbt` rather than left to the reader.
+
+    this tree        not-verified 4,489 = method 3,800 + not-callable 498
+                                  + sig-unknown 191 + dotdot 0 + unresolved 0
+    the seven corpora            31,058 = method 21,350 + not-callable 7,647
+                                  + sig-unknown 1,941 + dotdot 104 + unresolved 16
+    the eight trees              35,547 = method 25,150 + not-callable 8,145
+                                  + sig-unknown 2,132 + dotdot 104 + unresolved 16
+
+THE SILENT PART IS THE MAJORITY: **88.9 %** of this tree's remainder and **75.3 %** of the
+corpora's is one of the three reasons the old sentence never named, and **84.7 %** of this
+tree's remainder is ONE of them -- a method call, for which this lens has no signature at
+all. The two reasons that DO report are 11.1 % of this tree's remainder.
+
+AND THE NUMBER IN THE TASK TITLE HAD MOVED. 4,474 was measured at `e4b3c6b`; the tree at
+this increment's parent measures **4,485**, and this increment's own tree measures **4,489**.
+The +4 is this increment's own cost: the new test files add four call sites, none of them
+checkable, all four of them method calls. And they come from the `sa` test file's three
+top-level `fn` HELPERS, not from its `test` bodies -- a `test` body is not analysed at all,
+which is the very region T9 measures, so the file that measures the blind spot does not step
+into it. The `pipeline` test file adds none at all: its one top-level helper only
+concatenates strings.
+
+### T10: THE BLIND SPOT'S CLASS, ANSWERED WITH A PROBE
+
+`LOOP.md`'s own lesson -- a limitation is a conclusion to be checked, not a premise -- is
+why this was asked BEFORE the rate was published. Four measurements, each of which can come
+out only one way (`_verify/settle_0616_blindspot_class.ps1`):
+
+    M1  the CONTROL.  the same defect in a `fn` body   -> MSA-016 DivisionByZero, actionable=1
+    M2  the PROBE.   the same defect in a `test` body  -> actionable=0, one scope-limit notice
+    M3  the STRUCTURE. the calls in a `test` body are not COUNTED as call sites at all
+                      (`sites=3` in a `fn` body, `sites=1` in a `test` body): the body is not
+                      in the analysed PROGRAM -- no AST was built for it
+    M4  the LANGUAGE. `moon check` -- the MoonBit COMPILER -- REPORTS the type error inside
+                      a `test` body, at the line inside the body
+
+THE ANSWER: **A TOOL GAP**, and a specific one. The parser SKIPS a `test` body at the token
+level -- `test` shares the `struct`/`enum`/`trait`/`impl`/`extend` branch, and that branch
+calls `skip_decl_braced` -- so no AST is built for the body at all. The language is not the
+obstacle: the compiler analyses test bodies.
+
+AND THE GAP IS NOT A ONE-LINE FIX, which is why the answer is a CLASS and not a ticket. This
+tool's subset parses a file COMPLETELY before it reports, and a `test` body is a construct
+the parser has never built an AST for. Clearing it means parsing test bodies -- a new
+construct class, needing its own measurement on real files, which is the same reason
+`QA_TODO.md` ranks C1 as a DECISION rather than a task.
+
+### T9: THE RATE, AS A PIN THAT IS NOT VACUOUS
+
+`_verify/check_blindspot_rate.ps1` pins the rate, and the pin is measured rather than
+asserted:
+
+    the six blind-spot fixtures, as they are      files=6 parsed=6 actionable=0 notices=6
+    the same six with the `test` wrapper off      actionable=6, each firing ITS OWN family
+
+The control is green and the fault is red, and the fault is not "a different number": each
+of the six families fires, so the pin is on the WRAPPER and not on a coincidence of counts.
+
+AND THE CALL THAT REACHES THE FUNCTION IS THE FAMILY'S OWN, read out of the family's own
+fixture rather than guessed -- MEASURED, MSA-011's function takes an argument, and a
+wrapper-removed copy that called it with none would have reported MSA-007 (a wrong arity)
+instead of MSA-011. The pin would then have been green for the wrong reason.
+
+### THE PINS THAT MOVED
+
+    $NOTICE_TOTAL             24,096 -> 24,110
+    $NOTICE_SPLIT_AGGREGATED  20,075 -> 20,089
+    $SELF_FILES                  278 -> 280
+    $SELF_NOTICES      test declaration 1,786 -> 1,800
+    $SELF_AGGREGATED         1,956 -> 1,970
+    $SSA_COST         files 260 -> 262, functions 1433 -> 1436, instructions 9210 -> 9219,
+                      variables 1165 -> 1171, versions 2802 -> 2808, declined 6522 -> 6533
+    $NARRATIVE_CHAPTERS         126 -> 127
+
+AND THE ONES THAT DID NOT. `$NOTICE_SPLIT_PRINTED` stays 4,021 and `$SELF_PRINTED` stays
+158: the fourteen new notices are `test` declarations at module top level, so they are
+AGGREGATED and none of them is printed per line. The region-suppression pair is unchanged
+too -- `$SUPPOFF_LOCAL` 701 and `$SUPPOFF_PARAM` 1,339 -- because the new files' helpers use
+every parameter they declare. The new files are TEST files, so their fourteen `test`
+declarations are the fourteen new notices; their four analysed call sites are all METHOD
+calls, in the `sa` test file's three top-level `fn` helpers, and the rest of both files is
+`test` bodies, which is exactly the region T9 measures.
+
+### THE PUBLIC INTERFACE GREW, AND THE VERSION LINE DID NOT
+
+The five counters are carried on four PUBLIC structs -- `types::TypeResult`,
+`pipeline::PipelineResult`, `sa::Verdict` and `sa::Summary` -- so this increment is an
+ADDITIVE public-interface change. The version line stays at **0.5.0**, and the reason is
+the README gate's: `_verify/check_readme_links.ps1` reads the version out of `moon.mod` and
+requires every published document to name the RELEASED version, so a tree that claims a
+version nobody can install is a tree that lies. The next release carries the addition.
+
+### THE STAGE LIST GREW BY TWO
+
+Both READMEs name every stage the release gate runs, and the two new ones are:
+
+    the blind-spot rate: the defects inside a `test` body
+    the blind-spot rate, shown to go red (its own self-test)
+
+They run BEFORE the mutation gates, with the other tree-reading gates, because a gate that
+reads the tree must not read a mutated one.
+
+### AND THREE GATES NAMED THE REPOSITORY INSTEAD OF THE TREE THEY WERE RUN AGAINST
+
+The measurement that found it was a number that did not move. `check_readme_links.ps1`
+was run from a tree that carries this increment -- 89 numbered gates, 519 live mutations --
+and it reported **88** gates and **509** mutations: the numbers of a tree it was not
+reading. Its `$root` was a hardcoded path to this repository, so it read the repository
+whatever directory it was invoked from. Two of this increment's own new gates did the
+same -- `check_blindspot_rate.ps1` and `settle_0616_blindspot_class.ps1` -- so the
+defect was not only pre-existing, it was being copied.
+
+It is the species 0615 recorded: a script that reads a tree must NAME the tree, or a
+run against a scratch copy silently checks the repository instead. And it is why the
+tree this increment measured in was built from the PRE-AMENDMENT commit. The counts that
+tree published -- **476** expecting a kill, **399** naming the test -- were the
+PRE-AMENDMENT counts plus ten, and the amendment is one higher in two of the three
+numbers, because it turned `mutate_0496.ps1`'s M13 from a declared survivor into a
+kill. A tree that carries the amendment publishes **477** and **400**, and the README
+gate derives all three numbers from the gate sources, so it now says the numbers that
+are on disk.
+
+All three gates take an optional `-Root` and fall back to
+`Split-Path -Parent $PSScriptRoot`, which is the pattern `check_family_roster.ps1` and
+`mutate_lib.ps1` already used. `release.ps1` invokes them as separate processes and
+passes nothing, so the release path is unchanged -- and the gate can finally be run
+against the tree it was given.
 
 

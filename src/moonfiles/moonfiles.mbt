@@ -422,6 +422,13 @@ pub fn literate(md : String, file : String) -> @pipeline.PipelineResult {
     // call it never visited has no target to infer.
     n_sig_available: 0,
     n_arity_agrees: 0,
+    // 0616. Same reason again: no type lens ran, so no call was visited, and a
+    // call this lens never visited has no reason at all.
+    n_unknown_fn: 0,
+    n_not_callable: 0,
+    n_unresolved: 0,
+    n_method_call: 0,
+    n_dotdot_call: 0,
     // 0541. Same reason again: a Markdown document runs no behavioral lens, so
     // it executed no function body in any context. Zero is the measurement, not
     // a placeholder.
