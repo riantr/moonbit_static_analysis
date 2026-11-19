@@ -7141,6 +7141,80 @@ fn Parser::parse_atom(self : Parser) -> @ast.Expr {
       )
       { span: sp, kind: @ast.EMatch(subject, []), }
     }
+    // 0615 -- `lexscan`, THE LEXICAL SCAN. `lexscan <subject> [with <strategy>]
+    // { arms }` is MoonBit's STREAMING regex-lexer form of a match: the subject
+    // is a SCANNER -- a `Lexbuf`, a `StringScanner`, or anything implementing
+    // `Scannable` -- and the arms are patterns whose first element is a REGEX
+    // LITERAL.
+    //
+    // IT IS NOT A NAME, and reading it as one produced `undefined variable
+    // 'lexscan'` -- a FALSE POSITIVE on code `moon check` accepts. MEASURED on
+    // the re-pinned corpus (`moonbitlang/core` `0.1.20261117+06da1ed44`), three
+    // sites, and every one of them in ORDINARY CODE rather than in a test body:
+    //
+    //     lexbuf/read_line.mbt:37
+    //     lexbuf/read_line_test.mbt:53
+    //     lexbuf/async_read_line_test.mbt:29
+    //
+    // The OLD corpus is why this lived so long: its `lexscan` uses were all in
+    // places the analyzer never reads -- a `test` body, or a doc comment --
+    // (`lexbuf/lexbuf_test.mbt:18`, `string_scanner/string_scanner.mbt:35`).
+    // The construct was in the corpus the whole time and in no analysed code at
+    // all, which is the same shape the 0496 note records for `radix`: a real
+    // false positive that an inventory of the files the analyzer CAN read
+    // cannot see.
+    //
+    // The grammar is settled against the toolchain, one form per probe
+    // (`_verify/settle_0615_lexscan.ps1`):
+    //
+    //     lexscan s { .. }                ACCEPT
+    //     lexscan s with longest { .. }   ACCEPT
+    //     lexscan s with { .. }           REJECT(4180) -- `with` needs a strategy
+    //     lexscan s                       REJECT(3002) -- the arms are not optional
+    //
+    // IT IS READ LIKE A `match`, and that is a CHANGE from `lexmatch`: the
+    // subject is PARSED (its reads are real), the arms are READ (their reads are
+    // real too), and the value comes from the arms -- which is exactly what
+    // `@ast.EMatch` says. A `lexmatch`'s arms are SKIPPED, because an arm body
+    // ends in `next` and `next` is not in this frontend's statement grammar; a
+    // `lexscan` arm body is an ordinary expression, so there is nothing to stop
+    // the arms from being read.
+    //
+    // THE ARMS ARE READ IN A TRANSACTION, for the reason 0502 gives for a
+    // `match`'s: an arm the subset cannot read would cost the WHOLE FILE, and a
+    // half-read arm list is the arrangement that produced the false positive
+    // this whole change is about. If the read fails the parser is put back
+    // exactly where it was, the braces are skipped, and the notice comes back.
+    TName("lexscan") => {
+      self.skip_seps()
+      let subject = self.parse_expr()
+      // `with <strategy>`. The `with` needs its strategy, so the pair is read
+      // together -- and a `with` that is NOT followed by one of the two
+      // strategies the toolchain accepts is REJECTed by it (4180) and is left
+      // unread here rather than guessed at. The two strategies are `first` (the
+      // default) and `longest`.
+      if self.at_name("with") {
+        let _ = self.bump()
+        self.skip_seps()
+        if self.at_name("longest") || self.at_name("first") {
+          let _ = self.bump()
+        }
+      }
+      self.skip_seps()
+      let snap = self.snapshot()
+      let arms = self.parse_match_arms()
+      if self.error_count != snap.errors {
+        self.restore(snap)
+        self.skip_braces()
+        self.note_skip(
+          "lexscan expression is outside the analyzed subset; it was read but not analysed",
+          sp,
+        )
+        { span: sp, kind: @ast.EMatch(subject, []), }
+      } else {
+        { span: sp, kind: @ast.EMatch(subject, arms), }
+      }
+    }
     TName("fn") =>
       // An anonymous function literal in expression position:
       // `arr.iter(fn(x) { x + 1 })`. The subset has no closure node, so the

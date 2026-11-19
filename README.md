@@ -15,11 +15,11 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1679 files): **1621 parsed, 30 actionable** — 10 of them are
+Measured on `moonbitlang/core` (1766 files): **1705 parsed, 30 actionable** — 10 of them are
 constructs this frontend does not read or an operator it does not model, and the other 20 are
 `MSA-015` dead stores on declarations: a `let` whose value is overwritten before anything reads
 it. That is dead weight in the analysed code rather than a reader gap, and every one of the
-20 was measured against the source it names. The 14 findings demoted in 0.4.38 — names the
+20 was measured against the source it names. The 12 findings demoted in 0.4.38 — names the
 analyzer could not resolve — are counted as notices and are not in that 30. On that same tree
 `moon check --target all` reports **no** diagnostic at all.
 
@@ -89,14 +89,16 @@ supply every one of them when the module is instantiated. `moonx` supplies them 
 async runtime that ships with **your** MoonBit toolchain.
 
 **The set is measured, not stated, and it is a FLOOR rather than a mirror.** The published
-0.5.0 artifact imports **92** symbols; this tree's own release build of the *same source*
-imports **93**, and the two sets differ by **three** symbols: the published build asks for
-`thread_pool/make_openat_job` where the local build asks for `thread_pool/make_fsync_job`
-and `thread_pool/make_open_stat_job`. The reason is that `moon publish` uploads the **source** and
+0.5.0 artifact imports **92** symbols; this tree's own release build of the *same source*,
+rebuilt against the toolchain this host now has, imports **92** as well — and the contract is
+**93**, one wider than either, because a floor has to cover the artifact an older build
+produced as well as the one this build produces. `moon publish` uploads the **source** and
 mooncakes compiles it **server-side**, so the artifact's exact import set belongs to the
-registry's builder toolchain rather than to this repository. The contract is therefore the
-union of both, **94 symbols**, and the gate checks that the artifact's imports are a **subset**
-of it — a symbol *outside* the contract is a failure (that is the direction that drops users),
+registry's builder toolchain rather than to this repository, and the two builders do not
+always agree: against core 0.10.20 this tree's build asked for
+`thread_pool/make_open_stat_job` where the published one asked for
+`thread_pool/make_openat_job`. The gate checks that the artifact's imports are a **subset**
+of the contract — a symbol *outside* it is a failure (that is the direction that drops users),
 and a symbol *inside* it that one build does not ask for is a note.
 
 So the artifact has a **floor**, and the floor is a property of the **toolchain** — and the
@@ -109,9 +111,9 @@ published *bytes* have to fit inside it:
 | the same check against the **published** bytes | `_verify/selfscan_published.ps1` |
 
 The floor is checked against the **toolchain**, and the toolchain has two layers: the bundled
-`moonbitlang/core` declares **215** host externs, and the toolchain's C runtime implements
+`moonbitlang/core` declares **213** host externs, and the toolchain's C runtime implements
 **288** `moonbit_rt_*` names — one of them, `moonbit_rt_make_openat_job`, is the file-IO job
-the registry's builder emitted and **no core declares it**. Together they cover all **94**.
+the registry's builder emitted and **no core declares it**. Together they cover all **93**.
 
 **Since 0.4.45 the runtime comes from `moonbitlang/core/async` — the copy bundled with
 your toolchain — and this package depends on nothing at all.** No `moon.mod` import
@@ -123,7 +125,7 @@ toolchain has" is what broke 0.4.38.
 module name comes from the FFI declaration in the source, and `moonbitlang/core/async`
 still declares its host externs under the name `moonbitlang/async` — so the host
 supplies the same module as before. What changed is the set: **90 → 93**, and the contract is
-now **94** — the floor that serves both the local build and the published one.
+now **93** — the floor that serves both the local build and the published one.
 
 | | symbols |
 |---|---|
@@ -133,12 +135,22 @@ now **94** — the floor that serves both the local build and the published one.
 **AND THE FLOOR WENT UP WITH IT, WHICH IS THE PART TO READ TWICE.** MEASURED: the
 standalone `moonbitlang/async` 0.22.5 covers only **89** of the 93 — it has
 `stdio/get_stdio_handle` and none of the four `thread_pool` additions. The bundled
-`moonbitlang/core` **0.10.20+65efd5b93** declares 215 externs and covers all 93. So:
+`moonbitlang/core` **0.10.21+06da1ed44** declares 213 externs and covers all 93. So:
 
-> **0.4.45 and later need a MoonBit toolchain bundling `moonbitlang/core` 0.10.20+65efd5b93
-> or later** — moon 0.1.20261104 or later. A toolchain that still bundles the standalone
+> **0.4.45 and later need a MoonBit toolchain bundling `moonbitlang/core` 0.10.21+06da1ed44
+> or later** — moon 0.1.20261117 or later. A toolchain that still bundles the standalone
 > `moonbitlang/async` cannot instantiate this artifact, and upgrading this package alone
 > will not change that: the import surface is a property of the published bytes.
+
+**AND THE FLOOR MOVED AGAIN, ON 2026-11-20, BECAUSE THE TOOLCHAIN MOVED.** MEASURED: this
+host's bundled core went from `0.10.20+65efd5b93` to `0.10.21+06da1ed44` (moon
+`0.1.20261117`), with no change to this repository — the toolchain updated itself. The gate
+named the consequence in its own words: *the floor and the toolchain are one fact, and a
+toolchain that moved must move the floor.* So the floor moved, and **one symbol went with
+it**: core 0.10.21 declares `thread_pool/make_openat_job` where 0.10.20 declared
+`thread_pool/make_open_stat_job`, and the new toolchain gives **no host** the old name — so
+the contract is **93** symbols, not 94. A floor that names a symbol no host can provide is a
+floor that drops users, and that is the direction the gate treats as a failure.
 
 The failure arrives before the analyzer runs a single line:
 
@@ -420,8 +432,8 @@ SUMMARY	files=107	parsed=32	actionable=56	notices=212	unreliable=15759	withheld=
   in one `NOTICES` table at the end of the scan:
 
 ```
-NOTICES	TOTAL	notices=13520	printed=1705	aggregated=11815	1705 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 11815 are counted by shape below
-NOTICES	count=7947	test declaration is outside the analyzed subset; its body was not analyzed
+NOTICES	TOTAL	notices=14157	printed=1754	aggregated=12403	1754 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 12403 are counted by shape below
+NOTICES	count=8330	test declaration is outside the analyzed subset; its body was not analyzed
 ```
 
   The table's `notices` is the SUMMARY's `notices`, its `printed` plus its `aggregated` is
@@ -600,7 +612,7 @@ said nothing about any of them, so *I could not check this* and *there is nothin
 report* were the same output — and a file with no findings and four hundred unchecked
 calls printed exactly like a clean file. Now the count is on the file's own verdict line
 (`unchecked=N`) and on the `SUMMARY`, where it is deliberately **not** part of the sum.
-Measured on the seven pinned corpora: **29,887** unchecked calls, against **31** actionable
+Measured on the seven pinned corpora: **30,340** unchecked calls, against **31** actionable
 findings.
 
 ## Coverage and limits
@@ -610,7 +622,7 @@ findings.
 On `.mbt`, this tool does **not** compete with the toolchain's compiler: `moon check` has a
 real parser and reads the **whole** language. On the same `moonbitlang/core` it reports
 **no** diagnostic at all; this tool's `.mbt` frontend reads a **subset**
-and parses **1621 of 1679** files (96.5%); `.mbti` and `.mbt.md` are 100%.
+and parses **1705 of 1766** files (96.5%); `.mbti` and `.mbt.md` are 100%.
 
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
@@ -646,12 +658,12 @@ implements, and the one place where the framework and this tree disagree — are
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (275 files), with the per-file printing cap lifted so the count is the
+project's own source (278 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1772 | | `const` declaration | 7 |
+| `test` declaration | 1786 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -660,7 +672,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **158** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1942** sit outside every function's
+audit off, so they are printed one per line; the other **1956** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -693,10 +705,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,445** notices —
+per-file printing cap lifted so the count is the whole finding set: **24,096** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **3,972** of them as printed per line and
-**19,473** as aggregated — which is 3,972 + 19,473 = 23,445, the same number — and the 3,972
+says so itself: its `NOTICES` table counts **4,021** of them as printed per line and
+**20,075** as aggregated — which is 4,021 + 20,075 = 24,096, the same number — and the 4,021
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -719,12 +731,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **694** `UnusedLocal` and **1,341** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 249 files the notice table
+the tool produces **701** `UnusedLocal` and **1,339** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 278 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **693** locals and **1,341** parameters, and the per-binding
+suppression is hiding **700** locals and **1,339** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -783,22 +795,21 @@ numbers with and without the flag.
 > | K | 3 | a local call with a named argument |
 > | M | 20 | a dead store — a value nobody reads — the lens's own claim about the code |
 >
-> **AND 17 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
+> **AND 16 MORE ARE DEMOTED.** Since 0.4.38 a finding the analyzer does not stand behind is
 > rendered `notice:` and counted as a notice rather than as actionable, and the census keeps
 > the demoted set in its own table and its own total — a set of findings that leaves the
-> census is a set that can go missing silently. Every one of the 17 carries the confidence
+> census is a set that can go missing silently. Every one of the 16 carries the confidence
 > `low`, and every one of them is a name the analyzer could not resolve.
 >
-> **THE MODULE VIEW COUNTS 14 OF THEM, AND IT IS NOT THE SAME 14.** The two views are two
+> **THE MODULE VIEW COUNTS 12 OF THEM, AND IT IS NOT THE SAME 12.** The two views are two
 > analyses — this one takes every function as an entry point, the module view takes the
-> module — so they do not find the same names: in `moonbit_core` this view reports 17 and
-> the module view 14, and only **8** of those are the same site. That is the same difference
+> module — so they do not find the same names: in `moonbit_core` this view reports 16 and
+> the module view 12, and only **8** of those are the same site. That is the same difference
 > as the 46 against the 30 above, and the two views stay separate, not additive.
 >
 > | demoted family | n | what the lens claimed |
 > |---|---:|---|
 > | B | 8 | a BigInt literal's `N` suffix (`0N`) is not read |
-> | F | 1 | a name the analyzer cannot see — a sibling-file helper, a type parameter's method, an internal API absent from the `.mbti` index |
 > | L | 8 | the documented `#doc(hidden)` limit |
 >
 > **FAMILY A IS GONE, AND IT IS GONE BECAUSE IT WAS FIXED.** It was the hex float: the
@@ -1775,15 +1786,16 @@ target was resolvable all along:
 
 | the deck's p.40 pair | count |
 |---|---|
-| cross-file calls whose callee the `.mbti` declares a signature for | **2,961** |
+| cross-file calls whose callee the `.mbti` declares a signature for | **2,943** |
 | of those, the ones whose declared arity agrees with the argument count of the call | **2,282** |
 
-**AND THE 679 THAT DISAGREE ARE NOT A BUG IN THE ARITHMETIC — THEY ARE A WARNING ABOUT THE
+**AND THE 661 THAT DISAGREE ARE NOT A BUG IN THE ARITHMETIC — THEY ARE A WARNING ABOUT THE
 TABLE.** The interface table is **flat**: every `.mbti` under `.repos` is merged into one
 table, and a `.mbti` declares its names unqualified, so a name declared in one package can
 match a call in another. Measured: `moonbit_image` declares **no** `.mbti` of its own, and
-**73 of its 74** targets disagree; the corpora that declare their own interfaces agree at
-77–80%.
+**73 of its 74** targets disagree; every corpus that has calls declared at all agrees on
+between **63.6%** (`async`) and **82.6%** (`moonbit_core`) of them — `proton` 80.4%,
+`moonbit_labeler` 78.2%, `moui` 77.7%.
 
 **SO THE INFERENCE IS COUNTED AND NOT ENFORCED**, and that is the deck's p.39 lesson rather
 than a dodge: *"The reflective target method at line 175 must have one parameter and its
@@ -1831,11 +1843,11 @@ about those forty types.
 
 | the deck's p.57 question | declared | covered | missing |
 |---|---|---|---|
-| `moonbit_core` — the standard library | **1,123** | **1,076** | **47** |
+| `moonbit_core` — the standard library | **1,155** | **1,075** | **80** |
 | `async` | 10 | 0 | 10 |
 | the other five corpora | 0 | 0 | 0 |
 | this repository | 0 | 0 | 0 |
-| **the eight trees** | **1,133** | **1,076** | **57** |
+| **the eight trees** | **1,165** | **1,075** | **90** |
 
 **AND THE ZEROS ARE THE MEASUREMENT, NOT A GAP IN THE MEASUREMENT.** The hand-modelled
 table is the **standard library's** surface, and a user's own package declares no method
@@ -1843,23 +1855,26 @@ of it — so only the tree that *is* the standard library says anything about it
 is the one other tree that says something: it declares ten methods of a built-in type
 (`Buffer`), and the hand-written table holds none of them.
 
-**THE 47 ARE THE FALSE-POSITIVE DIRECTION, AND THEY DO NOT FIRE TODAY.** A name the
+**THE 80 ARE THE FALSE-POSITIVE DIRECTION, AND THEY DO NOT FIRE TODAY.** A name the
 toolchain declares and the hand-written table lacks is a false positive waiting — *if the
-interfaces are not there to carry it*. MEASURED on `moonbit_core`: **0** of the 47
+interfaces are not there to carry it*. MEASURED on `moonbit_core`: **0** of the 80
 appear in an `undefined function` finding, because the `.mbti` files resolve them. So
 the gap is a **fallback** gap, and it is the direction the deck's p.60-61 alternative
 would close for good.
 
-**AND THE OTHER DIRECTION IS 268** — the table's own names `moonbit_core` no longer
+**AND THE OTHER DIRECTION IS 269** — the table's own names `moonbit_core` no longer
 declares. That is the MISSED-REPORT direction, and it is the one the table's header says
 it accepts on purpose: keeping a name the toolchain has dropped is a missed report, while
 dropping a name the toolchain still has is a false positive.
 
-**AND THE TABLE IS ONE TOOLCHAIN GENERATION BEHIND, WHICH IS MEASURED TOO.** The table
-is stamped `moon 0.1.20261016`; this host's toolchain is `moon 0.1.20261104`, and its
-139 `.mbti` files declare **the same 1,123** with **the same 47** missing. So the 47 are
-newer than the table's stamp, and the measurement does not move between two toolchain
-generations.
+**AND THE TABLE IS ONE TOOLCHAIN GENERATION BEHIND, WHICH IS MEASURED TOO — AND THE
+MEASUREMENT HAS MOVED SINCE IT WAS FIRST MEASURED.** The table is stamped
+`moon 0.1.20261016`; this host's toolchain is `moon 0.1.20261117`, and the core it pins
+declares **1,155** with **80** missing — the same numbers the host toolchain's own core
+tree measures. The pin one toolchain generation back declared **1,123** with **47**
+missing, so the gap is **wider** than the table's stamp implied, and the measurement
+**does** move between two toolchain generations. The earlier claim that it did not was
+refuted by this increment's own measurement, and it is corrected here rather than kept.
 
 **SO 0604 PUBLISHES THE COVERAGE AND DOES NOT REGENERATE THE TABLE.** Regenerating it
 is a release that changes what the analyzer finds — the table only ever suppresses, so
@@ -1968,25 +1983,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 257 files, 1,430 functions, 9,210
+would need **16** copies. Over this project's own source — 260 files, 1,433 functions, 9,210
 instructions of 3AC — the same measurement gives **1,165** variables becoming **2,802** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=257	unreadable=0	functions=1430	converted=5	partial=1425	declined=6518	…
+SSA-COST	files=260	unreadable=0	functions=1433	converted=5	partial=1428	declined=6522	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,518
+number: the files read, the functions measured, and the statements the lowering declined (6,522
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1772/1772 on wasm; 1613/1613 on js and wasm-gc
+moon test --deny-warn                # 1786/1786 on wasm; 1627/1627 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 
@@ -2021,7 +2036,7 @@ audit, and a check that a region silences only the bindings it could have read**
 published-package self-scan's own self-test; the corpus comparison against the
 pinned baselines; the per-function census and its control; **the behavior lens's own
 table, checked against what the analyzer produces today**; and then **every mutation
-gate** — 87 of them.
+gate** — 88 of them.
 
 And these are the other stages, by the exact name each one prints — so a stage that runs
 and is not named here is a stage a reader cannot find:
@@ -2038,15 +2053,20 @@ and is not named here is a stage a reader cannot find:
     self-scan (own source)
     ssa cost (own source)
     README links, anchors, versions and counts
-    gate roster: self-test (seven injected defects must be caught)
-    gate roster: one harness, one list, and a count that matches
+    gate roster: self-test (eleven injected defects must be caught)
+    gate roster: one harness, one list, a count that matches, and every check gate accounted for
     the shared harness: the INCONCLUSIVE verdict, shown to go red
     proof contracts: no false #proof_pure
+    proof contracts, shown to go red (its own self-test)
     package contents: the junk stays out, the evidence stays in
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible
     frame audit: a region silences the bindings it could have read, and no others
     match arms: the arms are read, the findings are true ones, and the fallback is exact
+    the family sweep: every family fires, from its own fixture
+    the family sweep, shown to go red (its own self-test)
+    the false-positive pin: this tree has no actionable finding
+    the false-positive pin, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
     the notice reconciliation can go red (a real defect is seen)
@@ -2106,18 +2126,32 @@ are**, and the gate prints how many there were.
 The roster is **checked, not asserted**: a gate that exists on disk but is missing from
 the list would never run, and a gate that does not run is indistinguishable from a gate
 that passes. `_verify/check_gate_roster.ps1` compares the two rosters in **both**
-directions, and its `-SelfTest` injects seven defects into a copy of `_verify` — a gate the
+directions, and its `-SelfTest` injects ten defects into a copy of `_verify` — a gate the
 list does not name, a gate in the list that is not on disk, a gate off the shared harness,
 a guarantee deleted from the harness, a `--filter` in the harness, a stale count in the
-harness header, a moon invocation that does not name the project root — and requires each
-to be caught. **All seven are.**
+harness header, a moon invocation that does not name the project root, a `check_*` gate
+the release gate does not run, a `check_*` gate whose `-SelfTest` switch is declared and
+never used, and a `check_*` gate with neither a switch nor a stated reason — and requires
+each to be caught. **All ten are.**
+
+And the same roster now covers the **`check_*` gates**, which it did not before. A
+`check_*.ps1` on disk that the release gate does not name **never runs** — it is on disk,
+it is named like a gate, and a release run reports every gate green. And a `check_*.ps1`
+whose `-SelfTest` switch is declared and never used is a switch that selects nothing: it
+looks like the gate can be shown to go red, and it cannot. Measured on 2026-11-20:
+`_verify/check_prove_contracts.ps1` declared `param([switch]$SelfTest)` and then never
+mentioned `$SelfTest` again — **in the one gate whose whole subject is a red that had
+never been shown**. So every `check_*` gate is now accounted for: it either carries a
+**live** `-SelfTest` — declared *and* read by the body, counted over code lines only, so
+that prose about the switch cannot make a dead switch look alive — or it says, in a
+comment, why it carries none. **Every one of them is.**
 
 **What the registry receives is checked too.** `.moonignore` decides what gets packaged,
 and a list of intentions that nothing exercises is a comment.
 `_verify/check_package_contents.ps1` runs `moon package --list` — the same command
 `moon publish` packages from — and asserts that the scratch is **out** (the scratch commit
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
-that the evidence is **in** (the 87 mutation gates and their harness, the settle scripts, the
+that the evidence is **in** (the 88 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
 ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
 23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
@@ -2182,15 +2216,15 @@ change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGE
 
 4. Open a pull request.
 
-The gate is not optional decoration: it runs **87 mutation gates**, each of which mutates
+The gate is not optional decoration: it runs **88 mutation gates**, each of which mutates
 the source, requires a test to go red, and proves the restore byte-identically.
-Of the **504** live mutations, **461** expect a kill; **384** of them also name the test
+Of the **509** live mutations, **467** expect a kill; **390** of them also name the test
 that must go red, so the gate log says *which* test was the guard and not merely that
 something was. All three numbers are **computed** by the README gate from the gate
 sources themselves — a published count that no gate checks is a count that goes missing
 quietly.
 
-Four of those 87 gates had been **red since 0570 and 0571** — not failing, but *not running*.
+Four of those 88 gates had been **red since 0570 and 0571** — not failing, but *not running*.
 Each mutation gate anchors on the exact text of a source site; 0570 taught the walker to
 walk a `catch`/`noraise` arm's guard and 0571 added two families to the id map, and both
 moved those sites without moving the anchors, so their pre-flight aborted with

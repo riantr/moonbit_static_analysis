@@ -215,7 +215,7 @@ $TARGETS = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
-  'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20261117+06da1ed44'
 }
 
 $tot = @{}

@@ -18,6 +18,20 @@
 # some other test is not evidence: the test named here is the one that pins the
 # rule, so the kill is the rule's own.
 #
+# 0615. THE THREE `MustRed` STRINGS BELOW WERE STALE, AND THE GATE WAS BLIND TO
+# IT FOR RELEASES. They said "match" where the tests say "region": 0.4.34
+# (`2dd3672`) made a `match`'s arms ordinary code, and with them the word
+# "region" -- which is broader than a `match`, because a region is any span the
+# frontend did not analyse -- became the correct word, and the tests were
+# renamed with it. The gate's strings were not renamed with them, so from
+# 0.4.34 onwards every mutation here was KILLED by the right test and REPORTED
+# as "the named test did not go red" -- and the report went nowhere, because
+# this file had no verdict line and no `exit 1`. The three mutations were
+# right the whole time; the NAMES were not.
+#
+# The names are SUBSTRINGS of the test names, so they must be kept in step with
+# them: a rename in `src/pipeline/pipeline_0501_test.mbt` is a rename here too.
+#
 # THE MEASUREMENT THIS GATE EXISTS UNDER, because a rule nobody has measured is
 # a guess. With the suppression switched OFF, the tool produces 836 UnusedLocal
 # and 1906 UnusedParam findings across the seven pinned corpora and this
@@ -65,7 +79,7 @@ fn hole_can_reach(e : Entry, holes : Array[@core.Span]) -> Bool {
   false
 }
 '@.Replace("`r`n", "`n")
-    MustRed = 'a local declared after a match is reported unused'
+    MustRed = 'a local declared after a region is reported unused'
   }
 
   # M2 THE REGION'S LIST COMES BACK EMPTY. No region can reach anything, so
@@ -84,7 +98,7 @@ fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {
   let out : Array[@core.Span] = []
   return out
 '@.Replace("`r`n", "`n")
-    MustRed = 'a local read only inside a match is not reported unused'
+    MustRed = 'a local read only inside a region is not reported unused'
   }
 
   # M3 THE PARAMETER GUARD IS DROPPED. A parameter is in scope for the WHOLE
@@ -102,7 +116,7 @@ fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {
         if e.param {
           if true {
 '@.Replace("`r`n", "`n")
-    MustRed = 'a parameter in a function with a match is not reported'
+    MustRed = 'a parameter in a function with a region is not reported'
   }
 
   # M4 THE FUNCTION'S EXTENT IS NOT CHECKED. Every unread region in the FILE
@@ -136,3 +150,25 @@ fn Walker::holes_in(self : Walker, sp : @core.Span) -> Array[@core.Span] {
     MustRed = 'a region in another function does not silence this function'
   }
 )
+
+# THE VERDICT, AND THE EXIT THAT CARRIES IT. These two lines are what make this
+# gate ABLE TO FAIL.
+#
+# MEASURED 2026-11-20, and the defect is worth stating in full because it is the
+# shape of a guard that does not guard. This file -- like 0491, 0500 and 0501 --
+# ended at the `Invoke-MutationGate` call. The harness RECORDS a failure in
+# `$script:MutationGateFailures`, and without these lines that record goes
+# nowhere: the script ends normally, `powershell -File` exits 0, the transcript
+# carries no `GATE FAILED` line, and `release.ps1`'s `Run-Gate` -- which reads the
+# transcript for a verdict ONLY when the exit code is non-zero -- reports the
+# gate as PASS.
+#
+# PROVEN, not argued: with a `MustRed` claim deliberately pointing at a test that
+# does not exist, this gate printed `MUST-RED MISS`, recorded the failure, and
+# STILL EXITED 0 with no `GATE FAILED` line in its transcript. A release run
+# would have reported it green.
+#
+# `check_gate_roster.ps1` now checks that every numbered gate carries both
+# lines, so this cannot rot back into a comment.
+Write-MutationGateVerdict -Name '0501 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }

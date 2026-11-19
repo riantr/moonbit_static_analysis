@@ -62,8 +62,18 @@ $out = Join-Path $dir 'o.txt'; $err = Join-Path $dir 'o.err'
 # were printed -- so the breakdown could not be split. Without it the
 # rendered lines ARE the printed notices and the `NOTICES` table carries the
 # aggregated ones, and the two together are the complete set.
+#
+# 0615. AND `_verify` IS EXCLUDED, for the same reason `release.ps1` excludes
+# it from its own scan. MEASURED before this line existed: the tree scanned
+# with `_verify` INCLUDED read 319 files and reported 15 actionable findings --
+# because `_verify` holds the scan's own FIXTURE files, and a fixture is a
+# file with a defect in it ON PURPOSE. It also holds seventeen untracked
+# scratch copies of old sources, so the number described the maintainer's
+# tree and not the package. A coverage number that describes the local tree
+# is not reproducible from a clean checkout, and 0614 measured exactly how
+# that goes wrong.
 Start-Process -FilePath $moonrun `
-  -ArgumentList @($wasm, $root, '--extern-iface-dir', $repos, '--findings-shown-per-file', '1000000') `
+  -ArgumentList @($wasm, $root, '--extern-iface-dir', $repos, '--findings-shown-per-file', '1000000', '--exclude', '_verify') `
   -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -Wait | Out-Null
 $t = [System.IO.File]::ReadAllText($out)
 

@@ -41,15 +41,141 @@
 # costs milliseconds, runs next to anything, and cannot be fooled by a stale
 # build artifact.
 #
-# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_family_roster.ps1
+# 0615. A GATE THAT HAS NEVER BEEN SHOWN TO GO RED IS A COMMENT. The roster
+# gate reads exactly THREE files -- `src/core/core.mbt`, `src/core/soundiness.mbt`
+# and `_verify/release.ps1` -- so a defect can be injected into a COPY of those
+# three and the gate pointed at the copy. `-Root` is what points it there; the
+# real tree is never touched.
+#
+# THE CONTROL IS NOT OPTIONAL. A copy that is not green proves nothing: a gate
+# that says "the tables disagree" on an unmodified tree is not a gate. So the
+# self-test runs the copy twice, once as it is and once with the defect in it,
+# and BOTH have to hold.
+#
+# Usage:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_family_roster.ps1
+#   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_family_roster.ps1 -SelfTest
+param([switch]$SelfTest, [string]$Root = '')
 $ErrorActionPreference = 'Continue'
-$root = Split-Path -Parent $PSScriptRoot
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $core = Join-Path $root 'src\core\core.mbt'
 $fail = 0
 
 # The number of families. Pinned, because a family added without an id --
 # or an id added without a family -- is exactly what the checks below are for.
 $WANT_FAMILIES = 18
+
+# ================================================================= the self-test ===
+if ($SelfTest) {
+  Write-Output '=== the family roster, shown to go red ==='
+  $bad = 0
+
+  # THE THREE FILES THIS GATE READS. A copy of these three IS a tree this
+  # gate can be pointed at; nothing else in the repository is read.
+  function New-GateCopy {
+    $tmp = Join-Path $env:TEMP ('famroster_selftest_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path (Join-Path $tmp 'src\core') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $tmp '_verify') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root 'src\core\core.mbt')      -Destination (Join-Path $tmp 'src\core\core.mbt') -Force
+    Copy-Item -LiteralPath (Join-Path $root 'src\core\soundiness.mbt') -Destination (Join-Path $tmp 'src\core\soundiness.mbt') -Force
+    Copy-Item -LiteralPath (Join-Path $root '_verify\release.ps1')     -Destination (Join-Path $tmp '_verify\release.ps1') -Force
+    return $tmp
+  }
+
+  # THE GATE, RUN AGAINST A COPY. The script that runs is THIS one -- the copy
+  # holds the data, not the checker, so the checker under test is the checker
+  # that ships.
+  function Run-GateAt([string]$Dir) {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'check_family_roster.ps1') -Root $Dir 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    return [pscustomobject]@{ Code = $code; Out = $o }
+  }
+
+  # THE CONTROL. The unmodified copy must be GREEN. Without this, a red copy
+  # proves nothing -- the gate could be red for a reason that has nothing to
+  # do with the injected defect.
+  $ctl = New-GateCopy
+  try {
+    $r1 = Run-GateAt $ctl
+    $ctlOk = ($r1.Code -eq 0)
+    Write-Output ('  CONTROL  exit=' + $r1.Code + '  -> ' + $(if ($ctlOk) { 'as it must be' } else { 'WRONG' }))
+    if (-not $ctlOk) {
+      $bad++
+      foreach ($ln in ($r1.Out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 8)) {
+        Write-Output ('      | ' + $ln.Trim())
+      }
+    }
+  } finally {
+    Remove-Item -LiteralPath $ctl -Recurse -Force -ErrorAction SilentlyContinue
+  }
+
+  # THE TWO FAULTS. They are the two properties this gate exists for: the ids
+  # are allocated ONCE and never renumbered, and the two tables are exact
+  # inverses. Each defect is injected into its own fresh copy, so one fault
+  # cannot mask another.
+  $faults = @(
+    [pscustomobject]@{
+      N = 'a family id renumbered'
+      Expect = 'the ids are not contiguous'
+      Apply = {
+        param($dir)
+        $p = Join-Path $dir 'src\core\core.mbt'
+        $t = [System.IO.File]::ReadAllText($p)
+        if ($t.IndexOf('FTaintFlow => "MSA-018"') -lt 0) { return $false }
+        $t = $t.Replace('FTaintFlow => "MSA-018"', 'FTaintFlow => "MSA-019"')
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
+    [pscustomobject]@{
+      N = 'the inverse table disagreeing with the forward one'
+      Expect = 'in Family::id and'
+      Apply = {
+        param($dir)
+        $p = Join-Path $dir 'src\core\core.mbt'
+        $t = [System.IO.File]::ReadAllText($p)
+        if ($t.IndexOf('"MSA-003" => Some(FUnusedLocal)') -lt 0) { return $false }
+        $t = $t.Replace('"MSA-003" => Some(FUnusedLocal)', '"MSA-003" => Some(FUnusedParam)')
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
+  )
+
+  foreach ($f in $faults) {
+    $c = New-GateCopy
+    try {
+      $applied = & $f.Apply $c
+      if (-not $applied) {
+        Write-Output ('  MISSED  ' + $f.N + '  (the anchor was not found -- the defect was never injected)')
+        $bad++
+        continue
+      }
+      $r = Run-GateAt $c
+      $caught = ($r.Code -ne 0) -and ($r.Out.Contains($f.Expect))
+      Write-Output ('  ' + $(if ($caught) { 'CAUGHT ' } else { 'MISSED ' }) + $f.N +
+                    '  (exit ' + $r.Code + ', expected "' + $f.Expect + '")')
+      if (-not $caught) {
+        $bad++
+        foreach ($ln in ($r.Out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 8)) {
+          Write-Output ('      | ' + $ln.Trim())
+        }
+      }
+    } finally {
+      Remove-Item -LiteralPath $c -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  Write-Output ''
+  if ($bad -eq 0) {
+    Write-Output ('SELFTEST OK: the control passed and all ' + $faults.Count + ' injected defects were caught.')
+    exit 0
+  }
+  Write-Output ('SELFTEST FAILED: ' + $bad + ' of ' + ($faults.Count + 1) + ' checks did not hold.')
+  exit 1
+}
 
 if (-not (Test-Path -LiteralPath $core)) {
   Write-Output ('ABORT: no ' + $core)

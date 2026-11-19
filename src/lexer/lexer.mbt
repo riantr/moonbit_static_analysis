@@ -1339,6 +1339,16 @@ pub fn is_moonbit_keyword(s : String) -> Bool {
     // (`parser.mbt`, the `TName("lexmatch")` arm); this entry says the same thing
     // to the places that ask "is this a name to resolve?".
     | "lexmatch"
+    // 0615 -- `lexscan` IS SYNTAX, NOT A NAME, for the same reason `lexmatch` is.
+    // `lexscan <subject> [with <strategy>] { arms }` is MoonBit's streaming
+    // regex-lexer form of a match, and reading it as an identifier produced
+    // `undefined variable 'lexscan'` at three sites in the re-pinned corpus
+    // (`moonbitlang/core` `0.1.20261117+06da1ed44`): `lexbuf/read_line.mbt:37`,
+    // `lexbuf/read_line_test.mbt:53` and `lexbuf/async_read_line_test.mbt:29`
+    // -- on code `moon check` accepts. The parser has a production for it
+    // (`parser.mbt`, the `TName("lexscan")` arm); this entry says the same
+    // thing to the places that ask "is this a name to resolve?".
+    | "lexscan"
     | "fn"
     | "let"
     | "return"

@@ -428,10 +428,11 @@ pub(all) enum EKind {
   /// comes from the arms, which are the part this analyzer does not model. Same
   /// shape, opposite answer, and the reason they cannot share one variant.
   ///
-  /// AN EMPTY ARM LIST MEANS THE ARMS WERE NOT READ, and the one construct that
-  /// does that is a `lexmatch` -- whose arm bodies use `next`, which this
-  /// frontend's statement grammar does not have. A `match` with no arms is not
-  /// MoonBit, so the two readings cannot be confused.
+  /// AN EMPTY ARM LIST MEANS THE ARMS WERE NOT READ, and the constructs that do
+  /// that are a `lexmatch` -- whose arm bodies use `next`, which this frontend's
+  /// statement grammar does not have -- and a `lexscan` whose arms the subset
+  /// could not read (0615). A `match` with no arms is not MoonBit, so the two
+  /// readings cannot be confused.
   EMatch(Expr, Array[MatchArm])
 }
 

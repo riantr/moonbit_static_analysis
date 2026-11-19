@@ -22,8 +22,11 @@
 # error and the probe's own error never appeared, so the control read 0 of 18
 # files and the stage had been RED since 0.4.43.
 #
-# The re-pin to `0.1.20261105+65efd5b93` moves the corpus to a version this
-# toolchain can check END TO END. MEASURED 2026-11-13 on a copy:
+# The re-pin to `0.1.20261105+65efd5b93` moved the corpus to a version this
+# toolchain can check END TO END, and 0615 re-pinned it ONCE MORE -- to
+# `0.1.20261117+06da1ed44`, the version the toolchain's OWN bundled core
+# carries, because the toolchain's core moved under the pin and the corpus
+# has to move with it. MEASURED 2026-11-20 on a copy:
 #
 #   `moon check --target all`  ->  exit 0, 28 s, ZERO diagnostics.
 #
@@ -63,7 +66,7 @@ $repos = Join-Path $root '.repos'
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
-$coreRel = 'moonbitlang\core\0.1.20261105+65efd5b93'
+$coreRel = 'moonbitlang\core\0.1.20261117+06da1ed44'
 $core = Join-Path $repos $coreRel
 
 $BOX = [regex]::Escape(([string][char]0x256D) + ([string][char]0x2500))

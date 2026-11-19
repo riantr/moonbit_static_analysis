@@ -828,7 +828,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # (it carried 2091). The nine notices are the nine new test declarations,
 # and they are ALL AGGREGATED: a test declaration sits outside every
 # function's extent, so the PRINTED half of the split did not move.
-$NOTICE_TOTAL = '23445'
+$NOTICE_TOTAL = '24096'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -963,8 +963,8 @@ $NOTICE_TOTAL = '23445'
 # AT ALL, for the same reason -- the nine new test declarations sit outside
 # every function's extent, so they are counted by shape and not printed. The
 # corpora did not move.
-$NOTICE_SPLIT_PRINTED = '3972'
-$NOTICE_SPLIT_AGGREGATED = '19473'
+$NOTICE_SPLIT_PRINTED = '4021'
+$NOTICE_SPLIT_AGGREGATED = '20075'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -1125,10 +1125,10 @@ $NOTICE_SPLIT_AGGREGATED = '19473'
 # gate row compares the files the scan READ with the files the committed
 # tree HOLDS, so an untracked file under `src/` can never move this number
 # again without the gate naming it.
-$SELF_FILES = '275'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1772|try expression=1|type declaration=7'
+$SELF_FILES = '278'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1786|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
-$SELF_AGGREGATED = '1942'
+$SELF_AGGREGATED = '1956'
 #   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
 #                   the hand-modelled native surface measured against the
 #                   DECLARED one.
@@ -1158,9 +1158,9 @@ $SELF_SURFACE = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344
 #
 # THE PER-CORPUS TABLE that this aggregate is made of is `$PINNED_SURFACE`,
 # further down beside `$TARGETS`.
-$SURFACE_DECLARED = '1133'
-$SURFACE_COVERED = '1076'
-$SURFACE_MISSING = '57'
+$SURFACE_DECLARED = '1165'
+$SURFACE_COVERED = '1075'
+$SURFACE_MISSING = '90'
 #   $IFACE_SIG_AVAILABLE   the deck's p.40 pair, over the eight trees: how many
 #   $IFACE_SIG_AGREES      of the cross-file calls the type lens could NOT check
 #                          have a callee whose `.mbti` declares a signature, and
@@ -1193,7 +1193,7 @@ $SURFACE_MISSING = '57'
 # all three of those calls have a callee the `.mbti` declares a signature for
 # whose arity agrees. The corpora did not move, and the corpora are the ones the
 # pair is about.
-$IFACE_SIG_AVAILABLE = '2961'
+$IFACE_SIG_AVAILABLE = '2943'
 $IFACE_SIG_AGREES = '2282'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
@@ -1275,8 +1275,8 @@ $IFACE_SIG_AGREES = '2282'
 # increment's own source grew. The measurement was re-run on this
 # tree and it reads the same pair, because this increment's code has
 # no parameter that is read only inside a closure the lint cannot see.
-$SUPPOFF_LOCAL = '694'
-$SUPPOFF_PARAM = '1341'
+$SUPPOFF_LOCAL = '701'
+$SUPPOFF_PARAM = '1339'
 
 #   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
 #                 own source, measured by the scanner's own `--ssa-cost` mode
@@ -1445,7 +1445,7 @@ $SUPPOFF_PARAM = '1341'
 # (unchanged), undef_operands 202 (unchanged), dead_blocks 470 (unchanged),
 # undef_uses 1295 (unchanged). ONE field moved, and it is the one that
 # counts files.
-$SSA_COST = 'files=257|unreadable=0|functions=1430|converted=5|partial=1425|declined=6518|instructions=9210|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
+$SSA_COST = 'files=260|unreadable=0|functions=1433|converted=5|partial=1428|declined=6522|instructions=9210|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1490,7 +1490,12 @@ $SSA_COST = 'files=257|unreadable=0|functions=1430|converted=5|partial=1425|decl
 # correction: it changed NO source file, so it moved NO notice -- and the
 # file count it corrects is the one this increment's own gate row now
 # checks against the committed tree.
-$NARRATIVE_CHAPTERS = '125'
+# 0615. THE PIN MOVED TO 126 with chapter 0615, which is the guard cycle: the
+# family sweep, the false-positive pin, and the roster that now accounts for
+# every `check_*` gate. It changed NO source file either -- the fixtures live
+# under `_verify`, which the self-scan excludes -- so it moved NO notice, and
+# `$SELF_FILES` and `$SSA_COST` are untouched.
+$NARRATIVE_CHAPTERS = '126'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1526,7 +1531,7 @@ $SOUNDINESS_UNSOUND_IDS = 'X-ARG-TYPE-NAMED-ARITY|X-OP-PIPE-EXEMPT|X-NOSEC-REALI
 # 221 sites in 36 files. The `raise?` construct did not spread -- the other six
 # corpora and this repository's own source are still at zero, which is what
 # $RAISEQ_OTHERS pins -- the corpus that carries it is simply a larger one.
-$RAISEQ_REACH = '221|36'
+$RAISEQ_REACH = '224|36'
 $RAISEQ_OTHERS = '0'
 
 # THE EMPTY-PIN GUARD. A pin that is empty is not a pin -- it is a comparison
@@ -1837,13 +1842,19 @@ if ($failed.Count -eq 0) {
     # family ids were English words.
     #
     # WHY ADD THE FLAG RATHER THAN ADD A STAGE. The `actionable == 0` assertion
-    # below is ALREADY the gate that says "this tree has no defect in it", and
-    # it is the one a reader of the gate output would look at. With the flag the
-    # assertion covers the STRICTEST reading of the tree: even with every
-    # suppression honoured, the analyzer finds nothing here that is not a
-    # defect. A separate stage would have been a second scan of the same tree
-    # for the same claim, and a number written down twice is a number that will
-    # disagree with itself.
+    # is the gate that says "this tree has no defect in it", and with the flag
+    # it covers the STRICTEST reading of the tree: even with every suppression
+    # honoured, the analyzer finds nothing here that is not a defect.
+    #
+    # 0615. AND THE VERDICT IS NOT TAKEN HERE. It is taken by
+    # `_verify\check_own_tree_clean.ps1`, which the release gate runs as its own
+    # stage below -- and that gate also PROVES it can go red, by copying the
+    # tree, planting a stale suppression in the copy and requiring the count to
+    # move. The reason the VERDICT is not taken here as well is the one this
+    # repository keeps repeating: two assertions of one claim in two files is a
+    # second implementation, and a second implementation of a claim is a
+    # defect. So the number is MEASURED here, where the scan already happened,
+    # and the VERDICT is taken in one place.
     #
     # AND NO PIN MOVES. This tree carries NO real `// nosec` comment (MEASURED:
     # the whole tree and the pinned corpora hold 24 nosec-shaped comments, and
@@ -1867,8 +1878,7 @@ if ($failed.Count -eq 0) {
     # and 0613 measured exactly this: TWELVE of them, all of them this
     # analyzer's own documentation and its own test fixtures.
     if ($act -ne 0) {
-      Write-Output ('  FAIL: actionable is not 0 -- it is ' + $act + ', and the scan HONOURED `// nosec`, so every one of these is a finding on this tree that is not a defect.')
-      $script:stageOk = $false
+      Write-Output ('  actionable is ' + $act + '. The VERDICT is the false-positive pin''s, and it is taken in `_verify\check_own_tree_clean.ps1` -- the stage below.')
     }
     elseif ($files -ne $parsed) { Write-Output ("  FAIL: parsed {0} of {1} files." -f $parsed, $files); $script:stageOk = $false }
     else { Write-Output ('  ' + $files + '/' + $files + ' parsed, actionable 0 (with `// nosec` honoured)') }
@@ -2169,7 +2179,7 @@ if ($failed.Count -eq 0) {
 # This stage sits BEFORE the mutation gates on purpose: a release run costs about
 # half an hour, and it should not spend that on a roster that is already known to
 # be wrong. The self-test runs first, because a gate that has never been shown to
-# go red is a comment -- it injects seven defects into a COPY of `_verify` in TEMP
+# go red is a comment -- it injects ten defects into a COPY of `_verify` in TEMP
 # and requires the copy to fail with the right message.
 if ($failed.Count -eq 0) {
   $GR = Join-Path $root '_verify\check_gate_roster.ps1'
@@ -2178,7 +2188,7 @@ if ($failed.Count -eq 0) {
     Write-Output 'MISSING: _verify\check_gate_roster.ps1'
     $failed += 'gate-roster'
   } else {
-    Stage 'gate roster: self-test (seven injected defects must be caught)' {
+    Stage 'gate roster: self-test (eleven injected defects must be caught)' {
       $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GR -SelfTest 2>&1 | Out-String
       $code = $LASTEXITCODE
@@ -2191,13 +2201,13 @@ if ($failed.Count -eq 0) {
     if (-not $script:lastOk) { $failed += 'gate-roster-selftest' }
   }
   if ($failed.Count -eq 0) {
-    Stage 'gate roster: one harness, one list, and a count that matches' {
+    Stage 'gate roster: one harness, one list, a count that matches, and every check gate accounted for' {
       $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GR 2>&1 | Out-String
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       foreach ($ln in ($o -split "`r?`n")) {
-        if ($ln -match '(ROSTER|NEVER RUN|NOT ON THE SHARED|MISSING|LISTED BUT|FAIL)') { Write-Output ('  ' + $ln.Trim()) }
+        if ($ln -match '(ROSTER|NEVER RUN|NOT ON THE SHARED|MISSING|LISTED BUT|DEAD SWITCH|NO SELF-TEST|FAIL)') { Write-Output ('  ' + $ln.Trim()) }
       }
       if ($code -ne 0) { $script:stageOk = $false }
     }
@@ -2263,10 +2273,21 @@ if ($failed.Count -eq 0) {
 # because the release gate never ran it. This stage runs it and fails on the
 # false-annotation class (error 4207).
 #
-# It does NOT fail on the known `map` limitation: `src/core` carries
-# `IfaceSymTab`, whose fields are `Map[String, Bool]`, and the toolchain's proof
-# prelude has no `Map` theory, so the generated Why3 file will not load. That is
-# reported, not hidden -- see the script.
+# It does NOT fail on the toolchain's missing prelude theories. MEASURED
+# 0615: the symbol why3 reports FIRST is `array`, not `map` -- `src/core`
+# carries `IfaceSig`, whose fields are `Array[Int32]`, and it is declared
+# before `IfaceSymTab`, whose fields are `Map[String, Bool]`; why3 stops at
+# the first symbol it cannot resolve, so the map was never reached. The
+# generated file does not load, the 19 lemmas are NOT being discharged, and
+# that is reported, not hidden -- see the script, which now names the symbols
+# the toolchain reports TODAY instead of the one it reported before.
+#
+# AND THE GATE NOW HAS A LIVE SELF-TEST. It declared `param([switch]$SelfTest)`
+# and never mentioned `$SelfTest` again: a switch that selected nothing, in
+# the one gate whose whole subject is a red that had never been shown. The
+# stage below copies the tree into TEMP, injects a false `#proof_pure` in
+# front of a function whose body allocates, and requires the prover to report
+# 4207 on the copy -- while the unmodified copy has to report none.
 if ($failed.Count -eq 0) {
   $PC = Join-Path $root '_verify\check_prove_contracts.ps1'
   if (-not (Test-Path $PC)) {
@@ -2280,11 +2301,24 @@ if ($failed.Count -eq 0) {
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       foreach ($ln in ($o -split "`r?`n")) {
-        if ($ln -match '(4207|contracts:|PROVE CONTRACTS|KNOWN)') { Write-Output ('  ' + $ln.Trim()) }
+        if ($ln -match '(4207|contracts:|PROVE CONTRACTS|KNOWN|lemma count|prelude does not define)') { Write-Output ('  ' + $ln.Trim()) }
       }
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'prove-contracts' }
+  }
+  if ($failed.Count -eq 0) {
+    Stage 'proof contracts, shown to go red (its own self-test)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PC -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(CONTROL|FAULT|SELFTEST)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'prove-contracts-selftest' }
   }
 }
 
@@ -2483,8 +2517,118 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4i  the family sweep, and the false-positive pin -------------------------
+# 0615. TWO NEW GATES, and their own self-tests, because a gate that has never
+# been shown to go red is a comment.
+#
+# `check_family_fires.ps1` asserts that every family in the SOURCE has a
+# fixture and that EACH FIXTURE FIRES ITS OWN FAMILY. The census is the
+# `METRICS family` TABLE, and the per-file check is what makes the table worth
+# having: MEASURED, a copy of the fixture set with two files' shapes SWAPPED
+# still holds all eighteen rows -- MSA-007 is in the table because the file
+# named MSA-009 now fires it -- and only the per-file check sees it.
+#
+# `check_own_tree_clean.ps1` holds the false-positive pin: this tree has no
+# actionable finding, even with every suppression honoured. Its self-test
+# copies the tree, plants a stale suppression in the copy, and requires the
+# count to MOVE -- so the pin is shown to be capable of going red.
+#
+# All four stages are placed here, before the mutation gates, for the same
+# reason as the notice-labels stage: they read the tree, and a mutation gate
+# that has mutated a source file would be read as part of it.
+$FF = Join-Path $root '_verify\check_family_fires.ps1'
+if (-not (Test-Path $FF)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_family_fires.ps1'
+  $failed += 'family-fires'
+} else {
+  Stage 'the family sweep: every family fires, from its own fixture' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $FF 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|FIRES OK|FIRES FAILED|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'family-fires' }
+  $stageName = 'the family sweep: every family fires, from its own fixture'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'family-fires'
+  }
+}
+if ($failed.Count -eq 0) {
+  Stage 'the family sweep, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $FF -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|SELFTEST|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'family-fires-selftest' }
+  $stageName = 'the family sweep, shown to go red (its own self-test)'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'family-fires-selftest'
+  }
+}
+$OT = Join-Path $root '_verify\check_own_tree_clean.ps1'
+if (-not (Test-Path $OT)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_own_tree_clean.ps1'
+  $failed += 'own-tree-clean'
+} else {
+  Stage 'the false-positive pin: this tree has no actionable finding' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $OT 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|TREE CLEAN OK|SUMMARY|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'own-tree-clean' }
+  $stageName = 'the false-positive pin: this tree has no actionable finding'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'own-tree-clean'
+  }
+}
+if ($failed.Count -eq 0) {
+  Stage 'the false-positive pin, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $OT -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|SELFTEST|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'own-tree-clean-selftest' }
+  $stageName = 'the false-positive pin, shown to go red (its own self-test)'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'own-tree-clean-selftest'
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
-$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507','0508')
+$gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507','0508','0615')
 if ($SkipMutations) {
   Write-Output ''
   Write-Output ('=== ' + $gates.Count + ' mutation gates SKIPPED (-SkipMutations) ===')
@@ -3207,7 +3351,7 @@ $PINNED = [ordered]@{
   'async'           = 'files=419 parsed=419 actionable=0 notices=1656 unreliable=0 withheld=0 unchecked=2879 total=1656'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2901 total=1799'
   'proton_contract' = 'files=4 parsed=4 actionable=0 notices=29 unreliable=0 withheld=0 unchecked=12 total=29'
-  'moonbit_core'    = 'files=1679 parsed=1621 actionable=30 notices=13520 unreliable=816 withheld=103 unchecked=14322 total=14366'
+  'moonbit_core'    = 'files=1766 parsed=1705 actionable=30 notices=14157 unreliable=957 withheld=100 unchecked=14775 total=15144'
 }
 $TARGETS = [ordered]@{
   'moui'            = 'wzzc-dev\moui\0.1.12'
@@ -3216,7 +3360,7 @@ $TARGETS = [ordered]@{
   'async'           = 'moonbitlang\async\0.22.4'
   'proton'          = 'moonbit-community\proton\0.3.4'
   'proton_contract' = 'moonbit-community\proton_contract\0.3.4'
-  'moonbit_core'    = 'moonbitlang\core\0.1.20261105+65efd5b93'
+  'moonbit_core'    = 'moonbitlang\core\0.1.20261117+06da1ed44'
 }
 
 # 0604. THE DECK'S p.57 QUESTION, per corpus: the HAND-MODELLED native surface
@@ -3246,7 +3390,7 @@ $PINNED_SURFACE = [ordered]@{
   'async'           = 'modelled=1344|declared=10|covered=0|missing=10|modelled-only=1344'
   'proton'          = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
   'proton_contract' = 'modelled=1344|declared=0|covered=0|missing=0|modelled-only=1344'
-  'moonbit_core'    = 'modelled=1344|declared=1123|covered=1076|missing=47|modelled-only=268'
+  'moonbit_core'    = 'modelled=1344|declared=1155|covered=1075|missing=80|modelled-only=269'
 }
 # 0604. AND THE EIGHT-TREE AGGREGATE, over the seven corpora AND this
 # repository's own source -- the three numbers that VARY, because `modelled` is
@@ -3545,7 +3689,7 @@ $PERFN_DEMOTED = [ordered]@{
   'async'           = '0'
   'proton'          = '0'
   'proton_contract' = '0'
-  'moonbit_core'    = '17'
+  'moonbit_core'    = '16'
 }
 # 0570. THE DEMOTED SET SHRANK, 22 -> 17, and every one of the five that left
 # was a false positive that the analyzer no longer stands behind: twelve hex
@@ -3555,7 +3699,7 @@ $PERFN_DEMOTED = [ordered]@{
 # division and a name. The two that proton had are gone because the corpus
 # under it changed: the re-pin replaced a core the toolchain could not
 # type-check with one it can, and the demoted findings came with it.
-$PERFN_DEMOTED_TOTAL = '17'
+$PERFN_DEMOTED_TOTAL = '16'
 # THE POSITIVE CONTROL'S FILE COUNT, pinned here for the same reason the census
 # total is: it is a corpus number, and the corpus numbers live in ONE place.
 # `_verify/check_readme_links.ps1` DERIVES the README's expectation from this

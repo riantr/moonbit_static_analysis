@@ -216,6 +216,59 @@ if ($SelfTest) {
         [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
       }
     }
+    [pscustomobject]@{
+      N = 'a check gate on disk that the release gate does not run'
+      Expect = 'NEVER RUN'
+      Apply = {
+        param($c)
+        # A gate with a LIVE self-test, so the ONLY thing wrong with it is that
+        # nothing runs it. A file that was wrong in two ways would prove less.
+        $body = "param([switch]`$SelfTest)`nif (`$SelfTest) { Write-Output 'never run' }`n"
+        [System.IO.File]::WriteAllText((Join-Path $c 'check_zzz.ps1'), $body, (New-Object System.Text.UTF8Encoding($false)))
+      }
+    }
+    [pscustomobject]@{
+      N = 'a check gate whose -SelfTest switch is declared and never used'
+      Expect = 'DEAD SWITCH'
+      Apply = {
+        param($c)
+        $p = Join-Path $c 'check_prove_contracts.ps1'
+        $t = Get-Text $p
+        if ($t.IndexOf('if ($SelfTest) {') -lt 0) { return $false }
+        $t = $t.Replace('if ($SelfTest) {', 'if ($false) {')
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
+    [pscustomobject]@{
+      N = 'a numbered gate that cannot fail'
+      Expect = 'CANNOT FAIL'
+      Apply = {
+        param($c)
+        $p = Join-Path $c 'mutate_0502.ps1'
+        $t = Get-Text $p
+        if ($t.IndexOf('Write-MutationGateVerdict') -lt 0) { return $false }
+        # THE HISTORICAL DEFECT, EXACTLY: no verdict, and no exit to carry it.
+        $t = $t.Replace('Write-MutationGateVerdict', 'Write-NoVerdict')
+        $t = $t.Replace('if ($script:MutationGateFailures.Count -gt 0) { exit 1 }', 'if ($false) { exit 1 }')
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
+    [pscustomobject]@{
+      N = 'a check gate with no -SelfTest and no stated reason'
+      Expect = 'NO SELF-TEST'
+      Apply = {
+        param($c)
+        $p = Join-Path $c 'check_frame_audit.ps1'
+        $t = Get-Text $p
+        $mark = 'There is no -SelfTest switch, and that is deliberate'
+        if ($t.IndexOf($mark) -lt 0) { return $false }
+        $t = $t.Replace($mark, 'There is no self-test switch')
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
   )
 
   $bad = 0
@@ -224,7 +277,16 @@ if ($SelfTest) {
     try {
       # Every fault takes the copy dir; the ones that need the header count take
       # it as a second argument and the rest leave it in $args.
-      & $f.Apply $c $n
+      #
+      # A fault that returns $false did NOT APPLY -- the anchor it was going to
+      # change is not in the copy. A fault that quietly does nothing produces a
+      # copy that is green, and a green copy looks like a caught defect.
+      $applied = & $f.Apply $c $n
+      if ($applied -eq $false) {
+        Write-Output ('  MISSED  ' + $f.N + '  (the anchor was not found -- the defect was never injected)')
+        $bad++
+        continue
+      }
       $r = Run-Copy $c
       $caught = ($r.Code -ne 0) -and ($r.Out -like ('*' + $f.Expect + '*'))
       Write-Output ('  ' + $(if ($caught) { 'CAUGHT ' } else { 'MISSED ' }) + $f.N +
@@ -408,9 +470,156 @@ if (-not $cm.Success) {
   }
 }
 
+# ------------------------------------- 5. the check_* gates: run, and showable ---
+# Everything above is about the MUTATION gates -- `mutate_0*.ps1`, each one a
+# mutation with a baseline. The `check_*` gates are a different kind of thing:
+# they READ the tree and judge it. Until 0615 nothing said they had to be run
+# at all, and nothing said they could be shown to work.
+#
+# TWO DEFECTS, and both are the same shape as the roster defect this file was
+# built for:
+#
+#   1. A `check_*.ps1` on disk that `release.ps1` does not run NEVER RUNS. It
+#      is on disk, it is named like a gate, and a release run reports every
+#      gate green. A gate that does not run is indistinguishable from a gate
+#      that passes -- and the README publishes the opposite claim.
+#   2. A `check_*.ps1` whose `-SelfTest` switch is DECLARED AND NEVER USED is
+#      a switch that selects nothing. It looks like the gate can be shown to go
+#      red, and it cannot. MEASURED 0615: `check_prove_contracts.ps1` declared
+#      `param([switch]$SelfTest)` and then never mentioned `$SelfTest` again
+#      -- in the one gate whose whole subject is a red that had never been
+#      shown.
+#
+# SO EVERY `check_*.ps1` IS ACCOUNTED FOR: it either carries a LIVE
+# `-SelfTest` -- declared AND read by the body -- or it says, in a comment, why
+# it carries none.
+#
+# "LIVE" IS READ FROM THE CODE, NOT FROM THE TEXT. The count is taken over
+# CODE LINES ONLY, with the same here-string-aware reader this file already
+# uses, so a `$SelfTest` mentioned in a comment -- in a header that explains
+# what the switch does -- does not make a dead switch look alive. That is not
+# a hypothetical: the header of `check_prove_contracts.ps1` names `$SelfTest`
+# twice, and both mentions are prose.
+#
+# The stated reason is a FIXED PHRASE, not a mood: "There is no -SelfTest
+# switch, and that is deliberate". Five gates carry it, and the reason it
+# exists is that their red is demonstrated by injecting a defect into the
+# tree, which is a stronger statement than a switch that reproduces the
+# checker's own logic.
+Write-Output ''
+Write-Output '=== 5. the check gates: every one runs, and every one is showable ==='
+$checkFiles = @(Get-ChildItem -LiteralPath $verify -Filter 'check_*.ps1' -File | Sort-Object Name)
+$relTxt = Get-Text (Join-Path $verify 'release.ps1')
+$notRun = @()
+$deadSwitch = @()
+$noSelfTest = @()
+$liveSwitch = @()
+$stated = @()
+foreach ($f in $checkFiles) {
+  $t = Get-Text $f.FullName
+  if ($relTxt.IndexOf($f.Name, [System.StringComparison]::Ordinal) -lt 0) {
+    $notRun += $f.Name
+  }
+  # The count is over CODE LINES: comments and here-strings are removed first,
+  # so prose about the switch cannot make it look alive.
+  $code = Get-CodeLines (Get-Content -LiteralPath $f.FullName -Encoding UTF8)
+  $nRef = @($code | Where-Object { $_ -match '\$SelfTest' }).Count
+  if ($nRef -eq 0) {
+    # No switch at all. The gate has to say why it has none.
+    if ($t.IndexOf('There is no -SelfTest switch, and that is deliberate', [System.StringComparison]::Ordinal) -ge 0) {
+      $stated += $f.Name
+    } else {
+      $noSelfTest += $f.Name
+    }
+  } elseif ($nRef -ge 2) {
+    $liveSwitch += $f.Name
+  } else {
+    # Declared, and read exactly once -- which is the declaration itself.
+    $deadSwitch += $f.Name
+  }
+}
+Write-Output ('  ' + $checkFiles.Count + ' check gates on disk')
+if ($notRun.Count -gt 0) {
+  Write-Output ('  NEVER RUN (the release gate does not name them): ' + ($notRun -join ', '))
+  Write-Output '    A gate on disk that nothing runs looks exactly like a gate that passes.'
+  $fail++
+} else {
+  Write-Output ('  OK: all ' + $checkFiles.Count + ' check gates are named by the release gate.')
+}
+if ($deadSwitch.Count -gt 0) {
+  Write-Output ('  DEAD SWITCH (declared, and never read by the body): ' + ($deadSwitch -join ', '))
+  Write-Output '    A switch that selects nothing looks like a gate that can be shown to go red.'
+  $fail++
+} else {
+  Write-Output ('  OK: ' + $liveSwitch.Count + ' carry a live -SelfTest, ' + $stated.Count + ' state why they carry none.')
+}
+if ($noSelfTest.Count -gt 0) {
+  Write-Output ('  NO SELF-TEST AND NO STATED REASON: ' + ($noSelfTest -join ', '))
+  Write-Output '    Either give the gate a -SelfTest, or say in a comment why it has none.'
+  $fail++
+}
+
+# ------------------------------------------ 6. every numbered gate can FAIL ---
+# MEASURED 0615, and this section is about a defect the other sections could not
+# see.
+#
+# The harness RECORDS a failure in `$script:MutationGateFailures` -- and a
+# record that nothing reads is not a verdict. FIVE of the numbered gates (0491,
+# 0496, 0500, 0501, 0502) ended at the `Invoke-MutationGate` call, with no
+# `Write-MutationGateVerdict` and no `exit`: the script ended normally,
+# `powershell -File` exited 0, the transcript carried no `GATE FAILED` line,
+# and `release.ps1`'s `Run-Gate` -- which reads the transcript for a verdict
+# ONLY when the exit code is non-zero -- reported the gate as PASS.
+#
+# PROVEN, not argued. With one `MustRed` claim in `mutate_0502.ps1` deliberately
+# pointing at a test that does not exist, the gate printed `MUST-RED MISS`,
+# recorded the failure in `$script:MutationGateFailures`, and STILL EXITED 0
+# with no `GATE FAILED` line anywhere in its transcript. A release run would
+# have reported that gate green, on a gate whose own mutation claim was false.
+#
+# AND THE OTHER DIRECTION IS THE SAME ONE. `check_gate_roster.ps1` checked that
+# every numbered gate USES the shared harness -- the baseline, the pre-flight,
+# the SHA256 restore, the COMPILE-ERR verdict -- and said nothing about whether
+# the gate's own verdict could REACH the release gate. The harness's guarantees
+# were all in place and the gate still could not fail.
+#
+# SO EVERY NUMBERED GATE MUST CARRY BOTH LINES: the verdict, and the exit that
+# turns the recorded failures into a non-zero exit code. A gate that cannot
+# fail is indistinguishable from a gate that passes -- the same shape as the
+# roster defect this file was built for, one level down.
+#
+# THE LINES ARE READ FROM THE CODE, with the same here-string-aware reader this
+# file already uses, so a mention of them inside a comment cannot make a gate
+# look able to fail. That is not a hypothetical: the fix's own explanation
+# quotes both lines.
+Write-Output ''
+Write-Output '=== 6. every numbered gate can FAIL ==='
+$cannotFail = @()
+$noVerdict = @()
+$noExit = @()
+foreach ($f in $gateFiles) {
+  $code = Get-CodeLines (Get-Content -LiteralPath $f.FullName -Encoding UTF8)
+  $body = ($code -join "`n")
+  $hasVerdict = ($body -match 'Write-MutationGateVerdict')
+  $hasExit = ($body -match '\$script:MutationGateFailures\.Count\s*-gt\s*0')
+  if (-not $hasVerdict) { $noVerdict += $f.Name }
+  if (-not $hasExit) { $noExit += $f.Name }
+  if (-not ($hasVerdict -and $hasExit)) { $cannotFail += $f.Name }
+}
+if ($cannotFail.Count -gt 0) {
+  Write-Output ('  CANNOT FAIL (no verdict, or no exit that carries it): ' + ($cannotFail -join ', '))
+  Write-Output '    A gate that cannot fail looks exactly like a gate that passes. The harness'
+  Write-Output '    records its failure in $script:MutationGateFailures and nobody reads it.'
+  $fail++
+} else {
+  Write-Output ('  OK: all ' + $gateFiles.Count + ' numbered gates carry the verdict and the exit that carries it.')
+}
+
 Write-Output ''
 if ($fail -eq 0) {
-  Write-Output ('ROSTER OK: ' + $onDisk.Count + ' gates, one harness, one roster, and a count that matches.')
+  Write-Output ('ROSTER OK: ' + $onDisk.Count + ' mutation gates, one harness, one roster, and a count that matches;')
+  Write-Output ('           every one of them can FAIL, and the check gates below are run and showable.')
+  Write-Output ('           ' + $checkFiles.Count + ' check gates, all of them run, and each one either showable or stated.')
   exit 0
 }
 Write-Output ('ROSTER FAILED: ' + $fail + ' problem(s).')

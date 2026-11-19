@@ -100,11 +100,11 @@ if (-not (Test-Path -LiteralPath $moonrun)) {
 # package-level calls, 16,250 -> 24,894 of them unchecked, 657 -> 1,160 files
 # carrying one, 159 -> 263 `.mbti` files and 2,116 -> 2,812 `pub fn`
 # declarations across them.
-$WANT_REACH_TOTAL   = 30287   # calls to a package-level function, pinned corpus
-$WANT_REACH_UNCHECK = 24894   # of those, the signature is known by NAME only
-$WANT_REACH_FILES   = 1160    # files carrying an unchecked call
-$WANT_MBTI_FILES    = 132     # .mbti files in the pinned corpus
-$WANT_MBTI_PUBFN    = 1407    # `pub fn` declarations across them
+$WANT_REACH_TOTAL   = 31939   # calls to a package-level function, pinned corpus
+$WANT_REACH_UNCHECK = 26400   # of those, the signature is known by NAME only
+$WANT_REACH_FILES   = 1231    # files carrying an unchecked call
+$WANT_MBTI_FILES    = 133     # .mbti files in the pinned corpus
+$WANT_MBTI_PUBFN    = 1495    # `pub fn` declarations across them
 $WANT_FAMILIES      = 18      # members of the `Family` enum
 $WANT_NAME_DIFFERS  = 5       # of them, whose public name is not the tag minus `F`
 
@@ -156,7 +156,7 @@ function Invoke-Scan {
 #
 # THE RULE, precisely:
 #
-#   1. The corpus is the PINNED one: moonbitlang/core 0.1.20261105+65efd5b93.
+#   1. The corpus is the PINNED one: moonbitlang/core 0.1.20261117+06da1ed44.
 #      `.mbt` files only for the CALLS; `.mbti` files for the DECLARATIONS.
 #   2. A "package-level function" is a name declared by a top-level `fn` in
 #      some `.mbt` file of the corpus, or by a `pub fn` in some `.mbti` of the
@@ -423,7 +423,7 @@ if ($c.Total -eq 4 -and $c.Checked -eq 1 -and $c.Unchecked -eq 3 -and $c.Uncheck
   Say-Bad 'A6ctl' 'total=4 checked=1 unchecked=3 (1 another .mbt, 2 interface only)' ('total=' + $c.Total + ' checked=' + $c.Checked + ' unchecked=' + $c.Unchecked + ' (' + $c.UncheckedMbt + ', ' + $c.UncheckedIface + ')') 'the counter is not trusted, so no reach number is reported'
 }
 
-$core = Join-Path $repos 'moonbitlang\core\0.1.20261105+65efd5b93'
+$core = Join-Path $repos 'moonbitlang\core\0.1.20261117+06da1ed44'
 if ($Tree -ne '') { $core = $Tree }
 if (-not (Test-Path -LiteralPath $core)) {
   Write-Output ('  A6        ABORT    the pinned corpus is not there: ' + $core)

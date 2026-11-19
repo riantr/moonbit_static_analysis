@@ -107,17 +107,61 @@
 # the artifact's imports against the contract, the toolchain's bundled core
 # AND runtime against the contract -- and it checks that the dependency has
 # not come back.
+#
+# 0615. THE TOOLCHAIN MOVED UNDER THIS CONTRACT, and the contract moved with
+# it. MEASURED: this host's bundled core went from 0.10.20+65efd5b93 to
+# 0.10.21+06da1ed44 on 2026-11-20, with `moon` 0.1.20261117 -- the toolchain
+# updated itself, with no change to this repository. The gate said the same
+# thing in its own words: "the floor and the toolchain are one fact, and a
+# toolchain that moved must move the floor."
+#
+# AND THE SET MOVED WITH IT, and the movement was MEASURED, not assumed. The
+# core 0.10.21 declares `thread_pool/make_openat_job` where 0.10.20 declared
+# `thread_pool/make_open_stat_job`, and NEITHER of them declares the other --
+# so the old symbol is not in the new toolchain at all, and a floor that
+# lists a symbol no host can provide is a floor that drops users. MEASURED,
+# after rebuilding BOTH artifacts against the new core:
+#
+#     the LOCAL debug build     106 imports, 92 from `moonbitlang/async`
+#     the LOCAL release build   106 imports, 92 from `moonbitlang/async`
+#
+#     the contract is wider than either build by 2:
+#         thread_pool/make_fsync_job
+#         thread_pool/make_open_stat_job
+#
+# `make_open_stat_job` is GONE from the list below, because the new core
+# declares it and the new runtime does not implement it, so no host on the
+# new toolchain can provide it. `make_fsync_job` STAYS: the new toolchain
+# does provide it, and a floor is a floor -- it covers the older artifact
+# that needed it. THAT IS WHY THE LIST IS 93 AND NOT 92.
+#
+# AND THE TWO BUILDS AGREE NOW, which they did not before: with the old core
+# the local build and the release build of the same source differed by one
+# symbol, because the builder decides the set. The floor is now the union of
+# what this source's own two artifacts require, plus the one symbol the
+# older artifact needed and the new toolchain still provides.
+#
+# A TOOLCHAIN THAT MOVES IS NOT A VERDICT ABOUT THE CODE, and the fix is not
+# to ignore the gate -- it is to move the floor, and to write down that it
+# moved and what it cost. The CI runner installs the NEWEST toolchain, so a
+# contract that did not move would fail there first.
 
-min-host-core: 0.10.20+65efd5b93
-min-host-toolchain: 0.1.20261104
+min-host-core: 0.10.21+06da1ed44
+min-host-toolchain: 0.1.20261117
 host-abi-module: moonbitlang/async
-symbols: 94
+symbols: 93
 
 # --- the symbols the artifact requires from the `moonbitlang/async` HOST ABI ---
 # --------------------------------------------------------------------------
 # generated from the artifact on 2026-11-09 by _verify tools; 93 symbols
 # widened to 94 on 2026-11-17 (0606): the union of the LOCAL build's 93 and
 # the PUBLISHED 0.4.52 build's 92, so the contract is a FLOOR that serves both
+# narrowed to 93 on 2026-11-20 (0615): the toolchain moved to core
+# 0.10.21+06da1ed44, which declares `thread_pool/make_openat_job` where
+# 0.10.20 declared `thread_pool/make_open_stat_job`, and the old symbol is
+# provided by NO host on the new toolchain. `thread_pool/make_fsync_job`
+# stays: the new toolchain provides it, and a floor covers the older artifact
+# that needed it.
 # --------------------------------------------------------------------------
 
 c_buffer/free
@@ -194,7 +238,6 @@ thread_pool/job_get_err
 thread_pool/job_get_ret
 thread_pool/make_fstatx_job
 thread_pool/make_fsync_job
-thread_pool/make_open_stat_job
 thread_pool/make_openat_job
 thread_pool/make_read_console_job
 thread_pool/make_read_job

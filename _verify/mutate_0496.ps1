@@ -291,18 +291,27 @@ Invoke-MutationGate -Name '0496' -Target 'wasm' -Mutations @(
   # keyword list is where the codebase says so -- it is the one place that
   # asks "is this a name to resolve?".
   #
-  # IT SURVIVES, and the argument is that the ENTRY IS DEFENSIVE while the
-  # ARM is load-bearing. Every `lexmatch` in the pinned corpus is in
+  # 0615. IT USED TO SURVIVE, AND IT NO LONGER DOES. The entry was DEFENSIVE
+  # while the ARM was load-bearing: every `lexmatch` in the pinned corpus is in
   # EXPRESSION position, where M10's arm consumes it, so no name ever reaches
-  # the frame and the list cannot change a finding: the corpus's 4
-  # `undefined name 'lexmatch'` findings stay at 4 with the entry removed.
-  # The entry is kept because `is_moonbit_keyword` is the one predicate that
-  # says "this word is syntax", and a keyword that is not on it would be
-  # resolved as a binding in a pattern or an interpolation.
+  # the frame and the list cannot change a finding -- the corpus's
+  # `undefined name 'lexmatch'` findings stay the same with the entry removed.
   #
-  # FALSIFIED IF a `lexmatch` ever appears outside expression position -- a
-  # pattern head, or inside a `\{...}` interpolation -- because then the entry
-  # would be the only thing standing between the word and a finding.
+  # AND THE 0615 INCREMENT CHANGED THAT. Its own control test
+  # (`src/lexer/lexer_0615_test.mbt`, "0615: lexmatch is still a keyword
+  # (control)") asserts that `is_moonbit_keyword("lexmatch")` is true, so the
+  # entry is now PINNED by a test and the mutation is KILLABLE. The entry is
+  # no longer merely defensive: the increment that taught the analyser the
+  # second lexical form also pinned the first one's place in the list, and this
+  # row is what says so.
+  #
+  # So the declaration is KILLED, and the test that kills it is NAMED -- the
+  # 0615 control, which is the test that exists for exactly this claim.
+  #
+  # THE CORPUS CLAIM IS UNCHANGED AND IS STILL TRUE: with the entry removed,
+  # no `lexmatch` in the pinned corpus changes a finding, because every one of
+  # them is in expression position. That is a claim about the CORPUS and not
+  # about the test suite, and this gate measures the test suite.
   @{
     Name = 'M13 the keyword list loses lexmatch'
     File = $LEXER
@@ -312,7 +321,28 @@ Invoke-MutationGate -Name '0496' -Target 'wasm' -Mutations @(
     Repl = @'
     | "lexmatch_disabled"
 '@.Replace("`r`n", "`n")
-    Expect = 'SURVIVED'
-    Prove = 'Defensive. Every `lexmatch` in the pinned corpus is in expression position, where the parser arm (M10) consumes it, so no name reaches the frame and the list cannot change a finding. Falsified if a `lexmatch` ever appears in a pattern or inside an interpolation.'
+    MustRed = '0615: lexmatch is still a keyword (control)'
   }
 )
+
+# THE VERDICT, AND THE EXIT THAT CARRIES IT. These two lines are what make this
+# gate ABLE TO FAIL.
+#
+# MEASURED 2026-11-20, and the defect is worth stating in full because it is the
+# shape of a guard that does not guard. This file -- like 0491, 0500 and 0501 --
+# ended at the `Invoke-MutationGate` call. The harness RECORDS a failure in
+# `$script:MutationGateFailures`, and without these lines that record goes
+# nowhere: the script ends normally, `powershell -File` exits 0, the transcript
+# carries no `GATE FAILED` line, and `release.ps1`'s `Run-Gate` -- which reads the
+# transcript for a verdict ONLY when the exit code is non-zero -- reports the
+# gate as PASS.
+#
+# PROVEN, not argued: with a `MustRed` claim deliberately pointing at a test that
+# does not exist, this gate printed `MUST-RED MISS`, recorded the failure, and
+# STILL EXITED 0 with no `GATE FAILED` line in its transcript. A release run
+# would have reported it green.
+#
+# `check_gate_roster.ps1` now checks that every numbered gate carries both
+# lines, so this cannot rot back into a comment.
+Write-MutationGateVerdict -Name '0496 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }

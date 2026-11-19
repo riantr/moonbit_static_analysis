@@ -7519,22 +7519,40 @@ The measured reach, under a rule that is written down in the settle and defended
 control fixture whose answer is known by construction:
 
 ```
-    0505 the corpus reach, package-level calls   : 30287
-    0505 the corpus reach, unchecked calls        : 24894
-    0505 the corpus reach, files carrying them    : 1160
-    0505 the corpus reach, unchecked share        : 82.2
-    0505 the interface population, files          : 132
-    0505 the interface population, `pub fn`       : 1407
+    0505 the corpus reach, package-level calls   : 31939
+    0505 the corpus reach, unchecked calls        : 26400
+    0505 the corpus reach, files carrying them    : 1231
+    0505 the corpus reach, unchecked share        : 82.7
+    0505 the interface population, files          : 133
+    0505 the interface population, `pub fn`       : 1495
 ```
 
-That is the pinned `moonbitlang/core 0.1.20261105+65efd5b93`, and the rule is: a
+That is the pinned `moonbitlang/core 0.1.20261117+06da1ed44`, and the rule is: a
 package-level call is a call to a name declared by a top-level `fn` in some `.mbt` file
 of the corpus or by a `pub fn` in some `.mbti` of it; it is CHECKED when the calling
 file itself declares that name, and UNCHECKED otherwise; declarations are not calls, and
-comments and string and character literals are not code. **82.2% of the package-level
-calls in the pinned corpus have their arity and argument types unchecked**, across 1,160
-files. The 132 `.mbti` files carry 1,407 `pub fn` declarations, and every one of them
+comments and string and character literals are not code. **82.7% of the package-level
+calls in the pinned corpus have their arity and argument types unchecked**, across 1,231
+files. The 133 `.mbti` files carry 1,495 `pub fn` declarations, and every one of them
 reaches the analyzer as a name and nothing else.
+
+<!-- 0615. THE SIX NUMBERS ABOVE MOVED, AND THE MOVE WAS THE CORPUS'S.
+     The 0615 increment re-pinned the corpus from `moonbitlang/core`
+     0.1.20261105+65efd5b93 to 0.1.20261117+06da1ed44 -- the toolchain's own
+     bundled core -- because the old pin was a version the toolchain could no
+     longer compile. The reach is measured over the SEVEN corpora, and one of
+     them is that core, so the reach moved with it: 30,287 -> 31,939 package-level
+     calls, 24,894 -> 26,400 unchecked, 1,160 -> 1,231 files, 82.2% -> 82.7%, and
+     the interface population from 132 files and 1,407 `pub fn` declarations to
+     133 and 1,495.
+
+     THEY ARE MEASURED AND NOT CARRIED OVER. `_verify/settle_0505_finding_quality.ps1`
+     measures all six on every run and compares them with the block above, and
+     that comparison is what caught the drift: the gate that had been reading
+     them was SKIPPED, because an earlier stage had failed and the stage that
+     reads the corpus is guarded by "no earlier stage failed". So the six numbers
+     sat wrong for the whole of the 0615 increment's development and were only
+     noticed when the whole gate ran to the end. -->
 
 **0570. THE TWO NUMBERS ABOVE THAT MOVED FOR A REASON THE OTHER FOUR DID NOT.** The
 reach moved because the corpus moved: the re-pin to `0.1.20261105+65efd5b93` brought a
@@ -7766,7 +7784,7 @@ And the first thing transfer 1 has to settle, before it settles anything else, i
 question this section has NOT answered: **what does the analyzer do about a call it
 cannot check?** Silence, a low-confidence finding, or a separate "unchecked" count are
 three different products, with three different costs, and they disagree about what a
-`CLEAN` file means. The measurement says the problem is large -- 82.2% of the
+`CLEAN` file means. The measurement says the problem is large -- 82.7% of the
 package-level calls in the pinned corpus. It does not say which of the three answers to
 build, and writing that down here would be exactly the kind of number-without-a-rule
 this project keeps correcting.
@@ -22305,5 +22323,373 @@ for a long time without seeing it. It was written when 0.4.30's package was meas
 THE CLAIM WAS RIGHT, AND THE GATE DID NOT ENFORCE IT: it measured the tree in front of it
 and pinned the number it got. 276 was a number that could have come from any tree, and the
 one in front of the gate happened to be a maintainer's.
+
+
+## 0615: A SWITCH THAT SELECTED NOTHING, FIVE GATES THAT COULD NOT GO RED, AND A PINNED CORPUS THE TOOLCHAIN COULD NOT COMPILE
+
+### THE CYCLE WAS GUARD, AND THE FIRST THING THE NEW GUARD FOUND WAS IN AN OLD GATE
+
+Cycle 2 of the QA plan, and its reason is one sentence from the plan itself: the QA was
+done by hand, in a scratch directory, and would rot exactly the way a hand-written table
+rots. A QA that is not a gate is a comment.
+
+So this increment moves four things out of a scratch directory and into the repository --
+the 18 per-family fixtures, the 6 blind-spot fixtures, the sweep that proves every family
+can fire, and the pin that proves this tree has no false positive -- and then it asks the
+sweep, the pin and the roster a question none of them had been asked before: can you be
+SHOWN to go red?
+
+THE FIRST ANSWER CAME FROM A GATE THAT HAD BEEN IN THE REPOSITORY SINCE 2026-10-22.
+
+### THE DEAD SWITCH
+
+`_verify/check_prove_contracts.ps1` opened with:
+
+    param([switch]$SelfTest])
+
+and then never mentioned `$SelfTest` again -- not once, in 101 lines. It was a switch that
+selected nothing, in the one gate whose whole subject is a red that had never been shown:
+the file exists because `moon prove src/core` was failing with error 4207 on two FALSE
+`#proof_pure` annotations from 2026-10-09, and nothing noticed, because the release gate
+never ran it.
+
+THE SAME FILE HAD A SECOND, QUIETER ROT. It counted `unbound type symbol 'map'` and named
+`map` in its header as THE limitation of the proof lane. MEASURED on the toolchain of
+2026-11-20 (core `0.10.21+06da1ed44`): the FIRST unbound symbol why3 reports is `array`,
+not `map`. `src/core` carries `IfaceSig`, whose fields are `Array[Int32]`, and it is
+declared BEFORE `IfaceSymTab`, whose fields are `Map[String, Bool]` -- and why3 stops at
+the first symbol it cannot resolve, so the map was never reached. The gate's counter read
+0, the "KNOWN, and reported rather than hidden" block never printed, and the header named
+a symbol the toolchain no longer reports first.
+
+THE LIMITATION WAS STILL THERE THE WHOLE TIME. Only the report of it had rotted -- the
+exact shape of the defect this repository keeps meeting: the claim stops being checked
+and keeps being printed.
+
+SO THE FILE NOW HAS A LIVE SELF-TEST AND AN HONEST REPORT. MEASURED:
+
+    the control (an unmodified copy of the tree)    4207=0
+    the fault  (#proof_pure injected)                4207=24
+    the lemmas the prover generated                 19, and NONE of them discharged
+    the symbols the proof prelude does not define   array
+
+AND THE INJECTION TARGET IS NOT A NAME TYPED IN THERE. It is found from the source: the
+first public function whose body allocates a `StringBuilder` and which carries no
+`#proof_pure` -- today `path_tail`, at `src/core/core.mbt:59`. A fault that finds its
+target survives a rename of the target; a fault that names a line does not.
+
+### THE ROSTER NEVER COVERED THE `check_*` GATES
+
+`_verify/check_gate_roster.ps1` enumerated the MUTATION gates -- `mutate_0*.ps1`, 87 of
+them, one harness, one release list -- and said nothing at all about the twelve `check_*`
+gates beside it. Two defects, and both are the shape of the roster defect that file was
+built for.
+
+A `check_*.ps1` on disk that the release gate does not name NEVER RUNS. It is on disk, it
+is named like a gate, and a release run reports every gate green. A gate that does not run
+is indistinguishable from a gate that passes.
+
+A `check_*.ps1` whose `-SelfTest` switch is declared and never used is a switch that
+selects nothing: it looks like the gate can be shown to go red, and it cannot.
+
+SO EVERY `check_*` GATE IS NOW ACCOUNTED FOR. It either carries a LIVE `-SelfTest` --
+declared AND read by the body -- or it says, in a comment, why it carries none. AND THE
+COUNT IS TAKEN OVER CODE LINES ONLY, with the reader this file already had, so that prose
+about the switch cannot make a dead switch look alive. That is not a hypothetical: the
+header of `check_prove_contracts.ps1` names `$SelfTest` twice, and both mentions are
+prose.
+
+MEASURED, over the twelve `check_*` gates on disk:
+
+    12 check gates on disk
+    12 named by the release gate
+    7 carry a live -SelfTest
+    5 state why they carry none
+
+AND THE DEAD SWITCH WAS NOT THE ONLY ONE. `check_family_roster.ps1` and
+`check_readme_links.ps1` carried NO switch and said NOTHING about why -- so neither could
+satisfy the rule. The first now has a real self-test: it reads exactly three files, so a
+copy of those three IS a tree it can be pointed at. MEASURED: the control is green, a
+renumbered id is caught, and an inverted table is caught. The second states the house
+reason: its subject is the repository's own published documents, and its red was shown by
+injecting a defect into the tree -- a stage added to `release.ps1` that the READMEs did not
+name, which left the gate RED until both named it.
+
+THE ROSTER'S OWN SELF-TEST GREW FROM SEVEN INJECTED DEFECTS TO ELEVEN. The three new ones
+are the three defects above, and all eleven are caught.
+
+### THE TWO NEW GATES, AND THE TWO SHAPES THAT MADE THEM NECESSARY
+
+`_verify/check_family_fires.ps1` sweeps the 18 fixtures and asserts that every family in
+`Family::all_families()` produces a finding. THE CENSUS IS THE `METRICS family` TABLE,
+not the finding count -- a family that fires inside another family's finding has not
+fired. MEASURED:
+
+    SUMMARY  files=18  parsed=18  actionable=17  notices=2  total=19
+    the census holds 18 rows for 18 families
+    18 fixtures, and each one fired its own family
+
+AND THE SWEEP NEEDS TWO SHAPES THAT A NAIVE FIXTURE WOULD NOT HAVE. MSA-007 and MSA-008
+are in the merge group `arg-type`, so they are invisible unless the type lens sees them
+alone: MSA-007 has to be a call inside a function nothing calls, and MSA-008 has to be a
+`!n` on a known `Int`. MSA-001 can ONLY ever be a notice -- a real parse failure has its
+findings WITHHELD by construction -- so its fixture is a scope-limit notice, and the sweep
+has to run with `--show-notices` or that family is silently missing from the census.
+
+`_verify/check_own_tree_clean.ps1` is the false-positive pin: this tree, scanned with
+`--honor-nosec`, has no actionable finding. MEASURED:
+
+    SUMMARY  files=278  parsed=278  actionable=0  notices=2114  unchecked=4583
+
+AND IT PROVES IT IS NOT VACUOUS. It copies the tree's scannable files into TEMP, requires
+the copy to read the same file count and the same SUMMARY, then plants a STALE
+suppression in the copy and requires the actionable count to move from 0 to 1. A pin that
+cannot move is not a pin.
+
+AND THE VERDICT IS IN ONE PLACE. The release gate's self-scan stage still MEASURES the
+actionable count -- it has to, it needs the same scan for the notice table and the file
+set -- but it no longer TAKES the verdict. Two assertions of one claim in two files is a
+second implementation, and a second implementation of a claim is a defect.
+
+### AND THE BACKLOG GATE WAS MEASURING THE MAINTAINER'S TREE
+
+`_verify/backlog.ps1` scanned the repository without excluding `_verify`, so it read the
+files under that directory -- the new fixtures and the untracked scratch copies -- as if
+they were the package. MEASURED, with and without the exclusion:
+
+    without `--exclude _verify`   319 files
+    with    `--exclude _verify`   278 files
+
+278 is the package. The backlog's numbers are not pinned anywhere, so the fix was to make
+the scan say what it was measuring.
+
+### AND THE HOST CONTRACT MOVED WITH THE TOOLCHAIN
+
+The bundled MoonBit core moved on 2026-11-20 from `0.10.20+65efd5b93` to
+`0.10.21+06da1ed44` (moon `0.1.20261117`), with no change to this repository. The
+contract in `_verify/host_requirements.txt` named the OLD core and 94 symbols, so the
+host gate went RED -- on a machine event, not on a defect in this tree.
+
+THE COST, MEASURED: the new core declares `make_openat_job` where the old one declared
+`make_open_stat_job`, and nothing in this tree provides either name, so the contract
+LOSES one symbol and the floor moves up. The floor is now core `0.10.21+06da1ed44`,
+toolchain `0.1.20261117`, 93 symbols; both local builds need 92 each and the published
+0.5.0 needs 92, so all three are inside the contract. The README and the Chinese README
+carry the new floor and what it cost.
+
+A TOOLCHAIN THAT MOVES UNDER A PIN IS NOT A VERDICT ON THE TREE. The fix is to raise the
+floor and write down the price, not to ignore the gate -- CI installs the NEWEST
+toolchain, so a contract that does not move would fail there first.
+
+### AND THE PINNED CORPUS WAS A TREE THE TOOLCHAIN COULD NO LONGER COMPILE
+
+THE 0615 GATE WAS THE FIRST TO RUN ENTIRELY AFTER THE BUNDLED CORE MOVED, and it came back
+RED. The cause was not this tree. The corpus was pinned to `moonbitlang/core
+0.1.20261105+65efd5b93` -- the core the toolchain bundled BEFORE the move -- and the
+toolchain can no longer compile it. MEASURED, `moon check --target all` on that corpus
+reports two errors that are the CORPUS's own: `JsonPath::error` and
+`StringView::find_code_unit` are gone from the newer core. A gate that reads a diagnostic
+it cannot attribute is reading the wrong tree.
+
+AND THE CONTROL GATE DID EXACTLY THE RIGHT THING WITH THAT.
+`_verify/control_perfunction_census.ps1` refused: a corpus that cannot be checked is not a
+corpus with nothing wrong. So the gate was red for a true reason, and the true reason was a
+pin that a machine event left behind.
+
+SO THE PIN MOVED, to `moonbitlang/core 0.1.20261117+06da1ed44` -- the version this host's
+toolchain bundles, and the version every corpus number is now measured against. `moon fetch`
+deposits it in `<cwd>/.repos/moonbitlang/core/<ver>`, and it is already in this repository's
+tree. The re-pin follows the repository's own 0570 precedent: when the corpus moves, the
+numbers read off it move with it, and every pin that read them moves too.
+
+THE ALTERNATIVE WAS REJECTED, and the reason is worth writing down. Pinning the corpus's two
+known incompatibilities instead of re-pinning would have changed a published gate claim,
+left the corpus pinned to a version the toolchain cannot compile, and needed repeating at
+the next core move. The price of the re-pin is measured and written down below; the price
+of the alternative was a claim that stopped being true and nobody noticing.
+
+AND THE OLD CORPUS WAS ALSO CARRYING BUILD ARTIFACTS. Its tree held a `_build/` directory
+with 130 generated `.mbti` files, so the interface index the analyzer read included files
+the corpus never published. The re-pinned corpus holds 133 `.mbti` files and no `_build/`.
+
+### AND THE CONSTRUCT THE RE-PINNED CORPUS EXERCISED FOR THE FIRST TIME
+
+`lexscan` is a MoonBit construct this frontend had never read. The re-pinned corpus uses it
+in ordinary code for the first time, and the three `undefined variable 'lexscan'` false
+positives it produced are exactly what a construct nobody modelled looks like.
+
+IT IS NOW MODELLED EXACTLY LIKE `lexmatch` AND `match`. `src/parser/parser.mbt` gained a
+`TName("lexscan")` arm: skip the separators, parse the subject, take the optional
+`with longest` / `with first` clause, and then READ the arms -- in a transaction, so that
+an arm the parser cannot read restores the position and emits the notice instead of losing
+the rest of the file. The arms are readable because a `lexscan` arm body is an ordinary
+expression; a `lexmatch` arm's body is not, because that one ends in `next`.
+
+`src/lexer/lexer.mbt` gained `lexscan` in `is_moonbit_keyword`, and the sentence in
+`src/ast/ast.mbt` that names the constructs the frontend does not read now names `lexscan`
+too -- a doc that names one construct and not the other is a doc that is wrong about half
+of what it claims.
+
+MEASURED, ON THE RE-PINNED CORPUS: the three false positives are GONE, three more corpus
+files parse completely, and NO NEW FINDING APPEARED -- the corpus's defect count stayed at
+30. The per-function census is green and says the thing that matters: every actionable
+finding and every demoted finding landed in a named family.
+
+THE THREE NEW TEST FILES CARRY IT, and the suite is green on all three targets:
+
+    src/parser/parser_0615_test.mbt      8 tests
+    src/lexer/lexer_0615_test.mbt        3 tests
+    src/pipeline/pipeline_0615_test.mbt  3 tests
+    wasm 1786/1786 ; js 1627/1627 ; wasm-gc 1627/1627
+
+AND IT IS MUTATION-VERIFIED, which is the house rule: a new reader with no test is a new
+reader with no proof. `_verify/mutate_0615.ps1` carries five mutations, and every restore is
+proven byte-identical:
+
+    M1  the arm stops matching               KILLED, 9 red, the named test confirmed
+    M2  the with-clause is not consumed      KILLED, 2 red
+    M3  the arms are skipped whole           KILLED, 6 red
+    M4  the `first` strategy is not read     KILLED, 1 red
+    M5  the keyword list loses `lexscan`     KILLED by the lexer test
+
+`_verify/settle_0615_lexscan.ps1` settles the construct against the TOOLCHAIN, which is
+what makes it a claim about MoonBit and not about this analyzer: 12 rows -- 5 controls and
+7 grammar and type rows -- and every one of them matches what the toolchain does.
+
+### AND FIVE MUTATION GATES COULD NOT GO RED
+
+`mutate_0491.ps1`, `mutate_0496.ps1`, `mutate_0500.ps1`, `mutate_0501.ps1` and
+`mutate_0502.ps1` each ENDED at the `Invoke-MutationGate` call. There was no
+`Write-MutationGateVerdict` after it and no `exit 1`, and `powershell -File script.ps1`
+exits 0 when the script completes normally -- so a gate without an explicit `exit 1` CANNOT
+FAIL.
+
+AND IT WAS PROVEN, NOT ASSERTED. A deliberately broken `MustRed` was injected into
+`mutate_0502.ps1`: it printed `MUST-RED MISS`, recorded the failure, and STILL EXITED 0
+with no `GATE FAILED` line anywhere in the transcript. `release.ps1`'s `Run-Gate` reads the
+transcript for a verdict only when the exit code is non-zero -- so a release run would have
+reported that gate PASS, and would have reported it PASS while the mutation it claims to
+check had survived.
+
+THAT IS THE SAME SHAPE AS THE DEAD SWITCH AT THE TOP OF THIS CHAPTER, one layer down: a
+switch that selects nothing and a gate that cannot fail are both a claim the reader cannot
+check. All five now carry the two lines, and the roster grew a sixth section -- "every
+numbered gate can FAIL" -- whose self-test fault injects exactly this defect.
+
+### AND TWO OF THE FIVE WERE ALREADY RED, AND A THIRD DRIFT WAS WAITING BEHIND THEM
+
+Making a gate able to fail is not the same as making it pass. The first full run of the
+0615 gate with the two lines in place came back with `mutate:0496, mutate:0501` -- and
+neither was a defect in the increment. Both were drifts that the blindness had been
+carrying, and they were carried for RELEASES.
+
+`mutate_0501.ps1` named three of its tests with the word "match" where the tests say
+"region":
+
+    MustRed = 'a local declared after a match is reported unused'
+    MustRed = 'a local read only inside a match is not reported unused'
+    MustRed = 'a parameter in a function with a match is not reported'
+
+The tests were renamed at 0.4.34 (`2dd3672`), when a `match`'s arms became ordinary code
+and "region" -- which is BROADER than a `match`, because a region is any span the
+frontend did not analyse -- became the correct word. The gate's strings were not renamed
+with them. So for every release since, all three mutations were KILLED by exactly the
+test each one names, and the harness reported "the named test did not go red", because it
+was matching a name that no longer existed. The report went nowhere: no verdict line, no
+`exit 1`. THE MUTATIONS WERE RIGHT THE WHOLE TIME. THE NAMES WERE NOT.
+
+`mutate_0496.ps1`'s M13 declared itself a SURVIVOR, and it was one -- until this
+increment. M13 removes `lexmatch` from the lexer's keyword list, and the argument was
+that the entry was DEFENSIVE while the parser's arm was load-bearing: every `lexmatch` in
+the pinned corpus is in expression position, so the entry cannot change a finding. But
+0615 added a control of its own -- "0615: lexmatch is still a keyword (control)" -- which
+asserts that the entry IS there. So the entry is now PINNED, the mutation is killable, and
+the declaration was wrong. It is now a KILLED row that names the test that kills it, and
+the corpus-level claim it used to make survives in the comment where it belongs: a claim
+about the corpus is not a claim about the test suite, and this gate measures the test
+suite.
+
+AND A THIRD DRIFT WAS WAITING BEHIND BOTH OF THEM. The corpus stage is guarded by "no
+earlier stage failed", so the two red gates meant the corpus stage never ran -- and the
+corpus stage is where `_verify/settle_0505_finding_quality.ps1` compares chapter 0505's
+six quoted numbers with a fresh measurement. Those six had MOVED, because this increment
+re-pinned the corpus and the reach is measured over it: 30,287 -> 31,939 package-level
+calls, 24,894 -> 26,400 unchecked, 1,160 -> 1,231 files, 82.2% -> 82.7%, and the interface
+population from 132 files and 1,407 `pub fn` declarations to 133 and 1,495. Chapter 0505
+also still named the OLD pinned core in prose.
+
+So the fix was three fixes, and the third was found only because the first two were
+fixed and the gate was allowed to run to the end.
+
+THE LESSON IS THE ONE THE CHAPTER IS ABOUT, one level deeper. A gate that cannot fail
+does not only hide ITS OWN failures: it hides every stage that runs BEHIND it, because
+the stages behind it are guarded by "nothing before me failed". The five gates at the top
+of this section were not five broken gates; they were a blind spot with a CORPUS behind
+it.
+
+### AND THE README GATE WAS CHECKING ITS OWN COPY OF A NUMBER
+
+`_verify/check_readme_links.ps1` derives most of the README's measured numbers from the
+pins in `release.ps1` -- one authority for a number -- and then carried ONE of them as a
+LITERAL:
+
+    | `moonbit_core` — the standard library | **1,123** | **1,076** | **47** |
+
+The literal was checked against itself, so it could not go stale: the gate was happy with
+the literal while the pin said `declared=1155 covered=1075 missing=80`. A gate that checks
+its own copy of a number cannot notice the copy going stale, and this one did not notice
+until the corpus moved.
+
+THE LITERAL IS GONE. The row is derived from `$PINNED_SURFACE['moonbit_core']` -- the same
+per-corpus pin the corpus stage checks against the analyzer's own line -- and the gate now
+prints what it derived, so a reader can see the derivation and not only the verdict.
+
+### AND THE PINS THAT MOVED
+
+THE WHOLE LIST, because a chapter that says "the pins that moved" and then names two of
+them is a chapter about two pins:
+
+    $NARRATIVE_CHAPTERS         125 -> 126   (the chapter you are reading)
+    $NOTICE_TOTAL            23445 -> 24096
+    $NOTICE_SPLIT_PRINTED     3972 -> 4021
+    $NOTICE_SPLIT_AGGREGATED 19473 -> 20075
+    $SELF_FILES                275 -> 278
+    $SELF_NOTICES         test declaration 1772 -> 1786
+    $SELF_AGGREGATED         1942 -> 1956
+    $SURFACE_DECLARED        1133 -> 1165
+    $SURFACE_COVERED         1076 -> 1075
+    $SURFACE_MISSING           57 -> 90
+    $IFACE_SIG_AVAILABLE     2961 -> 2943
+    $SUPPOFF_LOCAL            694 -> 701
+    $SUPPOFF_PARAM           1341 -> 1339
+    $SSA_COST          files 257 -> 260, functions 1430 -> 1433,
+                      partial 1425 -> 1428, declined 6518 -> 6522
+    $RAISEQ_REACH           221|36 -> 224|36
+    $PERFN_DEMOTED_TOTAL        17 -> 16
+    $PINNED['moonbit_core']       files 1679 -> 1766, parsed 1621 -> 1705,
+                                 notices 13520 -> 14157, unchecked 14322 -> 14775
+    $PINNED_SURFACE['moonbit_core']  declared 1123 -> 1155, covered 1076 -> 1075,
+                                     missing 47 -> 80, modelled-only 268 -> 269
+    $PERFN_DEMOTED['moonbit_core']      17 -> 16
+    the corpus itself         moonbitlang\core\0.1.20261105+65efd5b93
+                             -> moonbitlang\core\0.1.20261117+06da1ed44
+
+AND TWO PINS DID NOT MOVE, which is worth saying as much as the ones that did:
+`$IFACE_SIG_AGREES` stayed at 2282, and `$SELF_PRINTED` stayed at 158.
+
+AND ONE CLAIM WAS REFUTED BY THE MEASUREMENT, so it is corrected here rather than kept.
+The README said the native-surface measurement "does not move between two toolchain
+generations". MEASURED, it moved: the previous pin declared 1,123 with 47 missing, and the
+new one declares 1,155 with 80 missing -- so the gap is WIDER than the table's stamp
+implied, and the measurement DOES move. The README carries the correction.
+
+THE STAGE LIST GREW BY ONE, and both READMEs name every stage the release gate runs --
+MEASURED, 40 stages, and both READMEs name all 40. The new one is
+`proof contracts, shown to go red (its own self-test)`, and the two roster stages were
+RENAMED, because a stage name that no longer says what the stage checks is a stage a
+reader cannot find:
+
+    gate roster: self-test (eleven injected defects must be caught)
+    gate roster: one harness, one list, a count that matches, and every check gate accounted for
 
 

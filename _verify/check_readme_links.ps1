@@ -12,6 +12,14 @@
 #   4. The changelog still carries the in-place corrections -- the release that
 #      corrected a wrong claim must still carry it, in the file it moved to.
 #   5. The counts the README quotes are the ones the tools measured.
+#
+# There is no -SelfTest switch, and that is deliberate: this gate is shown to go
+# red by INJECTING a defect into the tree and running it, which is a stronger
+# statement than a switch that reproduces the checker's own logic. Its subject
+# is this repository's own published documents, and the injection that showed it
+# red was a stage added to `release.ps1` that the READMEs did not name: the
+# gate went RED until both named it. A switch that re-read the same documents
+# would only prove that the checker can read its own inputs.
 $root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $fail = 0
@@ -405,6 +413,18 @@ $isgM = [regex]::Match($relTxt2, "\`$IFACE_SIG_AGREES\s*=\s*'(\d+)'")
 $sfdM = [regex]::Match($relTxt2, "\`$SURFACE_DECLARED\s*=\s*'(\d+)'")
 $sfcM = [regex]::Match($relTxt2, "\`$SURFACE_COVERED\s*=\s*'(\d+)'")
 $sfmM = [regex]::Match($relTxt2, "\`$SURFACE_MISSING\s*=\s*'(\d+)'")
+# 0615. THE CORE'S OWN SURFACE ROW, derived from the PER-CORPUS pin rather
+# than written out by hand. The eight-tree row is the AGGREGATE, and the
+# standard library's own row is a DIFFERENT tree's measurement -- so it is
+# derived from `$PINNED_SURFACE['moonbit_core']`, the same pin the corpus stage
+# checks against the analyzer's own line.
+#
+# It used to be a LITERAL here, and that is exactly how the row went stale: the
+# literal still said 1,123 / 1,076 / 47 while the pin said 1,155 / 1,075 / 80,
+# and the gate was happy with the literal because the gate was checking the
+# literal. A gate that checks its own copy of a number cannot notice the copy
+# going stale -- so the copy is gone, and the number comes from the pin.
+$coreSurfM = [regex]::Match($relTxt2, "'moonbit_core'\s*=\s*'modelled=\d+\|declared=(\d+)\|covered=(\d+)\|missing=(\d+)\|")
 if (-not ($peM.Success -and $sfM.Success -and $snM.Success -and $sxM.Success -and $sdM.Success -and $loM.Success -and $paM.Success -and $spM.Success -and $saM.Success)) {
   Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives from.'
   Write-Output '        Restore them, or this gate has nothing to check the README against.'
@@ -464,6 +484,18 @@ if (-not ($sfdM.Success -and $sfcM.Success -and $sfmM.Success)) {
   $surfCovered = ([int]$sfcM.Groups[1].Value).ToString('N0')
   $surfMissing = ([int]$sfmM.Groups[1].Value).ToString('N0')
   Write-Output ('  (release.ps1 pins: native surface declared ' + $surfDeclared + ', covered ' + $surfCovered + ', missing ' + $surfMissing + ')')
+}
+
+# 0615. AND THE CORE'S OWN THREE NUMBERS, from the per-corpus pin.
+if (-not $coreSurfM.Success) {
+  Write-Output '  FAIL: release.ps1 no longer carries the moonbit_core native-surface pin.'
+  $fail++
+  $coreSurfDeclared = '?'; $coreSurfCovered = '?'; $coreSurfMissing = '?'
+} else {
+  $coreSurfDeclared = ([int]$coreSurfM.Groups[1].Value).ToString('N0')
+  $coreSurfCovered = ([int]$coreSurfM.Groups[2].Value).ToString('N0')
+  $coreSurfMissing = ([int]$coreSurfM.Groups[3].Value).ToString('N0')
+  Write-Output ('  (release.ps1 pins: moonbit_core native surface declared ' + $coreSurfDeclared + ', covered ' + $coreSurfCovered + ', missing ' + $coreSurfMissing + ')')
 }
 
 # The kind -> the label each README prints it under. The labels are PRESENTATION
@@ -530,10 +562,10 @@ $more.Add(@{ F = 'README.zh.md'; S = ('声明的 arity 与该调用的实参个�
 # native surface measured against the DECLARED one. The numbers come from the
 # same pins the corpus stage checks against the analyzer's line.
 $more.Add(@{ F = 'README.md';    S = ('| **the eight trees** | **' + $surfDeclared + '** | **' + $surfCovered + '** | **' + $surfMissing + '** |'); N = 'the eight-tree native surface' })
-$more.Add(@{ F = 'README.md';    S = ('| `moonbit_core` — the standard library | **1,123** | **1,076** | **47** |'); N = 'the standard library native surface row' })
+$more.Add(@{ F = 'README.md';    S = ('| `moonbit_core` — the standard library | **' + $coreSurfDeclared + '** | **' + $coreSurfCovered + '** | **' + $coreSurfMissing + '** |'); N = 'the standard library native surface row' })
 $more.Add(@{ F = 'README.md';    S = ('| `async` | 10 | 0 | 10 |'); N = 'the async native surface row' })
 $more.Add(@{ F = 'README.zh.md'; S = ('| **八棵树** | **' + $surfDeclared + '** | **' + $surfCovered + '** | **' + $surfMissing + '** |'); N = 'the eight-tree native surface (zh)' })
-$more.Add(@{ F = 'README.zh.md'; S = ('| `moonbit_core`——标准库自己 | **1,123** | **1,076** | **47** |'); N = 'the standard library native surface row (zh)' })
+$more.Add(@{ F = 'README.zh.md'; S = ('| `moonbit_core`——标准库自己 | **' + $coreSurfDeclared + '** | **' + $coreSurfCovered + '** | **' + $coreSurfMissing + '** |'); N = 'the standard library native surface row (zh)' })
 $more.Add(@{ F = 'README.zh.md'; S = ('| `async` | 10 | 0 | 10 |'); N = 'the async native surface row (zh)' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$pa).ToString('N0') + '**'); N = 'the suppression-off UnusedParam count' })

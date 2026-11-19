@@ -158,3 +158,25 @@ Invoke-MutationGate -Name '0491' -Target 'wasm' -Mutations @(
     MustRed = 'the same name with an empty table is still reported'
   }
 )
+
+# THE VERDICT, AND THE EXIT THAT CARRIES IT. These two lines are what make this
+# gate ABLE TO FAIL.
+#
+# MEASURED 2026-11-20, and the defect is worth stating in full because it is the
+# shape of a guard that does not guard. This file -- like 0491, 0500 and 0501 --
+# ended at the `Invoke-MutationGate` call. The harness RECORDS a failure in
+# `$script:MutationGateFailures`, and without these lines that record goes
+# nowhere: the script ends normally, `powershell -File` exits 0, the transcript
+# carries no `GATE FAILED` line, and `release.ps1`'s `Run-Gate` -- which reads the
+# transcript for a verdict ONLY when the exit code is non-zero -- reports the
+# gate as PASS.
+#
+# PROVEN, not argued: with a `MustRed` claim deliberately pointing at a test that
+# does not exist, this gate printed `MUST-RED MISS`, recorded the failure, and
+# STILL EXITED 0 with no `GATE FAILED` line in its transcript. A release run
+# would have reported it green.
+#
+# `check_gate_roster.ps1` now checks that every numbered gate carries both
+# lines, so this cannot rot back into a comment.
+Write-MutationGateVerdict -Name '0491 mutation gate'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
