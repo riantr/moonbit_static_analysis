@@ -9486,11 +9486,19 @@ against this tree, so it cannot rot without the gate saying so.
     row 2  src/core/core.mbt:764        fn Family::id
     row 2  src/core/core.mbt:804        fn family_by_id
     row 2  src/sa/profile.mbt:64        fn validate_profile
-    row 3  src/sa/profile.mbt:224       fn parse_nosec
-    row 3  src/sa/profile.mbt:296       fn apply_nosec
-    row 3  src/sa/profile.mbt:341       fn stale_report
+    row 3  src/sa/profile.mbt:285       fn parse_nosec
+    row 3  src/sa/profile.mbt:380       fn apply_nosec
+    row 3  src/sa/profile.mbt:425       fn stale_report
     row 3  src/sa/main.mbt:1369         fn filtered_reports
     --- END TRANSFER MAP ---
+
+AND 0613 MOVED THREE OF THE LINES, and the map moved with them. The map is a map of
+THIS tree, so it moves when the tree moves: 0613's two rules for the `nosec` grammar
+put 61 lines in front of `parse_nosec` and 23 more between it and `apply_nosec`, so the
+three `profile.mbt` rows are now 285, 380 and 425. The gate says so BY ITSELF -- a row
+whose line no longer carries its symbol is a FAIL and not a note -- which is the whole
+reason the map is parsed out of the record and resolved against the tree.
+
 AND THE ROWS ARE MEASURED, NOT ASSERTED: `_verify/settle_0507_bandit_transfers.ps1`
 and `_verify/settle_0508_confidence_demotion.ps1` are release-gate stages, and
 `_verify/check_transfer_scope.ps1` is the stage that checks THIS map against the
@@ -22050,4 +22058,132 @@ they are not in this repository and not on CI. So the file-measuring half of tha
 runs where the directory is, and where it is not, the gate SAYS THAT IT DID NOT MEASURE.
 A green row that measured nothing is worse than a red row.
 
+
+## 0613: THE ANALYZER READ ITS OWN DOCUMENTATION AS TWELVE SUPPRESSIONS, AND EVERY ONE OF THEM WAS PROSE
+
+### THE SWITCH READS TEXT, AND THIS REPOSITORY IS MOSTLY TEXT
+
+This increment is the first of a QA cycle that MEASURED the analyzer on its own source
+through the PUBLISHED artifact, and the first thing that measurement found was a false
+positive of the analyzer's own making.
+
+`// nosec` is the one switch in this tool that a user turns off by writing a comment, and
+0507 gave the switch a family of its own -- `MSA-012`, StaleNosec, for a suppression that
+suppressed nothing. The comment is read by the PROFILE pass, and the profile pass reads the
+file's TEXT: it takes each line, splits it at the LAST `//`, and looks at what comes after.
+
+So the whole tree was scanned with the switch ON -- and the answer was TWELVE actionable
+findings, and every one of them was a false positive.
+
+### THE TWELVE, AND EVERY ONE OF THEM IS THIS ANALYZER'S OWN TEXT
+
+| where | what it is |
+|---|---|
+| `main.mbt:126` | the CLI's own help text |
+| `src/sa/profile.mbt:247`, `:248`, `:249` | the profile module's own documentation of the syntax |
+| `src/sa/profile.mbt:309` | the plain comment above the marker handling |
+| `src/sa/profile.mbt:452`, `:459`, `:465` | the analyzer's own diagnostic message strings |
+| `src/sa/sa_0507_test.mbt:145` | the doc comment of the test fixture |
+| `src/sa/sa_0507_test.mbt:148`, `:184`, `:240` | the test fixtures for the nosec feature itself |
+
+AND THE IDS THEY NAMED WERE ENGLISH WORDS. Verbatim, out of the report:
+
+    this `// nosec MSA-007`, silences, that, one` comment suppressed nothing
+    this `// nosec --, blanket:, every, family, on, this, line` comment suppressed nothing
+    this `// nosec ", +` comment suppressed nothing
+
+`MSA-007` IS a real family id -- and the rest of that first line is a SENTENCE about it.
+`", +` is a fragment of a MESSAGE STRING.
+
+### THE MEASUREMENT REPRODUCES TODAY, AND IT READS NINETEEN
+
+The published 0.5.0 IS the analyzer that had the defect, so the measurement is not a memory:
+run against this tree with `--honor-nosec`, it reports NINETEEN actionable findings rather
+than twelve. The twelve above are in it, and the other SEVEN are in this increment's own
+test file -- whose fixtures are prose to an analyzer that has not learned the rule yet.
+
+### THE TWO RULES, AND BOTH OF THEM ARE ABOUT PROSE
+
+RULE ONE -- A `///` DOC COMMENT IS NEVER A NOSEC COMMENT. A `//` inside a doc comment is
+TEXT, and the text is usually THE DOCUMENTATION OF THIS SYNTAX, so reading it as a
+suppression is reading the documentation as a defect. FOUR of the nineteen are this.
+
+RULE TWO -- A NOSEC COMMENT NAMES FAMILIES BY THEIR IDS AND NOTHING ELSE. The grammar is the
+marker and a list of family ids, so a token that is not an id is not part of the comment.
+The ids are minted by `Family::id`, so their shape is fixed: `MSA-` and three digits. The
+other FIFTEEN are this -- a `//` inside a STRING LITERAL, where the quote lands on the id
+instead of on the marker, and a plain `//` comment that quotes the syntax in prose.
+
+AND THE FIX MOVED NO NOTICE AT ALL. The published 0.5.0 and the tree with these two rules
+BOTH read 2,100 notices, 158 printed and 1,942 aggregated over this tree -- and the same
+scan reads 19 actionable findings before the rules and 0 after.
+
+### WHY THE SHAPE AND NOT THE LOOKUP
+
+`core.family_by_id` answers "is this id a family?", and `MSA-999` is not one. But `MSA-999`
+IS an id that names no family, and 0507's row for it says a suppression naming an unknown
+family is STALE -- a REPORT and not a silence. If the rule were the lookup, `MSA-999` would
+be indistinguishable from prose and the stale report would be lost.
+
+So the rule asks the SHAPE, and the lookup keeps its own job: the shape says whether a token
+IS an id, the lookup says whether that id names a family. And the shape is pinned against
+the roster by a test row -- every id the roster mints must be accepted here -- so the two
+cannot drift apart without that row going red.
+
+### THE BLAST RADIUS, MEASURED
+
+MEASURED over this tree and the seven pinned corpora, with the analyzer's OWN rule for what
+a nosec comment is: the corpora hold ZERO of them, so the corpora cannot move at all; and
+this tree holds NINETEEN in source -- and the published analyzer read every single one of
+them as a suppression, and every single one of them is prose.
+
+AND THE DECISIVE ONE: with the switch ON and with the switch OFF, this tree reports ZERO
+actionable findings and ZERO stale suppressions. So the switch recognizes no suppression
+anywhere in this tree, and the two rules removed false positives without touching a real
+one.
+
+### AND THE GATE NOW TURNS THE SWITCH ON
+
+THREE LEVELS, because a rule that only a unit test knows is a rule that can rot.
+
+THE UNIT ROWS -- nine of them, in `src/sa/sa_0613_test.mbt`: the string literal; the doc
+comment; the doc comment naming TWO families; every id the roster mints; an id that names no
+family, which is still a suppression and still stale; the blanket form, untouched; a REAL
+`// nosec` still suppressing; a doc comment that documents the syntax producing no stale
+suppression; and a stale suppression still being reported.
+
+THE SETTLE ROWS -- T20, T21 and T22 in `_verify/settle_0507_bandit_transfers.ps1`, the
+settle that OWNS the nosec feature. Each asserts TWO things: zero stale nosec findings AND
+the fixture PARSED -- so a row cannot pass because the fixture was never read.
+
+THE RELEASE GATE -- the self-scan stage now passes `--honor-nosec` to the analyzer, so the
+`actionable == 0` assertion it already made became THE false-positive gate: even with every
+suppression honoured, the analyzer finds nothing here that is not a defect. And the failure
+message says so, because a red row that names its cause beats a green row that measured
+nothing.
+
+AND WHY A FLAG RATHER THAN A NEW STAGE. The `actionable == 0` assertion is already the gate
+that says "this tree has no defect in it", and it is the one a reader of the gate output
+would look at. A second stage would have been a second scan of the same tree for the same
+claim, and a number written down twice is a number that will disagree with itself.
+
+### AND EACH RULE WAS MUTATED, AND THE SUITE WENT RED
+
+A guard that has never been seen to fail is not known to work. So each rule was reverted in
+turn, and the suite was read after each:
+
+* reverting the doc-comment rule: 1,772 tests, 1,771 passed, ONE failed -- the row "a doc
+  comment that names TWO families is not a suppression either";
+* reverting the id-shape rule: 1,771 passed, ONE failed -- the row "a `// nosec` that names
+  a family inside a string literal is not a suppression".
+
+AND THE RESTORE WAS PROVED, by SHA256: the same hash before the mutation and after it. Each
+mutation turns exactly ONE row red, so the two rules are independent.
+
+### AND THE PINS MOVED
+
+Because the tree grew by one test file, and a test declaration IS a notice: 275 -> 276
+files, 1,933 -> 1,942 aggregated, 2,091 -> 2,100 notices. The PRINTED half did not move at
+all, and the notice table's moving row is the `test` declaration row (1,763 -> 1,772) and
+NOTHING ELSE -- the other eight rows are byte-identical.
 

@@ -821,7 +821,14 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # (it carried 2079). The twelve notices are the twelve new test declarations,
 # and they are ALL AGGREGATED: a test declaration sits outside every
 # function's extent, so the PRINTED half of the split did not move.
-$NOTICE_TOTAL = '23436'
+# 0613. AND THE PIN MOVED AGAIN, 23436 -> 23445, and THE MOVEMENT IS THIS
+# INCREMENT'S OWN SOURCE and nothing else: the seven corpora carry 21,345
+# notices, exactly what they carried before -- each one still MATCHes its
+# pinned baseline, MEASURED -- and this repository's own source carries 2100
+# (it carried 2091). The nine notices are the nine new test declarations,
+# and they are ALL AGGREGATED: a test declaration sits outside every
+# function's extent, so the PRINTED half of the split did not move.
+$NOTICE_TOTAL = '23445'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -952,8 +959,12 @@ $NOTICE_TOTAL = '23436'
 # AT ALL, for the same reason -- the twelve new test declarations sit outside
 # every function's extent, so they are counted by shape and not printed. The
 # corpora did not move.
+# 0613. AND AGAIN: 3972 + 19464 -> 3972 + 19473. The PRINTED half did not move
+# AT ALL, for the same reason -- the nine new test declarations sit outside
+# every function's extent, so they are counted by shape and not printed. The
+# corpora did not move.
 $NOTICE_SPLIT_PRINTED = '3972'
-$NOTICE_SPLIT_AGGREGATED = '19464'
+$NOTICE_SPLIT_AGGREGATED = '19473'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -1099,10 +1110,15 @@ $NOTICE_SPLIT_AGGREGATED = '19464'
 # notices. The PRINTED half did NOT move AT ALL, and the notice table's moving
 # row is the `test` declaration row (1751 -> 1763, the twelve new rows) and
 # NOTHING ELSE -- the other eight rows are byte-identical.
-$SELF_FILES = '275'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1763|try expression=1|type declaration=7'
+# 0613. AND THEY MOVED AGAIN: 275 -> 276 files (this increment's own test
+# file), 1933 -> 1942 aggregated, and 2091 -> 2100 notices. The PRINTED half
+# did NOT move AT ALL, and the notice table's moving row is the `test`
+# declaration row (1763 -> 1772, the nine new rows) and NOTHING ELSE -- the
+# other eight rows are byte-identical.
+$SELF_FILES = '276'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1772|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
-$SELF_AGGREGATED = '1933'
+$SELF_AGGREGATED = '1942'
 #   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
 #                   the hand-modelled native surface measured against the
 #                   DECLARED one.
@@ -1403,7 +1419,13 @@ $SUPPOFF_PARAM = '1341'
 # instructions 9179 -> 9181, variables 1164 -> 1165, versions 2801 ->
 # 2802, phis 975 (unchanged), copies 2408 (unchanged), undef_operands 202
 # (unchanged), dead_blocks 465 (unchanged), undef_uses 1295 (unchanged).
-$SSA_COST = 'files=257|unreadable=0|functions=1428|converted=5|partial=1423|declined=6510|instructions=9181|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=465|undef_uses=1295'
+# 0613. AND IT MOVED AGAIN WITH THE ONE NEW FILE: files 257 -> 258,
+# functions 1428 -> 1430, partial 1423 -> 1425, declined 6510 -> 6518,
+# instructions 9181 -> 9210, variables 1165 (unchanged), versions 2802
+# (unchanged), phis 975 (unchanged), copies 2408 (unchanged),
+# undef_operands 202 (unchanged), dead_blocks 465 -> 470, undef_uses 1295
+# (unchanged).
+$SSA_COST = 'files=258|unreadable=0|functions=1430|converted=5|partial=1425|declined=6518|instructions=9210|variables=1165|versions=2802|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1440,7 +1462,11 @@ $SSA_COST = 'files=257|unreadable=0|functions=1428|converted=5|partial=1423|decl
 # it added the three deck rows the 0572 map was missing, and it moved NO SOURCE
 # pin at all -- it changed the NARRATIVE, both READMEs and two gates, and a line
 # of markdown is not a notice, a declaration or an instruction.
-$NARRATIVE_CHAPTERS = '123'
+# 0613. THE PIN MOVED TO 124 with chapter 0613, which is the nosec
+# false-positive fix: it added one test file and two source rules, and it
+# moved the SOURCE pins because a test declaration IS a notice -- nine of
+# them.
+$NARRATIVE_CHAPTERS = '124'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1776,7 +1802,33 @@ if ($failed.Count -eq 0) {
     # has to MEASURE it rather than assert it. The SUMMARY line is the same
     # either way -- the metrics block is opt-in and prints after it -- so
     # adding the flag changes no number this stage already reads.
-    $text = Scan-Tree $wasm $root '_verify' @('--metrics')
+    #
+    # 0613. `--honor-nosec` IS ADDED HERE, and this is the gate that would have
+    # caught the false positive 0613 fixed.
+    #
+    # THE MEASUREMENT: with `--honor-nosec`, a scan of this tree reported TWELVE
+    # actionable findings, and every one of them was a FALSE POSITIVE -- the
+    # analyzer reading its own documentation of the `// nosec` syntax, and its
+    # own test fixtures for that syntax, as live suppressions. The invented
+    # family ids were English words.
+    #
+    # WHY ADD THE FLAG RATHER THAN ADD A STAGE. The `actionable == 0` assertion
+    # below is ALREADY the gate that says "this tree has no defect in it", and
+    # it is the one a reader of the gate output would look at. With the flag the
+    # assertion covers the STRICTEST reading of the tree: even with every
+    # suppression honoured, the analyzer finds nothing here that is not a
+    # defect. A separate stage would have been a second scan of the same tree
+    # for the same claim, and a number written down twice is a number that will
+    # disagree with itself.
+    #
+    # AND NO PIN MOVES. This tree carries NO real `// nosec` comment (MEASURED:
+    # the whole tree and the pinned corpora hold 24 nosec-shaped comments, and
+    # every one of them is prose or a test fixture), so honouring the flag
+    # changes no number this stage reads -- the notices, the printed and
+    # aggregated halves, the file count and the native surface are all the
+    # same with and without it. What it changes is the FALSE POSITIVES, which
+    # is the point.
+    $text = Scan-Tree $wasm $root '_verify' @('--metrics', '--honor-nosec')
     $sum = Get-Summary $text
     Write-Output ('  ' + $sum)
     $files  = [int]([regex]::Match($sum, 'files=(\d+)').Groups[1].Value)
@@ -1784,9 +1836,18 @@ if ($failed.Count -eq 0) {
     $act    = [int]([regex]::Match($sum, 'actionable=(\d+)').Groups[1].Value)
     # actionable must be 0 AND every file must parse. The second condition is what
     # stops a scan that crashed half-way from reading as a clean tree.
-    if ($act -ne 0) { Write-Output '  FAIL: actionable is not 0.'; $script:stageOk = $false }
+    #
+    # 0613. AND THE SCAN HONOURED `// nosec`, so every finding here would be a
+    # finding on this tree that is not a defect. The message says so, because a
+    # red row that names its cause beats a green row that measured nothing --
+    # and 0613 measured exactly this: TWELVE of them, all of them this
+    # analyzer's own documentation and its own test fixtures.
+    if ($act -ne 0) {
+      Write-Output ('  FAIL: actionable is not 0 -- it is ' + $act + ', and the scan HONOURED `// nosec`, so every one of these is a finding on this tree that is not a defect.')
+      $script:stageOk = $false
+    }
     elseif ($files -ne $parsed) { Write-Output ("  FAIL: parsed {0} of {1} files." -f $parsed, $files); $script:stageOk = $false }
-    else { Write-Output ('  ' + $files + '/' + $files + ' parsed, actionable 0') }
+    else { Write-Output ('  ' + $files + '/' + $files + ' parsed, actionable 0 (with `// nosec` honoured)') }
 
     # THE OWN-SOURCE FILE COUNT IS PINNED, and it was NOT until 0504.
     #

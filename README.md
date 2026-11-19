@@ -562,6 +562,16 @@ source and a sign that the code it referred to has changed. The stale finding is
 *after* the suppression pass, so a blanket `// nosec` cannot silence the warning about its
 own staleness.
 
+**AND A COMMENT THAT NAMES A FAMILY MUST NAME IT BY ITS ID.** The grammar of the comment is
+the marker and a list of family ids — `MSA-007`, `MSA-002` — and a token that is not an id
+is not part of the comment. Two shapes of text are therefore not suppressions at all: a `//`
+inside a `///` doc comment (a doc comment is text, and the text is usually the
+documentation of this very syntax), and a `//` inside a string literal (the quote lands on
+the id, so the token after the marker is not an id). Measured on this tool's own source
+with `--honor-nosec`: the analyzer before these two rules reported **nineteen** stale
+suppressions, every one of them this repository's own prose, and the tree with the two
+rules reports **zero** — and the two rules move no notice at all.
+
 **AND IT REACHES THE FINDING'S OWN LINE, NOT THE WHOLE STATEMENT.** `bandit` unions the
 issue's line with the *context's* line range, so there a `// nosec` on the first line of a
 multi-line call silences what is three lines down. Here the line is the line: a `// nosec`
@@ -636,12 +646,12 @@ implements, and the one place where the framework and this tree disagree — are
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (275 files), with the per-file printing cap lifted so the count is the
+project's own source (276 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1763 | | `const` declaration | 7 |
+| `test` declaration | 1772 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -650,7 +660,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **158** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1933** sit outside every function's
+audit off, so they are printed one per line; the other **1942** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -683,10 +693,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **23,436** notices —
+per-file printing cap lifted so the count is the whole finding set: **23,445** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **3,972** of them as printed per line and
-**19,464** as aggregated — which is 3,972 + 19,464 = 23,436, the same number — and the 3,972
+**19,473** as aggregated — which is 3,972 + 19,473 = 23,445, the same number — and the 3,972
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -1958,25 +1968,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 257 files, 1,428 functions, 9,181
+would need **16** copies. Over this project's own source — 258 files, 1,430 functions, 9,210
 instructions of 3AC — the same measurement gives **1,165** variables becoming **2,802** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=257	unreadable=0	functions=1428	converted=5	partial=1423	declined=6510	…
+SSA-COST	files=258	unreadable=0	functions=1430	converted=5	partial=1425	declined=6518	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,510
+number: the files read, the functions measured, and the statements the lowering declined (6,518
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1763/1763 on wasm; 1613/1613 on js and wasm-gc
+moon test --deny-warn                # 1772/1772 on wasm; 1613/1613 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

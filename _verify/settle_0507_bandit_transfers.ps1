@@ -350,6 +350,77 @@ if ($staleRows.Count -eq 1 -and $staleRows[0].Confidence -eq 'high') {
 }
 
 # ---------------------------------------------------------------------------
+# 4b. THE GRAMMAR, AND THE TWELVE FALSE POSITIVES 0613 FIXED
+# ---------------------------------------------------------------------------
+#
+# 0613. The three rows below are the ones the defect produced, and they are
+# here rather than only in the unit tests because a unit test sees
+# `parse_nosec` and this row sees the SCANNER: the analyzer reading a line of
+# source and deciding what to report about it.
+#
+# THE DEFECT. `parse_nosec` took the LAST `//` on a line and read the text
+# after it as a suppression whenever the first whitespace-separated token was
+# exactly `nosec`. The rule was written for the case where a `//` inside a
+# string literal comes first, so the last one is the comment -- and it did not
+# ask whether the text it had read was a comment at all.
+#
+# MEASURED 2026-11-19 on this repository's own source, with `--honor-nosec`:
+# TWELVE actionable findings, and every one of them was this analyzer's own
+# documentation or its own test fixtures. The invented family ids were
+# English words.
+#
+# EVERY ROW BELOW ASSERTS TWO THINGS, and the second one is not optional: the
+# fix must remove the false positive AND the fixture must still PARSE. A
+# fixture the frontend cannot read reports no stale suppression for the wrong
+# reason -- it reports none because it read nothing -- and a row that cannot
+# tell the two apart is a row that measures nothing.
+Write-Output ''
+Write-Output '--- 4b. THE GRAMMAR: prose is not a suppression ---'
+
+# T20 -- A `// nosec` THAT NAMES A FAMILY INSIDE A STRING LITERAL. The old
+# rule caught `"// nosec"` because the quote landed on the MARKER; the quote
+# lands on the ID when the comment names a family, and that is the form every
+# real suppression takes.
+$strLitSrc = "fn main() -> Unit {`n  let s = `"// nosec MSA-007`"`n  ignore(s)`n}`n"
+$sl = New-Fixture 'strlit' @{ 'user.mbt' = $strLitSrc }
+$slr = Invoke-Scan -Dir $sl -Extra @('--honor-nosec')
+$slStale = @($slr.Findings | Where-Object { $_.Family -eq 'StaleNosec' })
+$slParsed = [regex]::Match($slr.Summary, '(?m)^SUMMARY.*?parsed=(\d+)').Groups[1].Value
+if ($slStale.Count -eq 0 -and $slParsed -eq '1') {
+  Say-OK 'T20' 'NOT-A-SUPPRESSION' 'a `// nosec MSA-007` inside a string literal is not a suppression'
+} else {
+  Say-Bad 'T20' '0 StaleNosec findings and a parsed file' ('stale=' + $slStale.Count + ' parsed=' + $slParsed) 'the string literal was read as a live suppression'
+}
+
+# T21 -- A `// nosec` INSIDE A DOC COMMENT. The text after the last `//` is the
+# DOCUMENTATION OF THIS SYNTAX, so reading it as a suppression is reading the
+# documentation as a defect.
+$docSrc = "/// the syntax is ``// nosec MSA-007`` `nfn main() -> Unit {`n  ignore(0)`n}`n"
+$dc = New-Fixture 'doccomment' @{ 'user.mbt' = $docSrc }
+$dcr = Invoke-Scan -Dir $dc -Extra @('--honor-nosec')
+$dcStale = @($dcr.Findings | Where-Object { $_.Family -eq 'StaleNosec' })
+$dcParsed = [regex]::Match($dcr.Summary, '(?m)^SUMMARY.*?parsed=(\d+)').Groups[1].Value
+if ($dcStale.Count -eq 0 -and $dcParsed -eq '1') {
+  Say-OK 'T21' 'NOT-A-SUPPRESSION' 'a `// nosec` inside a doc comment is not a suppression'
+} else {
+  Say-Bad 'T21' '0 StaleNosec findings and a parsed file' ('stale=' + $dcStale.Count + ' parsed=' + $dcParsed) 'the doc comment was read as a live suppression'
+}
+
+# T22 -- A DOC COMMENT THAT NAMES TWO FAMILIES. This is the shape the id rule
+# alone does not catch: every token after the marker IS an id, so only the
+# doc-comment rule can tell it from a real suppression.
+$doc2Src = "///     // nosec MSA-007 MSA-002 `nfn main() -> Unit {`n  ignore(0)`n}`n"
+$d2 = New-Fixture 'doccomment2' @{ 'user.mbt' = $doc2Src }
+$d2r = Invoke-Scan -Dir $d2 -Extra @('--honor-nosec')
+$d2Stale = @($d2r.Findings | Where-Object { $_.Family -eq 'StaleNosec' })
+$d2Parsed = [regex]::Match($d2r.Summary, '(?m)^SUMMARY.*?parsed=(\d+)').Groups[1].Value
+if ($d2Stale.Count -eq 0 -and $d2Parsed -eq '1') {
+  Say-OK 'T22' 'NOT-A-SUPPRESSION' 'a doc comment that names two families is not a suppression either'
+} else {
+  Say-Bad 'T22' '0 StaleNosec findings and a parsed file' ('stale=' + $d2Stale.Count + ' parsed=' + $d2Parsed) 'the doc comment was read as a live suppression'
+}
+
+# ---------------------------------------------------------------------------
 # 5. THE UNCHECKED-CALL DISCLOSURE
 # ---------------------------------------------------------------------------
 Write-Output ''
@@ -450,5 +521,5 @@ if ($fail -gt 0) {
   Write-Output ('ABORT: ' + $fail + ' of ' + $rows + ' row(s) did not match. The transfers are not what the narrative says they are.')
   exit 1
 }
-Write-Output ('GATE OK: ' + $rows + ' rows. A finding now says how much the lens CHECKED beside how bad it would be if it is real, every family has an id that is never renumbered, a profile selects families by id and is checked before the scan runs, a `// nosec` silences one line and a stale one is a finding, and the calls the analyzer could not check are disclosed instead of rounded down to silence.')
+Write-Output ('GATE OK: ' + $rows + ' rows. A finding now says how much the lens CHECKED beside how bad it would be if it is real, every family has an id that is never renumbered, a profile selects families by id and is checked before the scan runs, a `// nosec` silences one line and a stale one is a finding, PROSE IS NOT A SUPPRESSION -- a `// nosec` inside a string literal or a doc comment is not one, because the analyzer used to read its own documentation as a defect -- and the calls the analyzer could not check are disclosed instead of rounded down to silence.')
 exit 0

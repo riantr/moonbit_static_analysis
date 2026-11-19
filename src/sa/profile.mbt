@@ -202,6 +202,44 @@ pub fn Nosec::covers_family(self : Nosec, f : @core.Family) -> Bool {
 }
 
 ///|
+/// Does this token have the shape of a family id: `MSA-NNN`?
+///
+/// 0613. THE IDS MUST BE IDS. A `// nosec` comment names families by their
+/// stable ids, and `Family::id` is what mints them -- so the shape is fixed,
+/// and a token that does not have it is not an id at all.
+///
+/// WHY THE SHAPE AND NOT THE LOOKUP. `core.family_by_id` answers "is this id
+/// a family?", and `MSA-999` is not one -- but `MSA-999` IS a family id that
+/// names no family, and 0507's row for it says a suppression naming an
+/// unknown family is STALE, which is a REPORT and not a silence. If the rule
+/// were the lookup, `MSA-999` would be indistinguishable from prose and the
+/// stale report would be lost. The shape decides whether a token is AN ID;
+/// the lookup decides whether that id names a family.
+///
+/// THE SHAPE IS CHECKED AGAINST THE ROSTER by a test row -- every id the
+/// roster mints must be accepted here -- so the two cannot drift apart
+/// without that row going red.
+fn is_family_id_shape(tok : String) -> Bool {
+  if tok.length() != 7 {
+    return false
+  }
+  if !tok.has_prefix("MSA-") {
+    return false
+  }
+  let cs = tok.to_array()
+  if !cs[4].is_ascii_digit() {
+    return false
+  }
+  if !cs[5].is_ascii_digit() {
+    return false
+  }
+  if !cs[6].is_ascii_digit() {
+    return false
+  }
+  true
+}
+
+///|
 /// The `nosec` comments in a source file.
 ///
 /// 0507. The syntax is a COMMENT, and the comment has to BE a nosec comment:
@@ -221,12 +259,44 @@ pub fn Nosec::covers_family(self : Nosec, f : @core.Family) -> Bool {
 /// "// nosec"` does not (the text after the last `//` is ` nosec"`, and the
 /// quote means the token after `nosec` is not a separator, so it is not a
 /// nosec comment).
+///
+/// 0613. TWO RULES, AND BOTH OF THEM ARE ABOUT PROSE. The rule above reads the
+/// text after the LAST `//` on the line, and it read the text after the last
+/// `//` WHATEVER THAT `//` SAT INSIDE. That is right for the string case the
+/// rule was written for, and wrong in two more places -- both of them places
+/// where the text is not a comment at all:
+///
+///   * A `//` inside a `///` DOC COMMENT is TEXT. And the text is usually the
+///     DOCUMENTATION OF THIS SYNTAX, so reading it as a suppression is reading
+///     the documentation as a defect. A `///` line is never a nosec comment.
+///
+///   * A `//` inside a STRING LITERAL is text too, and the rule above only
+///     caught it when the quote landed on the MARKER (`"// nosec"` -> the token
+///     is `nosec"`, which is not the marker). The moment the comment names a
+///     family -- the form every real suppression uses -- the quote lands on
+///     the ID instead, and the guard stops working. So a nosec comment names
+///     families by their ids and NOTHING ELSE: a token that is not an id is
+///     not part of the grammar, and a comment that does not match the grammar
+///     is not a nosec comment.
+///
+/// MEASURED 2026-11-19 on this tree, before these two rules: TWELVE false
+/// positives, and every one of them was this analyzer's own documentation or
+/// its own test fixtures. The invented family ids were English words.
 pub fn parse_nosec(src : String) -> Array[Nosec] {
   let out : Array[Nosec] = []
   let mut line_no = 0
   for raw in src.split("\n") {
     line_no += 1
     let line = raw.to_owned()
+    // 0613. A DOC COMMENT IS NOT A COMMENT. A `//` inside a `///` block is
+    // TEXT -- and the text is usually THE DOCUMENTATION OF THIS SYNTAX, so
+    // reading it as a suppression is reading the documentation as a defect.
+    // A suppression that can be switched on by quoting it is a suppression
+    // that gets switched on by accident, which is the same reason the marker
+    // has to be exactly `nosec`.
+    if line.trim_start().has_prefix("///") {
+      continue
+    }
     let parts = line.split("//").to_array()
     if parts.length() < 2 {
       continue
@@ -247,6 +317,20 @@ pub fn parse_nosec(src : String) -> Array[Nosec] {
     }
     if toks.length() == 1 {
       out.push(Nosec::{ line: line_no, blanket: true, ids: [], })
+      continue
+    }
+    // 0613. AND THE IDS MUST BE IDS. The grammar of a nosec comment is the
+    // marker and a list of family ids, so a token that is not an id is not
+    // part of the comment -- it is prose, or a quote, or the rest of a
+    // sentence. A comment that does not match the grammar is NOT a nosec
+    // comment, and the analyzer says nothing about it.
+    let mut every_token_is_an_id = true
+    for i in 1..<toks.length() {
+      if !is_family_id_shape(toks[i]) {
+        every_token_is_an_id = false
+      }
+    }
+    if !every_token_is_an_id {
       continue
     }
     let ids : Array[String] = []
