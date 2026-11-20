@@ -604,6 +604,18 @@ function Get-CallsString {
           '|checked-share=' + $Calls.Share + '%')
 }
 
+# 0619. THE EMBEDDED SAMPLE SET, counted from the array the demo returns.
+#
+# THE COUNT IS TAKEN FROM THE SOURCE, not from a list written somewhere else: a second
+# list is a second number, and two numbers about one set is a pair that can disagree.
+# Each entry of the array is a ("<file>", <fn>) pair, one per line, and the count is
+# the number of those lines.
+function Get-EmbeddedSamples {
+  param([string]$Text)
+  $n = ([regex]::Matches($Text, '(?m)^\s*\("[^"]+",\s*\w+\),?\s*$')).Count
+  return $n
+}
+
 # 0604. THE DECK'S p.57 QUESTION, as the analyzer prints it: the hand-modelled
 # native surface measured against the DECLARED one.
 #
@@ -1200,6 +1212,24 @@ $SELF_FILES = '280'
 $SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1800|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
 $SELF_AGGREGATED = '1970'
+#   $SELF_SAMPLES  the embedded sample set the CLI demo runs over: the entries of
+#                  `src/samples/samples.mbt`'s `all()` array.
+#
+# 0619. AND IT IS PINNED BECAUSE A SHIPPED DOCUMENT QUOTES IT. `EXTENSIONS.md` ships,
+# and it presents itself as this project's file-kind CONTRACT, and one of its sections
+# is a table of HOW STRONG EACH CHECK'S EVIDENCE IS -- the table a reader consults to
+# decide how far to trust the analyzer. Its `.mbt` row said the evidence was "6 embedded
+# samples + 75 unit tests".
+#
+# MEASURED: the 75 was exact at `919819f` (2026-10-06, release 0.3.3) -- that commit
+# carried exactly 75 `test` declarations -- and the tree now carries 1,800 of them. So
+# the table understated this project's own test evidence for the `.mbt` check by a
+# factor of 24, and NOTHING READ IT: the READMEs' numbers are derived from this file's
+# pins, and `EXTENSIONS.md` was read by exactly ONE gate, which reads only its PATHS.
+#
+# THE COUNT IS TAKEN FROM THE ARRAY, not from a list written somewhere else -- so
+# adding a sample moves the number, and the pin, and the document with it.
+$SELF_SAMPLES = '6'
 #   $SELF_CALLS    the `METRICS calls` row over this repository's own source: the
 #                  sites the lens reached, the ones it checked, the remainder, and
 #                  the share it checked.
@@ -1609,7 +1639,12 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # every `check_*` gate. It changed NO source file either -- the fixtures live
 # under `_verify`, which the self-scan excludes -- so it moved NO notice, and
 # `$SELF_FILES` and `$SSA_COST` are untouched.
-$NARRATIVE_CHAPTERS = '129'
+# 0619. THE PIN MOVED TO 130 with chapter 0619, which changed NO source file
+# either: the increment corrects a document that SHIPS (`EXTENSIONS.md`, whose
+# evidence table said the `.mbt` check's evidence was "75 个单元测试" -- MEASURED
+# exact at 0.3.3 and 1,800 today), pins one fact that was published and
+# unpinned (`$SELF_SAMPLES`), and makes three more published numbers DERIVED.
+$NARRATIVE_CHAPTERS = '130'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1672,6 +1707,7 @@ if ([string]::IsNullOrWhiteSpace($NOTICE_SPLIT_AGGREGATED)) { $emptyPins += 'NOT
 if ([string]::IsNullOrWhiteSpace($IFACE_SIG_AVAILABLE)) { $emptyPins += 'IFACE_SIG_AVAILABLE' }
 if ([string]::IsNullOrWhiteSpace($IFACE_SIG_AGREES)) { $emptyPins += 'IFACE_SIG_AGREES' }
 if ([string]::IsNullOrWhiteSpace($SELF_SURFACE)) { $emptyPins += 'SELF_SURFACE' }
+if ([string]::IsNullOrWhiteSpace($SELF_SAMPLES)) { $emptyPins += 'SELF_SAMPLES' }
 if ([string]::IsNullOrWhiteSpace($SURFACE_DECLARED)) { $emptyPins += 'SURFACE_DECLARED' }
 if ([string]::IsNullOrWhiteSpace($SURFACE_COVERED)) { $emptyPins += 'SURFACE_COVERED' }
 if ([string]::IsNullOrWhiteSpace($SURFACE_MISSING)) { $emptyPins += 'SURFACE_MISSING' }
@@ -2221,6 +2257,26 @@ if ($failed.Count -eq 0) {
       $script:stageOk = $false
     } else {
       Write-Output ('  the unchecked VISITS: ' + $unc + ' (a different unit from the ' + $calls.NotVerified + ' call sites above)')
+    }
+
+    # 0619. THE EMBEDDED SAMPLE SET, measured from the array the demo returns and
+    # PINNED. The `.mbt` row of `EXTENSIONS.md`'s evidence table publishes this count
+    # beside the project's own test count, and the table was read by NO gate -- so the
+    # count is measured here, where this tree's own facts are measured, and
+    # `check_readme_links.ps1` derives the document's copy from THIS pin.
+    $samplesFile = Join-Path $root 'src\samples\samples.mbt'
+    if (-not (Test-Path $samplesFile)) {
+      Write-Output '  FAIL: src\samples\samples.mbt is missing, so the embedded sample count cannot be measured.'
+      $script:stageOk = $false
+    } else {
+      $samplesTxt = [System.IO.File]::ReadAllText($samplesFile, [Text.Encoding]::UTF8)
+      $samples = Get-EmbeddedSamples $samplesTxt
+      if ("$samples" -ne $SELF_SAMPLES) {
+        Write-Output ('  FAIL: the embedded sample set holds ' + $samples + ' samples and the pin says ' + $SELF_SAMPLES + '.')
+        $script:stageOk = $false
+      } else {
+        Write-Output ('  the embedded samples: ' + $samples + ' (the CLI demo runs over exactly these)')
+      }
     }
 
     # 0604. THE DECK'S p.57 QUESTION, over this repository's own source. The

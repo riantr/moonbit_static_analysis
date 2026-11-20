@@ -781,6 +781,72 @@ if ($skillTxt.Contains($refutedSentence)) {
 } else {
   Write-Output '  SKILL.md does not carry the refuted two-reason sentence  OK'
 }
+# 0619. TWO MORE SHIPPED DOCUMENTS PUBLISH NUMBERS, AND NEITHER OF THEM WAS READ.
+#
+# `EXTENSIONS.md` SHIPS, and it presents itself as this project's file-kind CONTRACT, and
+# one of its sections is a table of HOW STRONG EACH CHECK'S EVIDENCE IS -- the table a
+# reader consults to decide how far to trust the analyzer. Its `.mbt` row said the
+# evidence was "6 个内嵌样例 + 75 个单元测试".
+#
+# MEASURED: the 75 was EXACT at `919819f` (2026-10-06, release 0.3.3) -- that commit
+# carried exactly 75 `test` declarations -- and the tree now carries 1,800 of them. So
+# the table understated this project's own test evidence for the `.mbt` check by a
+# factor of 24, and NOTHING READ IT: the READMEs' numbers come from the pins, and
+# `EXTENSIONS.md` was read by exactly ONE gate -- which reads only its PATHS.
+#
+# AND `_verify/QA_TODO.md` SHIPS TOO, and its candidate table ranks the next cycles by
+# two numbers -- the test-declaration bodies and the unverified call sites -- which 0617
+# corrected BY HAND and which nothing derives. A hand-corrected number is a number that
+# rots again, and this repository has now seen that happen twice.
+#
+# SO BOTH ARE DERIVED HERE, FROM THE PINS THAT ALREADY EXIST: the test count is the
+# `test declaration` row of `$SELF_NOTICES` -- the same pin the READMEs' notice table is
+# built from -- the sample count is `$SELF_SAMPLES`, and the remainder is the
+# `not-verified` field of `$SELF_CALLS`.
+$ssM = [regex]::Match($relTxt2, "\`$SELF_SAMPLES\s*=\s*'(\d+)'")
+$testDecls = ''
+foreach ($part in ($sn -split '\|')) {
+  $kv = $part -split '='
+  if ($kv[0] -eq 'test declaration') { $testDecls = $kv[1] }
+}
+$notVer = ''
+if ($scM.Success) {
+  $cf = @($scM.Groups[1].Value -split '\|')
+  if ($cf.Count -ge 3) { $notVer = ($cf[2] -replace '^not-verified=', '') }
+}
+if (-not ($ssM.Success -and ($testDecls -ne '') -and ($notVer -ne ''))) {
+  Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives the shipped evidence table from.'
+  $fail++
+} else {
+  $nSamples = $ssM.Groups[1].Value
+  # THE THOUSANDS SEPARATOR IS THE DOCUMENT'S, and only in `EXTENSIONS.md`: its table
+  # writes the other counts with one (`**89 个**`), while `QA_TODO.md`'s candidate table
+  # writes them plain. So the two documents get the two forms, and the PIN is the same
+  # number in both cases.
+  $testDeclsGrouped = ([int]$testDecls).ToString('N0')
+  $more.Add(@{ F = 'EXTENSIONS.md';    S = ($nSamples + ' 个内嵌样例 + **' + $testDeclsGrouped + '** 个单元测试'); N = 'EXTENSIONS.md: the .mbt evidence row' })
+  $more.Add(@{ F = '_verify/QA_TODO.md'; S = ('| C1 | the ' + $testDecls + ' test-declaration bodies outside the subset |'); N = 'QA_TODO.md: the C1 candidate' })
+  $more.Add(@{ F = '_verify/QA_TODO.md'; S = ('| C2 | the ' + $notVer + ' unverified call sites'); N = 'QA_TODO.md: the C2 candidate' })
+}
+# AND THE STALE VALUE MUST NOT COME BACK. The check above is a PRESENCE check, so a
+# table that carried the right number AND kept the old one would pass it -- and a reader
+# would meet both. The old value is named here VERBATIM, not paraphrased.
+#
+# IT IS SCOPED TO THE TABLE ROWS. The correction note UNDER the table quotes the old
+# value on purpose: a deleted number hides the fact that it was once different, and the
+# same drift has now happened to this document twice. So the note may name it and the
+# table may not -- and the scope is the TABLE, read as the lines that begin with a
+# pipe, because that is what a reader reads as the table.
+$staleSamples = '75 个单元测试'
+$extPath = Join-Path $root 'EXTENSIONS.md'
+$extTxt = [System.IO.File]::ReadAllText($extPath, [Text.Encoding]::UTF8)
+$extRows = (($extTxt -split "`r?`n") | Where-Object { $_ -match '^\|' }) -join "`n"
+if ($extRows.Contains($staleSamples)) {
+  Write-Output ('  FAIL: a table row of EXTENSIONS.md carries the 0.3.3-era test count: ' + $staleSamples)
+  $fail++
+} else {
+  Write-Output '  no table row of EXTENSIONS.md carries the 0.3.3-era test count  OK'
+}
 foreach ($e in $more) {
   $p = Join-Path $root $e.F
   $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)

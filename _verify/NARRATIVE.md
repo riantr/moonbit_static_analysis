@@ -22989,3 +22989,72 @@ and nothing else moves. The mutation counts, the notice counts, the file counts 
 AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the RELEASED version.
 
 
+## 0619: THE CONTRACT DOCUMENT SAID THE EVIDENCE WAS TWENTY-FOUR TIMES SMALLER THAN IT IS, AND NOTHING READ IT
+
+The work that follows 0618 was a third re-reading of what this repository PUBLISHES, and it found the same species one level down again -- in the document the other two documents point at.
+
+THE FINDING. `EXTENSIONS.md` ships. Its own header says what it is: `本表是 riantr/moonbit_static_analysis 各文件种类的静态分析契约` -- this table is the static-analysis CONTRACT for each file kind. And one of its sections is a table of HOW STRONG EACH CHECK'S EVIDENCE IS: `真实语料的验证基础（各检查的证据强度不同）`. That is the table a reader consults to decide how far to trust the analyzer.
+
+Its `.mbt` row said the evidence was:
+
+    6 个内嵌样例 + 75 个单元测试
+
+MEASURED, and the 75 was not a rounding and not a drift of a few: at `919819f` (2026-10-06, release 0.3.3) -- the commit that wrote that number -- the tree carried EXACTLY 75 `test` declarations. Counted at that commit, from `git ls-tree`, 75. Today the tree carries 1,800 of them, in 192 tracked test files.
+
+So the table understated this project's own test evidence for the `.mbt` check by a factor of 24, and it had been doing so for 45 releases.
+
+### AND NOTHING READ IT, WHICH IS THE PART THAT MATTERS
+
+`_verify/check_readme_links.ps1` derives the published numbers of `README.md`, `README.zh.md`, `SKILL.md`, `CHANGELOG.md` and `CHANGELOG.zh.md` from the pins in `_verify/release.ps1`. That is why a README number cannot drift: the pin moves when the measurement moves, and the document is asked to follow.
+
+`EXTENSIONS.md` was read by exactly ONE gate -- `_verify/check_published_pointers.ps1` -- and that one reads its PATHS, not its numbers. So the evidence table had no authority behind it at all, and a number with no authority rots the quietest way of all: nothing is red, nothing fails, and the table is RIGHT on the one machine that already knew the answer.
+
+### THE CONTRAST THAT MAKES IT A DEFECT AND NOT A RECORD
+
+`LOOP.md` carries numbers that are just as old, and SAYS SO -- its second line is `⚠️ 方法仍然有效，数字停在 2026-10-06 / 0.4.13`. The method is still valid; the NUMBERS are stopped at 2026-10-06 / 0.4.13. That is a dated record, honestly labelled.
+
+`EXTENSIONS.md` presents itself as the live contract, carries numbers from the same fortnight, and says nothing about it. That is a stale reading wearing a live label.
+
+### AND A SECOND DOCUMENT, HAND-CORRECTED
+
+`_verify/QA_TODO.md` ships too, and its candidate table ranks the next cycles by two numbers -- the test-declaration bodies and the unverified call sites. Increment 0617 corrected both BY HAND, because measurement had moved past them.
+
+A hand-corrected number is a number that rots again, and this repository has now watched that happen twice: `SKILL.md` in 0618, and this table in 0617. So both rows are DERIVED now, from the pins that already exist -- `$SELF_NOTICES`'s `test declaration` row and `$SELF_CALLS`'s `not-verified` field. The hand-correction note is KEPT, because a deleted note hides the fact that the number was once different.
+
+### ONE NEW PIN, AND IT IS MEASURED FROM THE SOURCE
+
+    $SELF_SAMPLES = '6'
+
+The sample count is counted from the ARRAY the demo returns -- `src/samples/samples.mbt`'s `all()` -- and not from a list written somewhere else, because a second list is a second number and two numbers about one set is a pair that can disagree. The self-scan stage measures it and asserts it against the pin, and the count of the embedded samples is now a fact the release gate owns rather than a fact a document remembers.
+
+### FOUR CHECKS AND ONE NEGATIVE CHECK, ALL DERIVED
+
+`check_readme_links.ps1` now asks of the shipped documents what it already asks of the READMEs: does the document say what the pin says? Three derived checks -- the `.mbt` evidence row in `EXTENSIONS.md`, and the C1 and C2 rows of `QA_TODO.md` -- plus a NEGATIVE check that the old 75 may not come back to the TABLE.
+
+AND THE NEGATIVE CHECK IS SCOPED TO THE TABLE ROWS, and that scope is a decision with a reason. The correction note UNDER the table quotes the old value on purpose: a deleted number hides the fact that it was once different. So the note may name it and the table may not, and the scope is the lines that begin with a pipe -- because that is what a reader reads as the table.
+
+### AND EVERY ONE OF THEM IS SHOWN TO GO RED
+
+MEASURED, by injecting each defect into the tree and running the gate against it, with a hash-verified restore after each:
+
+    the control (the tree as it stands)                      green, exit 0
+    the .mbt evidence row's count moves (1,800 -> 1,799)       RED, exit 1, naming the row
+    a table row keeps the 0.3.3-era count                      RED, exit 1, naming it
+    QA_TODO.md's C1 count moves (1800 -> 1799)                 RED, exit 1, naming C1
+    QA_TODO.md's C2 count moves (4489 -> 4490)                 RED, exit 1, naming C2
+    the embedded sample set grows to seven and nothing else moves
+                                                             RED, exit 1: "the embedded sample set
+                                                              holds 7 samples and the pin says 6"
+    the restores                                             byte-for-byte identical (SHA256)
+
+AND THE FIFTH DEFECT WAS THE ISOLATED ONE. Adding a seventh entry to the sample array changed nothing else the gate measures -- the notices table, the SSA cost and the file count all stayed -- so the ONE red line in that run was the sample count's own.
+
+### THE PINS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    129 -> 130
+
+and nothing else moves. The mutation counts, the notice counts, the file counts and the test counts are unchanged: this increment changes no analyzer behaviour, no public interface, and no number the READMEs publish. It corrects a document that ships, pins one fact that was published and unpinned, and makes three more published numbers derived.
+
+AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the RELEASED version.
+
+

@@ -389,6 +389,14 @@ fixed and measured.
   `method 3800`, `dotdot 0`. The seven corpora measure 31,058; §4's T11 record
   carries both published numbers.
 
+**AND FROM 0619 ONWARD NEITHER OF THEM IS HAND-CORRECTED ANY MORE — THEY ARE DERIVED.**
+`_verify/check_readme_links.ps1` builds both rows of this table from the pins in
+`_verify/release.ps1`: C1 from `$SELF_NOTICES`'s `test declaration` row, C2 from
+`$SELF_CALLS`'s `not-verified` field. So the table moves when the tree moves, and the
+gate goes red when the table does not. The note above is kept because it is the record
+of what moved and when — a deleted note hides the fact that the number was once
+different, and the same drift happened twice.
+
 **C3 is a DESIGN question, not a bug.** The merged report keeps the family of
 the highest-ranked lens, so a defect both lenses see is reported as
 `MethodError`. Whether a merged echo should keep the NARROWER family is a
