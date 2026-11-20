@@ -35,3 +35,23 @@ import {
   "moonbitlang/core/async",
   "moonbitlang/core/async/fs",
 }
+
+// 0631. THE ASYNC RUNTIME IMPORT IS REQUIRED BY ONE CORE AND REDUNDANT UNDER
+// THE OTHER, AND THIS TREE HAS TO BUILD ON BOTH.
+//
+// `moonbitlang/core/async` has to be imported for `async fn main` to compile:
+// without it the core 0.10.21 says "Cannot use `async fn main`: package
+// moonbitlang/async is not imported" (error 4122). The core 0.10.22 no longer
+// needs the import, and reports it as `unused_package` (warning 0029) -- which
+// `--deny-warn` turns into an error. So the import is REQUIRED by one
+// toolchain and UNUSED by the other, and the tree has to build on both.
+//
+// The import STAYS and the warning is silenced HERE, in the two packages that
+// declare an `async fn main`. The suppression is per package, not module-wide,
+// so an import that is genuinely unused somewhere else still gets reported.
+//
+// MEASURED 2026-11-20: with the import and this line, both cores are green;
+// without the import, core 0.10.21 fails with error 4122. The artifact does
+// not move: 106 imports, 92 of them from `moonbitlang/async`.
+
+warnings = "-unused_package"

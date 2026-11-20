@@ -868,3 +868,28 @@ match **宽**，因为任何前端没读过的 span 都是 region——测试跟
      ⇒ 自测里多了一个**必须保持沉默**的缺陷（引用一个死地址，副本必须还是绿的），还有一个
      **反向的**缺陷（把那句状态删掉，同一个地址必须重新变成缺陷）——后者才是证明这条判据**扛得住**
      而不是**放水**的那一个。
+
+32. **发版是被「最新的那个工具链」卡住的，而 CI 装工具链时**不写版本号**——所以卡住发布的是 core，不是本机。**
+     本轮撞上的是：CI 两个工作流都用 `curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash`
+     装工具链，**没有版本号**，于是 runner 拿到的是 `latest`；而安装脚本是**分开**取 core 的：
+     `core_uri="$CLI_MOONBIT/cores/core-$version.tar.gz"`，`version=latest` 时就是
+     `cores/core-latest.tar.gz`——**最新的 core，而不是工具链自带的那一个**。⇒ 所以 runner 的 core
+     **自己会动**，和工具链的版本无关。
+     ⇒ 实测（2026-11-20）：本机 `moon 0.1.20261117` 带 core `0.10.21+06da1ed44`；最新的是
+     `moon 0.1.20261119` 带 core `0.10.22+124d61d05`；注册表上 `moonbitlang/core` 的最新版是
+     `0.1.20261120+124d61d05`，一共 **177** 个版本。而**最新的 core 拒绝了这棵树**：
+     `moon check --deny-warn`（**CI 跑的第一条**）报 `unused_package`，**2 个 error**。
+     ⇒ 而**修法不是「把导入删掉」**——删掉之后旧 core 立刻说
+     `Cannot use 'async fn main': package moonbitlang/async is not imported`（error 4122）。
+     ⇒ 于是这个导入**旧 core 需要、新 core 说它没用**，而树**两边都得能编**。⇒ 所以解法是
+     **留着导入、只在需要它的两个包里把这条警告关掉**（`warnings = "-unused_package"`），
+     而且**按包关**，不是整模块关——别处真的没用的导入还要照报。
+     ⇒ 而**产物没动**：加不加这一行，wasm 都是 **106** 个 import、其中 **92** 个来自
+     `moonbitlang/async`，契约还是那 **93** 个符号；新的 core 声明 213 个宿主 extern、runtime 再实现
+     288 个，合起来仍然覆盖全部 93——所以**地板不动**，还是 `moon 0.1.20261117 or later`。
+     ⇒ 于是**发版要卡在 core 上**：`_verify/regate_newest_toolchain.ps1` 用最新的工具链跑一遍这棵树
+     （要**重新 bundle core**，不 bundle 每个 target 都会挂在
+     `... bundle/async/aqueue/aqueue.mi missing`），而发布门禁里多了一道 stage 盯着 core：
+     注册表一旦发布更新的 core，那道 stage 就变红，并说清楚该做什么。
+     ⇒ **钉是按 build hash 比的**：注册表把 core 发布成 `0.1.<日期>+<hash>`，core 自己的 `moon.mod`
+     写的是 `0.10.<n>+<hash>`——**两个字符串不一样，能对上的是 hash**。

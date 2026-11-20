@@ -24037,3 +24037,123 @@ AND THE VERSION LINE STAYS AT 0.5.0 in this increment: it guards a document and
 it changes no analyzer behaviour and no public interface.
 
 
+## 0631: THE NEWEST CORE REFUSED THE TREE, AND A RELEASE IS GATED ON THE CORE
+
+### WHAT WAS WRONG
+
+The release that was about to be cut would have FAILED ON THE RUNNER.
+
+MEASURED 2026-11-20, on the tree as it stood, against the newest toolchain the
+CI runner installs:
+
+    moon 0.1.20261119 (738607b 2026-11-19)
+    moonbitlang/core 0.10.22+124d61d05
+
+    moon check --deny-warn   ->  exit 1
+      moon.pkg:28:3  "moonbitlang/core/async",
+          Error Warning (unused_package): Unused package 'moonbitlang/core/async'
+      src/jsoncli/moon.pkg:35:3  "moonbitlang/core/async",
+          Error Warning (unused_package): Unused package 'moonbitlang/core/async'
+      Failed with 0 warnings, 2 errors.
+
+`moon check --deny-warn` is the FIRST thing the CI gate runs. So the release
+would have shipped a tree that does not build: the tag would have been pushed,
+and the runner would have gone red.
+
+### WHY THE RUNNER'S CORE IS NOT THE ONE ON THIS MACHINE
+
+Both CI workflows install the toolchain with
+
+    curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+with NO version, so the runner gets `latest`. And the installer resolves the
+core SEPARATELY:
+
+    core_uri="$CLI_MOONBIT/cores/core-$version.tar.gz"
+
+with version=latest, that is `cores/core-latest.tar.gz` -- the NEWEST core, not
+the one the toolchain shipped with. So the runner's core moves ON ITS OWN,
+independently of the toolchain's version.
+
+MEASURED, on this machine: the local toolchain is `moon 0.1.20261117` with core
+`0.10.21+06da1ed44`; the newest is `moon 0.1.20261119` with core
+`0.10.22+124d61d05`; and the registry publishes `moonbitlang/core` at
+`0.1.20261120+124d61d05` with **177** versions. The toolchain zip does not even
+carry a core: its `lib/` holds the runtime and the proof libraries, and the
+core is a SEPARATE download.
+
+### THE TREE HAS TO BUILD ON BOTH, AND THAT IS THE HARD PART
+
+The obvious fix -- drop the import -- BREAKS THE OLD CORE:
+
+    Cannot use `async fn main`: package moonbitlang/async is not imported.
+    Error: [4122]
+
+So the import is REQUIRED by core 0.10.21 and UNUSED by core 0.10.22, and the
+tree has to build on both. Keeping it and removing it are each wrong on one of
+the two toolchains.
+
+MEASURED, all four combinations:
+
+| core | the import | `moon check --deny-warn` |
+|---|---|---|
+| 0.10.21 | present | green |
+| 0.10.21 | removed | RED, error 4122 |
+| 0.10.22 | present | RED, `unused_package` (0029) |
+| 0.10.22 | removed | green |
+
+=> THE FIX IS TO KEEP THE IMPORT AND SILENCE THE WARNING, IN THE TWO PACKAGES
+   THAT NEED THE IMPORT: `warnings = "-unused_package"` in the root `moon.pkg`
+   and in `src/jsoncli/moon.pkg`, with the reason written down next to it. The
+   suppression is PER PACKAGE, not module-wide, so an import that is genuinely
+   unused somewhere else still gets reported.
+
+MEASURED, both toolchains with the fix: `moon check --deny-warn`,
+`moon fmt --check`, `moon test --target js --deny-warn`,
+`moon test --target wasm --deny-warn`, `moon test --target wasm-gc --deny-warn`
+and `moon build --release --target wasm` all exit 0.
+
+### THE ARTIFACT DOES NOT MOVE
+
+MEASURED, with and without the suppression: the wasm has **106** imports and
+**92** of them from `moonbitlang/async`. The host contract -- the **93**
+symbols -- is untouched, and the FLOOR does not move either: the new core
+declares 213 host externs and the runtime implements 288 more, and together they
+still cover all 93. So the published numbers stay where they are, and the floor
+stays `moon 0.1.20261117 or later`.
+
+### THE RE-GATE, AND THE GATE THAT WATCHES THE CORE
+
+`_verify/regate_newest_toolchain.ps1` runs the tree against the newest
+toolchain, and it is the tool that found all of this. It asks the registry which
+core is the newest, downloads the toolchain and the core with a RESUMED
+download (the link drops big transfers, and the server does advertise
+`accept-ranges: bytes`), BUNDLES the core -- which is not optional: without the
+bundle every target fails with "... bundle/async/aqueue/aqueue.mi missing" --
+copies the tree, and runs the CI steps: the CI steps exactly, plus the two the
+LOCAL gate runs and CI does not.
+
+AND A RULE THAT IS NOT GATED IS A COMMENT, so the release gate watches the core
+too. The stage "the newest core: the tree must have been re-gated against the
+one the registry publishes" asks the registry which core is the newest and holds
+it to the `$CORE_REGATED` pin. When the registry publishes a newer core, the
+stage goes RED and says what to do about it.
+
+THE PIN IS COMPARED AS A BUILD HASH: the registry publishes the core as
+`0.1.<date>+<hash>` and the core's own `moon.mod` says `0.10.<n>+<hash>`, so
+the two strings differ and the hash is what they share.
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES         31 -> 32
+    $NARRATIVE_CHAPTERS 141 -> 142
+
+and one new line in each README's stage list (55 -> 56). No analyzer behaviour
+changed and no public interface changed: the two `moon.pkg` files gained a
+warning suppression and a comment, and the published artifact still has the
+same 106 imports and the same 93-symbol contract.
+
+AND THE VERSION LINE STAYS AT 0.5.0 in this increment: it repairs the tree for
+the newest core and it changes no analyzer behaviour and no public interface.
+
+

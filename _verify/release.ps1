@@ -1686,7 +1686,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # claim in the same sentence that measurement refuted, and adds ONE `check_*`
 # gate that PROBES the URLs the documents name. It moves the `$LOOP_RULES` pin
 # with the rule it adds.
-$NARRATIVE_CHAPTERS = '141'
+$NARRATIVE_CHAPTERS = '142'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1698,10 +1698,23 @@ $NARRATIVE_CHAPTERS = '141'
 # The pin moved 28 -> 29 with rule 29, and the rule is the lesson this increment
 # measured: a pointer that RESOLVES is not a pointer that resolves to the RIGHT
 # thing, and the goal's own checklist was a comment until this increment.
-# The pin moved 30 -> 31 with rule 31, and the rule is the lesson this increment
-# measured: a gate that probes a URL has to tell a POINTER from a QUOTATION --
-# a current document may QUOTE a dead address, and 0630's own rule did.
-$LOOP_RULES = '31'
+# The pin moved 31 -> 32 with rule 32, and the rule is the lesson this increment
+# measured: a release is gated on the CORE, not on the toolchain this machine
+# happens to carry -- and CI installs the toolchain with no version at all.
+$LOOP_RULES = '32'
+
+# 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
+# workflows install the toolchain with NO version, so the runner gets the
+# NEWEST toolchain and -- because the installer resolves the core separately --
+# the NEWEST core. On 2026-11-20 that newest core REFUSED this tree:
+# `moon check --deny-warn` failed with `unused_package`, and that check is the
+# first thing CI runs. A release is therefore gated on the core, and this pin
+# is the core the tree was re-gated on.
+#
+# The pin is compared as a BUILD HASH: the registry publishes the core as
+# `0.1.<date>+<hash>` and the core's own `moon.mod` says `0.10.<n>+<hash>`, so
+# the two strings differ and the hash is what they share.
+$CORE_REGATED = '0.10.22+124d61d05'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2815,6 +2828,67 @@ if ($failed.Count -eq 0) {
     }
     if (-not $script:lastOk) { $failed += 'registry-urls-selftest' }
   }
+}
+
+# --- 4d2 THE NEWEST CORE: THE TREE HAS TO HAVE BEEN RE-GATED AGAINST IT -------
+#
+# WHY THIS STAGE EXISTS. 0631. The CI workflows install the toolchain with
+#
+#     curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+#
+# with NO version, so the runner gets `latest` -- and the installer resolves the
+# core SEPARATELY, as `cores/core-$version.tar.gz`, which with version=latest
+# is the NEWEST core. So the runner's core moves on its own, and the tree that
+# cuts the release is not the tree the runner builds.
+#
+# MEASURED 2026-11-20: on the tree as it stood, the newest core (0.10.22) made
+# `moon check --deny-warn` -- the FIRST thing CI runs -- fail with
+# `unused_package`. The release would have shipped a tree that does not build.
+#
+# SO A RELEASE IS GATED ON THE CORE. This stage asks the registry which core is
+# the newest and holds it to the one the tree was re-gated on, which is the
+# `$CORE_REGATED` pin. When the registry publishes a newer core, this stage goes
+# RED and says what to do: run `_verify\regate_newest_toolchain.ps1`, fix what
+# it finds, and move the pin with the fix.
+#
+# THE PIN IS A HASH, COMPARED AS A HASH. The registry publishes the core as
+# `0.1.<date>+<hash>` and the core's own `moon.mod` says `0.10.<n>+<hash>`:
+# the two strings differ and the hash is what they share. So the HASH is the
+# join key, and both strings are printed.
+#
+# AND A CORE THAT CANNOT BE CHECKED IS A CORE WITH NOTHING WRONG: an
+# unanswered registry is a FAILURE here, with its own message.
+if ($failed.Count -eq 0) {
+  Stage 'the newest core: the tree must have been re-gated against the one the registry publishes' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $ver = ''
+    $why = ''
+    try {
+      $wc = New-Object System.Net.WebClient
+      $wc.Headers.Add('User-Agent', 'moonbit_static_analysis release gate')
+      $body = $wc.DownloadString('https://mooncakes.io/api/v0/modules/moonbitlang/core')
+      if ($body -match '"latest_version"\s*:\s*"([^"]+)"') { $ver = $Matches[1] }
+      else { $why = 'the registry answered, but not with a core version' }
+    } catch { $why = 'the registry did not answer' }
+    $ErrorActionPreference = $prev
+    $regHash = ''
+    if ($ver -match '\+([0-9a-fA-F]+)$') { $regHash = $Matches[1] }
+    $pinHash = ''
+    if ($CORE_REGATED -match '\+([0-9a-fA-F]+)$') { $pinHash = $Matches[1] }
+    Write-Output ('  the registry publishes: ' + $(if ($ver -eq '') { '(nothing)' } else { $ver }))
+    Write-Output ('  the tree was re-gated on: ' + $CORE_REGATED)
+    if ($regHash -eq '') {
+      Write-Output ('  FAIL: ' + $why + ', so the newest core is unknown. A core that cannot be checked is not a core with nothing wrong.')
+      $script:stageOk = $false
+    } elseif ($regHash -ne $pinHash) {
+      Write-Output ('  FAIL: the registry publishes a newer core (' + $regHash + '), and this tree was re-gated on ' + $pinHash + '.')
+      Write-Output '        Run _verify\regate_newest_toolchain.ps1, fix what it finds, and move the pin with the fix.'
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  ok: the newest core is the one this tree was re-gated on (' + $regHash + ').')
+    }
+  }
+  if (-not $script:lastOk) { $failed += 'newest-core' }
 }
 
 # --- 4e  WHAT THE REGISTRY WILL RECEIVE ---------------------------------------
