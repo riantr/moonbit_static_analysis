@@ -23440,3 +23440,121 @@ and the roster's own count of the `check_*` gates on disk moves with the new gat
 AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public interface. It corrects two shipped documents about the toolchain they tell the reader to use, and it adds the gate that asks the toolchain instead of believing a sentence.
 
 
+## 0625: THE FLOOR MOVED AND ONLY THE READMEs MOVED WITH IT, AND THE PATCH THAT FIXED THE LAST DEFECT INSERTED ITSELF THREE TIMES
+
+Not a new increment of the QA plan. A ninth re-reading of what this repository WRITES DOWN --
+and this time the thing that had rotted was a fact that lives in FOUR places, and the refresh
+that moved it reached only one of them; and the patch that fixed the PREVIOUS increment turned
+out to have inserted itself three times.
+
+### THE FIRST DEFECT: THE FLOOR, IN FOUR COPIES, TWO OF THEM STALE
+
+The host contract says what a user's toolchain has to supply for this artifact to instantiate.
+Its floor is a TOOLCHAIN, and 0615 moved it: this host's bundled core went from
+`0.10.20+65efd5b93` to `0.10.21+06da1ed44`, with `moon` `0.1.20261117`, and the contract moved
+with it -- `min-host-core: 0.10.21+06da1ed44`, `min-host-toolchain: 0.1.20261117`, 93 symbols.
+
+MEASURED 0625, the refresh reached the two READMEs and NOT the other three places the floor is
+written down:
+
+* `SKILL.md` still said **"moon 0.1.20261104 or later, which bundles `moonbitlang/core`
+  0.10.20+65efd5b93 and declares every one of the 93"**. That is not merely stale, it is FALSE
+  in the direction that drops users: the contract's list carries
+  `thread_pool/make_openat_job`, and core 0.10.20 declares `thread_pool/make_open_stat_job`
+  instead -- NEITHER declares the other -- so a moon 0.1.20261104 host cannot supply a symbol
+  the contract requires. The README's own words: *a floor that names a symbol no host can
+  provide is a floor that drops users.*
+* `SKILL.md` also said *"The published wasm imports 93 symbols from `moonbitlang/async`"* --
+  and 93 is the CONTRACT's count. The published artifact imports 92 (measured), and the contract
+  is 93, one wider than any single build. A contract number was written down as an artifact
+  number.
+* `moon.mod` named the same superseded core, and described this gate as comparing the import
+  surface against the contract **"in BOTH directions"**. The rule is a SUBSET check (0606): a
+  symbol outside the contract is a failure, one inside it that a build does not ask for is a
+  note. The mirror was the property 0606 measured to be the wrong one.
+* the CONTRACT itself said *"the UNION of the two covers all 94 symbols below"* while the list
+  below it carries 93 -- the file contradicting itself about its own count -- and its
+  `min-host-core` field definition named the superseded core.
+
+=> ONE FACT, ONE PLACE. The contract is the authority, every copy of the floor is now DERIVED
+from the contract's pins, and a gate holds each copy to them.
+
+### THE SECOND DEFECT: THE PATCH INSERTED ITSELF THREE TIMES
+
+`git show ea61dcc` says it plainly: 0624's patch was applied THREE times, and every run
+APPENDED:
+
+    README.md                            the stage names, three times; the prose sentence, three times
+    README.zh.md                         the same
+    _verify/check_package_contents.ps1   the evidence entry, three times
+    _verify/release.ps1                  the $RUNWASM_GONE_IN pin block, three times
+
+and NOTHING said so, because every check that looks at these lists is SET-BASED or
+COUNT-PER-ENTRY: the READMEs' stage check asked whether the name was PRESENT, the package
+check asked whether the file was in the package, and a pin assigned three times reads exactly
+like a pin assigned once.
+
+=> A GATE THAT CANNOT SEE A DUPLICATE CANNOT CATCH A DUPLICATE.
+
+### THE THREE LOCKS
+
+* the READMEs' stage list is the run of 4-space-indented lines, and **every stage name appears
+  in it EXACTLY once** -- the list is 48 lines for 48 stages, and a name that appears twice is
+  named in the failure;
+* the paragraph that says what the release gate runs must have **distinct bold phrases** -- the
+  same sentence three times in one paragraph is the same defect in prose;
+* the package's evidence list must not name the same file twice, and **every pin in
+  `release.ps1` must be declared exactly once** -- a pin that appears three times can be
+  counted three times by whatever derives a number from it.
+
+### AND THE FLOOR'S COPIES ARE HELD TOO
+
+`check_host_requirements.ps1` grows a section that reads the contract's PINS and holds every
+shipped copy of the floor to them: `SKILL.md`, `README.md`, `README.zh.md` and `moon.mod` must
+each name the contracted toolchain and the contracted core, must name **no other** version, and
+the two that state a count must state the contracted one. The contract must not contradict
+itself: its `symbols:` pin, its list and the numbers its own prose states are one fact. And the
+direction of the rule is held too -- the documents must say SUBSET, and must not say the two
+directions are symmetric.
+
+THE CHECK IS NOT A RECOMPUTATION: the floor IS the contract. A toolchain that moves moves the
+pin in one place, and every copy follows it -- or the gate says which copy did not.
+
+### IT IS SHOWN TO GO RED
+
+MEASURED, by injecting the defect into COPIES of the documents in %TEMP% and running the gate's
+own checks against them: the control green, each copy red with the defect NAMED (a superseded
+toolchain, a superseded core), and the repository untouched. AND by injecting the same defect
+into the REAL tree: the gate red with the defect named, the restore byte-for-byte identical, and
+the gate green again on the restored tree.
+
+### AND THE GATE THAT THIS INCREMENT EXPOSED
+
+0625's own edit found a hole in 0624's gate, and the gate's own self-test is what
+said so. The runwasm claim's version check asked whether "the block that makes the
+claim" carries the pin -- and the block was the WHOLE blockquote, because a
+blockquote's paragraphs are separated by a line holding nothing but the `>` marker
+and not by a blank line. So when 0625 added the floor note (which carries the pin)
+to that same blockquote, a stale version in the runwasm note stopped being
+visible: the pin was somewhere in the block, and the block is not the claim. The
+self-test went from two defects caught to one.
+
+=> THE CLAIM'S OWN PARAGRAPH, and not the container that happens to hold it -- the
+same lesson 0624 wrote down, one level down. And it is why a gate's self-test is
+worth running on every change: this defect was in the CHECK, and only the check's
+own self-test could say so.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    135 -> 136
+
+and no other published number moves: 89 numbered gates, 519 live mutations, 477 expecting a
+kill, 400 naming the test; 16 check gates on disk, 11 with a live `-SelfTest`. The READMEs'
+stage lists lose four lines (two names, twice) and gain none, and the READMEs' prose loses two
+sentences.
+
+AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public
+interface. It corrects the floor in every place it is written down, removes an edit that was
+inserted three times, and adds the locks that catch both.
+
+

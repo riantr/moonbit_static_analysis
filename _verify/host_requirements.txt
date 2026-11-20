@@ -89,17 +89,19 @@
 # the standalone `moonbitlang/async` 0.22.5 covers only 89 of the 93 (it has
 # `stdio/get_stdio_handle` and neither of the four thread_pool additions), so a
 # toolchain still bundling the standalone module CANNOT instantiate this
-# artifact. The bundled core 0.10.20+65efd5b93 declares 215 externs and covers
-# all 93.
+# artifact. The bundled core 0.10.21+06da1ed44 -- the one the `moon 0.1.20261117`
+# toolchain carries -- and that toolchain's runtime together cover all 93: the
+# runtime supplies the one symbol (`thread_pool/make_openat_job`) that no core
+# declares.
 #
 # `min-host-toolchain` is NEW (0606), and it exists because ONE symbol is not
 # the core's to provide. `thread_pool/make_openat_job` -- the file-IO job the
 # registry's builder emitted -- is declared by no core, and the toolchain's
 # RUNTIME implements it, as `moonbit_rt_make_openat_job` in
-# `~/.moon/lib/runtime/fs.c`. So the floor is the TOOLCHAIN, and the gate
-# checks the toolchain's core AND its runtime. MEASURED on this host: the core
-# declares 215 externs, the runtime implements 288 `moonbit_rt_*` names, and
-# the UNION of the two covers all 94 symbols below.
+# `~/.moon/lib/runtime/fs.c`. So the floor is the TOOLCHAIN (`moon
+# 0.1.20261117`), and the gate checks the toolchain's core AND its runtime.
+# MEASURED on this host: the core declares 213 externs, the runtime implements
+# 288 `moonbit_rt_*` names, and the UNION of the two covers all 93 symbols below.
 #
 # The floor is a TOOLCHAIN now, not a pin: `moon.mod` no longer depends on
 # `moonbitlang/async` at all, so there is nothing in the source tree that

@@ -1225,7 +1225,13 @@ foreach ($m in [regex]::Matches($relTxt, "(?m)^[ \t]*Stage[ \t]+'((?:[^']|'')+)'
 # its stage through a variable. Both are stages the gate runs, so both are
 # stages the README has to name.
 foreach ($t in @('js','wasm','wasm-gc')) { $stageNames.Add("moon test --target " + $t) }
-foreach ($m in [regex]::Matches($relTxt, "(?m)^[ \t]*\$stageName[ \t]*=[ \t]*'((?:[^']|'')+)'")) {
+# 0625. THE PATTERN WAS ASKED A BROKEN QUESTION. In a DOUBLE-QUOTED PowerShell
+# string `\$` is not an escape -- the escape is the backtick -- so the pattern
+# arrived as "(?m)^[ \t]*\[ \t]*=[ \t]*'...'", which matches NOTHING. MEASURED:
+# 0 matches, and the answer came out right only by luck, because every stage
+# this line was meant to catch is ALSO declared as a `Stage '...'` literal.
+# A check that asks a broken question is a check that cannot fail.
+foreach ($m in [regex]::Matches($relTxt, '(?m)^[ \t]*\$stageName[ \t]*=[ \t]*''((?:[^'']|'''')+)''')) {
   $stageNames.Add(($m.Groups[1].Value -replace "''", "'"))
 }
 $stageNames = @($stageNames | Select-Object -Unique)
@@ -1242,6 +1248,97 @@ foreach ($f in @('README.md','README.zh.md')) {
     foreach ($n in $missing) { Write-Output ('      ' + $n) }
     $fail += $missing.Count
   }
+}
+
+# AND EXACTLY ONCE. A stage named twice in the list is a reader's confusion and
+# a patch's bug: MEASURED 0625, the 0624 patch inserted its own stage names
+# THREE times into both READMEs, and nothing said so, because the check above
+# asked whether the name was PRESENT and not how many times it was there.
+#
+# The list is the run of 4-space-indented lines, and the run is FOUND rather
+# than assumed: the longest such run in the document IS the list.
+foreach ($f in @('README.md','README.zh.md')) {
+  $p = Join-Path $root $f
+  $lines = @([System.IO.File]::ReadAllLines($p, [Text.Encoding]::UTF8))
+  $best = @()
+  $cur = @()
+  foreach ($ln in $lines) {
+    if ($ln -cmatch '^ {4}\S') {
+      $cur = @($cur + $ln.Substring(4))
+    } else {
+      if ($cur.Count -gt $best.Count) { $best = $cur }
+      $cur = @()
+    }
+  }
+  if ($cur.Count -gt $best.Count) { $best = $cur }
+  $dups = @($best | Group-Object | Where-Object { $_.Count -gt 1 })
+  $unknown = @($best | Select-Object -Unique | Where-Object { $stageNames -notcontains $_ })
+  $absent = @($stageNames | Where-Object { $best -notcontains $_ })
+  if ($dups.Count -eq 0 -and $unknown.Count -eq 0 -and $absent.Count -eq 0) {
+    Write-Output ("  {0,-14} names each of the {1} stages EXACTLY once  OK" -f $f, $stageNames.Count)
+  } else {
+    if ($dups.Count -gt 0) {
+      Write-Output ("FAIL: {0,-14} names {1} stage(s) MORE THAN ONCE:" -f $f, $dups.Count)
+      foreach ($d in $dups) { Write-Output ('      x' + $d.Count + '  ' + $d.Name) }
+      $fail += $dups.Count
+    }
+    if ($unknown.Count -gt 0) {
+      Write-Output ("FAIL: {0,-14} has {1} line(s) in the list that are not stage names:" -f $f, $unknown.Count)
+      foreach ($u in $unknown) { Write-Output ('      ' + $u) }
+      $fail += $unknown.Count
+    }
+    if ($absent.Count -gt 0) {
+      Write-Output ("FAIL: {0,-14} does not name {1} stage(s) in the list:" -f $f, $absent.Count)
+      foreach ($a in $absent) { Write-Output ('      ' + $a) }
+      $fail += $absent.Count
+    }
+  }
+}
+
+# AND THE PROSE THAT NAMES WHAT THE GATE RUNS. The same sentence three times in
+# one paragraph is the same defect in prose, and it is checked the same way: the
+# bold phrases of THAT paragraph must be distinct. The paragraph is found by its
+# own anchor, and the Chinese anchor is written with \u escapes.
+$prose = @(
+  @{ Label = 'README.md';    Anchor = 'release\.ps1` runs:' },
+  @{ Label = 'README.zh.md'; Anchor = '\u4F9D\u6B21\u8DD1' }
+)
+foreach ($d in $prose) {
+  $p = Join-Path $root $d.Label
+  $txt = [System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)
+  $para = $null
+  foreach ($q in [regex]::Split($txt, '(?:\r?\n)[ \t]*(?:\r?\n)+')) {
+    if ($q -cmatch $d.Anchor) { $para = $q; break }
+  }
+  if ($null -eq $para) {
+    Write-Output ('FAIL: ' + $d.Label + ' -- no paragraph names what the release gate runs')
+    $fail++
+    continue
+  }
+  $phrases = @()
+  foreach ($m in [regex]::Matches($para, '\*\*([^*]+)\*\*')) { $phrases += $m.Groups[1].Value }
+  $pdups = @($phrases | Group-Object | Where-Object { $_.Count -gt 1 })
+  if ($pdups.Count -eq 0) {
+    Write-Output ('  ' + $d.Label.PadRight(14) + ' says what the gate runs in ' + $phrases.Count + ' distinct phrases  OK')
+  } else {
+    Write-Output ('FAIL: ' + $d.Label + ' -- the paragraph that says what the gate runs repeats ' + $pdups.Count + ' phrase(s):')
+    foreach ($x in $pdups) { Write-Output ('      x' + $x.Count + '  ' + $x.Name) }
+    $fail += $pdups.Count
+  }
+}
+
+# AND THE PINS ARE DECLARED ONCE. A pin assigned twice is the same defect in the
+# pin block, and it is dangerous: the derived counts read these pins, and a pin
+# that appears three times can be counted three times by whatever derives a
+# number from it. MEASURED 0625: $RUNWASM_GONE_IN was declared THREE times.
+$pinDecls = @([regex]::Matches($relTxt, '(?m)^\s*(\$[A-Z][A-Z0-9_]*)\s*=\s*''([^'']*)'''))
+$dupPins = @($pinDecls | ForEach-Object { $_.Groups[1].Value } | Group-Object | Where-Object { $_.Count -gt 1 })
+if ($dupPins.Count -eq 0) {
+  Write-Output ('  the ' + $pinDecls.Count + ' pins in release.ps1 are each declared ONCE  OK')
+} else {
+  Write-Output ('FAIL: release.ps1 declares ' + $dupPins.Count + ' pin(s) more than once:')
+  foreach ($d in $dupPins) { Write-Output ('      x' + $d.Count + '  ' + $d.Name) }
+  $fail += $dupPins.Count
 }
 
 Write-Output ''

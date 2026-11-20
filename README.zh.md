@@ -1712,7 +1712,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 三个测试 target；`moon build --target wasm`；**产物的宿主契约——用户的工具链必须提供的那些符号，
 发布出去的字节和本地构建都要查**；语法探针自己的判定；自身源码自扫；**这份
 README 自己的链接、锚点、版本与计数**；**随包发布的 CLI 技能文件里当作 CLI 输出展示的每一行，
-都真的是 CLI 打印的那一行**；**而随包发布的文档在「告诉读者用哪个命令」这件事上与工具链对账**；**而随包发布的文档在「告诉读者用哪个命令」这件事上与工具链对账**；**而随包发布的文档在「告诉读者用哪个命令」这件事上与工具链对账**；**变异门名册，以及一个证明它会变红的自测**；**注册表
+都真的是 CLI 打印的那一行**；**而随包发布的文档在「告诉读者用哪个命令」这件事上与工具链对账**；**变异门名册，以及一个证明它会变红的自测**；**注册表
 到底会收到什么，以及一道保证碎屑不会混进去的检查**；**通知的标签，以及一道保证范围限制不会被
 当成错误的检查**；**帧审计，以及一道保证一个区域只让「它可能读到过」的绑定闭嘴的检查**；已发布包
 自扫的自测；与固定基线的语料比对；逐函数普查及其对照；**行为透镜自己的那张表，跟今天分析器
@@ -1753,10 +1753,6 @@ stage，就是读者找不到的 stage：
     the published pointers, shown to go red (its own self-test)
     the shipped CLI example: every line of it is a line the CLI prints
     the shipped CLI example, shown to go red (its own self-test)
-    the toolchain claims: the shipped documents must agree with the toolchain itself
-    the toolchain claims, shown to go red (its own self-test)
-    the toolchain claims: the shipped documents must agree with the toolchain itself
-    the toolchain claims, shown to go red (its own self-test)
     the toolchain claims: the shipped documents must agree with the toolchain itself
     the toolchain claims, shown to go red (its own self-test)
     published self-scan self-test

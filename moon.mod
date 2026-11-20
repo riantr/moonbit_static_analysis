@@ -71,8 +71,10 @@ warnings = "-0079"
 // standalone `moonbitlang/async` 0.22.5 covers only 89 of the 93 -- it has
 // `stdio/get_stdio_handle` and none of the four thread_pool additions -- so a
 // toolchain still bundling the standalone module CANNOT instantiate this
-// artifact. The bundled `moonbitlang/core` 0.10.20+65efd5b93 declares 215
-// externs and covers all 93.
+// artifact. The floor is **moon 0.1.20261117 or later**: its bundled
+// `moonbitlang/core` 0.10.21+06da1ed44 and the toolchain's runtime together
+// cover all 93 -- the runtime supplies the one symbol
+// (`thread_pool/make_openat_job`) that no core declares.
 //
 // THAT IS THE TRADE, and it is a real one. The dependency is gone, but the
 // minimum host toolchain moved up with it, and a user on an older toolchain
@@ -80,10 +82,12 @@ warnings = "-0079"
 // failure 0.4.38 had. The contract that says so is
 // `_verify/host_requirements.txt`, and `_verify/check_host_requirements.ps1`
 // holds the artifact to it: it compares the published import surface against
-// the contract in BOTH directions, it refuses a `moonbitlang/async` dependency
-// coming back, and it checks the toolchain's bundled core against the
-// contract. Raising the floor is allowed -- it is a decision -- but it has to
-// be written down here and in the README.
+// the contract as a SUBSET -- a symbol OUTSIDE the contract is a failure, and
+// one INSIDE it that a build does not ask for is a note -- it refuses a
+// `moonbitlang/async` dependency coming back, and it checks the toolchain's
+// bundled core AND its runtime against the contract. Raising the floor is
+// allowed -- it is a decision -- but it has to be written down here and in the
+// README.
 //
 // The packages that use the runtime declare it as an experimental package: see
 // the `options("allow-experimental-packages": ...)` blocks in `moon.pkg`,

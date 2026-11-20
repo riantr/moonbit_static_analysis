@@ -1670,7 +1670,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # toolchain no longer has "still works", adds ONE `check_*` gate that ASKS the
 # toolchain, and leaves the DATED copy in `EXTENSIONS.md` alone -- a section
 # stamped 2026-10-06 is a record, and a record is not rewritten.
-$NARRATIVE_CHAPTERS = '135'
+$NARRATIVE_CHAPTERS = '136'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -3913,34 +3913,6 @@ $TARGETS = [ordered]@{
 #                  every other published number.
 $CORE_IFACES = '133'
 $CORE_UNKTYPE = '0'
-
-#
-#   $RUNWASM_GONE_IN  the toolchain version in which the `moon runwasm`
-#                     subcommand was MEASURED gone: `moon runwasm --help`
-#                     answers "no such subcommand" on it. MEASURED
-#                     2026-11-20 on `moon 0.1.20261117 (eb64713 2026-11-17)`,
-#                     and there is no `moon-runwasm` binary in `~/.moon/bin`.
-#                     It is pinned because TWO SHIPPED DOCUMENTS told the
-#                     reader that the command "still works", and that claim
-#                     carried its own expiry date -- the toolchain said
-#                     "removal after 2026-09-14" -- and it was written on
-#                     2026-10-06 (`8a31e88`), a MONTH after that date, when it
-#                     was still true.
-$RUNWASM_GONE_IN = '0.1.20261117'
-
-#
-#   $RUNWASM_GONE_IN  the toolchain version in which the `moon runwasm`
-#                     subcommand was MEASURED gone: `moon runwasm --help`
-#                     answers "no such subcommand" on it. MEASURED
-#                     2026-11-20 on `moon 0.1.20261117 (eb64713 2026-11-17)`,
-#                     and there is no `moon-runwasm` binary in `~/.moon/bin`.
-#                     It is pinned because TWO SHIPPED DOCUMENTS told the
-#                     reader that the command "still works", and that claim
-#                     carried its own expiry date -- the toolchain said
-#                     "removal after 2026-09-14" -- and it was written on
-#                     2026-10-06 (`8a31e88`), a MONTH after that date, when it
-#                     was still true.
-$RUNWASM_GONE_IN = '0.1.20261117'
 
 #
 #   $RUNWASM_GONE_IN  the toolchain version in which the `moon runwasm`

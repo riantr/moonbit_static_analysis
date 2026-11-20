@@ -51,16 +51,18 @@ moonx riantr/moonbit_static_analysis@0.5.0 riantr/moonbit_doubleML
 > the command needs no `/src/sa` suffix.
 >
 > **IF `moonx` SAYS `failed to instantiate … .wasm`, IT IS A TOOLCHAIN FLOOR, NOT A
-> BUG IN THE TARGET.** The published wasm imports 93 symbols from
-> `moonbitlang/async`, and the host has to supply every one of them at
-> instantiation time — from the async runtime bundled with the USER's toolchain.
+> BUG IN THE TARGET.** The host contract requires 93 symbols from
+> `moonbitlang/async` — the FLOOR, and the host has to supply every one of them
+> at instantiation time — from the async runtime bundled with the USER's
+> toolchain.
 > A `LinkError: … "thread_pool/make_write_console_job": function import requires
 > a callable` means the toolchain's runtime is older than the one the artifact
 > was built against. 0.4.38 shipped that way. Since 0.4.45 the runtime IS the
 > toolchain's own `moonbitlang/core/async`, so the floor is a toolchain floor:
-> **moon 0.1.20261104 or later**, which bundles `moonbitlang/core`
-> 0.10.20+65efd5b93 and declares every one of the 93. A toolchain still
-> bundling the standalone `moonbitlang/async` cannot instantiate this artifact.
+> **moon 0.1.20261117 or later**, whose bundled `moonbitlang/core`
+> 0.10.21+06da1ed44 and the toolchain's runtime together cover every one of the
+> 93. A toolchain still bundling the standalone `moonbitlang/async` cannot
+> instantiate this artifact.
 > The fix on the user's side is to upgrade the MoonBit toolchain or to use an
 > older analyzer version — NOT to change the project being scanned.
 

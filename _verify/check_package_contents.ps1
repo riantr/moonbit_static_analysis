@@ -112,14 +112,6 @@ $evidence = @(
   # TOOLCHAIN. It is evidence because the thing it checks IS published: the
   # shipped skill files tell the reader which command to run.
   @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
-  # 0624. AND THE GATE THAT KEEPS THE SHIPPED DOCUMENTS IN STEP WITH THE
-  # TOOLCHAIN. It is evidence because the thing it checks IS published: the
-  # shipped skill files tell the reader which command to run.
-  @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
-  # 0624. AND THE GATE THAT KEEPS THE SHIPPED DOCUMENTS IN STEP WITH THE
-  # TOOLCHAIN. It is evidence because the thing it checks IS published: the
-  # shipped skill files tell the reader which command to run.
-  @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }
@@ -133,6 +125,25 @@ $evidence = @(
   @{ N = 'the module source';            Want = 1;                R = '^main\.mbt$' }
   @{ N = 'the proof file';               Want = 1;                R = '^src\\core\\core_proof\.mbtp$' }
 )
+# AND NO ENTRY NAMES THE SAME FILE TWICE. MEASURED 0625: the 0624 patch inserted
+# its own evidence entry THREE times, and every entry still passed -- this check
+# asks whether the file is in the package, not how many times it is named here.
+# => A LIST THAT MAY NAME THE SAME THING TWICE CANNOT CATCH A DUPLICATE.
+#
+# THE GROUPING USES A SCRIPT BLOCK, and not `-Property R`. MEASURED:
+# `Group-Object -Property R` on a HASHTABLE groups every entry under an EMPTY
+# name -- a hashtable's keys are not properties as far as Group-Object is
+# concerned -- so the first version of this check called all 34 entries
+# duplicates and went red on a list that has none. A gate that fails on a true
+# statement is a gate to FIX.
+$dupEvidence = @($evidence | Group-Object { $_.R } | Where-Object { $_.Count -gt 1 })
+if ($dupEvidence.Count -eq 0) {
+  Write-Output ('  the ' + $evidence.Count + ' evidence entries name ' + $evidence.Count + ' different files  OK')
+} else {
+  Write-Output ('FAIL: the evidence list names ' + $dupEvidence.Count + ' file(s) more than once:')
+  foreach ($d in $dupEvidence) { Write-Output ('      x' + $d.Count + '  ' + $d.Name) }
+  $fail += $dupEvidence.Count
+}
 foreach ($e in $evidence) {
   $hits = @($pkg | Where-Object { $_ -match $e.R }).Count
   # PowerShell 5.1 has no ternary operator.

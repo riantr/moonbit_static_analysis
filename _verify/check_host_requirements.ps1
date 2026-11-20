@@ -108,6 +108,10 @@ function Read-Contract {
   $min = ''
   $tool = ''
   $abi = ''
+  # 0625. THE COUNT IS A PIN TOO. The contract's own `symbols:` line and the list
+  # it carries are ONE fact, and the prose that says how many symbols there are
+  # is a third copy of it -- so the line is READ, not skipped.
+  $count = ''
   $syms = @()
   foreach ($line in [System.IO.File]::ReadAllLines($Path, [System.Text.Encoding]::UTF8)) {
     $t = $line.Trim()
@@ -118,10 +122,170 @@ function Read-Contract {
     # contract has to say which one.
     if ($t.StartsWith('min-host-toolchain:')) { $tool = $t.Substring(19).Trim(); continue }
     if ($t.StartsWith('host-abi-module:')) { $abi = $t.Substring(16).Trim(); continue }
-    if ($t.StartsWith('symbols:')) { continue }
+    if ($t.StartsWith('symbols:')) { $count = $t.Substring(8).Trim(); continue }
     $syms += $t
   }
-  return @{ min = $min; tool = $tool; abi = $abi; symbols = $syms }
+  return @{ min = $min; tool = $tool; abi = $abi; count = $count; symbols = $syms }
+}
+
+# --- the floor's copies -----------------------------------------------------------
+# THE FLOOR IS ONE FACT, and this repository states it in SEVERAL PLACES: the
+# contract, `SKILL.md`, `moon.mod`, and the two READMEs. 0615 moved the floor --
+# the toolchain's bundled core went from 0.10.20+65efd5b93 to
+# 0.10.21+06da1ed44, with `moon` 0.1.20261117 -- and the refresh reached the
+# READMEs and NOT the other three. MEASURED 0625:
+#
+#   * `SKILL.md` still said "moon 0.1.20261104 or later", which bundles a core
+#     that does NOT declare `thread_pool/make_openat_job` -- a floor that names
+#     a symbol no host can provide is a floor that drops users, and that is the
+#     direction this gate treats as a failure;
+#   * `SKILL.md` also said "the published wasm imports 93 symbols", which is the
+#     CONTRACT's count and not the published artifact's;
+#   * `moon.mod` named the same superseded core, and described this gate as
+#     comparing the import surface "in BOTH directions" -- the rule is a SUBSET
+#     check (0606);
+#   * the contract itself said "all 94 symbols below" while the list below it
+#     carries 93, and its `min-host-core` field definition named the superseded
+#     core.
+#
+# => ONE FACT, ONE PLACE: the contract is the authority, and these functions hold
+# every copy of the floor to the contract's PINS. They do not recompute the
+# floor -- the floor IS the contract, and a toolchain that moves moves the pin
+# there and nowhere else.
+#
+# THE ANCHOR IS A REGEX, so the Chinese copy can be written with \u escapes and
+# this file can stay ASCII.
+function Get-Paragraph {
+  param([string]$Text, [string]$Anchor)
+  # A PARAGRAPH is the blank-line separated block that carries the anchor.
+  foreach ($p in [regex]::Split($Text, '(?:\r?\n)[ \t]*(?:\r?\n)+')) {
+    if ($p -cmatch $Anchor) { return $p }
+  }
+  return $null
+}
+
+function Get-Tokens {
+  param([string]$Text, [string]$Pattern)
+  $out = @()
+  foreach ($m in [regex]::Matches($Text, $Pattern)) { $out += $m.Value }
+  return $out
+}
+
+function Get-Region {
+  param([string]$Text, [string]$From, [string]$To)
+  # The text from the anchor FROM up to (not including) the anchor TO. The
+  # contract's own header is ONE paragraph -- it has no blank lines for 147
+  # lines -- so a paragraph-scoped check on it would read its whole HISTORY,
+  # and the history names the superseded versions on purpose.
+  $i = $Text.IndexOf($From, [System.StringComparison]::Ordinal)
+  if ($i -lt 0) { return $null }
+  $j = $Text.IndexOf($To, $i, [System.StringComparison]::Ordinal)
+  if ($j -lt 0) { $j = $Text.Length }
+  return $Text.Substring($i, $j - $i)
+}
+
+function Test-FloorCopy {
+  param([hashtable]$Contract, [string]$Path, [string]$Anchor, [bool]$RequireCount)
+  $problems = @()
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return @{ ok = $false; problems = @('the file is missing: ' + $Path) }
+  }
+  $txt = [System.IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+  $p = Get-Paragraph $txt $Anchor
+  if ($null -eq $p) {
+    return @{ ok = $false; problems = @('no paragraph names the floor (' + $Anchor + ')') }
+  }
+  # THE PINS, NOT A RECOMPUTATION.
+  if ($p.IndexOf($Contract.tool, [System.StringComparison]::Ordinal) -lt 0) {
+    $problems += ('it does not name the contracted toolchain (' + $Contract.tool + ')')
+  }
+  if ($p.IndexOf($Contract.min, [System.StringComparison]::Ordinal) -lt 0) {
+    $problems += ('it does not name the contracted core (' + $Contract.min + ')')
+  }
+  # AND NO OTHER VERSION. A paragraph that names a SUPERSEDED toolchain or core
+  # is the defect this section exists for, and it is found by the version it
+  # names, not by the version it is missing.
+  foreach ($v in (Get-Tokens $p '0\.1\.\d{8}(?![+\d])')) {
+    if ($v -cne $Contract.tool) { $problems += ('it names a toolchain that is not the contracted one: ' + $v) }
+  }
+  foreach ($v in (Get-Tokens $p '0\.10\.\d+\+[0-9a-f]{9}')) {
+    if ($v -cne $Contract.min) { $problems += ('it names a core that is not the contracted one: ' + $v) }
+  }
+  if ($RequireCount) {
+    $n = $Contract.symbols.Count
+    if ($p -notmatch ('(?<!\d)' + $n + '(?!\d)')) { $problems += ('it does not state the contracted symbol count (' + $n + ')') }
+  }
+  return @{ ok = ($problems.Count -eq 0); problems = $problems }
+}
+
+function Test-RuleDirection {
+  param([string]$Path, [string]$Anchor, [string]$Want, [string]$Ban)
+  $problems = @()
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return @{ ok = $false; problems = @('the file is missing: ' + $Path) }
+  }
+  $txt = [System.IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+  $p = Get-Paragraph $txt $Anchor
+  if ($null -eq $p) {
+    return @{ ok = $false; problems = @('no paragraph names the rule (' + $Anchor + ')') }
+  }
+  if ($p -notmatch $Want) { $problems += ('it does not say the rule is a subset (' + $Want + ')') }
+  if ($p -imatch $Ban) { $problems += ('it still calls the two directions symmetric (' + $Ban + ')') }
+  return @{ ok = ($problems.Count -eq 0); problems = $problems }
+}
+
+function Test-ContractSelf {
+  param([string]$Path)
+  # THE CONTRACT MUST NOT CONTRADICT ITSELF. The `symbols:` pin, the list it
+  # carries, and the numbers its own prose states are ONE fact -- and 0625 found
+  # the prose saying 94 while the list below it carried 93.
+  $problems = @()
+  $c = Read-Contract $Path
+  if ($c.count -eq '') {
+    $problems += 'the contract carries no `symbols:` pin'
+  } elseif ($c.count -notmatch '^\d+$') {
+    $problems += ('the `symbols:` pin is not a number: ' + $c.count)
+  } elseif ([int]$c.count -ne $c.symbols.Count) {
+    $problems += ('the `symbols:` pin says ' + $c.count + ' and the list carries ' + $c.symbols.Count)
+  }
+  $txt = [System.IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+  foreach ($m in [regex]::Matches($txt, 'all (\d+) symbols below')) {
+    if ([int]$m.Groups[1].Value -ne $c.symbols.Count) {
+      $problems += ('it says "all ' + $m.Groups[1].Value + ' symbols below" and the list below carries ' + $c.symbols.Count)
+    }
+  }
+  # AND THE FIELD DEFINITION NAMES THE PINNED CORE. The `min-host-core`
+  # definition is the block between that anchor and the next field's, and it has
+  # to name the CONTRACTED core: a definition that names a superseded one is a
+  # definition of a floor that no host can satisfy.
+  $region = Get-Region $txt '`min-host-core` is the bundled' '`min-host-toolchain` is NEW'
+  if ($null -eq $region) {
+    $problems += 'it has no `min-host-core` field definition'
+  } else {
+    foreach ($v in (Get-Tokens $region '0\.10\.\d+\+[0-9a-f]{9}')) {
+      if ($v -cne $c.min) { $problems += ('the `min-host-core` definition names a core that is not the contracted one: ' + $v) }
+    }
+    foreach ($v in (Get-Tokens $region '0\.1\.\d{8}(?![+\d])')) {
+      if ($v -cne $c.tool) { $problems += ('the `min-host-core` definition names a toolchain that is not the contracted one: ' + $v) }
+    }
+  }
+  return @{ ok = ($problems.Count -eq 0); problems = $problems }
+}
+
+function Replace-InParagraph {
+  param([string]$Text, [string]$Anchor, [string]$From, [string]$To)
+  # The replacement happens in the block that carries the anchor and NOWHERE
+  # ELSE. The corpus version CONTAINS the toolchain version, so a
+  # document-wide replacement would change a DIFFERENT copy of the number --
+  # and a self-test that mutates another copy proves less than one that mutates
+  # the claim (0624).
+  $parts = [regex]::Split($Text, '(?:\r?\n)[ \t]*(?:\r?\n)+')
+  $hit = $false
+  for ($i = 0; $i -lt $parts.Count; $i++) {
+    if ($parts[$i] -cmatch $Anchor) { $parts[$i] = $parts[$i].Replace($From, $To); $hit = $true; break }
+  }
+  if (-not $hit) { return $null }
+  return ($parts -join "`r`n`r`n")
 }
 
 # --- the comparison -------------------------------------------------------------
@@ -251,6 +415,48 @@ Write-Output ('  contract      : ' + $contractPath)
 Write-Output ('  min-host-core : ' + $contractData.min)
 Write-Output ('  host ABI      : ' + $contractData.abi)
 Write-Output ('  symbols       : ' + $contractData.symbols.Count)
+$fail = 0
+
+Write-Output ''
+Write-Output '  the floor, and the copies of it that ship:'
+$selfCheck = Test-ContractSelf $contractPath
+if ($selfCheck.ok) {
+  Write-Output ('  ok  the contract does not contradict itself (' + $contractData.symbols.Count + ' symbols, and it says so)')
+} else {
+  foreach ($pr in $selfCheck.problems) { Write-Output ('FAIL: the contract -- ' + $pr); $fail++ }
+}
+$floors = @(
+  @{ Label = 'SKILL.md';     Path = (Join-Path $root 'SKILL.md');     Anchor = 'IT IS A TOOLCHAIN FLOOR'; Count = $true },
+  @{ Label = 'README.md';    Path = (Join-Path $root 'README.md');    Anchor = 'need a MoonBit toolchain bundling'; Count = $false },
+  @{ Label = 'README.zh.md'; Path = (Join-Path $root 'README.zh.md'); Anchor = '\u53CA\u4EE5\u540E\u9700\u8981\u81EA\u5E26'; Count = $false },
+  @{ Label = 'moon.mod';     Path = (Join-Path $root 'moon.mod');     Anchor = 'THE FLOOR IS A TOOLCHAIN NOW'; Count = $true }
+)
+foreach ($d in $floors) {
+  $r = Test-FloorCopy $contractData $d.Path $d.Anchor $d.Count
+  if ($r.ok) {
+    Write-Output ('  ok  ' + $d.Label.PadRight(14) + ' states the contracted floor (' + $contractData.tool + ', ' + $contractData.min + ')')
+  } else {
+    foreach ($pr in $r.problems) { Write-Output ('FAIL: ' + $d.Label + ' -- ' + $pr); $fail++ }
+  }
+}
+# AND THE DIRECTION OF THE RULE. The contract is a FLOOR, so the check is a
+# SUBSET check (0606): a symbol outside the contract is a failure, and a symbol
+# inside it that one build does not ask for is a note. `moon.mod` still
+# described this gate as comparing the two surfaces "in BOTH directions", which
+# is the property 0606 measured to be the wrong one.
+$rules = @(
+  @{ Label = 'moon.mod';     Path = (Join-Path $root 'moon.mod');     Anchor = 'holds the artifact to it'; Want = 'subset'; Ban = 'both direction' },
+  @{ Label = 'README.md';    Path = (Join-Path $root 'README.md');    Anchor = 'imports are a \*\*subset\*\*'; Want = 'subset'; Ban = 'both direction' },
+  @{ Label = 'README.zh.md'; Path = (Join-Path $root 'README.zh.md'); Anchor = '\u662F\u5951\u7EA6\u7684\*\*\u5B50\u96C6\*\*'; Want = '\u5B50\u96C6'; Ban = '\u4E24\u4E2A\u65B9\u5411' }
+)
+foreach ($d in $rules) {
+  $r = Test-RuleDirection $d.Path $d.Anchor $d.Want $d.Ban
+  if ($r.ok) {
+    Write-Output ('  ok  ' + $d.Label.PadRight(14) + ' states the rule as a subset check')
+  } else {
+    foreach ($pr in $r.problems) { Write-Output ('FAIL: ' + $d.Label + ' -- ' + $pr); $fail++ }
+  }
+}
 
 $targets = @()
 if ($Wasm -ne '') {
@@ -266,7 +472,6 @@ if ($targets.Count -eq 0) {
   exit 1
 }
 
-$fail = 0
 foreach ($t in $targets) {
   $r = Test-ContractAgainst $t $contractData.symbols $contractData.abi
   Write-Output ('  ' + (Split-Path -Leaf $t) + ': ' + $r.total + ' imports, ' + $r.async + ' from `' + $contractData.abi + '`')
@@ -358,8 +563,161 @@ if ($null -eq $core) {
   }
 }
 
+# AND THE COUNTS THE DOCUMENTS QUOTE FROM THE TOOLCHAIN. The core's extern count
+# and the runtime's name count are MEASUREMENTS of a MOVING thing, and a
+# document that quotes one has to quote the current one -- so the gate measures
+# them and the documents are held to the measurement.
+#
+# They are checked only when the bundled core IS the contracted one: when the
+# toolchain has moved, the floor has to move first, and that failure is already
+# reported above in the gate's own words. A count measured against a different
+# core would be a second, confusing failure.
+if ($null -eq $core) {
+  Write-Output '  note  no bundled core, so the counts the documents quote are not checked'
+} elseif ($core.version -ne $contractData.min) {
+  Write-Output '  note  the bundled core is not the contracted one, so the counts the documents quote are not checked'
+} elseif ($null -eq $externs -or $null -eq $runtime) {
+  Write-Output '  note  the toolchain has no core async package, so the counts the documents quote are not checked'
+} else {
+  $quoted = @(
+    @{ Label = 'README.md'; Path = (Join-Path $root 'README.md'); From = 'the toolchain has two layers'; To = ''; Extern = 'declares \*\*(\d+)\*\* host externs'; Runtime = 'implements\s+\*\*(\d+)\*\* `moonbit_rt_\*`' },
+    @{ Label = 'host_requirements.txt'; Path = $contractPath; From = 'MEASURED on this host: the core declares'; To = '# The floor is a TOOLCHAIN now, not a pin:'; Extern = 'the core declares (\d+) externs'; Runtime = 'the runtime implements\s+(?:#\s*)?(\d+) `moonbit_rt_\*`' }
+  )
+  $countFails = 0
+  foreach ($d in $quoted) {
+    $txt = [System.IO.File]::ReadAllText($d.Path, [Text.Encoding]::UTF8)
+    # The contract's header is ONE paragraph (no blank line for 147 lines), so
+    # its counts are read from the REGION that states them, not from the whole
+    # header -- the history above states other measurements on purpose.
+    if ($d.To -eq '') { $p = Get-Paragraph $txt $d.From } else { $p = Get-Region $txt $d.From $d.To }
+    if ($null -eq $p) {
+      Write-Output ('FAIL: ' + $d.Label + ' -- no paragraph names the toolchain counts (' + $d.From + ')')
+      $countFails++
+      continue
+    }
+    $em = [regex]::Match($p, $d.Extern)
+    $rm = [regex]::Match($p, $d.Runtime)
+    if (-not $em.Success -or -not $rm.Success) {
+      Write-Output ('FAIL: ' + $d.Label + ' -- it does not state both toolchain counts')
+      $countFails++
+      continue
+    }
+    if ([int]$em.Groups[1].Value -ne $externs.Count) {
+      Write-Output ('FAIL: ' + $d.Label + ' -- it says the core declares ' + $em.Groups[1].Value + ' host externs and this toolchain declares ' + $externs.Count)
+      $countFails++
+    }
+    if ([int]$rm.Groups[1].Value -ne $runtime.Count) {
+      Write-Output ('FAIL: ' + $d.Label + ' -- it says the runtime implements ' + $rm.Groups[1].Value + ' names and this runtime implements ' + $runtime.Count)
+      $countFails++
+    }
+  }
+  if ($countFails -eq 0) {
+    Write-Output ('  ok  the counts the documents quote are this toolchain''s (' + $externs.Count + ' core externs, ' + $runtime.Count + ' runtime names)')
+  }
+  $fail += $countFails
+}
+
 # --- the self-test: the comparison can go red -------------------------------------
 if ($SelfTest) {
+  # 0625. THE FLOOR'S COPIES, SHOWN TO GO RED. The defect is in the DOCUMENTS,
+  # so the copies that have to go red are COPIES OF THE DOCUMENTS in %TEMP%, and
+  # this repository is not touched.
+  Write-Output ''
+  Write-Output '=== the self-test: a stale copy of the floor has to be caught ==='
+  $docScratch = Join-Path $env:TEMP ('hostreq_docs_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  New-Item -ItemType Directory -Force -Path $docScratch | Out-Null
+  # AND THE CONTROL: the documents as they stand must be green.
+  foreach ($d in $floors) {
+    $r = Test-FloorCopy $contractData $d.Path $d.Anchor $d.Count
+    if ($r.ok) {
+      Write-Output ('  ok  the control: ' + $d.Label + ' states the contracted floor')
+    } else {
+      Write-Output ('FAIL: the control: ' + $d.Label + ' -- ' + ($r.problems -join '; '))
+      $fail++
+    }
+  }
+  $copyCases = @(
+    @{ Label = 'SKILL.md';  File = 'SKILL.md';  Anchor = 'IT IS A TOOLCHAIN FLOOR'; Count = $true;  From = $contractData.tool; To = '0.1.20261104'; Want = 'names a toolchain that is not the contracted one' },
+    @{ Label = 'moon.mod';  File = 'moon.mod';  Anchor = 'THE FLOOR IS A TOOLCHAIN NOW'; Count = $true;  From = $contractData.min;  To = '0.10.20+65efd5b93'; Want = 'names a core that is not the contracted one' },
+    @{ Label = 'README.md'; File = 'README.md'; Anchor = 'need a MoonBit toolchain bundling'; Count = $false; From = $contractData.tool; To = '0.1.20261104'; Want = 'names a toolchain that is not the contracted one' }
+  )
+  foreach ($c in $copyCases) {
+    $src = Join-Path $root $c.File
+    $txt = [System.IO.File]::ReadAllText($src, [Text.Encoding]::UTF8)
+    # THE MUTATION IS SCOPED TO THE BLOCK THAT MAKES THE CLAIM, because the
+    # corpus version CONTAINS the toolchain version: a document-wide
+    # replacement would change a different copy of the number (0624).
+    $mutated = Replace-InParagraph $txt $c.Anchor $c.From $c.To
+    if ($null -eq $mutated -or $mutated -eq $txt) {
+      Write-Output ('FAIL: ' + $c.Label + ' -- the mutation changed nothing, so the case proved nothing')
+      $fail++
+      continue
+    }
+    $dst = Join-Path $docScratch $c.File
+    [System.IO.File]::WriteAllText($dst, $mutated, (New-Object System.Text.UTF8Encoding($false)))
+    $r = Test-FloorCopy $contractData $dst $c.Anchor $c.Count
+    if ($r.ok) {
+      Write-Output ('FAIL: ' + $c.Label + ' -- a stale copy was ACCEPTED')
+      $fail++
+      continue
+    }
+    $joined = ($r.problems -join ' | ')
+    if ($joined -notmatch [regex]::Escape($c.Want)) {
+      Write-Output ('FAIL: ' + $c.Label + ' -- the copy went red, but not with the right message: ' + $joined)
+      $fail++
+      continue
+    }
+    Write-Output ('  ok  ' + $c.Label + ' -- a stale copy is caught: ' + $joined)
+  }
+  # AND THE CONTRACT AGAINST ITSELF. A copy whose prose says 94 while its list
+  # carries 93 has to be caught.
+  $ctxt = [System.IO.File]::ReadAllText($contractPath, [Text.Encoding]::UTF8)
+  $cmut = $ctxt.Replace('all 93 symbols below', 'all 94 symbols below')
+  if ($cmut -eq $ctxt) {
+    Write-Output 'FAIL: the contract -- the mutation changed nothing, so the case proved nothing'
+    $fail++
+  } else {
+    $contractCopy = Join-Path $docScratch 'host_requirements.txt'
+    [System.IO.File]::WriteAllText($contractCopy, $cmut, (New-Object System.Text.UTF8Encoding($false)))
+    $r = Test-ContractSelf $contractCopy
+    if ($r.ok) {
+      Write-Output 'FAIL: the contract -- a contract that contradicts itself was ACCEPTED'
+      $fail++
+    } else {
+      Write-Output ('  ok  the contract -- a contract that contradicts itself is caught: ' + ($r.problems -join '; '))
+    }
+  }
+  # AND THE CONTRACT'S FIELD DEFINITION. A copy whose `min-host-core`
+  # definition names a superseded core has to be caught, and the mutation is
+  # SCOPED to that definition: the contract's HISTORY names the superseded core
+  # on purpose, and a document-wide replacement would change it too.
+  $region = Get-Region $ctxt '`min-host-core` is the bundled' '`min-host-toolchain` is NEW'
+  if ($null -eq $region) {
+    Write-Output 'FAIL: the contract -- it has no `min-host-core` field definition, so the case proved nothing'
+    $fail++
+  } else {
+    $mutRegion = $region.Replace($contractData.min, '0.10.20+65efd5b93')
+    if ($mutRegion -eq $region) {
+      Write-Output 'FAIL: the contract -- the mutation changed nothing, so the case proved nothing'
+      $fail++
+    } else {
+      $cdef = Join-Path $docScratch 'host_requirements_def.txt'
+      [System.IO.File]::WriteAllText($cdef, $ctxt.Replace($region, $mutRegion), (New-Object System.Text.UTF8Encoding($false)))
+      $r = Test-ContractSelf $cdef
+      if ($r.ok) {
+        Write-Output 'FAIL: the contract -- a definition that names a superseded core was ACCEPTED'
+        $fail++
+      } else {
+        $joined = ($r.problems -join ' | ')
+        if ($joined -notmatch 'names a core that is not the contracted one') {
+          Write-Output ('FAIL: the contract -- the copy went red, but not with the right message: ' + $joined)
+          $fail++
+        } else {
+          Write-Output ('  ok  the contract -- a definition that names a superseded core is caught: ' + $joined)
+        }
+      }
+    }
+  }
   Write-Output ''
   Write-Output '=== the self-test: the comparison rejects a contract that does not match ==='
   $base = $contractData.symbols

@@ -147,7 +147,19 @@ function Get-DocProblems {
     #
     # A BLOCK is a run of lines with no blank line between them. The claim is
     # the block that mentions the command, and the version has to be in it.
-    $blocks = @($plain -split "(?:\r?\n){2,}")
+    #
+    # 0625. AND A BLOCKQUOTE'S PARAGRAPHS ARE NOT SEPARATED BY BLANK LINES --
+    # they are separated by a line that holds nothing but the `>` marker. The
+    # first version of this split did not know that, so the "block" of the
+    # root `SKILL.md` was the WHOLE blockquote -- and when 0625 added the floor
+    # note (which carries the pin) to that same blockquote, the check could no
+    # longer see a stale version in the runwasm note: the pin was somewhere in
+    # the block, and the block is not the claim. The self-test caught it: it
+    # went from two defects caught to one.
+    #
+    # => THE CLAIM'S OWN PARAGRAPH, and not the block that happens to contain
+    # it. The same lesson 0624 wrote down, one level down.
+    $blocks = @($plain -split "(?:\r?\n){2,}|(?:\r?\n)[ \t]*>[ \t]*(?:\r?\n)")
     $claimBlocks = @($blocks | Where-Object { $_.Contains('moon runwasm') })
     if ($claimBlocks.Count -gt 0) {
       $withVersion = @($claimBlocks | Where-Object { $_.Contains($Pin) }).Count
