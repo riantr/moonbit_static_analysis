@@ -2076,7 +2076,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File _verify\release.ps1
 contract of the artifact — the symbols a user's toolchain has to supply, checked against the
 published bytes as well as the local build**; the grammar probe's own verdicts; the own-source
 self-scan; **this README's own links, anchors,
-versions and counts**; **the mutation-gate roster and a self-test that shows it can go
+versions and counts**; **and every line the shipped CLI skill file shows as the
+CLI's output is a line the CLI actually prints**; **the mutation-gate roster and a self-test that shows it can go
 red**; **what the registry will actually receive, and a check that the junk stays out of
 it**; **the notice labels, and a check that a scope limit is not an error**; **the frame
 audit, and a check that a region silences only the bindings it could have read**; the
@@ -2118,6 +2119,8 @@ and is not named here is a stage a reader cannot find:
     the blind-spot rate, shown to go red (its own self-test)
     the published pointers: every pointer in a shipped document resolves
     the published pointers, shown to go red (its own self-test)
+    the shipped CLI example: every line of it is a line the CLI prints
+    the shipped CLI example, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
     the notice reconciliation can go red (a real defect is seen)

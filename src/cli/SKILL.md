@@ -45,16 +45,22 @@ fences inside a `.mbt.md` count as code.
 
 ## Reading the output
 
-Each finding is one line with position, severity, message, family, and the
-union of lenses that saw it; multi-lens findings carry a virtual stack
-(entry frame first, error point last):
+Each finding is one line with position, severity, message, the family in
+parentheses, and a tag carrying the union of lenses that saw it, the family id
+and the confidence; multi-lens findings carry a virtual stack (entry frame
+first, error point last):
 
 ```
-2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior]
+2:10 - notice: undefined variable 'missing' (UndefinedName) [structural+type+behavior, MSA-002, low]
   in main() at undefined.mbt:4
   in g at undefined.mbt:1
 Summary: 1 finding(s) (before merge: structural 1, type 2, behavior 1)
 ```
+
+The severity word is part of the contract: `error` is a defect, and `notice` is
+a finding the analyzer will not call a defect. A LOW-confidence finding is
+demoted to `notice` rather than hidden, and this one is demoted — its
+confidence is `low`, and the `low` is in the tag.
 
 The machine-audit section prints the same shape over machine tables — but its
 `line:col` is **not** a source position. A `MachineSpec` is a plain-data table
@@ -64,7 +70,7 @@ The same name always prints the same coordinate, and that coordinate points at
 nothing on disk — don't go looking for it in the audited project's sources.
 
 ```
-182:12 - warning: state '失忆' is never entered: it appears only as a transition source (UnusedLocal) [structural]
+182:12 - warning: state '失忆' is never entered: it appears only as a transition source (UnusedLocal) [structural, MSA-003, high]
 Machine '主体' summary: 4 finding(s)
 ```
 

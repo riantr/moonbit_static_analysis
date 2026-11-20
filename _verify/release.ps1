@@ -1644,7 +1644,13 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # evidence table said the `.mbt` check's evidence was "75 个单元测试" -- MEASURED
 # exact at 0.3.3 and 1,800 today), pins one fact that was published and
 # unpinned (`$SELF_SAMPLES`), and makes three more published numbers DERIVED.
-$NARRATIVE_CHAPTERS = '130'
+# 0620. THE PIN MOVED TO 131 with chapter 0620, which changed NO source file: the
+# increment corrects a document that SHIPS (`src/cli/SKILL.md`, which showed a
+# DEMOTED low-confidence finding as an `error` and omitted the `, MSA-002, low`
+# that says so), adds ONE `check_*` gate that RUNS the CLI and compares the
+# document against the tool's own output, and makes the tool and its own
+# documentation the same thing.
+$NARRATIVE_CHAPTERS = '131'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -3006,6 +3012,72 @@ if ($failed.Count -eq 0) {
     Write-Output ''
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'published-pointers-selftest'
+  }
+}
+
+# --- 4d  the shipped CLI example, against the tool ----------------------------
+#
+# 0620. `src/cli/SKILL.md` SHIPS -- it lives inside `src/`, so it is in the
+# published package -- and the README sends a reader to it. It shows what the CLI
+# PRINTS, and MEASURED at 0620, two of the six lines it shows as output were not
+# lines the CLI prints: the severity was `error` where the tool says `notice`
+# (a LOW-confidence finding is DEMOTED to `notice` rather than hidden), and the
+# tag was `[structural+type+behavior]` where the tool says
+# `[structural+type+behavior, MSA-002, low]`.
+#
+# NOTHING READ IT. 0618 fixed the ROOT `SKILL.md`, which is a DIFFERENT file, and
+# the gate that derives the published numbers reads `README.md`, `README.zh.md`,
+# `SKILL.md`, `CHANGELOG.md` and `CHANGELOG.zh.md` -- never this one. A shipped
+# document that shows the tool's output is a SECOND IMPLEMENTATION of what the
+# tool prints, and a second implementation is a second thing that can disagree.
+#
+# THE GATE RUNS THE TOOL and compares the document against the tool's OWN output:
+# the demo CLI, from the wasm the release gate already built. It is placed HERE,
+# before the mutation gates, because the mutation gates MUTATE `src/` and a stage
+# that reads `src/` must not run while a mutation is in flight.
+$CO = Join-Path $root '_verify\check_cli_output.ps1'
+if (-not (Test-Path $CO)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_cli_output.ps1'
+  $failed += 'cli-output'
+} else {
+  Stage 'the shipped CLI example: every line of it is a line the CLI prints' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $CO 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|ABORT|CLI printed|not what the CLI prints)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'cli-output' }
+  $stageName = 'the shipped CLI example: every line of it is a line the CLI prints'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'cli-output'
+  }
+}
+if ($failed.Count -eq 0) {
+  Stage 'the shipped CLI example, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $CO -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|SELFTEST|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'cli-output-selftest' }
+  $stageName = 'the shipped CLI example, shown to go red (its own self-test)'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'cli-output-selftest'
   }
 }
 

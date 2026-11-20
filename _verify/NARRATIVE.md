@@ -23058,3 +23058,125 @@ and nothing else moves. The mutation counts, the notice counts, the file counts 
 AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the RELEASED version.
 
 
+## 0620: THE SHIPPED CLI SKILL FILE SHOWED A FINDING AS AN ERROR THAT THE TOOL DEMOTES TO A NOTICE, AND NOTHING RAN THE CLI TO CHECK
+
+The work that follows 0619 was a fourth re-reading of what this repository PUBLISHES, and it found the same species one level down again -- in the file that shows a reader what the tool LOOKS like.
+
+THE FINDING. `src/cli/SKILL.md` SHIPS: it lives inside `src/`, so it is in the published package, and the README sends a reader to it. It documents what the CLI PRINTS, and it shows the output in two bare-fenced blocks.
+
+MEASURED, by running the demo CLI and comparing every line of those blocks against the tool's own output:
+
+    the document shows 6 lines as the CLI's output
+    4 of them are lines the CLI prints
+    2 of them are not
+
+The two are:
+
+    the document   2:10 - error: undefined variable 'missing' (UndefinedName) [structural+type+behavior]
+    the tool       2:10 - notice: undefined variable 'missing' (UndefinedName) [structural+type+behavior, MSA-002, low]
+
+    the document   182:12 - warning: state '失忆' is never entered: ... (UnusedLocal) [structural]
+    the tool       182:12 - warning: state '失忆' is never entered: ... (UnusedLocal) [structural, MSA-003, high]
+
+### THE SEVERITY IS THE SHARP PART, AND THE TOOL IS RIGHT
+
+`error` against `notice` is not a cosmetic difference. MEASURED in this repository's own source, `src/sa/main.mbt:525`:
+
+    it folds in the notice demotion, so a low-confidence error prints `notice`
+
+A LOW-CONFIDENCE finding is DEMOTED to `notice` rather than hidden -- 0508's rule, and the reason is that a demoted finding is SPECIFIC: a name, at a line -- and the demotion changes what it says, so the tag carries the confidence that caused it. This finding's confidence is `low`, and the document's tag did not carry it.
+
+So the document taught a reader that an unresolved name is an ERROR, while the tool deliberately declines to call it one. And the `low` that made the tool decline was IN THE OUTPUT and MISSING FROM THE DOCUMENT -- the document's tag stopped at the lens union, and the document's own prose described a line format that no longer exists ("position, severity, message, family, and the union of lenses that saw it").
+
+### WHY NOBODY NOTICED
+
+0618 fixed the ROOT `SKILL.md`. That is a DIFFERENT FILE, and the two have nothing in common but a name. The gate that derives the published numbers reads `README.md`, `README.zh.md`, `SKILL.md`, `CHANGELOG.md` and `CHANGELOG.zh.md` -- it never read this one, and no gate ran the CLI to compare anything against it.
+
+A shipped document that shows the tool's output is a SECOND IMPLEMENTATION of what the tool prints, and a second implementation is a second thing that can disagree. It already did, on the one line a reader is most likely to copy.
+
+### THE GATE, AND IT RUNS THE TOOL
+
+`_verify/check_cli_output.ps1` holds ONE invariant: every line the shipped CLI skill file shows as the CLI's OUTPUT is a line the CLI actually prints.
+
+THE SCOPE IS THE BARE FENCES. The document uses ```sh for commands and ```moonbit for source, and the two BARE fences are the output. A command is not the tool's output and a source listing is not the tool's output, so only the bare fences are compared -- a wider rule would report failures on shell commands that are correct as written.
+
+AND THE COMPARISON IS CASE-SENSITIVE. PowerShell's `-contains` is case-insensitive, and this is a comparison of the tool's bytes against the document's bytes: a case-insensitive match would pass a document that says `msa-002` where the tool says `MSA-002`.
+
+THE TOOL IS THE REAL ONE. The gate runs the demo CLI from the wasm the release gate already builds (`moon build --target wasm` produces `_build\wasm\debug\build\src\cli\cli.wasm`), and builds it with that same command if it is missing -- no network, no fetch. The comparison is against the artifact this repository builds, not against a description of it.
+
+### AND THE GATE WAS WRONG BEFORE IT WAS RIGHT
+
+The first version of the fence reader treated EVERY fence line as an opening, so the CLOSING fence of a ```sh block was read as the OPENING of a bare one. The whole command block was then compared against the tool's output, and the gate reported THIRTY-FOUR mismatches on a document with TWO wrong lines.
+
+That is worth recording: a gate that reports more than the measurement does is a gate whose reader is wrong, and the number it reported was the tell. The fences ALTERNATE, so the state has to be tracked rather than inferred.
+
+### AND IT IS SHOWN TO GO RED
+
+MEASURED, by injecting the defect into the real tree and running the gate against it:
+
+    the control (the document as it stands)                  green, exit 0
+    the severity goes back to `error`                        RED, exit 1, naming the line
+    the restore                                              byte-for-byte identical (SHA256)
+    the gate on the restored tree                            green again
+
+AND THE GATE'S OWN `-SelfTest` does the same thing without touching the tree: it copies the document into `%TEMP%`, mutates a severity word, and requires the COPY to go red while the unmutated control stays green -- and a self-test that only proves the gate can fail proves nothing about the gate.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    130 -> 131
+    the check gates on disk   14 -> 15   (the new one is check_cli_output.ps1)
+
+and the stage list grows by two:
+
+    the shipped CLI example: every line of it is a line the CLI prints
+    the shipped CLI example, shown to go red (its own self-test)
+
+The mutation counts do NOT move: 89 numbered gates, 519 live mutations, 477 expecting a kill, 400 naming the test. This increment adds a `check_*` gate and no `mutate_*` gate, and the README gate derives those numbers from the gate sources.
+
+AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the RELEASED version. This increment changes no analyzer behaviour and no public interface. It corrects a document that ships, and it makes the tool and its own documentation the same thing.
+### AND THE FULL GATE TAUGHT THIS INCREMENT TWO THINGS, BOTH OF THEM THE HOUSE'S OWN ORDER
+
+The first full run of this increment came back RED, and NEITHER of the two reds was a
+defect in the increment. Both were facts about the ORDER, and both were found by the
+repository's own gates.
+
+**THE FIRST: A FULL RELEASE GATE RESTORES `src/` FROM THE HEAD BLOB.** The harness
+self-test mutates the real tree on purpose and restores it, and the restore is a restore
+from the HEAD blob, byte for byte. MEASURED, the run printed:
+
+    FAIL: the tree is not back at HEAD after the harness self-test:
+        src/cli/SKILL.md
+
+and it had ALREADY restored the file -- so the correction this increment made to
+`src/cli/SKILL.md` was GONE by the time the new stage ran, and the stage compared the
+tool against the UNCORRECTED document.
+
+Every increment from 0615 to 0619 changed no file under `src/`, so this never bit. It
+bites the first increment that does. => **THE ORDER IS COMMIT, THEN THE FULL GATE,
+THEN THE PUSH** -- and the house had said so all along. The gate's own message named the
+file it had restored, which is exactly what a gate that says what it did is for.
+
+**THE SECOND: A DETACHED PROCESS HAS NO CONSOLE, AND THEN ITS OUTPUT ENCODING IS THE
+ANSI CODE PAGE.** The new gate ran the CLI and compared its output with the document,
+and it reported a mismatch on a line that IS a line the CLI prints. MEASURED, in a
+detached `powershell`:
+
+    [Console]::OutputEncoding   gb2312 / 936
+
+So the CLI's UTF-8 Chinese was decoded as GBK on the way in, and compared with a document
+read as UTF-8 -- two encodings of the same characters, and a guaranteed mismatch on the
+one line of the example that has Chinese in it.
+
+=> THE OUTPUT GOES TO A FILE AND THE FILE IS READ AS UTF-8. `Start-Process
+-RedirectStandardOutput` captures the BYTES: nothing decodes them on the way to the
+file, and the file is read back as UTF-8. This is the same reason the release gate's own
+`Scan-Tree` writes to a file, and it is why the house already knew the answer. AND THE
+GATE'S OWN MESSAGES ESCAPE THEIR NON-ASCII CHARACTERS, so a verdict line can be grepped
+for whatever code page the reader happens to be on.
+
+AND ONE MORE THING THE RUN TAUGHT, WHICH IS THE HOUSE'S OWN TRAP: `Start-Process` does
+NOT set `$LASTEXITCODE`. The first version of the byte-exact capture checked it, the
+check saw `$null`, and the gate reported "the demo CLI could not be run" -- a harness
+failure dressed as a verdict. => `-PassThru`, and the PROCESS's own exit code.
+
+
