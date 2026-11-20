@@ -23771,3 +23771,77 @@ interface. It corrects an explanation that measurement refuted, and adds the gat
 documents to the prover.
 
 
+## 0628: THE GOAL'S OWN CHECKLIST WAS A COMMENT, AND TWO OF ITS POINTERS RESOLVED TO THE WRONG PLACE
+
+### WHAT WAS UNGUARDED
+
+This repository's goal is written down in one sentence: compile the LOOP, and complete every task in
+`_verify/QA_TODO.md`. That sentence is a CLAIM about two documents -- the task list and the rule list --
+and until this increment NOTHING held either of them.
+
+Every other number in this repository is pinned in `_verify/release.ps1` and checked by a gate. The
+objective's own completion state was a checkbox in a markdown file, and a checkbox is a comment.
+
+### THE TWO POINTERS THAT RESOLVED TO THE WRONG PLACE
+
+MEASURED 2026-11-20: the checklist carries THIRTEEN tasks, T1..T13, and every one is ticked -- and TWO
+of them named a place the evidence had MOVED FROM.
+
+T1 named `src/sa/profile.mbt:224` for `parse_nosec`. Increment 0613 added 84 lines to that file, so
+`parse_nosec` is at line 285 today.
+
+T2 named `src/sa/sa_0507_test.mbt` for the test rows that pin the two rules of T1. Increment 0613 added a
+file of its own -- `src/sa/sa_0613_test.mbt` -- and the rows live THERE. The file `sa_0507_test.mbt`
+still exists, so every "does this path ship?" check was green on it.
+
+=> BOTH POINTERS RESOLVE. A pointer that resolves is not a pointer that resolves to the RIGHT thing, and
+neither defect could have been caught by asking whether the file is there. Both are corrected IN PLACE,
+with the increment that moved each of them, as that file's own rule says.
+
+### WHAT THE GATE ASKS
+
+`_verify/check_goal_checklist.ps1` asks four things, each of which can be wrong:
+
+1. THE TASK LIST: T1..T13, each named exactly once, every one TICKED, and no open box anywhere.
+2. EVERY TASK RIDES AN INCREMENT THAT EXISTS. A task that says it rides increment 0613 is a claim about
+   this repository's history, and the history is readable -- so the gate reads it.
+3. EVERY PATH A "Done when" NAMES RESOLVES, and every `path:line` pin's line is INSIDE the file it names.
+   This is the class the two defects above were made of.
+4. THE LOOP'S RULE LIST: 1..N, contiguous, each rule once, and N equal to the pin. The COUNT is pinned
+   because a DELETED rule leaves a shorter run that is still perfectly contiguous -- so the count is what
+   has to be asked about.
+
+### IT IS SHOWN TO GO RED
+
+MEASURED: the control green, and EIGHT injected defects each caught with the defect NAMED -- a task
+unticked, a task missing, a task riding an increment the history does not hold, a "Done when" naming a
+file that is not in the tree, a "Done when" pinning a line past the end of its file, the LOOP losing a rule
+in the middle, the LOOP losing its last rule, and the pin disagreeing with the rule list.
+
+TWO OF THOSE EIGHT WERE MISSED AT FIRST, and both misses were the FAULT's, not the gate's:
+
+- The fault that makes a task ride a non-existent increment anchored its pattern at the END OF THE LINE,
+  and the checklist's "Rides:" lines END WITH A PERIOD -- "**Rides:** increment **0613**." -- so the
+  pattern matched nothing, NOTHING was injected, and the gate reported green on an unmutated document.
+- The fault that removes a rule removed the LAST one, which leaves a CONTIGUOUS 1..N-1. Only the pin
+  caught it; the contiguity check never fired at all.
+
+=> A fault that injected nothing looks exactly like a fault that was not caught. So both faults were fixed
+to inject for real, and "the LOOP loses a rule" was split into two: one that removes a rule from the
+MIDDLE (the contiguity check's own defect) and one that removes the LAST rule (the pin's).
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES         28 -> 29
+    $NARRATIVE_CHAPTERS 138 -> 139
+
+and two new lines in each README's stage list (51 -> 53), one new evidence entry in
+`check_package_contents.ps1` (36 -> 37), and 18 -> 19 check gates on disk, 13 -> 14 with a live
+`-SelfTest`. No analyzer behaviour changed and no public interface changed: 89 numbered gates, 519 live
+mutations, 477 expecting a kill, 400 naming the test; 280 own-source files, 2128 notices, 5611/1122/4489
+call sites, 1344 native surface.
+
+AND THE VERSION LINE STAYS AT 0.5.0. This increment guards the documents the objective is written
+against, and corrects two pointers in them. It changes no analyzer behaviour and no public interface.
+
+

@@ -18,6 +18,13 @@ invariant, and it is the reason this file is TRACKED rather than rewritten.
 The numbers below that have since MOVED are corrected IN PLACE, each with the
 increment that moved it.
 
+**This file is GUARDED, as of increment 0628 (2026-11-20).** The tasks below, the
+increments they ride, the paths their "Done when" clauses name, and the rule list of
+`LOOP.md` are held by `_verify/check_goal_checklist.ps1` — it reads this file, reads
+the history, and reads the LOOP, and its `-SelfTest` shows it going red. Before that,
+this file was a comment: every task was ticked, and **two of them still pointed at the
+wrong place** — a line that had moved, and a file that had gained a sibling.
+
 ---
 
 ## 0. The loop
@@ -72,9 +79,24 @@ All measured 2026-11-19 on the tree at `e4b3c6b`, through the published 0.5.0.
 | site | what the line actually is |
 |---|---|
 | `main.mbt:126` | the CLI's own help text |
-| `src/sa/profile.mbt:209, 210, 211, 239` | the profile module's own documentation of the syntax |
-| `src/sa/profile.mbt:368, 375, 381` | the analyzer's own diagnostic message strings, which contain `// nosec ` |
+| `src/sa/profile.mbt:247, 248, 249, 309` | the profile module's own documentation of the syntax |
+| `src/sa/profile.mbt:452, 459, 465` | the analyzer's own diagnostic message strings, which contain `// nosec ` |
 | `src/sa/sa_0507_test.mbt:145, 148, 184, 240` | the test fixtures for the nosec feature itself |
+
+**THE SEVEN PROFILE LINES MOVED, and the increment that moved them is 0613** — it
+added 84 lines to `src/sa/profile.mbt`, so `209, 210, 211, 239` became
+`247, 248, 249, 309` and `368, 375, 381` became `452, 459, 465`. The other five
+line numbers did not move. Corrected IN PLACE, as this file's own rule says.
+
+**AND THERE ARE NINETEEN NOW, NOT TWELVE — the seven that came with the fix.**
+MEASURED 2026-11-20 (increment 0628) on the tree of today: an analyzer built with
+0613's two rules REVERTED reads **19 actionable** over this tree's **280** files,
+all 19 of them `MSA-012` `StaleNosec`, and the analyzer this tree ships reads
+**0**. The nineteen are the twelve above plus seven in `src/sa/sa_0613_test.mbt`
+(`:57`, `:66`, `:75`, `:86`, `:106`, `:131`, `:143`) — the fix's own test file,
+whose prose is prose to an analyzer that has not learned the rule yet. So the
+twelve above are the sites the fix was written FOR, and the seven are the ones it
+brought with it.
 
 Invented family ids, verbatim: ``MSA-007`, silences, that, one``.
 
@@ -82,7 +104,7 @@ Invented family ids, verbatim: ``MSA-007`, silences, that, one``.
 
 ## 2. Cycle 1 — 信 (trust)
 
-- [x] **T1. Fix the MSA-012 false positive.** `src/sa/profile.mbt:224` `parse_nosec`
+- [x] **T1. Fix the MSA-012 false positive.** `src/sa/profile.mbt:285` `parse_nosec`
       takes the LAST `//` on a line — whatever it sits inside — and reads the text
       after it as a suppression whenever the first whitespace-separated token is
       exactly `nosec`. The documented string-literal guard works only because the
@@ -97,13 +119,33 @@ Invented family ids, verbatim: ``MSA-007`, silences, that, one``.
       all use well-formed `MSA-NNN` ids, and `MSA-999` is id-shaped so it stays
       stale exactly as `sa_0507_test.mbt:183` pins it.
       **Rides:** increment **0613**.
+      **DONE 0613.** Record: `_verify/NARRATIVE.md` §0613. **RE-MEASURED 2026-11-20**
+      (increment 0628) on the tree of today: the two rules are still LOAD-BEARING.
+      An analyzer built with both of them REVERTED reads **19 actionable** over this
+      tree's **280** files — all 19 `MSA-012` `StaleNosec` — and the analyzer this
+      tree ships reads **0** with `--honor-nosec`. The three-line reproduction is
+      pinned by two rows of `src/sa/sa_0613_test.mbt` (the string-literal case and
+      the doc-comment case), and every pinned nosec test passes: **1800/1800** on
+      wasm, **1635/1635** on js and wasm-gc.
 
 - [x] **T2. Pin the fix with a test row per rule.** A rule that can never fire
       produces a green gate and zero findings, so each of the two rules needs a
       row that asserts the finding is GONE, not one that asserts the shape.
-      **Done when:** `src/sa/sa_0507_test.mbt` has a row per rule, and mutating
+      **Done when:** `src/sa/sa_0613_test.mbt` has a row per rule, and mutating
       either rule back turns its row red (the house rule: *每条新防护都要突变验证*).
       **Rides:** increment **0613**.
+      **DONE 0613.** Record: `_verify/NARRATIVE.md` §0613. **THE ROWS LIVE IN
+      `src/sa/sa_0613_test.mbt`, NOT in `src/sa/sa_0507_test.mbt`** — 0613 added
+      nine rows there, one per rule and per shape, and 0507's own file kept the
+      rows 0507 wrote. This task's "Done when" named `sa_0507_test.mbt` and had
+      rotted; corrected IN PLACE, as this file's own rule says.
+      **RE-MEASURED 2026-11-20** (increment 0628): the control copy reads
+      **1800/1800**, and reverting each rule in turn turns EXACTLY ONE row red,
+      and a DIFFERENT one — the doc-comment rule at `sa_0613_test.mbt:74` ("a doc
+      comment that names TWO families is not a suppression either") and the
+      id-shape rule at `sa_0613_test.mbt:56` ("a `// nosec` that names a family
+      inside a string literal is not a suppression"). So the two rules are
+      independent, and the house rule holds.
 
 - [x] **T3. Check whether the fix moves any pin.** The default profile has
       `honor_nosec = false`, so `apply_nosec` never runs and the self-scan's
@@ -113,6 +155,13 @@ Invented family ids, verbatim: ``MSA-007`, silences, that, one``.
       byte-identical before and after, or the movement is explained in the
       commit message.
       **Rides:** increment **0613**.
+      **DONE 0613.** Record: `_verify/NARRATIVE.md` §0613. THE MOVEMENT WAS
+      EXPLAINED, in 0613's own commit message under "THE NUMBERS THAT MOVED":
+      `$SELF_FILES 275 -> 276`, `$SELF_NOTICES` test declaration `1763 -> 1772`,
+      `$SELF_AGGREGATED 1933 -> 1942`, `$NOTICE_TOTAL 23436 -> 23445`,
+      `$NOTICE_SPLIT_AGGREGATED 19464 -> 19473`, `$SSA_COST 257 -> 258` files and
+      `1428 -> 1430` functions, and `$NARRATIVE_CHAPTERS 123 -> 124`. The message
+      also names the pins that did NOT move ("AND NO OTHER PIN MOVED").
 
 - [x] **T4. Write the NARRATIVE chapter for 0613.** The measurement is the
       point: 12 false positives, the three-line reproduction, the two rules, and
@@ -120,6 +169,10 @@ Invented family ids, verbatim: ``MSA-007`, silences, that, one``.
       **Done when:** a new chapter exists, CRLF, no BOM, two blank lines before
       it, and `$NARRATIVE_CHAPTERS` moves with a movement note.
       **Rides:** increment **0613**.
+      **DONE 0613.** Record: `_verify/NARRATIVE.md` §0613. MEASURED 2026-11-20
+      (increment 0628): the chapter exists, `_verify/NARRATIVE.md` is CRLF with no
+      BOM, the chapter is preceded by two blank lines, and `$NARRATIVE_CHAPTERS`
+      moved `123 -> 124` in 0613's own commit message.
 
 ---
 

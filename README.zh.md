@@ -1745,6 +1745,8 @@ stage，就是读者找不到的 stage：
     proof contracts, shown to go red (its own self-test)
     the proof status: the documents must say what the prover says
     the proof status, shown to go red (its own self-test)
+    the goal checklist: the tasks are ticked and the rules are numbered
+    the goal checklist, shown to go red (its own self-test)
     package contents: the junk stays out, the evidence stays in
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible

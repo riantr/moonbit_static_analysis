@@ -1676,7 +1676,24 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # them the gate that measures the failure -- adds ONE `check_*` gate that RUNS the
 # prover and holds the documents to what it reports, and leaves the dated
 # 2026-10-03 measurement of the 21 goals alone: a dated number is a record.
-$NARRATIVE_CHAPTERS = '138'
+# 0628. THE PIN MOVED TO 139 with chapter 0628, which changed NO source file: the
+# increment guards the documents the OBJECTIVE is written against -- `_verify/QA_TODO.md`
+# and `LOOP.md` -- and corrects TWO pointers in that checklist which still resolved
+# but no longer resolved to the RIGHT thing. It adds ONE `check_*` gate, and it moves
+# the `$LOOP_RULES` pin with the rule it adds.
+$NARRATIVE_CHAPTERS = '139'
+
+# 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
+# is written against is "compile the LOOP, and complete every task in
+# `_verify/QA_TODO.md`", and until now neither of those two documents was held
+# by anything: the rule list was a list of paragraphs, and the task list was a
+# column of checkboxes. The COUNT is pinned here because a DELETED rule would
+# leave a shorter run that is still perfectly contiguous -- so the number is
+# what has to be asked about. It moves only when a rule is added.
+# The pin moved 28 -> 29 with rule 29, and the rule is the lesson this increment
+# measured: a pointer that RESOLVES is not a pointer that resolves to the RIGHT
+# thing, and the goal's own checklist was a comment until this increment.
+$LOOP_RULES = '29'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2669,6 +2686,66 @@ if ($failed.Count -eq 0) {
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'prove-status-selftest' }
+  }
+}
+
+# --- 4d3  THE GOAL'S OWN CHECKLIST, AND THE RULE LIST IT COMPILES ---------------
+# 0628. THE OBJECTIVE IS WRITTEN DOWN IN ONE SENTENCE -- "compile the LOOP, and
+# complete every task in `_verify/QA_TODO.md`" -- and it is a CLAIM about two
+# documents: the task list and the rule list. Until now NOTHING held either of
+# them. Every other number in this repository is pinned in this file and checked
+# by a gate; the objective's own completion state was a checkbox in a markdown
+# file, and a checkbox is a comment.
+#
+# MEASURED 2026-11-20: the checklist carries THIRTEEN tasks and every one is
+# ticked -- and TWO of them named a place the evidence had MOVED FROM. T1 named
+# `src/sa/profile.mbt:224` for `parse_nosec`, which is line 285 today (0613
+# added 84 lines to that file); T2 named `src/sa/sa_0507_test.mbt` for the rows
+# that pin the two rules, and those rows live in `src/sa/sa_0613_test.mbt`.
+#
+# => BOTH POINTERS RESOLVE -- the file is there -- so every "does this path
+# ship?" check was green on them. A pointer that resolves is not a pointer that
+# resolves to the RIGHT thing, and that is the class the two defects were made
+# of. The checklist itself is corrected IN PLACE, with the increment that moved
+# each line.
+#
+# The stage below asks four things, each of which can be wrong: the tasks are
+# unique and all ticked; every task rides an increment this history actually
+# holds; every path a "Done when" names resolves AND the line it pins is inside
+# that file; and the LOOP's rule list is contiguous with a COUNT equal to the
+# pin -- the count, because a DELETED rule leaves a shorter run that is still
+# perfectly contiguous.
+if ($failed.Count -eq 0) {
+  $GCL = Join-Path $root '_verify\check_goal_checklist.ps1'
+  if (-not (Test-Path $GCL)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_goal_checklist.ps1'
+    $failed += 'goal-checklist'
+  } else {
+    Stage 'the goal checklist: the tasks are ticked and the rules are numbered' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GCL 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(FAIL|CHECKLIST|the tasks:|the LOOP''s rules)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'goal-checklist' }
+  }
+  if ($failed.Count -eq 0) {
+    Stage 'the goal checklist, shown to go red (its own self-test)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GCL -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(CONTROL|SELFTEST|the defect|FAIL)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'goal-checklist-selftest' }
   }
 }
 
