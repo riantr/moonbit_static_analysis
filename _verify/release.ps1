@@ -572,6 +572,38 @@ function Get-SplitString {
           '|not-verified=' + $Split.NotVerified)
 }
 
+# 0618. THE CALL METRICS ROW, as the analyzer prints it: the call sites the lens
+# REACHED, how many of them it checked, the remainder, and the share it checked.
+#
+# IT IS READ FROM THE ANALYZER'S OWN LINE, for the reason every other number in
+# this file is not recomputed: a second implementation of the measurement is a
+# second number that can disagree with the first.
+#
+# AND THE SHARE IS QUOTED AS THE ANALYZER PRINTS IT. It is TRUNCATED, not rounded --
+# 1122 of 5611 is 19.996 %, and the analyzer prints 19.9 % -- so a gate that re-derived
+# it and rounded would disagree with the tool about a number the tool publishes.
+function Get-CallsMetrics {
+  param([string]$Text)
+  $m = [regex]::Match($Text, '(?m)^METRICS\tcalls\tsites=(\d+)\tchecked=(\d+)\tnot-verified=(\d+)\tchecked-share=([\d.]+)%')
+  if (-not $m.Success) { return $null }
+  return [pscustomobject]@{
+    Sites = [int]$m.Groups[1].Value
+    Checked = [int]$m.Groups[2].Value
+    NotVerified = [int]$m.Groups[3].Value
+    Share = $m.Groups[4].Value
+  }
+}
+
+# 0618. THE CALL METRICS, AS THE PIN SPELLS IT. One string, four fields, in the order
+# the analyzer prints them -- so a pin and a measurement are read the same way round.
+function Get-CallsString {
+  param($Calls)
+  return ('sites=' + $Calls.Sites +
+          '|checked=' + $Calls.Checked +
+          '|not-verified=' + $Calls.NotVerified +
+          '|checked-share=' + $Calls.Share + '%')
+}
+
 # 0604. THE DECK'S p.57 QUESTION, as the analyzer prints it: the hand-modelled
 # native surface measured against the DECLARED one.
 #
@@ -1168,6 +1200,36 @@ $SELF_FILES = '280'
 $SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1800|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
 $SELF_AGGREGATED = '1970'
+#   $SELF_CALLS    the `METRICS calls` row over this repository's own source: the
+#                  sites the lens reached, the ones it checked, the remainder, and
+#                  the share it checked.
+#
+# 0618. AND THIS ROW IS PINNED BECAUSE A SHIPPED DOCUMENT QUOTES IT. `SKILL.md` --
+# which ships, and which a reader is sent to -- shows the `--metrics` block as the
+# example of what it looks like, and it showed this tree as 194 files, 5048 sites,
+# 415 checked and an 8.2 % adequacy. MEASURED 0618-11-20, the tree is 280 files,
+# 5611 sites, 1122 checked and 19.9 %. The block in that document had drifted, and
+# NOTHING CHECKED IT: the README's numbers are derived from this file's pins, and
+# `SKILL.md` was checked for exactly one thing -- the `moonx ... @version` install
+# command. So the row had no pin, and a number with no pin is a number that rots.
+#
+# THE SHARE IS THE ANALYZER'S OWN, TRUNCATED: 1122 of 5611 is 19.996 %, and the
+# analyzer prints 19.9 %. It is pinned as printed, because the analyzer publishes it.
+$SELF_CALLS = 'sites=5611|checked=1122|not-verified=4489|checked-share=19.9%'
+#   $SELF_UNCHECKED  the `unchecked=` on this tree's own SUMMARY: the number of call
+#                   VISITS the lens could not type, counted before de-duplication.
+#
+# 0618. AND IT IS PINNED FOR THE SAME REASON AS THE ROW ABOVE. `SKILL.md` uses it to
+# show that the SUMMARY's `unchecked=` and the metrics row's `not-verified=` are two
+# DIFFERENT UNITS -- the naive subtraction of one from the other is negative, and the
+# negative number is the tell. That subtraction was quoted as -16 in `SKILL.md`, and it
+# is -100 today: 5611 sites, 1122 checked, and 4589 unchecked VISITS.
+#
+# THE TWO NUMBERS ARE DELIBERATELY NOT RELATED. `sites` counts a call ONCE; `unchecked`
+# counts a VISIT, and a call in a block's tail position is typed twice. So the
+# subtraction is not an arithmetic identity and never was, and pinning it as if it were
+# would be pinning a nonsense number.
+$SELF_UNCHECKED = '4589'
 #   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
 #                   the hand-modelled native surface measured against the
 #                   DECLARED one.
@@ -1547,7 +1609,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # every `check_*` gate. It changed NO source file either -- the fixtures live
 # under `_verify`, which the self-scan excludes -- so it moved NO notice, and
 # `$SELF_FILES` and `$SSA_COST` are untouched.
-$NARRATIVE_CHAPTERS = '128'
+$NARRATIVE_CHAPTERS = '129'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -1599,6 +1661,8 @@ if ([string]::IsNullOrWhiteSpace($SELF_FILES))    { $emptyPins += 'SELF_FILES' }
 if ([string]::IsNullOrWhiteSpace($SELF_NOTICES))  { $emptyPins += 'SELF_NOTICES' }
 if ([string]::IsNullOrWhiteSpace($SELF_PRINTED))  { $emptyPins += 'SELF_PRINTED' }
 if ([string]::IsNullOrWhiteSpace($SELF_AGGREGATED)) { $emptyPins += 'SELF_AGGREGATED' }
+if ([string]::IsNullOrWhiteSpace($SELF_CALLS))    { $emptyPins += 'SELF_CALLS' }
+if ([string]::IsNullOrWhiteSpace($SELF_UNCHECKED)) { $emptyPins += 'SELF_UNCHECKED' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_LOCAL)) { $emptyPins += 'SUPPOFF_LOCAL' }
 if ([string]::IsNullOrWhiteSpace($SUPPOFF_PARAM)) { $emptyPins += 'SUPPOFF_PARAM' }
 if ([string]::IsNullOrWhiteSpace($SSA_COST))      { $emptyPins += 'SSA_COST' }
@@ -1921,6 +1985,8 @@ if ($failed.Count -eq 0) {
     $files  = [int]([regex]::Match($sum, 'files=(\d+)').Groups[1].Value)
     $parsed = [int]([regex]::Match($sum, 'parsed=(\d+)').Groups[1].Value)
     $act    = [int]([regex]::Match($sum, 'actionable=(\d+)').Groups[1].Value)
+    # 0618. THE SUMMARY's `unchecked=`: the call VISITS the lens could not type.
+    $unc    = [int]([regex]::Match($sum, 'unchecked=(\d+)').Groups[1].Value)
     # actionable must be 0 AND every file must parse. The second condition is what
     # stops a scan that crashed half-way from reading as a clean tree.
     #
@@ -2100,6 +2166,61 @@ if ($failed.Count -eq 0) {
         $split.SigUnknown + ' a cross-file value, ' + $split.NotCallable + ' not callable, ' +
         $split.Unresolved + ' unresolved, ' + $split.Method + ' a method call, ' +
         $split.DotDot + ' a `..` link')
+    }
+
+    # 0618. THE CALL METRICS ROW, over this repository's own source, PINNED. The row
+    # is not new -- the analyzer has printed it for a long time -- but until this pin it
+    # was not pinned, and a shipped document quotes it: `SKILL.md` shows the `--metrics`
+    # block as the example of what it looks like, and the copy in that document had been
+    # describing THIS tree as 194 files with an 8.2 % adequacy for eight releases.
+    #
+    # The tree is 280 files with a 19.9 % adequacy, and the numbers that were stale are in a
+    # document that ships. A number that is published but not pinned is a number that rots --
+    # so the row is pinned here, and `check_readme_links.ps1` derives `SKILL.md`'s copy of it
+    # from THIS pin, the way it already does for the READMEs'.
+    #
+    # AND THE ROW IS CHECKED AGAINST ITSELF: the sites have to be the checked ones plus the
+    # remainder, or the row is printing a number that is not the sum of the numbers beside it.
+    $calls = Get-CallsMetrics $text
+    if ($null -eq $calls) {
+      Write-Output '  FAIL: the scan printed no calls metrics line.'
+      $script:stageOk = $false
+    } else {
+      $measured = Get-CallsString $calls
+      if ($measured -ne $SELF_CALLS) {
+        Write-Output ('  FAIL: the call metrics are ' + $measured + ' and the pin says ' + $SELF_CALLS + '.')
+        $script:stageOk = $false
+      } else {
+        Write-Output ('  the call metrics: ' + $calls.Sites + ' sites, ' + $calls.Checked + ' checked, ' +
+          $calls.NotVerified + ' not verified (' + $calls.Share + ' %)')
+      }
+      if ($calls.Sites -ne ($calls.Checked + $calls.NotVerified)) {
+        Write-Output ('  FAIL: the call metrics do not add up: ' + $calls.Sites + ' sites, ' + $calls.Checked + ' checked, ' + $calls.NotVerified + ' not verified.')
+        $script:stageOk = $false
+      } elseif ($null -eq $split) {
+        # The split row was missing, and the stage above has already said so. A second
+        # complaint about a missing row would be a second verdict on one fact, and the
+        # reader would be told about a disagreement that was not measured.
+        Write-Output '  (the split row is missing, so the two rows are not compared.)'
+      } elseif ($calls.NotVerified -ne $split.NotVerified) {
+        Write-Output ('  FAIL: the calls row says ' + $calls.NotVerified + ' not verified and the split row splits ' + $split.NotVerified + '.')
+        $script:stageOk = $false
+      } elseif ($calls.NotVerified -ne $split.Sum) {
+        Write-Output ('  FAIL: the split row adds up to ' + $split.Sum + ' and the calls row says the remainder is ' + $calls.NotVerified + '.')
+        $script:stageOk = $false
+      }
+    }
+
+    # 0618. AND THE SUMMARY's `unchecked=`, which is a DIFFERENT UNIT from the row
+    # above: the row counts a call ONCE and the SUMMARY counts a VISIT, and a call in
+    # a block's tail position is typed twice. `SKILL.md` uses the difference between
+    # them to show that they are two units and not one arithmetic identity -- and the
+    # number it quoted (-16) was eight releases old.
+    if ("$unc" -ne $SELF_UNCHECKED) {
+      Write-Output ('  FAIL: the summary says unchecked=' + $unc + ' and the pin says ' + $SELF_UNCHECKED + '.')
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  the unchecked VISITS: ' + $unc + ' (a different unit from the ' + $calls.NotVerified + ' call sites above)')
     }
 
     # 0604. THE DECK'S p.57 QUESTION, over this repository's own source. The

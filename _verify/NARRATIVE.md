@@ -22935,3 +22935,57 @@ The mutation counts do NOT move: 89 numbered gates, 519 live mutations, 477 expe
 AND THE VERSION LINE STAYS AT **0.5.0**, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the released version. This increment changes no public interface. It adds a gate, and it makes a file ship that already should have.
 
 
+## 0618: THE SKILL FILE TAUGHT THE SENTENCE THAT HAD BEEN REFUTED, AND NOTHING READ ITS NUMBERS
+
+The work that follows 0617 was another re-reading of what this repository PUBLISHES, and it found the same species one level down.
+
+THE FINDING. `SKILL.md` ships to the registry and a reader is sent to it. It shows the `--metrics` block as the EXAMPLE of what the output looks like, and the copy in that document had been describing THIS tree as 194 files, 5048 call sites, 415 checked and an 8.2 % adequacy. MEASURED today, the tree is 280 files, 5611 sites, 1122 checked and 19.9 %.
+
+AND IT TAUGHT THE SENTENCE THAT HAD BEEN REFUTED. Beside the `calls` row, `SKILL.md` said:
+
+    `not-verified` splits into a callee that resolved to something not callable
+    (reported as `FOpMismatch`) and a callee that did not resolve at all
+
+TWO reasons. 0616 measured FIVE, and the two this sentence names are the only two that REPORT -- the other three are SILENT, and on this tree they are 88.9 % of the remainder. So the sentence the README had already been corrected for was still being taught by the document a reader is sent to, and it was teaching it as the WHOLE story.
+
+### AND NOTHING READ IT, WHICH IS THE PART THAT MATTERS
+
+The READMEs' numbers are DERIVED: `_verify/check_readme_links.ps1` reads the pins in `_verify/release.ps1` and asks only "does the document say what the pin says". That is why a README number cannot drift -- the pin moves when the measurement moves, and the document is asked to follow.
+
+`SKILL.md` was checked for exactly ONE thing: the `moonx riantr/moonbit_static_analysis@<version>` install command. Not one of its numbers was derived from anything. So the block in that document had been describing an eight-releases-old tree and NOTHING OBJECTED -- for the reason 0614's file count went unnoticed: a published number that is not pinned is a number that rots, and a number published as a FACT but never re-measured rots the quietest way of all.
+
+### TWO NEW PINS, AND THE ROWS ARE CHECKED AGAINST EACH OTHER
+
+    $SELF_CALLS      sites=5611|checked=1122|not-verified=4489|checked-share=19.9%
+    $SELF_UNCHECKED  4589
+
+Both are measured in the self-scan stage, and the stage now checks the rows AGAINST EACH OTHER: `sites` has to be `checked` plus `not-verified`, `not-verified` has to be the remainder the `unverified-split` row splits, and that row's `sum` has to be the remainder too. THREE ROWS THAT HAVE TO AGREE, each read from the analyzer's OWN line -- a second implementation of the measurement would be a second number that could disagree with the first.
+
+AND THE SHARE IS PINNED AS THE ANALYZER PRINTS IT. 1122 of 5611 is 19.996 %, and the analyzer prints 19.9 %: it TRUNCATES. A gate that re-derived the share and ROUNDED would disagree with the tool about a number the tool publishes.
+
+AND `unchecked=` IS A DIFFERENT UNIT, and it is pinned separately for that reason. The row counts a call ONCE; the SUMMARY counts a VISIT, and a call in a block's tail position is typed twice. So `sites - checked - unchecked` is not an arithmetic identity and never was -- and the negative number it produces is the TELL that the two are two units. `SKILL.md` used that tell and quoted the result as -16, eight releases old. It is -100 today.
+
+### FIFTEEN CHECKS, DERIVED FROM THE PINS
+
+`check_readme_links.ps1` now derives fifteen things about `SKILL.md` -- the whole `calls` row, the whole `unverified-split` row, the `read` row's file count, the findings and family rows, the five reasons with their numbers, the silent share, the own-source count, the adequacy, and the naive subtraction -- and asks the same question it asks the READMEs: does the document say what the pin says?
+
+AND THE REFUTED SENTENCE MUST NOT COME BACK. The fifteen are PRESENCE checks, so a document that kept them AND re-asserted the old two-reason account would pass every one of them -- and would be teaching two contradictory stories about the same number. So the sentence 0616 refuted is named VERBATIM, as something that must not be there. A guard that says "no old wording" and then hunts for a paraphrase of the old wording is a guard that can be fooled by a rephrase, and the rephrase is the easy way in.
+
+### AND THE NEW CHECKS ARE SHOWN TO GO RED
+
+MEASURED, by injecting each defect into the tree and running the gate against it:
+
+    the control (the tree as it is)                     green, exit 0
+    one number in SKILL.md moves (sites 5611 -> 5610)    RED, exit 1, naming the calls row
+    the sentence 0616 refuted comes back                 RED, exit 1, naming the refuted sentence
+    the restore                                           byte-for-byte identical (SHA256)
+
+### THE PINS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    128 -> 129
+
+and nothing else moves. The mutation counts, the notice counts, the file counts and the test counts are unchanged: this increment changes no analyzer behaviour, no public interface, and no number the READMEs publish. It corrects a document that ships, pins two rows that were published and unpinned, and makes fifteen more things derived.
+
+AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the RELEASED version.
+
+

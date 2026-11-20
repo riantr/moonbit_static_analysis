@@ -675,6 +675,32 @@ if ($splitCorp.Count -gt 0) {
   $more.Add(@{ F = 'README.zh.md'; S = ('本仓库剩下部分的 **' + $splitPctTreeMethod + ' %** 是老那句话从来没点过的同一个原因'); N = 'the share of the tree''s remainder that is one reason (zh)' })
   $more.Add(@{ F = 'README.md';    S = ('**' + $splitEight['not-verified'].ToString('N0') + '** unverified call sites, of which **' + $splitEight['method'].ToString('N0') + '** are method calls'); N = 'the eight-tree remainder and its method count' })
   $more.Add(@{ F = 'README.zh.md'; S = ('是 **' + $splitEight['not-verified'].ToString('N0') + '** 个没被验证的调用点，其中 **' + $splitEight['method'].ToString('N0') + '** 个是方法调用'); N = 'the eight-tree remainder and its method count (zh)' })
+  # 0618. AND THE SAME FIVE REASONS, IN `SKILL.md`. The skill file ships to the
+  # registry and a reader is sent to it, and it carried the sentence 0616 REFUTED --
+  # that `not-verified` splits into TWO reasons -- next to a self-measurement eight
+  # releases old. Nothing read it: the READMEs' numbers are derived from the pins, and
+  # `SKILL.md` was checked for exactly ONE thing, the `moonx ... @version` command.
+  #
+  # THE SENTENCES ARE CHECKED WHOLE. A sentence whose number changed and whose wording
+  # did not is a DIFFERENT claim, and a reader would be reading a claim the gate has
+  # never seen -- so the fragment carries the number AND the words around it.
+  $more.Add(@{ F = 'SKILL.md'; S = ('a method call (**' + $tMet + '** on this tree)'); N = 'SKILL.md: the split, method calls' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('that is not callable (**' + $tNot + '**, reported as `MSA-008`)'); N = 'SKILL.md: the split, not-callable' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('signature was never read (**' + $tSig + '**)'); N = 'SKILL.md: the split, sig-unknown' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('a `..` chain link (**' + $tDot + '**)'); N = 'SKILL.md: the split, dotdot' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('did not resolve at all (**' + $tUnr + '**, reported as `MSA-002`)'); N = 'SKILL.md: the split, unresolved' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('the silent three are **' + $splitPctTreeSilent + ' %** of the'); N = 'SKILL.md: the share of the tree remainder that is silent' })
+  # AND THE ROW ITSELF, with the RAW digits the analyzer prints -- the prose carries
+  # the thousands separators, and the row does not.
+  $skillSplit = 'METRICS' + "`t" + 'unverified-split' + "`t" +
+                'sig-unknown=' + $splitTree['sig-unknown'] + "`t" +
+                'not-callable=' + $splitTree['not-callable'] + "`t" +
+                'unresolved=' + $splitTree['unresolved'] + "`t" +
+                'method=' + $splitTree['method'] + "`t" +
+                'dotdot=' + $splitTree['dotdot'] + "`t" +
+                'sum=' + $splitTree['not-verified'] + "`t" +
+                'not-verified=' + $splitTree['not-verified']
+  $more.Add(@{ F = 'SKILL.md'; S = $skillSplit; N = 'SKILL.md: the unverified-split metrics row' })
 }
 $more.Add(@{ F = 'README.zh.md'; S = ('| `async` | 10 | 0 | 10 |'); N = 'the async native surface row (zh)' })
 $more.Add(@{ F = 'README.md';    S = ('**' + ([int]$lo).ToString('N0') + '**'); N = 'the suppression-off UnusedLocal count' })
@@ -700,6 +726,61 @@ $more.Add(@{ F = 'README.zh.md'; S = ('**' + $sd + '** 条在所有函数体之�
 # pin says.
 $more.Add(@{ F = 'README.md';    S = ('(' + $sf + ' files)'); N = 'the own-source file count' })
 $more.Add(@{ F = 'README.zh.md'; S = ($sf + ' 个文件'); N = 'the own-source file count (zh)' })
+# 0618. THE `--metrics` BLOCK, IN `SKILL.md`. The skill file shows the block as the
+# EXAMPLE of what the output looks like, and the copy in that document had been
+# describing THIS tree as 194 files with an 8.2 % adequacy for eight releases. The row
+# is pinned in `release.ps1` now, and the LINES are checked whole here -- a line whose
+# numbers changed and whose shape did not is a DIFFERENT line, and a reader would be
+# reading a block the gate has never seen.
+#
+# AND `SKILL.md`'s OWN-SOURCE COUNT AND ADEQUACY, which are the same two numbers in
+# prose rather than in the block.
+$scM = [regex]::Match($relTxt2, "\`$SELF_CALLS\s*=\s*'([^']*)'")
+$suM = [regex]::Match($relTxt2, "\`$SELF_UNCHECKED\s*=\s*'([^']*)'")
+if (-not ($scM.Success -and $suM.Success)) {
+  Write-Output '  FAIL: release.ps1 no longer carries the call-metrics pins.'
+  $fail++
+} else {
+  $callFields = @($scM.Groups[1].Value -split '\|')
+  $more.Add(@{ F = 'SKILL.md'; S = ('METRICS' + "`t" + 'calls' + "`t" + $callFields[0] + "`t" + $callFields[1] + "`t" + $callFields[2] + "`t" + $callFields[3]); N = 'SKILL.md: the calls metrics row' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('METRICS' + "`t" + 'read' + "`t" + 'files=' + $sf + "`t" + 'parsed=' + $sf); N = 'SKILL.md: the read metrics row' })
+  $more.Add(@{ F = 'SKILL.md'; S = ($sf + ' files, every'); N = 'SKILL.md: the own-source file count' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('a call-argument adequacy of ' + ($callFields[3] -replace '^checked-share=', '')); N = 'SKILL.md: the call-argument adequacy' })
+  # THE TWO UNITS. The row counts a call ONCE and the SUMMARY counts a VISIT -- a call
+  # in a block's tail position is typed twice -- so the naive subtraction of one from
+  # the other is NEGATIVE, and that negative number is the tell `SKILL.md` uses to show
+  # the two are two units and not one arithmetic identity. The value it quoted was -16,
+  # eight releases old; it is -100 today.
+  $naiveSites = [int]($callFields[0] -replace '^sites=', '')
+  $naiveChecked = [int]($callFields[1] -replace '^checked=', '')
+  $naiveUnchecked = [int]$suM.Groups[1].Value
+  $naive = $naiveSites - $naiveChecked - $naiveUnchecked
+  # THE MINUS SIGN IS THE DOCUMENT'S, not the shell's: the text writes U+2212.
+  $naiveStr = ([string]$naive).Replace('-', [string][char]0x2212)
+  $more.Add(@{ F = 'SKILL.md'; S = ('subtraction `sites - checked - unchecked` is **' + $naiveStr + '**'); N = 'SKILL.md: the naive subtraction' })
+  # AND THE NOTICE TOTAL, from the two halves the release gate already pins.
+  $selfTotal = [int]$sxM.Groups[1].Value + [int]$sdM.Groups[1].Value
+  $more.Add(@{ F = 'SKILL.md'; S = ('METRICS' + "`t" + 'findings' + "`t" + 'total=' + $selfTotal); N = 'SKILL.md: the findings metrics row' })
+  $more.Add(@{ F = 'SKILL.md'; S = ('METRICS' + "`t" + 'family' + "`t" + 'MSA-001' + "`t" + 'ParseError' + "`t" + 'severity=error' + "`t" + 'high=0' + "`t" + 'low=0' + "`t" + 'undecided=' + $selfTotal + "`t" + 'total=' + $selfTotal); N = 'SKILL.md: the family metrics row' })
+}
+# 0618. AND THE REFUTED SENTENCE MUST NOT COME BACK. The five fragments above are
+# PRESENCE checks, so a document that kept them AND re-asserted the old two-reason
+# account would pass every one of them -- and would be teaching two contradictory
+# stories about the same number. So the sentence 0616 refuted is named here, VERBATIM,
+# as something that must NOT be there.
+#
+# IT IS NAMED, NOT DESCRIBED. A guard that says "no old wording" and then looks for a
+# paraphrase of the old wording is a guard that can be fooled by a rephrase, and the
+# rephrase is the easy way in.
+$refutedSentence = '`not-verified` splits into a callee that resolved to something not callable'
+$skillPath = Join-Path $root 'SKILL.md'
+$skillTxt = [System.IO.File]::ReadAllText($skillPath, [Text.Encoding]::UTF8)
+if ($skillTxt.Contains($refutedSentence)) {
+  Write-Output ('  FAIL: SKILL.md carries the sentence 0616 refuted: ' + $refutedSentence)
+  $fail++
+} else {
+  Write-Output '  SKILL.md does not carry the refuted two-reason sentence  OK'
+}
 foreach ($e in $more) {
   $p = Join-Path $root $e.F
   $txt = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)

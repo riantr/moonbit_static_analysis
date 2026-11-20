@@ -269,14 +269,15 @@ for one has been told nothing about the scale. `--metrics` appends the block
 that carries the scale:
 
 ```
-METRICS	read	files=194	parsed=194	partial=0	understood=100.0%
-METRICS	calls	sites=5048	checked=415	not-verified=4633	checked-share=8.2%	(...)
-METRICS	findings	total=1689	high=0	low=0	undecided=1689	(...)
-METRICS	family	MSA-001	ParseError	severity=error	high=0	low=0	undecided=1689	total=1689
+METRICS	read	files=280	parsed=280	partial=0	understood=100.0%
+METRICS	calls	sites=5611	checked=1122	not-verified=4489	checked-share=19.9%	(...)
+METRICS	unverified-split	sig-unknown=191	not-callable=498	unresolved=0	method=3800	dotdot=0	sum=4489	not-verified=4489	(...)
+METRICS	findings	total=2128	high=0	low=0	undecided=2128	(...)
+METRICS	family	MSA-001	ParseError	severity=error	high=0	low=0	undecided=2128	total=2128
 ```
 
-*(those are the analyzer's own tree, scanned by its own build — 194 files, every
-finding a declared scope limit, and a call-argument adequacy of 8.2%.)*
+*(those are the analyzer's own tree, scanned by its own build — 280 files, every
+finding a declared scope limit, and a call-argument adequacy of 19.9%.)*
 
   * **read** — `parsed/files`, the same ratio the `PARSED` line prints. A file
     the frontend did not understand is measured as blindness, not as a clean
@@ -288,15 +289,22 @@ finding a declared scope limit, and a call-argument adequacy of 8.2%.)*
     all, so `fn main() -> Unit { let s = "x"; ignore(s.length()) }` reports
     **2** sites and not 3 (measured). ⇒ the share is an **upper bound** on what
     was verified; it can overstate and cannot understate.
-    `not-verified` splits into a callee that resolved to something not callable
-    (reported as `FOpMismatch`) and a callee that did not resolve at all
-    (reported as `UndefinedName`): the analyzer *made a statement* about both,
-    so neither is type-lens blindness. `sites` is **site-based**: a call in a
+    `not-verified` has **FIVE** reasons, and the analyzer prints them in its own
+    `METRICS unverified-split` row: a method call (**3,800** on this tree), a callee
+    that is not callable (**498**, reported as `MSA-008`), a cross-file value whose
+    signature was never read (**191**), a `..` chain link (**0**), and a name that
+    did not resolve at all (**0**, reported as `MSA-002`). Only **two** of the five
+    are statements the analyzer *made* — the not-callable one and the unresolved one
+    — and the other three are **SILENT**: the lens has no signature to check against,
+    so it says nothing at all. On this tree the silent three are **88.9 %** of the
+    remainder, so "not-verified" is mostly the lens saying nothing rather than the
+    analyzer saying something. (The README's coverage section carries the full table,
+    for this tree and for the corpora.) `sites` is **site-based**: a call in a
     block's tail position is typed twice (once as a statement, once as the tail
     carrying the return hint) and is counted once. The `unchecked=` on the
     `SUMMARY` and per-file lines counts **visits**, not sites, so the two
     numbers are deliberately not arithmetically related — on this tree the naive
-    subtraction `sites - checked - unchecked` is **−16**.
+    subtraction `sites - checked - unchecked` is **−100**.
   * **findings / family** — one row per family that spoke, with its stable id
     and its severity, split by the axis that says how sure the analyzer was.
     `undecided` **is** the declared-scope-limit count: constructs it read and
