@@ -144,9 +144,11 @@ is the taxonomy and the authority for what each suffix means):
   `imports` field in 0.2.0 — a `pub` struct gaining a field breaks any
   consumer that constructs it, so that is a MINOR bump (0.1.x -> 0.2.0), not a
   patch. Check the registry manifest before choosing a number:
-  `https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis`
-  (returns the latest version plus the full version list; a version-specific
-  URL 404s).
+  `https://mooncakes.io/api/v0/manifest/riantr/moonbit_static_analysis`
+  (returns the latest version plus the full version list). **The version
+  segment in that path is IGNORED** — `.../9.9.9` answers 200 with the LATEST
+  manifest, so the version you typed is not evidence of anything: read
+  `latest_version` and the `versions` array, never the path.
 - The public surface splits in two, and they move independently:
   `@statecheck` (machine tables) is what pyroduct consumes — its `audit/audit.mbt`
   only calls `@statecheck.audit` / `.render`; **`@pipeline` / `PipelineResult`

@@ -2117,6 +2117,8 @@ and is not named here is a stage a reader cannot find:
     the proof status, shown to go red (its own self-test)
     the goal checklist: the tasks are ticked and the rules are numbered
     the goal checklist, shown to go red (its own self-test)
+    the registry URLs: the documents must point at URLs that answer
+    the registry URLs, shown to go red (its own self-test)
     package contents: the junk stays out, the evidence stays in
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible

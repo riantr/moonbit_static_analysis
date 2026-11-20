@@ -1681,7 +1681,12 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # and `LOOP.md` -- and corrects TWO pointers in that checklist which still resolved
 # but no longer resolved to the RIGHT thing. It adds ONE `check_*` gate, and it moves
 # the `$LOOP_RULES` pin with the rule it adds.
-$NARRATIVE_CHAPTERS = '139'
+# 0629. THE PIN MOVED TO 140 with chapter 0629, which changed NO source file: the
+# increment fixes a URL in the workspace skill that answers 404, corrects a second
+# claim in the same sentence that measurement refuted, and adds ONE `check_*`
+# gate that PROBES the URLs the documents name. It moves the `$LOOP_RULES` pin
+# with the rule it adds.
+$NARRATIVE_CHAPTERS = '140'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1693,7 +1698,10 @@ $NARRATIVE_CHAPTERS = '139'
 # The pin moved 28 -> 29 with rule 29, and the rule is the lesson this increment
 # measured: a pointer that RESOLVES is not a pointer that resolves to the RIGHT
 # thing, and the goal's own checklist was a comment until this increment.
-$LOOP_RULES = '29'
+# The pin moved 29 -> 30 with rule 30, and the rule is the lesson this increment
+# measured: a URL in prose is a comment until somebody follows it -- and the
+# probe that follows it can lie twice.
+$LOOP_RULES = '30'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2746,6 +2754,66 @@ if ($failed.Count -eq 0) {
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'goal-checklist-selftest' }
+  }
+}
+
+# --- 4d4  THE URLS THE DOCUMENTS NAME, AND WHETHER THEY ANSWER ------------------
+# 0629. A DOCUMENT IN THIS REPOSITORY NAMED A URL THAT DOES NOT EXIST, and
+# nothing noticed, because a URL in prose is a COMMENT until somebody follows
+# it. The file was the workspace skill
+# `.dsh/skills/moonbit-static-analysis/SKILL.md`, at the line that tells the
+# reader how to check the registry manifest before choosing a version number.
+# It named the `api-new` family:
+#
+#     https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis
+#
+# MEASURED 2026-11-20, with GET: that URL answers 404, and the live one --
+# `https://mooncakes.io/api/v0/manifest/riantr/moonbit_static_analysis` --
+# answers 200 and carries exactly what the sentence around it promises (the
+# latest version plus the full version list, 68 versions when it was measured).
+# So the PROSE WAS RIGHT AND THE URL WAS WRONG.
+#
+# AND THE SECOND CLAIM IN THAT SENTENCE WAS WRONG TOO: it said "a version-specific
+# URL 404s", and MEASURED, `.../0.5.0` answers 200, and so does `.../9.9.9` --
+# with the LATEST manifest, not the one the path names. The version segment is
+# IGNORED, so a reader who typed a version into the path has proved nothing.
+#
+# The stage below PROBES the URLs the current documents name and holds them to
+# what they answer. It is the first gate in this repository that touches the
+# network, and that is deliberate: the CI runner PUBLISHES to mooncakes.io, so
+# it can reach it -- and a URL that could not be checked is not a URL that is
+# fine.
+if ($failed.Count -eq 0) {
+  $CRU = Join-Path $root '_verify\check_registry_urls.ps1'
+  if (-not (Test-Path $CRU)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_registry_urls.ps1'
+    $failed += 'registry-urls'
+  } else {
+    Stage 'the registry URLs: the documents must point at URLs that answer' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $CRU 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(FAIL|URLS OK|answered 200|a shape, not a URL)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'registry-urls' }
+  }
+  if ($failed.Count -eq 0) {
+    Stage 'the registry URLs, shown to go red (its own self-test)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $CRU -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(CONTROL|SELFTEST|the defect|FAIL:|OK:|MISSED)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'registry-urls-selftest' }
   }
 }
 

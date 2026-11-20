@@ -125,6 +125,12 @@ $evidence = @(
   # are in the package, and they are what the repository's goal is written
   # against. A checklist that ships but is unguarded is a comment that ships.
   @{ N = 'the goal-checklist gate';        Want = 1;                R = '^_verify\\check_goal_checklist\.ps1$' }
+  # 0629. AND THE GATE THAT FOLLOWS THE URLs THE DOCUMENTS NAME. It is evidence
+  # because the thing it checks IS shipped: the READMEs, `EXTENSIONS.md` and the
+  # skill files are the reader's way in, and a URL in prose is a comment until
+  # somebody follows it. The gate is the only one here that touches the
+  # network -- deliberately, because the CI runner publishes to mooncakes.io.
+  @{ N = 'the registry-urls gate';          Want = 1;                R = '^_verify\\check_registry_urls\.ps1$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }

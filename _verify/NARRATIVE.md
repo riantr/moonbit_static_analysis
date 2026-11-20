@@ -23845,3 +23845,94 @@ AND THE VERSION LINE STAYS AT 0.5.0. This increment guards the documents the obj
 against, and corrects two pointers in them. It changes no analyzer behaviour and no public interface.
 
 
+## 0629: A DOCUMENT NAMED A URL THAT DOES NOT EXIST, AND THE PROBE THAT SHOULD HAVE CAUGHT IT LIED TWICE
+
+### WHAT WAS WRONG
+
+The workspace skill `.dsh/skills/moonbit-static-analysis/SKILL.md` tells the reader how to check the
+registry manifest before choosing a version number. It named:
+
+    https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis
+
+MEASURED 2026-11-20, with GET: that URL answers **404**. The live one is
+`https://mooncakes.io/api/v0/manifest/riantr/moonbit_static_analysis`, and it answers **200** and carries
+exactly what the sentence around it promises -- `latest_version`, `build_status`, and a `versions` array of
+**68** entries. So the PROSE WAS RIGHT AND THE URL WAS WRONG, which is the shape this class of defect
+takes.
+
+AND THE SECOND CLAIM IN THAT SENTENCE WAS WRONG TOO. It said "a version-specific URL 404s". Measured:
+`.../0.5.0` answers 200, and so does `.../9.9.9` -- with the LATEST manifest, not the one the path names.
+The version segment is IGNORED, so a reader who typed a version into the path has proved nothing. That
+sentence is corrected in place, with the segment's behaviour named.
+
+### THE GATE
+
+`_verify/check_registry_urls.ps1` PROBES every mooncakes.io URL the CURRENT documents name -- the two
+READMEs, `EXTENSIONS.md`, `LOOP.md`, the root `SKILL.md`, `src/cli/SKILL.md`, and the workspace skill --
+and holds each one to what it answers. It is the first gate here that probes a URL and holds a DOCUMENT to
+what that URL answers, and it is the first gate in the release path that calls the network itself (the
+corpus stage already resolves the pinned core, so the release gate needs the network either way).
+
+Four things it is careful about, each of which was measured:
+
+- **THE DATED RECORDS ARE NOT PROBED.** `_verify/NARRATIVE.md` and the two CHANGELOGs describe what was
+  true ON A DATE, and a URL that has since moved is a record, not a defect.
+- **A URL CONTAINING `<` IS A SHAPE, NOT A URL.** The documents carry one template -- the prebuild path --
+  and a shape cannot be fetched. It is reported as a shape, not as a failure.
+- **"DID NOT ANSWER" IS NOT "ANSWERED 404".** A host that cannot be reached has told us nothing about the
+  URL, and the house rule for the pinned corpus is the same one: a corpus that cannot be checked is not a
+  corpus with nothing wrong. So an unreachable host is a FAILURE with its own message, and it is never
+  reported as a dead URL. The host family is matched by SUFFIX, so a mooncakes.io subdomain that does not
+  RESOLVE is still in the family -- and the two cases are told apart.
+- **ANSWERING 200 IS NOT ENOUGH.** A manifest URL whose body carries neither `latest_version` nor
+  `versions` is a failure: the document promises the latest version plus the full version list, and a
+  page that answers 200 without them does not answer that. The trigger is the DOCUMENT'S CLAIM -- the
+  sentence that introduces the URL -- and not the URL's own path, because a URL swapped for a different
+  one that still answers 200 must not walk past the rule.
+
+AND A GATE THAT FOUND NOTHING IS A COMMENT: if the documents name no URL this gate can probe, it fails,
+because it probed nothing and has proved nothing.
+
+### IT IS SHOWN TO GO RED
+
+MEASURED: the control green, and FOUR injected defects each caught with the defect NAMED -- a URL under a
+family that is gone, a module that does not exist, a manifest URL swapped for a URL that answers 200 with
+something else, and a host that does not resolve. The last two were MISSED at first, and both misses were
+the GATE's fault, not the fault's:
+
+- the "answers 200 but not with a manifest" rule was keyed on the URL's PATH containing `/manifest/`, so a
+  URL swapped for another one that still answers 200 walked straight past it;
+- the URL records were deduplicated keeping only the FIRST occurrence, and the URL `skills.mooncakes.io`
+  is named in the README with no claim attached -- so the occurrence that carried the claim, in the
+  workspace skill, was never checked.
+
+=> A rule keyed on the SUBJECT rather than on the PROMISE misses every defect in which the subject is
+replaced. The claim is OR-ed over every occurrence of a URL now.
+
+### THE PROBE LIED TWICE
+
+- `HEAD` answers 404 for the LIVE url: the endpoint does not serve HEAD. A probe that uses HEAD concludes
+  that a working URL is dead. The probe is a GET.
+- PowerShell wraps the .NET exception: `GetResponse()` raises a `WebException` carrying the status in
+  `.Response`, but PowerShell puts it inside a `MethodInvocationException` whose `.Response` is NULL. The
+  first version of the gate reported the dead URL as UNREACHABLE, because of exactly this.
+
+And one more, from the gate's own first version: `$Host` is a READ-ONLY AUTOMATIC VARIABLE in PowerShell.
+Assigning to it threw, the gate collected no URL at all, and it reported **URLS OK**. A gate that checks
+nothing must not report success.
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES         29 -> 30
+    $NARRATIVE_CHAPTERS 139 -> 140
+
+and two new lines in each README's stage list (53 -> 55), one new evidence entry in
+`check_package_contents.ps1` (37 -> 38), and 19 -> 20 check gates on disk, 14 -> 15 with a live
+`-SelfTest`. No analyzer behaviour changed and no public interface changed: 89 numbered gates, 519 live
+mutations, 477 expecting a kill, 400 naming the test; 280 own-source files, 2128 notices, 5611/1122/4489
+call sites, 1344 native surface.
+
+AND THE VERSION LINE STAYS AT 0.5.0 in this increment: it changes no analyzer behaviour and no public
+interface.
+
+
