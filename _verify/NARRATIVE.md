@@ -23374,3 +23374,69 @@ AND THE PIN'S OWN LOG GAINED THE TWO ENTRIES IT WAS MISSING: 0621 and 0622 moved
 AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public interface. It re-bases one workspace document's claim onto a corpus this repository measures, dates a control that cannot be re-measured, and stops a published gate from being red the moment it is unpacked.
 
 
+## 0624: TWO SHIPPED DOCUMENTS TOLD THE READER A COMMAND THE TOOLCHAIN NO LONGER HAS STILL WORKS, AND THE CLAIM CARRIED ITS OWN EXPIRY DATE
+
+The work that follows 0623 was an eighth re-reading of what this repository WRITES DOWN -- and this time the thing that had rotted was not a number in this repository, but the TOOLCHAIN the numbers are about.
+
+THE FINDING. Two of the documents that ship tell the reader how to run this module, and both said:
+
+    `moon runwasm ...` is deprecated (the toolchain says removal after
+    2026-09-14) but still works. Prefer `moonx`.
+
+MEASURED, against the toolchain on this machine (`moon 0.1.20261117 (eb64713 2026-11-17)`):
+
+    moon runwasm --help
+    Error: no such subcommand: `runwasm`, is `moon-runwasm` a valid
+    executable accessible via your `PATH`?
+    ~/.moon/bin/moon-runwasm      not there
+    ~/.moon/bin/moonx.exe         there
+
+So the RECOMMENDATION is right and the claim about the command is not. A reader who follows the sentence gets "no such subcommand" from their own toolchain.
+
+### AND THE CLAIM CARRIED ITS OWN EXPIRY DATE
+
+The toolchain said "removal after 2026-09-14". The claim was written by `8a31e88` on 2026-10-06 -- a MONTH after that date -- and it was TRUE then. Nothing re-measured it, and the removal happened without a line of this repository changing.
+
+=> THE DATE IN THE CLAIM IS NOT THE DATE OF THE CLAIM. "removal after 2026-09-14" is part of what the sentence says; it is not a stamp saying when the sentence was measured. So the sentence is a PRESENT-TENSE claim about a MOVING thing, and a present-tense claim about a moving thing has to be re-measured.
+
+### AND THE SAME COMMAND WAS ONCE WRONGLY DECLARED UNAVAILABLE
+
+`LOOP.md`'s own lessons record that one of the five assertions bought with real cost on 2026-10-06 was "`moon runwasm` is unavailable" -- and that all five were wrong. MEASURED today: that one is now TRUE. The lesson was never wrong: it was a record of a day's measurement, and the measurement moved. A command's availability is a fact about the TOOLCHAIN, not about this repository, and this repository is not what changes it.
+
+### THE THIRD COPY IS A RECORD, AND IS LEFT ALONE
+
+`EXTENSIONS.md` carries the same claim in Chinese, inside the section headed with the date `2026-10-06` -- a snapshot of what was checked against the toolchain's pages that day. That is a dated section, so its content is a RECORD, and a record is not rewritten. => THE TEST IS NOT "is this number current" but "is this a PRESENT FACT or the RECORD OF A MEASUREMENT". The two LIVE copies are defects; the dated one is history.
+
+### THE FIX, AND THE GATE
+
+The live claim is now a versioned fact: the subcommand is gone from `moon 0.1.20261117`, and `moonx` is the way. That version is a PIN -- `$RUNWASM_GONE_IN` in `_verify/release.ps1` -- and the documents carry THAT version, so the claim cannot float.
+
+And the new gate `_verify/check_toolchain_claims.ps1` ASKS THE TOOLCHAIN: it runs `moon runwasm --help` and reads the exit code, which is 0 when the subcommand exists and non-zero when it does not -- the CLI answers before it reads anything, so the probe cannot build or run a thing. If the local toolchain is the pinned one or NEWER, the measurement must agree with the documents. If the local toolchain is OLDER than the pin, the claim is about the pin and only the shape is checked, and the gate says so instead of failing on a toolchain the claim does not talk about.
+
+THE SCOPE IS THE TWO LIVE COPIES, and the scope is NAMED rather than inferred: a date in a section header is a stamp on everything under it, and a date in a sentence is part of the sentence.
+
+### AND THE FIRST VERSION OF THE CHECK WAS VACUOUS
+
+The gate's first version asked a simple question: does the document carry the pinned version `0.1.20261117`? And the answer was always yes -- because the CORPUS version is `0.1.20261117+06da1ed44`, which CONTAINS it, and the root `SKILL.md` carries the corpus version three hundred lines away from the claim. So the check passed a document whose claim had no version in it at all.
+
+=> A CHECK THAT CANNOT FAIL IS NOT A CHECK. The fix is in the CHECK: the version has to be in the BLOCK that makes the claim, not anywhere in the file.
+
+AND THE SELF-TEST HAD THE SAME BLIND SPOT, which is why it said OK. Its mutation replaced EVERY occurrence of the pin -- including the corpus version -- so the check it was supposed to break passed, and the self-test reported OK having checked nothing. MEASURED: the red demonstration against the REAL tree, which mutates only the claim, is what caught it: the gate went red for the shape and stayed silent for the version.
+
+=> A SELF-TEST THAT MUTATES A DIFFERENT COPY OF THE NUMBER PROVES LESS THAN ONE THAT MUTATES THE CLAIM. The mutation has to touch the thing the check is about.
+
+### IT IS SHOWN TO GO RED
+
+MEASURED, by injecting the defect into a COPY of the document in %TEMP% and running the gate's own check against it: the control green, the copy red with both defects NAMED -- the stale version in the claim and the shape that says the command works -- and the repository untouched.
+
+AND MEASURED AGAIN, by injecting the same defect into the REAL tree: the gate red with both defects named, the restore byte-for-byte identical (SHA256), and the gate green again on the restored tree.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    134 -> 135
+
+and the roster's own count of the `check_*` gates on disk moves with the new gate: 15 -> 16, of which 11 carry a live `-SelfTest`. The READMEs' stage lists move too -- the new stage has to be NAMED there, or a reader cannot find the stage that checks the thing the READMEs say -- and no other published number moves: 89 numbered gates, 519 live mutations, 477 expecting a kill, 400 naming the test.
+
+AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public interface. It corrects two shipped documents about the toolchain they tell the reader to use, and it adds the gate that asks the toolchain instead of believing a sentence.
+
+

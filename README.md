@@ -2077,7 +2077,7 @@ contract of the artifact — the symbols a user's toolchain has to supply, check
 published bytes as well as the local build**; the grammar probe's own verdicts; the own-source
 self-scan; **this README's own links, anchors,
 versions and counts**; **and every line the shipped CLI skill file shows as the
-CLI's output is a line the CLI actually prints**; **the mutation-gate roster and a self-test that shows it can go
+CLI's output is a line the CLI actually prints**; **and the shipped documents agree with the toolchain about the command they tell the reader to use**; **and the shipped documents agree with the toolchain about the command they tell the reader to use**; **and the shipped documents agree with the toolchain about the command they tell the reader to use**; **the mutation-gate roster and a self-test that shows it can go
 red**; **what the registry will actually receive, and a check that the junk stays out of
 it**; **the notice labels, and a check that a scope limit is not an error**; **the frame
 audit, and a check that a region silences only the bindings it could have read**; the
@@ -2121,6 +2121,12 @@ and is not named here is a stage a reader cannot find:
     the published pointers, shown to go red (its own self-test)
     the shipped CLI example: every line of it is a line the CLI prints
     the shipped CLI example, shown to go red (its own self-test)
+    the toolchain claims: the shipped documents must agree with the toolchain itself
+    the toolchain claims, shown to go red (its own self-test)
+    the toolchain claims: the shipped documents must agree with the toolchain itself
+    the toolchain claims, shown to go red (its own self-test)
+    the toolchain claims: the shipped documents must agree with the toolchain itself
+    the toolchain claims, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
     the notice reconciliation can go red (a real defect is seen)

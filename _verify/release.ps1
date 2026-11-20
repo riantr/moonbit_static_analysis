@@ -1665,7 +1665,12 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # this repository pins and measures, dates the control that cannot be
 # re-measured, and stops a SHIPPED gate from being red the moment it is
 # unpacked.
-$NARRATIVE_CHAPTERS = '134'
+# 0624. THE PIN MOVED TO 135 with chapter 0624, which changed NO source file: the
+# increment corrects TWO SHIPPED DOCUMENTS that told the reader a command the
+# toolchain no longer has "still works", adds ONE `check_*` gate that ASKS the
+# toolchain, and leaves the DATED copy in `EXTENSIONS.md` alone -- a section
+# stamped 2026-10-06 is a record, and a record is not rewritten.
+$NARRATIVE_CHAPTERS = '135'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -3096,6 +3101,63 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4b  the shipped documents against the TOOLCHAIN --------------------------
+#
+# 0624. Two shipped documents told the reader that `moon runwasm` "still
+# works", and MEASURED on `moon 0.1.20261117` the subcommand is GONE ("no such
+# subcommand"). The claim carried its own expiry date -- the toolchain said
+# "removal after 2026-09-14" -- and it was written on 2026-10-06, when it was
+# still true. A present-tense claim about a MOVING thing has to be re-measured,
+# so the gate asks the toolchain itself.
+#
+# It is placed HERE, before the mutation gates, because it reads the shipped
+# DOCUMENTS and not `src/`, and the mutation gates MUTATE `src/`.
+$TC = Join-Path $root '_verify\check_toolchain_claims.ps1'
+if (-not (Test-Path $TC)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_toolchain_claims.ps1'
+  $failed += 'toolchain-claims'
+} else {
+  Stage 'the toolchain claims: the shipped documents must agree with the toolchain itself' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $TC 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|ABORT|toolchain|runwasm)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'toolchain-claims' }
+  $stageName = 'the toolchain claims: the shipped documents must agree with the toolchain itself'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'toolchain-claims'
+  }
+}
+if ($failed.Count -eq 0) {
+  Stage 'the toolchain claims, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $TC -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|SELFTEST|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'toolchain-claims-selftest' }
+  $stageName = 'the toolchain claims, shown to go red (its own self-test)'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'toolchain-claims-selftest'
+  }
+}
+
 # --- 5  every mutation gate --------------------------------------------------
 $gates = @('0412','0413','0418','0419','0420','0421','0422','0423','0424','0425','0426','0427','0428','0429','0430','0431','0432','0433','0434','0435','0436','0437','0438','0439','0440','0441','0442','0443','0444','0445','0446','0447','0449','0450','0452','0453','0454','0455','0456','0457','0458','0459','0460','0461','0462','0463','0464','0465','0466','0467','0468','0469','0470','0471','0472','0473','0474','0475','0476','0477','0478','0479','0480','0481','0482','0483','0484','0485','0486','0487','0488','0489','0490','0491','0492','0493','0494','0495','0496','0500','0501','0502','0503','0504','0506','0507','0508','0615','0616')
 if ($SkipMutations) {
@@ -3851,6 +3913,48 @@ $TARGETS = [ordered]@{
 #                  every other published number.
 $CORE_IFACES = '133'
 $CORE_UNKTYPE = '0'
+
+#
+#   $RUNWASM_GONE_IN  the toolchain version in which the `moon runwasm`
+#                     subcommand was MEASURED gone: `moon runwasm --help`
+#                     answers "no such subcommand" on it. MEASURED
+#                     2026-11-20 on `moon 0.1.20261117 (eb64713 2026-11-17)`,
+#                     and there is no `moon-runwasm` binary in `~/.moon/bin`.
+#                     It is pinned because TWO SHIPPED DOCUMENTS told the
+#                     reader that the command "still works", and that claim
+#                     carried its own expiry date -- the toolchain said
+#                     "removal after 2026-09-14" -- and it was written on
+#                     2026-10-06 (`8a31e88`), a MONTH after that date, when it
+#                     was still true.
+$RUNWASM_GONE_IN = '0.1.20261117'
+
+#
+#   $RUNWASM_GONE_IN  the toolchain version in which the `moon runwasm`
+#                     subcommand was MEASURED gone: `moon runwasm --help`
+#                     answers "no such subcommand" on it. MEASURED
+#                     2026-11-20 on `moon 0.1.20261117 (eb64713 2026-11-17)`,
+#                     and there is no `moon-runwasm` binary in `~/.moon/bin`.
+#                     It is pinned because TWO SHIPPED DOCUMENTS told the
+#                     reader that the command "still works", and that claim
+#                     carried its own expiry date -- the toolchain said
+#                     "removal after 2026-09-14" -- and it was written on
+#                     2026-10-06 (`8a31e88`), a MONTH after that date, when it
+#                     was still true.
+$RUNWASM_GONE_IN = '0.1.20261117'
+
+#
+#   $RUNWASM_GONE_IN  the toolchain version in which the `moon runwasm`
+#                     subcommand was MEASURED gone: `moon runwasm --help`
+#                     answers "no such subcommand" on it. MEASURED
+#                     2026-11-20 on `moon 0.1.20261117 (eb64713 2026-11-17)`,
+#                     and there is no `moon-runwasm` binary in `~/.moon/bin`.
+#                     It is pinned because TWO SHIPPED DOCUMENTS told the
+#                     reader that the command "still works", and that claim
+#                     carried its own expiry date -- the toolchain said
+#                     "removal after 2026-09-14" -- and it was written on
+#                     2026-10-06 (`8a31e88`), a MONTH after that date, when it
+#                     was still true.
+$RUNWASM_GONE_IN = '0.1.20261117'
 
 # 0604. THE DECK'S p.57 QUESTION, per corpus: the HAND-MODELLED native surface
 # measured against the DECLARED one.

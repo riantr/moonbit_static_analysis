@@ -125,9 +125,10 @@ The CLI takes **no arguments**: the samples are embedded (`src/samples`), so it
 can only show the findings format. To analyse anything else use one of the two
 routes above.
 
-> The `moon runwasm …` command shown on this skill's page is **deprecated** (the
-> toolchain says removal after 2026-09-14) but still works. Prefer `moonx`, which
-> is the recommended invocation above.
+> The `moon runwasm …` command shown on this skill's page is **gone**: the
+> toolchain deprecated it (removal after 2026-09-14) and `moon 0.1.20261117`
+> no longer has the subcommand. Prefer `moonx`, which is the recommended
+> invocation above.
 >
 > The "Download wasm" button on this skill's page is **usable**. It serves the
 > same prebuilt artifact `moonx` downloads and caches — nothing to compile. (If a

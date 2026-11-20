@@ -108,6 +108,18 @@ $evidence = @(
   # evidence because the thing it checks IS published: `src/cli/SKILL.md` ships
   # inside `src/`, and it shows what the CLI prints.
   @{ N = 'the cli-output gate';          Want = 1;                R = '^_verify\\check_cli_output\.ps1$' }
+  # 0624. AND THE GATE THAT KEEPS THE SHIPPED DOCUMENTS IN STEP WITH THE
+  # TOOLCHAIN. It is evidence because the thing it checks IS published: the
+  # shipped skill files tell the reader which command to run.
+  @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
+  # 0624. AND THE GATE THAT KEEPS THE SHIPPED DOCUMENTS IN STEP WITH THE
+  # TOOLCHAIN. It is evidence because the thing it checks IS published: the
+  # shipped skill files tell the reader which command to run.
+  @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
+  # 0624. AND THE GATE THAT KEEPS THE SHIPPED DOCUMENTS IN STEP WITH THE
+  # TOOLCHAIN. It is evidence because the thing it checks IS published: the
+  # shipped skill files tell the reader which command to run.
+  @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }

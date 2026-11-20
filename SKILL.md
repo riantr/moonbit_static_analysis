@@ -43,8 +43,9 @@ moonx riantr/moonbit_static_analysis@0.5.0 riantr/moonbit_doubleML
 > `moonrun` — no clone, no local build. The very same artifact is what the
 > "Download wasm" button serves on skills.mooncakes.io.
 >
-> `moon runwasm …` is **deprecated** (the toolchain says removal after
-> 2026-09-14) but still works. Prefer `moonx`.
+> `moon runwasm …` is **gone**: the toolchain deprecated it (removal after
+> 2026-09-14) and `moon 0.1.20261117` no longer has the subcommand. Prefer
+> `moonx`.
 >
 > `moonx` with no package path resolves the module's ROOT package, which is why
 > the command needs no `/src/sa` suffix.
