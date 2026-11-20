@@ -5143,3 +5143,78 @@ that gets repeated as a rule:
   identifier was allowed to start with a digit. Only the rescan over real code
   found them. Fixing a false positive and introducing one are the same class of
   action; the difference is running the scan again.
+
+## 0.5.2 — the published 0.5.1 failed its own self-scan, and the fixtures were not the source
+
+**WHAT THIS RELEASE IS.** A PATCH version, and the reason is a property a user can feel in
+the worst way: the artifact the registry served for 0.5.1 could not pass its own
+certification. Nothing about what the analyzer finds changes -- the family roster is at
+eighteen, and this release adds none of them -- but the package the registry compiles
+carried 24 deliberately defective files, and the analyzer that shipped with it reported all
+fifteen of their defects as findings on its own shipped source.
+
+    0632  the published 0.5.1 failed its own self-scan, and the fixtures were not the source
+
+### THE RELEASE THAT FOUND IT
+
+The release of 0.5.1 ran the gate three times, in the order this repository's own release
+procedure states: the full gate (every mutation gate) BEFORE the tag, the gate with the
+mutation gates skipped, and then the POST-PUBLISH check against the version the registry
+actually served. The third run is the one that cannot pass before the package exists, and it
+is the one that says whether the ARTIFACT is sound.
+
+MEASURED 2026-11-20, on the artifact the registry served for `v0.5.1`:
+
+    SCANNED  304 files under .repos/riantr/moonbit_static_analysis/0.5.1
+    SUMMARY  files=304 parsed=304 actionable=15 notices=2136
+    FAIL: actionable=15 on the analyzer's own source.
+
+Every one of those fifteen findings is in the fixture directory. The tool's own source was
+CLEAN -- 280 source files, no actionable finding -- and the host contract held on the
+published bytes: 106 imports, 92 of them from `moonbitlang/async`, the contract 93.
+
+### WHY THE REPOSITORY DID NOT SEE IT
+
+`_verify/check_own_tree_clean.ps1` scans the tree with `--exclude _verify`, and
+`_verify/selfscan_published.ps1` scans the shipped tree with no exclusion at all. Two gates,
+one claim, two scopes -- and they agreed only BY ACCIDENT:
+
+    v0.5.0    0  `.mbt` files under `_verify/`   the published package scanned CLEAN
+    v0.5.1   24  `.mbt` files under `_verify/`   the published package scans RED
+
+0615 put those twenty-four files there, and nothing else about the package changed.
+`.moonignore` DELIBERATELY ships `_verify/` -- the gates are the evidence for every number
+this project publishes -- and the fixtures are `.mbt` files that carry a real defect ON
+PURPOSE, because `_verify/check_family_fires.ps1` reads them to prove each family fires.
+They are the gate's INPUTS. They are not the tool's source.
+
+### THE FIX IS THE PACKAGE, NOT THE GATE
+
+Giving the published scan the same exclusion would leave 24 of the package's 304 source
+files unread while the stage declared the package clean -- the shape the 0.4.30 lesson
+already condemned. So the fixtures STOP SHIPPING: `.moonignore` names the two directories,
+the two `.out` captures stay (they are not `.mbt`, and the self-scan's own self-test replays
+them), and the package gate asserts the exception IN THE OTHER DIRECTION -- it derives the
+fixture set from the tracked files and requires that none of them is in the package.
+
+MEASURED, with the two rules removed from `.moonignore`:
+
+    fixtures tracked: 24   in the package: 24   FAIL
+    PACKAGE FAILED: 1 problem(s).        (exit 1)
+
+and the file was restored byte-for-byte afterwards.
+
+### THE TWO GATES NOW MEASURE THE SAME FILES
+
+    the tree, scanned with --exclude _verify   files=280  actionable=0
+    the package, after the fix                  files=280  actionable=0
+
+and 280 is what the README already publishes as "this project's own source (280 files)". The
+package's source count and the documentation's count are the same number now, which is
+exactly what the 0.5.1 release was not.
+
+### AND THE SENTENCE THE PUBLISH MOVED
+
+The READMEs said "The published 0.5.0 artifact imports 92 symbols", and the published 0.5.1
+artifact was measured: 106 imports, 92 of them from `moonbitlang/async`, the contract 93 --
+the same numbers. So the sentence now names 0.5.1, and the number did not move.
