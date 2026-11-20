@@ -1,5 +1,6 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\src\jsoncli\jsoncli.wasm'
 $tmp  = Join-Path $env:TEMP 'payloadtype'
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null

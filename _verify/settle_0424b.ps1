@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
 $dir = Join-Path $env:TEMP 'settle0424b'
 New-Item -ItemType Directory -Force -Path (Join-Path $dir 'src') | Out-Null
@@ -32,7 +33,7 @@ Pop-Location
 # Now the type-lens question: does a type error inside a raise payload report?
 Write-Output ''
 Write-Output '===== analyzer: type error inside a raise payload ====='
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\src\jsoncli\jsoncli.wasm'
 $tmp  = Join-Path $env:TEMP 'raisepayload'
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null

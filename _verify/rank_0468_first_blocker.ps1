@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # Per-FILE FIRST BLOCKER across ALL SIX corpora, on the tree that shipped as
 # 7437666 (0467 + the corpus-derived grammar probe control).
 #
@@ -29,7 +30,7 @@
 # fate, and that is recoverable from each file's `read up to line N` line by reading
 # line N.
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $repos = Join-Path $root '.repos'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 

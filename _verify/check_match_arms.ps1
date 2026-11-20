@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # Verify a `match`'s ARMS ARE READ, that the findings which come back are TRUE
 # ones, and that a match whose arms the subset cannot read falls back to the
@@ -46,7 +47,7 @@ $ErrorActionPreference = 'Continue'
 #
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_match_arms.ps1
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $repos = Join-Path $root '.repos'

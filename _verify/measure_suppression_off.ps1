@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # Measure what the CURRENT region suppression hides.
 #
@@ -30,7 +31,7 @@ $ErrorActionPreference = 'Continue'
 # "patched by a run that was killed" is how a tree ends up analysing with no
 # suppression at all and nobody notices.
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 $repos = Join-Path $root '.repos'

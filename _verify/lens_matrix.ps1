@@ -1,5 +1,6 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 if (-not (Test-Path $wasm)) { Write-Output 'ABORT: build the analyzer first.'; exit 1 }
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'

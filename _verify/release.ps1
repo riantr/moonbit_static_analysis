@@ -1547,7 +1547,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # every `check_*` gate. It changed NO source file either -- the fixtures live
 # under `_verify`, which the self-scan excludes -- so it moved NO notice, and
 # `$SELF_FILES` and `$SSA_COST` are untouched.
-$NARRATIVE_CHAPTERS = '127'
+$NARRATIVE_CHAPTERS = '128'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2761,6 +2761,74 @@ if ($failed.Count -eq 0) {
     Write-Output ''
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'blindspot-rate-selftest'
+  }
+}
+
+# --- 4c  the published pointers -----------------------------------------------
+# `check_published_pointers.ps1` holds ONE invariant: a document that SHIPS must not
+# point at a file that does not ship. MEASURED 0617: `_verify/QA_TODO.md` was cited by
+# three SHIPPED documents -- `LOOP.md`, `_verify/check_family_fires.ps1` and
+# `_verify/check_own_tree_clean.ps1` -- and it was never COMMITTED, so the pointer
+# resolved on the maintainer's machine and in NO published copy: CI checks out clean.
+#
+# The gate is scoped NARROWLY on purpose. The wider rule -- "every path a shipped
+# document names must be in the published package" -- reports HUNDREDS of hits, and they
+# are cross-project references (`SKILL.md` names `riantr/pyroduct`'s `src/paths.mbt`)
+# and historical references to files that are SUPPOSED to be gone. The scoped rule -- the
+# file is in the package ON THIS MACHINE and is not tracked -- has exactly one hit on this
+# tree, and that hit was a defect.
+#
+# AND THE PIN IS NOT VACUOUS. Its self-test builds a FIXTURE in %TEMP% -- a minimal moon
+# module whose document names a file, and a git index that tracks everything EXCEPT that
+# file -- and requires the fixture to go RED with the right message, while an unmutated
+# control stays GREEN.
+#
+# It is placed here, with the other tree-reading gates and BEFORE the mutation gates, for
+# the same reason as the blind-spot rate: a gate that reads the tree must not read a
+# mutated one.
+$PP = Join-Path $root '_verify\check_published_pointers.ps1'
+if (-not (Test-Path $PP)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_published_pointers.ps1'
+  $failed += 'published-pointers'
+} else {
+  Stage 'the published pointers: every pointer in a shipped document resolves' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PP 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|DEAD POINTER|POINTERS|dead pointers|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'published-pointers' }
+  $stageName = 'the published pointers: every pointer in a shipped document resolves'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'published-pointers'
+  }
+}
+if ($failed.Count -eq 0) {
+  Stage 'the published pointers, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PP -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|OK:|SELFTEST|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'published-pointers-selftest' }
+  $stageName = 'the published pointers, shown to go red (its own self-test)'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'published-pointers-selftest'
   }
 }
 

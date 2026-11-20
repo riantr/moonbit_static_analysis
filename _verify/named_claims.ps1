@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # Are the gates' NAMED-TEST claims true?
 #
@@ -17,7 +18,7 @@ $ErrorActionPreference = 'Continue'
 #   [<pkg>] test <file>:<line> ("<test name>") failed: ...
 # and this reads the name out of the quotes.
 $ErrorActionPreference = 'Stop'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $nl = [string][char]10
 

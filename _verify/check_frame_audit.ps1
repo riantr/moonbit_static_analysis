@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # Verify the FRAME AUDIT is per binding, not per function.
 #
@@ -48,7 +49,7 @@ $ErrorActionPreference = 'Continue'
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_frame_audit.ps1
 
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $repos = Join-Path $root '.repos'

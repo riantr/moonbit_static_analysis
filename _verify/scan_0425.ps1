@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # 0.4.25 corpus scan -- the SECOND 0.4.25 scan.
 #
 # `fin0425_*.txt` already exists and was compared byte-for-byte against the
@@ -11,7 +12,7 @@
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify/scan_0425.ps1
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = "$root\_build\wasm\debug\build\moonbit_static_analysis.wasm"
 $repos = "$env:TEMP\riantr_sibling_scans\riantr_moonbit_labeler\.repos"
 

@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # Probe: why does a named/positional wrong argument type produce no finding?
 # Runs several shapes through the JSON API and prints every finding, so the
 # answer is read off the output rather than guessed from a test count.
@@ -8,7 +9,7 @@
 # backtick escaping, which is the kind of quoting that silently eats a
 # character.
 $ErrorActionPreference = 'Stop'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = "$root\_build\wasm\debug\build\src\jsoncli\jsoncli.wasm"
 $out  = "$env:TEMP\api_probe_0422"
 New-Item -ItemType Directory -Force -Path $out | Out-Null

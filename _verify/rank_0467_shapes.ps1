@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # Classify the 0467 per-file-first-blocker rows into SHAPES, and print every member.
 #
 # WHY A SCRIPT FOR THIS. Reading 57 rows and eyeballing a shape off each one is exactly
@@ -17,7 +18,7 @@
 #     form silently fails to match.
 #   * a failed `ReadAllLines` leaves the previous file's lines alive.
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $repos = Join-Path $root '.repos'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 

@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
 # WHICH of two explanations is right?
 #
@@ -20,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 # The discriminator: a local that is never read AT ALL, in a function that DOES
 # contain a match. Under (A) it is reported (arms contributed no reads either
 # way). Under (B) it is not (the presence of the region suppresses everything).
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 if (-not (Test-Path $wasm)) { Write-Output 'ABORT: build the analyzer first.'; exit 1 }

@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # DIRECTION 2: IS THE BEHAVIOR LENS OBSERVABLE AT ALL?
 #
 # MEASURED ANSWER, and it is the finding this direction was opened to look for. The answer is
@@ -58,7 +59,7 @@
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify/dir2_behavior_reach.ps1
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $repos = Join-Path $root '.repos'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 

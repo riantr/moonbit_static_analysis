@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # Per-FILE FIRST BLOCKER, measured on the tree that shipped as 12b38a3
 # (0466: `-> T noraise` / `-> T nocancel`, and 0466b `.. rest` in an array pattern).
 #
@@ -23,7 +24,7 @@
 # classifiers both produced plausible totals while returning DIFFERENT numbers for every
 # corpus, so no cross-corpus sanity check catches them.
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $repos = Join-Path $root '.repos'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 

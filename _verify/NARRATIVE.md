@@ -22870,3 +22870,68 @@ passes nothing, so the release path is unchanged -- and the gate can finally be 
 against the tree it was given.
 
 
+## 0617: A POINTER THAT RESOLVED ON ONE MACHINE AND IN NO PUBLISHED COPY -- AND TWENTY-SEVEN GATES THAT NAMED THE REPOSITORY INSTEAD OF THE TREE
+
+The work that follows 0616 was not a new increment of the QA plan. It was a re-reading of the evidence 0616 had already produced, and it turned up one thing that was wrong.
+
+THE FINDING. `_verify/QA_TODO.md` is named by three SHIPPED documents -- `LOOP.md`, `_verify/check_family_fires.ps1` and `_verify/check_own_tree_clean.ps1` -- and it was never COMMITTED. On the maintainer's machine the pointer RESOLVED: the file was on disk, and `moon package --list` even listed it, so the package built on this machine carried it. In CI, which checks out clean, the file is ABSENT -- so the published package does not carry it, and every reader of the published package meets a pointer that goes nowhere.
+
+This is the SAME SPECIES as 0614's defect -- "the published file count described the LOCAL tree, and NEITHER the PACKAGE NOR A CLEAN CHECKOUT". The difference is that 0614's was a NUMBER and this one is a NAME, and a name that resolves on the maintainer's machine is HARDER to notice than a number that is one too big: nothing is red, nothing fails, and the pointer is right. It is right on the ONE machine that already knew the answer.
+
+THE MEASUREMENT, both sets by `moon package --list --frozen` against `git ls-files`:
+
+    before the fix                          after the fix
+    package entries          604           package entries          604
+    tracked files            593           tracked files            595
+    published files          587           published files          589
+    packaged but untracked    17           packaged but untracked    15
+    shipped documents read   259           shipped documents read   261
+    dead pointers              1           dead pointers              0
+
+The one dead pointer was `_verify\QA_TODO.md`, named by the three documents above.
+
+### THE RULE IS NARROWER THAN IT LOOKS, AND THE NARROWNESS IS MEASURED
+
+The natural rule -- "every path a shipped document names must be in the published package" -- reports HUNDREDS of hits on this tree, and they are NOT defects:
+
+  * Four are CROSS-PROJECT references. `SKILL.md` names `riantr/pyroduct`'s `src/paths.mbt`, `src/algebra.mbt` and `src/slot.mbt`; `EXTENSIONS.md` names `moonbitlang/async`'s `src/internal/fd_util/pipe.mbt`. Those files are not in this package and are not supposed to be.
+  * The rest are HISTORICAL: the NARRATIVE and the scratch gates name the temporary files an experiment wrote. Those are gone, and they are SUPPOSED to be gone.
+
+So the rule that ships is the one that is unambiguously a defect: **the file is in the package ON THIS MACHINE -- the packager would ship it -- and it is not tracked, so the packager will not ship it in any published copy.** MEASURED over the package's text files: 1,293 distinct cited paths, 312 of them in the package, and SIX of those not tracked. Five of the six were untracked scratch files naming THEMSELVES, and an untracked file cannot leave a dead pointer behind, because it is not in the published package either -- so the citing document has to ship too. Under the scoped rule, exactly ONE.
+
+### THE GATE
+
+`_verify/check_published_pointers.ps1` holds that invariant, and it is not vacuous. Its `-SelfTest` builds a FIXTURE in `%TEMP%` -- a minimal moon module whose `README.md` names a file, and a git index that tracks everything EXCEPT that file -- and requires the fixture to go RED with the right message, while an unmutated control stays GREEN. MEASURED: the control exits 0, and the defect exits 1 with `DEAD POINTER: _verify\notes.md`.
+
+It runs BEFORE the mutation gates, with the other tree-reading gates, because a gate that reads the tree must not read a mutated one.
+
+### AND TWENTY-SEVEN GATES NAMED THE REPOSITORY INSTEAD OF THE TREE
+
+0616 fixed three gates that hardcoded this repository's absolute path, and 0616's own lesson was that "a script that reads a tree must NAME the tree". MEASURED at 0616's HEAD: **27** tracked `_verify/*.ps1` scripts still carried the hardcoded path. One of the 27 was run by the release gate (`dir2_behavior_reach.ps1`); the other 26 were the one-off probes that produced the published numbers.
+
+All 27 now find their root from `$PSScriptRoot` and accept a `-Root`, and the change is provably a no-op on this machine: `Split-Path -Parent $PSScriptRoot` resolves to the SAME STRING the literal did, for every one of the 27, and every file re-parses clean. MEASURED after the fix: **0** tracked scripts carry the path.
+
+Fifty-five UNTRACKED scratch scripts still carry it, and that is not a residue to be cleaned: they are in no clean checkout, so they are in no published package, and no shipped document names them.
+
+### AND TWO NUMBERS IN THE FILE THAT WAS BEING POINTED AT HAD MOVED
+
+`QA_TODO.md` carries claims that the measurements had already moved. They are corrected IN PLACE, each with the increment that moved it:
+
+  * C1, the test-declaration bodies: **1763 -> 1800**, MEASURED by the same self-scan the release gate runs: `NOTICES count=1800 test declaration is outside the analyzed subset`.
+  * C2, the unverified call sites: **4474 -> 4489**, MEASURED: `METRICS calls sites=5611 checked=1122 not-verified=4489 checked-share=19.9%`.
+  * And section 6's "do NOT claim" bullet -- "that the unverified call sites are all one cause" -- is now **REFUTED** rather than merely unmeasured, and the line is KEPT with the refutation written on it, because a deleted line hides the fact that the claim was once made.
+
+The self-scan that produced those numbers, on this tree: `files=280 parsed=280 actionable=0 notices=2128`, and the split `sig-unknown=191 not-callable=498 unresolved=0 method=3800 dotdot=0 sum=4489 not-verified=4489`.
+
+### THE PINS THAT MOVED, AND THE ONES THAT DID NOT
+
+`$NARRATIVE_CHAPTERS` moves **127 -> 128**, and the stage list grows by two:
+
+    the published pointers: every pointer in a shipped document resolves
+    the published pointers, shown to go red (its own self-test)
+
+The mutation counts do NOT move: 89 numbered gates, 519 live mutations, 477 expecting a kill, 400 naming the test. This increment adds a `check_*` gate and no `mutate_*` gate, and the README gate derives those numbers from the gate sources.
+
+AND THE VERSION LINE STAYS AT **0.5.0**, for the reason 0616 gave: the README gate reads the version out of `moon.mod` and requires every published document to name the released version. This increment changes no public interface. It adds a gate, and it makes a file ship that already should have.
+
+

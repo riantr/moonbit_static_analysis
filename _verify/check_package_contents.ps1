@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # Verify what the REGISTRY WILL RECEIVE.#
 # WHY THIS EXISTS. `.moonignore` is a list of intentions. A rule that is never
@@ -38,7 +39,7 @@ $ErrorActionPreference = 'Continue'
 # There is no -SelfTest switch, and that is deliberate: this gate is shown to go
 # red by INJECTING a defect into the tree and running it, which is a stronger
 # statement than a switch that reproduces the checker's own logic.
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $fail = 0
 
@@ -102,6 +103,7 @@ $evidence = @(
   @{ N = 'the notice-labels gate';       Want = 1;                R = '^_verify\\check_notice_labels\.ps1$' }
   @{ N = 'the frame-audit gate';        Want = 1;                R = '^_verify\\check_frame_audit\.ps1$' }
   @{ N = 'the match-arms gate';          Want = 1;                R = '^_verify\\check_match_arms\.ps1$' }
+  @{ N = 'the published-pointers gate';  Want = 1;                R = '^_verify\\check_published_pointers\.ps1$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }

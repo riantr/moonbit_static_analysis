@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # 0.4.26 corpus scan.
 #
 # Same six corpora and the same measurement as scan_0421/0423/0425, writing to
@@ -13,7 +14,7 @@
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File _verify/scan_0426.ps1
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = "$root\_build\wasm\debug\build\moonbit_static_analysis.wasm"
 $repos = "$env:TEMP\riantr_sibling_scans\riantr_moonbit_labeler\.repos"
 

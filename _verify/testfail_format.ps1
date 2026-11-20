@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # What does `moon test` actually print for a FAILING test?
 #
@@ -11,7 +12,7 @@ $ErrorActionPreference = 'Continue'
 # restored from those bytes, and the restore proven by SHA256. A wrong format guess
 # would make a new gate silently never match.
 $ErrorActionPreference = 'Stop'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moon = 'C:\Users\31379\.moon\bin\moon.exe'
 $path = Join-Path $root 'src\parser\parser.mbt'
 

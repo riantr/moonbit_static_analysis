@@ -1,4 +1,4 @@
-param([switch]$SelfTest, [string]$FixtureDir = '')
+param([switch]$SelfTest, [string]$FixtureDir = '', [string]$Root = '')
 $ErrorActionPreference = 'Continue'
 # THE FALSIFICATION SWEEP, AS A GATE.
 #
@@ -60,7 +60,7 @@ $ErrorActionPreference = 'Continue'
 #   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_family_fires.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_family_fires.ps1 -SelfTest
 
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 $repos = Join-Path $root '.repos'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'

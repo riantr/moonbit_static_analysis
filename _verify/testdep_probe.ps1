@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
 # Does ANALYSING test bodies (the biggest backlog row, 429) depend on `match` being
 # analysed first? That ordering is not obvious and it decides which item to build,
@@ -17,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 # A parser that skips test bodies wholesale reports nothing in any of them today,
 # so case 3 alone cannot answer the question. What answers it is the DIFFERENCE
 # between case 1 and case 2: that is the false positive that would be introduced.
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 if (-not (Test-Path $wasm)) { Write-Output 'ABORT: build the analyzer first.'; exit 1 }

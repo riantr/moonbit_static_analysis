@@ -2116,6 +2116,8 @@ and is not named here is a stage a reader cannot find:
     the false-positive pin, shown to go red (its own self-test)
     the blind-spot rate: the defects inside a `test` body
     the blind-spot rate, shown to go red (its own self-test)
+    the published pointers: every pointer in a shipped document resolves
+    the published pointers, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
     the notice reconciliation can go red (a real defect is seen)

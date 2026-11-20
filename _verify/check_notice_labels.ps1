@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = 'Continue'
+﻿param([string]$Root = '')
+$ErrorActionPreference = 'Continue'
 # Verify the NOTICE LABEL: a declared scope limit is not an error.
 #
 # WHY THIS EXISTS. Every ParseError the tool rendered carried the label
@@ -62,7 +63,7 @@
 # There is no -SelfTest switch, and that is deliberate: this gate is shown to go
 # red by INJECTING a defect into the tree and running it, which is a stronger
 # statement than a switch that reproduces the checker's own logic.
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $repos = Join-Path $root '.repos'

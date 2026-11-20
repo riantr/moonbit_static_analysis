@@ -1,8 +1,9 @@
+param([string]$Root = '')
 # Self-check through the JSON API, built by PowerShell because the payload
 # embeds a source file that is far past the 32,767-char Windows command-line
 # cap. --file exists for exactly this.
 $ErrorActionPreference = 'Stop'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = "$root\_build\wasm\debug\build\src\jsoncli\jsoncli.wasm"
 $out  = "$env:TEMP\api_selfcheck"
 New-Item -ItemType Directory -Force -Path $out | Out-Null

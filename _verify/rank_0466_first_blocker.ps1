@@ -1,3 +1,4 @@
+param([string]$Root = '')
 # Per-FILE FIRST BLOCKER over async 0.22.4, measured on the tree that shipped as 8902242
 # (0465: the `..` chain and 0465b loops in expression position).
 #
@@ -13,7 +14,7 @@
 # different bad classifiers both produced plausible totals while returning DIFFERENT
 # numbers for every corpus, so no cross-corpus sanity check catches them.
 $ErrorActionPreference = 'Continue'
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $repos = Join-Path $root '.repos'
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $corpus = Join-Path $repos 'moonbitlang\async\0.22.4'

@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
 $probe = Join-Path $env:TEMP ('lens_probe_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force -Path $probe | Out-Null
@@ -49,7 +50,7 @@ let _ = e
 $enc = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText((Join-Path $probe 'probe.mbt'), $src, $enc)
 
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 if (-not (Test-Path $wasm)) { Write-Output 'ABORT: build the analyzer first.'; exit 1 }
 

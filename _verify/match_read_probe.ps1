@@ -1,3 +1,4 @@
+param([string]$Root = '')
 $ErrorActionPreference = 'Stop'
 # Does skipping a `match` arm body LOSE the reads inside it?
 #
@@ -14,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 # seen by SOMETHING -- either the walk reaches it, or a skip notice suppresses the
 # finding. Those are very different situations and they decide whether the two
 # backlog items are independent.
-$root = 'D:\src\DeepseekHarness\Projects\xiuyueren\StaticAnalysis\moonbit_static_analysis'
+$root = if ($Root) { $Root } else { Split-Path -Parent $PSScriptRoot }
 $wasm = Join-Path $root '_build\wasm\debug\build\moonbit_static_analysis.wasm'
 $moonrun = 'C:\Users\31379\.moon\bin\moonrun.exe'
 if (-not (Test-Path $wasm)) { Write-Output 'ABORT: build the analyzer first.'; exit 1 }
