@@ -23180,3 +23180,69 @@ check saw `$null`, and the gate reported "the demo CLI could not be run" -- a ha
 failure dressed as a verdict. => `-PassThru`, and the PROCESS's own exit code.
 
 
+## 0621: THE WORKSPACE SKILL QUOTED A TEST COUNT THAT WAS TWENTY-TWO TIMES TOO SMALL, AND NO GATE HAD EVER READ IT
+
+The work that follows 0620 was a fifth re-reading of what this repository WRITES DOWN, and it found the same species in a document that does not ship at all.
+
+THE FINDING. `.dsh/skills/moonbit-static-analysis/SKILL.md` is TRACKED, and it carries a command block:
+
+    moon test --target js      # 73/73 (see the breakdown below)
+
+MEASURED, by running the suite:
+
+    js       1635 tests, 1635 passed
+    wasm     1800 tests, 1800 passed
+    wasm-gc  1635 tests, 1635 passed
+
+So the document said `73/73` where the tool runs `1635/1635`: twenty-two times too small, and it carried NO DATE -- which is exactly what makes a stale number read as a current one. The sentence under it said "4 targets × 59", the same error in a second shape.
+
+### WHY NOBODY NOTICED, AND IT IS NOT THE USUAL REASON
+
+The usual reason is that no gate read the document. That is true here too, but it is NOT the interesting half.
+
+0618 fixed the ROOT `SKILL.md`. This file has the SAME BASENAME and nothing else in common. The derivation gate reads `README.md`, `README.zh.md`, `SKILL.md`, `CHANGELOG.md` and `CHANGELOG.zh.md` -- five documents, and this is a SIXTH one with a name that ends in the same two words.
+
+And the pointer gate cannot reach it either: `.dsh` is a dot-prefixed folder, the packager ignores those BY DEFAULT, and `check_package_contents.ps1` lists this file among the tracked files that are EXPECTED to be absent from the package. So every rule scoped to shipped documents skips it -- and it is not a shipped document. It is the skill the WORKSPACE harness loads before an agent touches this tree.
+
+=> **BY NAME IS NOT BY PATH.** A file is identified by its path, and a gate that collects documents by basename will collect the wrong one of three.
+
+### THE OTHER TWO CLAIMS IN THE SAME FILE
+
+The remotes bullet said:
+
+    - Git remotes: `origin` = Gitee (primary), `github` = mirror; tags stay in lockstep with the
+      moon.mod version (v0.1.x). Push master + tag to both.
+
+Both halves are wrong, and both are measurable. MEASURED: `publish.yml` is a GitHub Actions workflow whose trigger is `on: push: tags`, and the release to the registry happens THERE -- so GitHub is the RELEASE site, not a mirror. And the module is on the `0.x` line at 0.5.0, so a literal `v0.1.x` in the tag rule names a version that was true once and is not true now.
+
+### THE GATE, AND IT DERIVES THE COUNTS
+
+The new section lives inside `_verify/check_readme_links.ps1` -- the gate that already RUNS the suite on all three targets -- and it holds four things.
+
+**THE TWO COUNTS ARE THE DERIVED STRINGS.** `$wasmStr` and `$jsStr` are what the suite produced a moment ago, and the workspace skill has to contain the same two strings the READMEs have to contain. Nothing is written down twice.
+
+**THE COMMAND BLOCK MAY CARRY NO OTHER COUNT.** The check is scoped to the ```console block, because a count ELSEWHERE in the file is a dated record -- pyroduct's `190/192` is one, and it is correct as of its date. A file-wide rule would have flagged it, and a rule that flags a true record is a rule that gets widened until it means nothing.
+
+**THREE SHAPES ARE BANNED.** "N targets × M" (the breakdown's shape), "`github` = mirror", and "(v0.1.x)". They are banned by SHAPE, not by their old values, so any future claim of that shape is caught and not just this one.
+
+**AND THE STRUCTURAL CLAIM IS CHECKED, NOT ASSUMED.** The document says js and wasm-gc are lower because `src/sa` needs the async runtime and is skipped on both. That is a measurable claim, and MEASURED it holds exactly:
+
+    pipeline 710   parser 396   flow 286   sa 165   lexer 99   moonfiles 67
+    report 30      core 18      types 11   statecheck 9   walk 9      = 1800 on wasm
+    1800 - 165 (src/sa) = 1635 on js and wasm-gc
+
+So the gate asserts that the difference between the two totals is EXACTLY the number of `test` declarations under `src/sa`. If a package other than `src/sa` ever stops running on js, the gate says so.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    131 -> 132
+
+and NOTHING ELSE. There is no new gate on disk -- the section is inside a gate that already exists and already has a stage -- and no new stage, so the READMEs' stage lists do not move, and the mutation counts do not move either: 89 numbered gates, 519 live mutations, 477 expecting a kill, 400 naming the test.
+
+AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: this increment changes no analyzer behaviour and no public interface. It corrects a document that an agent reads, and it makes that document quote the tool.
+
+### AND ONE HOUSE HYGIENE NOTE, MEASURED
+
+The 0620 chapter had been appended with LF into a CRLF file: MEASURED, 75 bare LFs, all of them inside that one chapter. This append normalises them, which changes no git blob -- `core.autocrlf=true` writes LF either way -- but it makes the working tree match the rule the file has always been kept by.
+
+

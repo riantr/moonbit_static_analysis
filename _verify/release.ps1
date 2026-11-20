@@ -1650,7 +1650,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # that says so), adds ONE `check_*` gate that RUNS the CLI and compares the
 # document against the tool's own output, and makes the tool and its own
 # documentation the same thing.
-$NARRATIVE_CHAPTERS = '131'
+$NARRATIVE_CHAPTERS = '132'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and

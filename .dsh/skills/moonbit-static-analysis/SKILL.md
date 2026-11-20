@@ -16,7 +16,7 @@ calls US — we never import pyroduct.
 ```console
 moon check --deny-warn      # 0 errors, 0 warnings — first gate
 moon fmt                   # format; `moon fmt --check` must stay clean
-moon test --target js      # 73/73 (see the breakdown below)
+moon test --deny-warn      # 1800/1800 on wasm; 1635/1635 on js and wasm-gc
 moon run src/cli           # program demo + file-kind demo + sample machine audit
 moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma VCs)
 ```
@@ -25,8 +25,11 @@ moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma V
 requires it in CI; without it a warning regression passes silently while the READMEs
 claim "0 errors, 0 warnings".
 
-The test breakdown is 4 targets × 59: pipeline, moonfiles (literate / .mbti /
-.mbtp), parser (.mbtx import block), statecheck, walk/types/interp.
+The suite covers the whole pipeline — lexer, parser, walk, types, interp, pipeline,
+moonfiles (literate / .mbti / .mbtp / .mbtx), statecheck, flow, report, core, sa
+and the CLI's own samples. The two numbers above are the ones the release gate
+MEASURED, and the READMEs quote the same two. js and wasm-gc are lower because
+`src/sa` needs the async runtime and is skipped on both.
 
 **`pkg.generated.mbti` is tracked.** Changing a public surface (`pub`, `pub(all)`,
 a struct field, an enum constructor) requires `moon info`, and the regenerated
@@ -112,8 +115,10 @@ is the taxonomy and the authority for what each suffix means):
   PowerShell mangles both streams (`2>&1` loses output, exit reads as -1); to
   see the real status use
   `Start-Process moon.exe -ArgumentList publish -NoNewWindow -Wait -PassThru -RedirectStandardOutput out.log -RedirectStandardError err.log`.
-- Git remotes: `origin` = Gitee (primary), `github` = mirror; tags stay in lockstep with the
-  moon.mod version (v0.1.x). Push master + tag to both.
+- Git remotes: `origin` = Gitee (the daily store), `github` = GitHub (the RELEASE
+  site — `publish.yml` runs there on a tag push and publishes to the registry); tags
+  stay in lockstep with the moon.mod version. Push master + tag to both, never with
+  `-u` — that would move the upstream off Gitee.
 - Registry README is the moon.mod `readme` file (English `README.md`; Chinese twin
   `README.zh.md` cross-linked).
 - After publishing a new version, bump `pyroduct/moon.mod`'s

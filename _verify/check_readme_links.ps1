@@ -270,11 +270,13 @@ function Get-TestCount {
     Failed = [int]$m.Groups[3].Value
   }
 }
+$suiteRan = $true
 $wasmT = Get-TestCount 'wasm'
 $jsT = Get-TestCount 'js'
 $gcT = Get-TestCount 'wasm-gc'
 if ($null -eq $wasmT -or $null -eq $jsT -or $null -eq $gcT) {
   Write-Output '  FAIL: the suite did not run, so the README''s test count cannot be checked.'
+  $suiteRan = $false
   $fail++
   $wasmT = @{ Passed = 0; Total = 1 }
   $jsT = @{ Passed = 0; Total = 1 }
@@ -368,6 +370,104 @@ foreach ($e in $expect) {
   $ok = $txt.Contains($e.S)
   Write-Output ("  {0,-14} {1,-34} {2}" -f $e.F, $e.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $e.S }))
   if (-not $ok) { $fail++ }
+}
+
+# --- 5b  the WORKSPACE SKILL: the one document nobody read ----------------------
+#
+# `.dsh/skills/moonbit-static-analysis/SKILL.md` is TRACKED, and the packager
+# EXCLUDES it -- a dot-prefixed folder is ignored by default -- so it is not
+# published. But it is the skill the workspace harness LOADS before an agent
+# touches this tree, so its numbers are read by exactly the reader they can
+# mislead.
+#
+# MEASURED (0621): it said `moon test --target js # 73/73`. The suite runs 1635
+# tests on js and 1800 on wasm, so the number was twenty-two times too small,
+# and it carried no date -- which is what makes a stale number read as a current
+# one. The sentence under it said "4 targets x 59", the same error in a second
+# shape.
+#
+# THE RULE: the workspace skill must quote the suite the way the tools measured
+# it -- the SAME two derived strings the READMEs must contain -- and its command
+# block must carry no OTHER count. The counts are not written down here:
+# `$wasmStr` and `$jsStr` are what the suite produced a moment ago.
+#
+# AND THE STRUCTURAL CLAIM IS CHECKED, NOT ASSUMED. The document says js and
+# wasm-gc are lower because `src/sa` needs the async runtime and is skipped on
+# both, so the difference between the two totals must be EXACTLY the number of
+# `test` declarations under `src/sa`. That is measurable from the tree, and it
+# is what makes the sentence true.
+$skillRel = '.dsh\skills\moonbit-static-analysis\SKILL.md'
+$skillPath = Join-Path $root $skillRel
+if (-not (Test-Path -LiteralPath $skillPath)) {
+  Write-Output ('  FAIL: ' + $skillRel + ' is not in the tree, so nothing can check what it says.')
+  $fail++
+} else {
+  $skillTxt = [System.IO.File]::ReadAllText($skillPath, [System.Text.Encoding]::UTF8)
+  foreach ($pair in @(@{ S = $wasmStr; N = 'wasm test count (the workspace skill)' },
+                      @{ S = $jsStr;  N = 'js/wasm-gc test count (the workspace skill)' })) {
+    $ok = $skillTxt.Contains($pair.S)
+    Write-Output ("  {0,-14} {1,-34} {2}" -f $skillRel, $pair.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $pair.S }))
+    if (-not $ok) { $fail++ }
+  }
+  # A count belongs in the command block. A count elsewhere in the file is a
+  # dated record (pyroduct's 190/192 is one) and is left alone -- so the check is
+  # scoped to the block, not to the file.
+  $cmdM = [regex]::Match($skillTxt, '(?s)```console\r?\n(.*?)\r?\n```')
+  if (-not $cmdM.Success) {
+    Write-Output '  FAIL: the workspace skill has no console block, so its command counts cannot be checked.'
+    $fail++
+  } else {
+    $cmd = $cmdM.Groups[1].Value
+    $badCounts = @()
+    foreach ($cm in [regex]::Matches($cmd, '(\d+)/(\d+)')) {
+      $seen = ($cm.Groups[1].Value + '/' + $cm.Groups[2].Value)
+      if ($seen -ne $wasmStr -and $seen -ne $jsStr) { $badCounts += $seen }
+    }
+    if ($badCounts.Count -gt 0) {
+      Write-Output ('  FAIL: the workspace skill''s command block quotes ' + ($badCounts -join ', ') +
+                    ', and the suite produced ' + $wasmStr + ' on wasm and ' + $jsStr + ' on js and wasm-gc.')
+      $fail++
+    } else {
+      Write-Output '  (the command block quotes only counts the suite produced)'
+    }
+  }
+  # The shape of the old breakdown -- "N targets x M" -- is the second copy of
+  # the same error, and it is banned BY SHAPE, so any future count in that shape
+  # is caught and not just this one.
+  if ($skillTxt -match 'targets\s+\u00d7') {
+    Write-Output '  FAIL: the workspace skill still describes the suite as "N targets x M"; that shape is wrong, and it is how the stale count came back.'
+    $fail++
+  }
+  # The remotes bullet: GitHub is where `publish.yml` runs and where the release
+  # happens, so calling it a mirror misdescribes it.
+  if ($skillTxt -match '`github`\s*=\s*mirror') {
+    Write-Output '  FAIL: the workspace skill calls the github remote a mirror; publish.yml runs there and that is where the release happens.'
+    $fail++
+  }
+  # And the version tag: the module is on the 0.x line, so a literal "v0.1.x" in
+  # the tag rule names a version that was true once and is not true now.
+  if ($skillTxt -match '\(v0\.1\.x\)') {
+    Write-Output '  FAIL: the workspace skill pins the tag rule to v0.1.x; the module is on the 0.x line and the version moves.'
+    $fail++
+  }
+  # THE STRUCTURAL CLAIM, MEASURED. The difference between the wasm total and the
+  # js total must be exactly the `test` declarations under src/sa.
+  $saTests = 0
+  $saDir = Join-Path $root 'src\sa'
+  if (Test-Path -LiteralPath $saDir) {
+    foreach ($f in (Get-ChildItem -LiteralPath $saDir -Filter '*_test.mbt' -File -Recurse)) {
+      $saTests += ([regex]::Matches([System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8), '(?m)^[ \t]*test[ \t]+"')).Count
+    }
+  }
+  if ($null -ne $wasmT -and $null -ne $jsT -and $suiteRan) {
+    if (($wasmT.Total - $jsT.Total) -ne $saTests) {
+      Write-Output ('  FAIL: wasm ran ' + $wasmT.Total + ' tests and js ran ' + $jsT.Total + ', a difference of ' +
+                    ($wasmT.Total - $jsT.Total) + ', but src/sa holds ' + $saTests + ' test declaration(s). The skill says the difference IS src/sa.')
+      $fail++
+    } else {
+      Write-Output ('  (the wasm/js difference of ' + ($wasmT.Total - $jsT.Total) + ' is exactly src/sa''s ' + $saTests + ' test declarations)')
+    }
+  }
 }
 # --- the README's own-source notice TABLE, and the numbers 0502 re-measured ----
 #
