@@ -1650,7 +1650,22 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # that says so), adds ONE `check_*` gate that RUNS the CLI and compares the
 # document against the tool's own output, and makes the tool and its own
 # documentation the same thing.
-$NARRATIVE_CHAPTERS = '133'
+# 0621. THE PIN MOVED TO 132 with chapter 0621, which changed NO source file: the
+# increment corrects a document the harness LOADS (`.dsh/skills/.../SKILL.md`,
+# which quoted a test count 22x too small and called the release site a mirror)
+# and adds the checks for it to a gate that already has a stage.
+# 0622. THE PIN MOVED TO 133 with chapter 0622, which changed NO source file
+# either: the increment corrects the SCOPE of a SHIPPED claim (`SKILL.md`'s
+# `.mbti` audit, whose "0 findings" was true and whose 1029/80 scope was not),
+# PINS the corpus's size, and makes the corpus stage MEASURE it every release.
+# 0623. THE PIN MOVED TO 134 with chapter 0623, which changed NO source file: the
+# increment corrects the OTHER skill document's `.mbti` evidence (the one the
+# workspace harness loads, whose corpus is another repository's dependency set
+# and whose size had rotted 71 -> 59), re-bases its live claim onto the corpus
+# this repository pins and measures, dates the control that cannot be
+# re-measured, and stops a SHIPPED gate from being red the moment it is
+# unpacked.
+$NARRATIVE_CHAPTERS = '134'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and

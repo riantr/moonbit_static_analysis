@@ -23299,3 +23299,78 @@ and nothing else. There is no new gate on disk -- the checks are inside a gate t
 AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public interface. It corrects a shipped document's SCOPE, and it makes the sentence name the tree it is about.
 
 
+## 0623: THE WORKSPACE SKILL'S `.mbti` EVIDENCE WAS MEASURED OVER ANOTHER REPOSITORY'S CORPUS, AND THE PACKAGED GATE IS RED OUT OF THE BOX
+
+The work that follows 0622 was a seventh re-reading of what this repository WRITES DOWN, and it found the same species in the OTHER skill file -- the one 0621 already gated, for a different number. Then, because that file is not published, it found a second thing behind it.
+
+THE FINDING. `.dsh/skills/moonbit-static-analysis/SKILL.md` is the skill the workspace harness LOADS before an agent touches this tree. It is not in the package (a dot-prefixed folder is excluded by default), but it is TRACKED and it is READ. Its `.mbti` bullet says:
+
+    Verified over the 71 generated interfaces in pyroduct/.mooncakes: 71/71
+    clean, and 4/4 injected defects caught in 71/71.
+
+MEASURED, today, in this workspace:
+
+    pyroduct/.mooncakes   59 pkg.generated.mbti   (moonbitlang 47, riantr 12)
+    the analyzer over it  SUMMARY files=580 parsed=580 actionable=0 notices=2830
+                          unreliable=0 withheld=0 unchecked=3978 total=2830
+    rendered findings     0
+    unknown type ... in interface signature findings   0
+
+So the corpus holds 59, not 71. And it is NOT this repository's to pin: `pyroduct/moon.mod` pins `moonbitlang/async@0.22.4`, `riantr/moonbit_doubleML@0.64.0` and `riantr/moonbit_static_analysis@0.1.1`, so the corpus's SIZE is a function of ANOTHER repository's dependency set. A line of this tree changes and the number moves; nothing here moves it.
+
+### IT WAS STALE THE DAY AFTER IT WAS WRITTEN
+
+`git blame` puts both lines on `9da0e44` (2026-10-05). The NEXT day, `7de6dba` (2026-10-06) -- "docs: refresh the .mbti evidence and the test counts, both of which had gone stale" -- re-ran the negative control against the parser of that day and published a DIFFERENT number: 5 defect classes caught, 2 negative controls silent, 7/7. Its own words: "the previous number described a different parser."
+
+Its diff shows what it refreshed: EXTENSIONS.md's evidence TABLE ROW. It did not touch this file. The `.mbti` bullet still says 4/4.
+
+=> ONE FACT, TWO COPIES, AND THE REFRESH REACHED ONE OF THEM. The copy that was refreshed is the one a reader is likelier to find, because EXTENSIONS.md SHIPS and the `.dsh` copy does not. The copy that was NOT refreshed is the one the workspace harness loads, and it has been carrying a number its own author had already retired -- for six weeks.
+
+### THE SECOND FINDING, AND IT IS ABOUT THE PUBLISHED ARTIFACT
+
+The `.dsh` file is not published, so 0621's check for it -- "the workspace skill's test counts" -- was added to `check_readme_links.ps1`, and THAT GATE SHIPS. And the gate says, in capitals, that if the file is not in the tree then NOTHING CAN CHECK WHAT IT SAYS, and it counts that as a FAILURE.
+
+So the published package carries a gate that demands a file the published package does not contain. MEASURED, on the real artifact -- the zip that `moon package` writes, extracted, and the gate that came out of it run against the package it came from:
+
+    the package        _build/publish/riantr-moonbit_static_analysis-0.5.0.zip
+    the gate           _verify/check_readme_links.ps1   (present)
+    .dsh/              NOT PRESENT   (the packager skips a dot-prefixed folder)
+    the run            exit code 1
+    the one problem    FAIL: .dsh\skills\moonbit-static-analysis\SKILL.md is not
+                       in the tree, so nothing can check what it says.
+    VERIFY FAILED: 1 problem(s).
+
+=> A SHIPPED GATE THAT IS RED THE MOMENT IT IS UNPACKED. The reader who installs this module and runs the gate it ships gets a failure about a file the module never shipped, and the message says the opposite of the truth: the file is absent BY DESIGN.
+
+### THE FIX FOR BOTH: A SKIP IN A PACKAGE, A FAILURE IN A CHECKOUT
+
+The two cases are told apart by the checkout's own marker. `.git` is a dot-prefixed folder too, so the packager leaves it behind: a tree that HAS one is a checkout, a tree that has none is a published package. So the absence of the workspace skill is a FAILURE in a checkout -- where the file is tracked, and its absence is a defect -- and a SKIP in a published package -- where the file is inapplicable, and the gate says so OUT LOUD, because a silent skip hides the fact that a check did not run.
+
+And the live claim is re-based onto the corpus this repository PINS and MEASURES: `moonbitlang/core@0.1.20261117+06da1ed44`, 133 generated interfaces, 0 `unknown type ... in interface signature` findings. That is the SAME corpus 0622 put in the shipped `SKILL.md`, with the SAME pins, and the corpus stage re-measures both numbers on every release.
+
+The injected-defect control KEEPS ITS DATE, because it cannot be re-measured over a corpus that no longer has that size. It was re-run on 2026-10-06, against that day's parser, over this module's own interface shapes: 5 defect classes caught, 2 negative controls silent, 7/7. A dated old number is a record; an undated one is a defect -- and the undated 4/4 was not merely old, it was RETIRED.
+
+### THE GATE: SECTION 5d, AND IT READS THE OTHER SKILL DOCUMENT
+
+0621 put the workspace skill's test counts in section 5b of `check_readme_links.ps1`. Section 5d checks the SAME file's `.mbti` evidence, and it derives the document's copy from the pins 0622 made:
+
+    $CORE_IFACES = '133'      the generated interfaces in the pinned corpus
+    $CORE_UNKTYPE = '0'       the unknown-type findings on them
+
+so four things are held at once: the corpus VERSION the document names, the interface COUNT, the CLEAN RATIO and the unknown-type COUNT. And the control must CARRY ITS DATE ON THE CONTROL'S OWN LINE -- the file already said "as of 2026-10-06" about a DIFFERENT measurement, so a bare date check would have passed on the wrong sentence. And the stale scope is banned BY PHRASE -- "71 generated interfaces", "71/71", "4/4 injected" and "pyroduct/.mooncakes" -- because a ban on the bare NUMBER would flag the dated mention of the old experiment.
+
+### AND THE SAME NUMBER, ELSEWHERE, IS A RECORD AND IS LEFT ALONE
+
+`EXTENSIONS.md:659` carries the same "71 个真实文件零误报、4/4 缺陷抓到". It is NOT a defect: it sits inside the section `### 0.3.5：把「看不懂」和「有问题」分开报（2026-10-06）`, whose own note says "上面的数字是 0.3.5 的历史记录，保留不改". => THE QUESTION IS NOT "is this number current" but "is this number a PRESENT FACT or the RECORD OF A RELEASE". A number written into a dated release-note section is a record. The same number written into a skill file an agent reads as current guidance is a defect. 0623 changed one and left the other, on purpose.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    133 -> 134
+
+and nothing else. There is no new gate on disk -- the checks are inside a gate that already exists and already has a stage -- and no new stage, so the READMEs' stage lists do not move, and the mutation counts do not move either: 89 numbered gates, 519 live mutations, 477 expecting a kill, 400 naming the test.
+
+AND THE PIN'S OWN LOG GAINED THE TWO ENTRIES IT WAS MISSING: 0621 and 0622 moved this count to 132 and 133 without a movement note, so the block claimed to be the history of the number and had a hole in it. All three notes are there now.
+
+AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public interface. It re-bases one workspace document's claim onto a corpus this repository measures, dates a control that cannot be re-measured, and stops a published gate from being red the moment it is unpacked.
+
+

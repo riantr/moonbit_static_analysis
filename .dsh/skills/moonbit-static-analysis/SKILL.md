@@ -65,8 +65,12 @@ is the taxonomy and the authority for what each suffix means):
 - `.mbti` — interface audit. The line grammar matches what `moon info` emits
   (import blocks, `#attribute` lines, const/let, `impl ... for T`, suberror,
   using re-exports, async/extern, type params, labeled params, noraise/cancel).
-  Verified over the 71 generated interfaces in pyroduct/.mooncakes: 71/71
-  clean, and 4/4 injected defects caught in 71/71.
+  Verified over the **133** generated interfaces of the pinned
+  `moonbitlang/core` corpus (`0.1.20261117+06da1ed44`, the one the release gate
+  measures): **133/133** clean -- 0 `unknown type ... in interface signature`
+  findings. The injected-defect control was re-run on 2026-10-06 against that
+  day's parser: 5 defect classes caught, 2 negative controls silent (7/7), over
+  this module's own interface shapes.
 - `.mbtp` — logic-side lint. A lint, NOT a substitute for `moon prove`.
 - `.mbtx` — a standalone script (no module/package config). Its import block
   is `"path" [@alias] [*]`: modifiers TRAIL the path and are ordered. Recorded

@@ -398,9 +398,29 @@ foreach ($e in $expect) {
 # is what makes the sentence true.
 $skillRel = '.dsh\skills\moonbit-static-analysis\SKILL.md'
 $skillPath = Join-Path $root $skillRel
+# 0623. AND THE ABSENCE IS A FAILURE IN A CHECKOUT AND A SKIP IN A PACKAGE.
+#
+# MEASURED: this gate SHIPS, and the packager EXCLUDES a dot-prefixed folder,
+# so the published package carries a gate that demands a file the package does
+# not contain. MEASURED on the real zip -- the one `moon package` writes,
+# extracted, and the gate that came out of it run against the package it came
+# from: exit code 1, and the one problem is THIS line. A SHIPPED GATE THAT IS
+# RED THE MOMENT IT IS UNPACKED.
+#
+# THE TWO CASES ARE TOLD APART BY THE CHECKOUT'S OWN MARKER. `.git` is a
+# dot-prefixed folder too, so the packager leaves it behind: a tree that HAS one
+# is a checkout, a tree that has none is a published package. In a CHECKOUT the
+# file is TRACKED, so its absence is a defect and stays a FAILURE; in a PACKAGE
+# the file is INAPPLICABLE, so the absence is a SKIP -- and the skip says so OUT
+# LOUD, because a silent skip hides the fact that a check did not run.
+$inCheckout = Test-Path -LiteralPath (Join-Path $root '.git')
 if (-not (Test-Path -LiteralPath $skillPath)) {
-  Write-Output ('  FAIL: ' + $skillRel + ' is not in the tree, so nothing can check what it says.')
-  $fail++
+  if ($inCheckout) {
+    Write-Output ('  FAIL: ' + $skillRel + ' is not in the tree, so nothing can check what it says.')
+    $fail++
+  } else {
+    Write-Output ('  SKIP: ' + $skillRel + ' is not in this tree -- a published package does not carry a dot-prefixed folder -- so the numbers in it are not checked here.')
+  }
 } else {
   $skillTxt = [System.IO.File]::ReadAllText($skillPath, [System.Text.Encoding]::UTF8)
   foreach ($pair in @(@{ S = $wasmStr; N = 'wasm test count (the workspace skill)' },
@@ -1016,6 +1036,95 @@ if (-not ($cifM.Success -and $cukM.Success -and $cverM.Success -and $cfilM.Succe
       $fail++
     } else {
       Write-Output ('  SKILL.md does not carry the stale scope: ' + $stale + '  OK')
+    }
+  }
+}
+
+# --- 5d  the SAME `.mbti` claim, in the OTHER SKILL document ------------------------
+#
+# 0618's lesson, again: `SKILL.md` is not ONE FILE. This one is
+# `.dsh/skills/moonbit-static-analysis/SKILL.md` -- the skill the workspace
+# harness loads before an agent touches this tree, and the one 0621 gated for
+# its test counts.
+#
+# ITS `.mbti` EVIDENCE SAID: "Verified over the 71 generated interfaces in
+# pyroduct/.mooncakes: 71/71 clean, and 4/4 injected defects caught in 71/71."
+#
+# MEASURED (0623): `pyroduct/.mooncakes` holds 59 generated interfaces today,
+# not 71 -- and that corpus is a function of ANOTHER repository's dependency
+# set (`pyroduct/moon.mod` pins `moonbitlang/async@0.22.4`,
+# `riantr/moonbit_doubleML@0.64.0` and `riantr/moonbit_static_analysis@0.1.1`),
+# so its size moves WITHOUT a line of this tree changing. The claim carried no
+# date, so a number that was true on 2026-10-05 read as true today.
+#
+# AND IT WAS STALE THE DAY AFTER IT WAS WRITTEN: the claim is from 9da0e44
+# (2026-10-05), and 7de6dba (2026-10-06) re-ran the control against the parser
+# of that day and published 7/7 -- "the previous number described a different
+# parser" -- but its diff refreshed EXTENSIONS.md's table row and NOT this file.
+# ONE FACT, TWO COPIES, AND THE REFRESH REACHED ONE OF THEM.
+#
+# THE FIX: the live claim is RE-BASED onto the corpus this repository PINS and
+# MEASURES -- the same one 0622 put in the shipped `SKILL.md`, with the same
+# pins -- and the control KEEPS ITS DATE, because it cannot be re-measured over
+# a corpus that no longer has that size. A dated old number is a record; an
+# undated one is a defect.
+$dshRel = '.dsh\skills\moonbit-static-analysis\SKILL.md'
+$dshPath = Join-Path $root $dshRel
+if (-not (Test-Path -LiteralPath $dshPath)) {
+  # THE SAME TWO CASES AS 5b: a FAILURE in a checkout, a SKIP in a published
+  # package. The file is TRACKED, so in a checkout its absence is a defect.
+  if ($inCheckout) {
+    Write-Output ('  FAIL: ' + $dshRel + ' is not in the tree, so nothing can check what it says.')
+    $fail++
+  } else {
+    Write-Output ('  SKIP: ' + $dshRel + ' is not in this tree -- a published package does not carry a dot-prefixed folder -- so its .mbti evidence is not checked here.')
+  }
+} else {
+  $dshTxt = [System.IO.File]::ReadAllText($dshPath, [System.Text.Encoding]::UTF8)
+  # THE DOCUMENT'S OWN FORMATTING IS NORMALISED AWAY, for the reason 5c gives.
+  $dshPlain = $dshTxt.Replace(',', '').Replace('**', '')
+  $dshWant = @(
+    @{ S = $coreVersion; N = 'the corpus version (the pinned tree)' }
+    @{ S = ($coreIfaces + ' generated interfaces'); N = 'the corpus interface count' }
+    @{ S = ($coreIfaces + '/' + $coreIfaces + ' clean'); N = 'the clean ratio' }
+    @{ S = ($coreUnk + ' `unknown type ... in interface signature`'); N = 'the unknown-type count' }
+  )
+  foreach ($e in $dshWant) {
+    $ok = $dshPlain.Contains($e.S)
+    Write-Output ("  {0,-20} {1,-34} {2}" -f 'the workspace skill', $e.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $e.S }))
+    if (-not $ok) { $fail++ }
+  }
+  # AND THE CONTROL MUST CARRY ITS DATE, ON ITS OWN LINE. The file already said
+  # "as of 2026-10-06" about a DIFFERENT measurement, so a bare date check would
+  # have passed on the wrong sentence. The sentence may WRAP, so the line and the
+  # one after it are read together.
+  $dshLines = @($dshTxt -split "`r?`n")
+  $ctrlIdx = -1
+  for ($i = 0; $i -lt $dshLines.Count; $i++) {
+    if ($dshLines[$i].Contains('injected-defect control')) { $ctrlIdx = $i; break }
+  }
+  if ($ctrlIdx -lt 0) {
+    Write-Output '  MISSING: the workspace skill does not name the injected-defect control'
+    $fail++
+  } else {
+    $ctrl = $dshLines[$ctrlIdx]
+    if ($ctrlIdx + 1 -lt $dshLines.Count) { $ctrl = $ctrl + ' ' + $dshLines[$ctrlIdx + 1] }
+    $ctrl = $ctrl.Replace(',', '').Replace('**', '')
+    foreach ($need in @('2026-10-06', '7/7')) {
+      $ok = $ctrl.Contains($need)
+      Write-Output ("  {0,-20} {1,-34} {2}" -f 'the workspace skill', ('the control carries ' + $need), $(if ($ok) { 'OK' } else { 'MISSING: ' + $need }))
+      if (-not $ok) { $fail++ }
+    }
+  }
+  # AND THE STALE SCOPE MUST NOT COME BACK. The phrases are named VERBATIM, and
+  # they are PHRASES: the dated mention of the old experiment says "the
+  # injected-defect control", which is not one of them.
+  foreach ($stale in @('71 generated interfaces', '71/71', '4/4 injected', 'pyroduct/.mooncakes')) {
+    if ($dshPlain.Contains($stale)) {
+      Write-Output ('  FAIL: the workspace skill carries the stale scope: ' + $stale)
+      $fail++
+    } else {
+      Write-Output ('  the workspace skill does not carry the stale scope: ' + $stale + '  OK')
     }
   }
 }
