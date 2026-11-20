@@ -23936,3 +23936,104 @@ AND THE VERSION LINE STAYS AT 0.5.0 in this increment: it changes no analyzer be
 interface.
 
 
+## 0630: THE GATE THAT CAUGHT ITS OWN RULE, AND A DOCUMENT MAY QUOTE A DEAD ADDRESS
+
+### WHAT WAS WRONG
+
+The release gate for 0629 came back RED, and the row that was red was the row
+0629 had just added:
+
+    the registry URLs: the documents must point at URLs that answer    False   39
+    mutation gates                                                          False     0
+
+The second row is a CASCADE -- the mutation suite is skipped once an earlier
+stage has failed -- and the first row is the defect. What it said:
+
+    FAIL: LOOP.md:836 names https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis,
+          and it answers 404. The document points the reader at a URL that is not there.
+
+AND THE DOCUMENT WAS RIGHT. LOOP.md rule 30 -- WRITTEN BY 0629 -- is ABOUT that
+address. It records the measurement that the address is dead and gives the live
+one, and the line BELOW the URL says so: measured (2026-11-20, GET): **404**; the
+live one is `api/v0/manifest/...`, **200**, carrying `latest_version`,
+`build_status` and a `versions` array of **68** entries.
+
+=> THE 0629 INCREMENT PUT THE DEAD ADDRESS BACK INTO A CURRENT DOCUMENT. The
+   rule that describes the defect quotes the defect. So the gate that was
+   written to catch exactly this found exactly this -- one day later, in the
+   rule that introduced it.
+
+### THE CAUSE
+
+The gate's SCOPE was decided per DOCUMENT: the current documents are probed, the
+dated records are not. That is right, and it was not enough. A current document
+can QUOTE a dead URL -- that is what a rule about a dead URL looks like -- and
+the gate had no way to tell a QUOTATION from a POINTER, because at the level it
+was looking at they are the same thing: a line in a file.
+
+So the gate asked the wrong question. It asked "does this URL answer?", and the
+question it should have asked is "does this document SEND a reader to this
+URL?".
+
+### THE RULE
+
+A document STATES A STATUS for a URL when the status sits on the URL's own line
+or on one of the next TWO lines. That is a quotation: the document is recording
+what the URL answered, and no reader is being sent anywhere. A pointer says what
+a URL is FOR ("check the registry manifest before choosing a number"), and that
+sentence carries no status.
+
+=> THE WINDOW IS FORWARD ONLY, and that is the measured reason. The answer to a
+   URL FOLLOWS the URL in every shape this repository uses. A 404 that PRECEDES
+   a URL is a CONDITION, not an answer:
+
+        If the registry answers 404, the module is not published; check
+        `https://mooncakes.io/api/v0/manifest/...` first.
+
+   A window that looked backwards would swallow that pointer, and a dead
+   manifest URL would walk past the gate. FORWARD ONLY is the narrow side of
+   that trade: a record that states its status BEFORE the URL is reported as a
+   defect, which is VISIBLE, and never silent.
+
+=> THE SKIP IS PRINTED. A gate that quietly ignores a URL has become a gate that
+   cannot see it. Every quoted address is printed with the line that quotes it,
+   so a reader can tell "probed and fine" from "not a pointer".
+
+MEASURED on the tree as it stands: 8 URL(s) in the current documents -- 6
+pointed at, 1 quoted, 1 shape. The 6 pointed at answer 200; the quoted one is
+LOOP.md:836; the shape is the prebuild template.
+
+### IT IS SHOWN TO GO RED, AND TO STAY SILENT WHEN IT SHOULD
+
+The self-test now injects SIX defects. FIVE have to be CAUGHT, and ONE has to be
+SILENT, because a rule that can only say FAIL is not a rule:
+
+- a URL under a family that is gone -- caught, "it answers 404";
+- a module that does not exist -- caught, "it answers 404";
+- a manifest URL swapped for one that answers 200 with something else -- caught;
+- a host that does not resolve -- caught, "DID NOT ANSWER";
+- a document QUOTES a dead address as a measurement -- the copy must stay GREEN,
+  and the gate must say it read it as a quotation, not that it never looked;
+- THE QUOTATION LOSES ITS STATUS, and the dead address becomes a pointer again
+  -- caught, "it answers 404". This is the fault that proves the rule is
+  LOAD-BEARING rather than an escape hatch: without the status, the same address
+  is a defect again.
+
+=> A FAULT THAT DID NOT INJECT LOOKS IDENTICAL TO A FAULT THAT WAS NOT CAUGHT.
+   The silent case therefore also has to prove that the defect LANDED and that
+   the gate CLASSIFIED it -- so the self-test requires the skipped list to name
+   the injected address, and not merely that no problem was reported.
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES         30 -> 31
+    $NARRATIVE_CHAPTERS 140 -> 141
+
+No analyzer behaviour changed and no public interface changed: the gate reads
+documents and probes URLs, and this increment changes which occurrences it
+probes.
+
+AND THE VERSION LINE STAYS AT 0.5.0 in this increment: it guards a document and
+it changes no analyzer behaviour and no public interface.
+
+

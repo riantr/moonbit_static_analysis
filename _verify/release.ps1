@@ -1686,7 +1686,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # claim in the same sentence that measurement refuted, and adds ONE `check_*`
 # gate that PROBES the URLs the documents name. It moves the `$LOOP_RULES` pin
 # with the rule it adds.
-$NARRATIVE_CHAPTERS = '140'
+$NARRATIVE_CHAPTERS = '141'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1698,10 +1698,10 @@ $NARRATIVE_CHAPTERS = '140'
 # The pin moved 28 -> 29 with rule 29, and the rule is the lesson this increment
 # measured: a pointer that RESOLVES is not a pointer that resolves to the RIGHT
 # thing, and the goal's own checklist was a comment until this increment.
-# The pin moved 29 -> 30 with rule 30, and the rule is the lesson this increment
-# measured: a URL in prose is a comment until somebody follows it -- and the
-# probe that follows it can lie twice.
-$LOOP_RULES = '30'
+# The pin moved 30 -> 31 with rule 31, and the rule is the lesson this increment
+# measured: a gate that probes a URL has to tell a POINTER from a QUOTATION --
+# a current document may QUOTE a dead address, and 0630's own rule did.
+$LOOP_RULES = '31'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2796,7 +2796,7 @@ if ($failed.Count -eq 0) {
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       foreach ($ln in ($o -split "`r?`n")) {
-        if ($ln -match '(FAIL|URLS OK|answered 200|a shape, not a URL)') { Write-Output ('  ' + $ln.Trim()) }
+        if ($ln -match '(FAIL|URLS OK|answered 200|a shape, not a URL|quoted, not pointed at)') { Write-Output ('  ' + $ln.Trim()) }
       }
       if ($code -ne 0) { $script:stageOk = $false }
     }

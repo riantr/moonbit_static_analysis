@@ -56,6 +56,46 @@ $ErrorActionPreference = 'Continue'
 #     and "the URL is dead" are different claims, and a reader has to be told
 #     which one it is.
 #
+# A POINTER AND A QUOTATION ARE DIFFERENT THINGS, AND 0630 LEARNED IT HERE.
+#
+# 0630 ADDED LOOP RULE 30, and that rule QUOTES the address that was dead --
+# because the rule is about that address. So the rule put a dead URL back into
+# a CURRENT document, and this gate -- which had just been written to catch
+# exactly that -- reported its OWN rule as a defect:
+#
+#     FAIL: LOOP.md:836 names https://mooncakes.io/api-new/... and it answers 404
+#
+# The DOCUMENT was right. It says, on the next line, that the address was
+# measured on 2026-11-20 and answers 404, and then gives the live one. That is
+# a RECORD of a measurement, not a place to send a reader. The gate's SCOPE
+# was wrong: it decided "is this document current?" per DOCUMENT, and asked
+# "is this URL alive?" per URL -- and a current document may QUOTE a dead URL.
+#
+# => THE DISCRIMINATOR IS THE STATUS THE DOCUMENT STATES. A pointer says what a
+#    URL is FOR ("check the registry manifest before choosing a number"); a
+#    quotation says what the URL ANSWERED ("measured, GET: 404"). A document
+#    that states a status for a URL is quoting a measurement, and the URL is
+#    not a promise.
+#
+# => WHERE THE STATUS MAY SIT. The URL's own line, or one of the next TWO
+#    lines. FORWARD ONLY, and that is deliberate: the answer to a URL FOLLOWS
+#    the URL in every shape this repository uses, and a "404" that PRECEDES a
+#    URL is a CONDITION, not an answer --
+#
+#        If the registry answers 404, the module is not published; check
+#        `https://mooncakes.io/api/v0/manifest/...` first.
+#
+#    ... where a backward-looking window would swallow a live pointer and let a
+#    dead manifest URL walk past the gate. FORWARD ONLY is the narrow side of
+#    the trade: a record that states its status BEFORE the URL is reported as a
+#    defect, which is SAFE (a red gate is visible) and never silent.
+#
+# => THE SKIP IS REPORTED, NOT HIDDEN. A gate that quietly ignores a URL has
+#    become a gate that cannot see it. Every quoted address is printed with
+#    the line that quotes it and the status that makes it a record, so a
+#    reader can tell the difference between "probed and fine" and "not a
+#    pointer".
+#
 # AND THE OTHER DIRECTION: a URL that ANSWERS 200 but is not what the document
 # says it is, is just as wrong as a 404. The documents say the manifest returns
 # the latest version plus the full version list, so a manifest URL whose body
@@ -161,6 +201,10 @@ function Get-DocumentUrls([string]$Root) {
   $out = @()
   $byUrl = @{}
   $order = @()
+  # THE STATUS A DOCUMENT STATES FOR A URL. 404 and 410 are the two answers
+  # that mean "this address is not there", and they are the answers a
+  # MEASUREMENT records. (See the header for why the window is FORWARD only.)
+  $statusMark = [regex]'(?i)\b(404|410)\b'
   foreach ($d in $DOCS) {
     $p = Join-Path $Root $d
     if (-not (Test-Path -LiteralPath $p)) { continue }
@@ -181,6 +225,14 @@ function Get-DocumentUrls([string]$Root) {
         $inFamily = ($uhost -eq 'mooncakes.io') -or $uhost.EndsWith('.mooncakes.io')
         if (-not $inFamily) { continue }
         $isShape = ($u -match '[<>]')
+        # A QUOTATION OR A POINTER. The document states a status for a URL on
+        # the URL's own line or on one of the next TWO lines; a status there
+        # means the document is quoting a measurement, so the URL is not a
+        # promise. FORWARD ONLY -- see the header.
+        $isRecord = $false
+        for ($k = $i; $k -le ($i + 2) -and $k -lt $lines.Count; $k++) {
+          if ($statusMark.IsMatch($lines[$k])) { $isRecord = $true; break }
+        }
         # THE CLAIM. The document says what this URL is FOR, and the sentence
         # that introduces a URL is often the line ABOVE it. The rule that holds
         # the answer to the promise is keyed on THAT, not on the URL's own
@@ -189,12 +241,20 @@ function Get-DocumentUrls([string]$Root) {
         # the path says `/manifest/`.
         $claims = ($lines[$i] -match 'manifest') -or ($prevLine -match 'manifest')
         if (-not $byUrl.ContainsKey($u)) {
-          $byUrl[$u] = [pscustomobject]@{ Url = $u; Shape = $isShape; ClaimsManifest = $false; Where = @() }
+          $byUrl[$u] = [pscustomobject]@{ Url = $u; Shape = $isShape; ClaimsManifest = $false; Where = @(); PointerWhere = @(); RecordWhere = @() }
           $order += $u
         }
         $rec = $byUrl[$u]
         $rec.Where += ($d + ':' + ($i + 1))
-        if ($claims) { $rec.ClaimsManifest = $true }
+        if ($isRecord) {
+          $rec.RecordWhere += ($d + ':' + ($i + 1))
+        } else {
+          $rec.PointerWhere += ($d + ':' + ($i + 1))
+          # THE CLAIM IS OR-ed OVER THE POINTERS ONLY. A quotation's claim is
+          # about a past measurement; it must not put a pointer's obligation
+          # on a URL that is only quoted.
+          if ($claims) { $rec.ClaimsManifest = $true }
+        }
       }
       $prevLine = $lines[$i]
     }
@@ -207,10 +267,22 @@ function Get-DocumentUrls([string]$Root) {
 function Get-UrlProblems([string]$Root) {
   $probs = @()
   $found = 0
+  # THE QUOTATIONS THIS RUN SKIPPED. A URL that every current document only
+  # QUOTES -- states a status for, instead of pointing at -- is not probed.
+  # The list is kept so that the run can PRINT it: a skip that is not shown
+  # is a skip nobody can audit.
+  $script:skipped = @()
   foreach ($u in @(Get-DocumentUrls $Root)) {
     if ($u.Shape) { continue }
+    # A QUOTATION, NOT A POINTER. Every place the current documents name this
+    # URL states a status for it, so no reader is sent there. Skipped, and
+    # reported below -- not skipped silently.
+    if ($u.PointerWhere.Count -eq 0) {
+      $script:skipped += ('    quoted, not pointed at: ' + $u.Url + '  (' + ($u.RecordWhere -join ', ') + ')')
+      continue
+    }
     $found++
-    $where = ($u.Where -join ', ')
+    $where = ($u.PointerWhere -join ', ')
     $code = Get-UrlStatus $u.Url
     if ($code -eq 0) {
       $probs += ('FAIL: ' + $where + ' names ' + $u.Url + ', and the host DID NOT ANSWER after 3 attempts. A URL that could not be checked is not a URL that is fine.')
@@ -331,6 +403,47 @@ if ($SelfTest) {
         return $true
       }
     }
+    # THE TWO FAULTS THAT CARRY THE NEW RULE. A rule that only ever says
+    # "FAIL" is not a rule; it needs a case where the RIGHT ANSWER IS SILENCE,
+    # and a case where the silence is EARNED.
+    [pscustomobject]@{
+      N = 'a document QUOTES a dead address as a measurement'
+      Mode = 'skip'
+      ExpectSkip = 'api-new/v0/manifest/riantr/moonbit_static_analysis'
+      Apply = {
+        param($dir)
+        $p = Join-Path $dir 'README.md'
+        if (-not (Test-Path -LiteralPath $p)) { return $false }
+        $t = [System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)
+        if ($t.IndexOf('api-new/v0/manifest/') -ge 0) { return $false }
+        $t = $t + "`n`nMEASURED, and QUOTED rather than pointed at:`n`https://mooncakes.io/api-new/v0/manifest/riantr/moonbit_static_analysis` answers 404.`n"
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
+    [pscustomobject]@{
+      N = 'the QUOTATION loses its status, and the dead address becomes a pointer again'
+      Expect = 'it answers 404'
+      Apply = {
+        param($dir)
+        $p = Join-Path $dir 'LOOP.md'
+        if (-not (Test-Path -LiteralPath $p)) { return $false }
+        $lines = @([System.IO.File]::ReadAllLines($p, [Text.Encoding]::UTF8))
+        $idx = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+          if ($lines[$i] -match 'api-new/v0/manifest/') { $idx = $i; break }
+        }
+        if ($idx -lt 0) { return $false }
+        $hit = -1
+        for ($k = $idx + 1; $k -le ($idx + 2) -and $k -lt $lines.Count; $k++) {
+          if ($lines[$k] -match '\b404\b') { $hit = $k; break }
+        }
+        if ($hit -lt 0) { return $false }
+        $lines[$hit] = [regex]::Replace($lines[$hit], '\b404\b', 'no-answer')
+        [System.IO.File]::WriteAllLines($p, $lines, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
   )
 
   foreach ($f in $faults) {
@@ -347,6 +460,26 @@ if ($SelfTest) {
     }
     $probs = @(Get-UrlProblems $copy)
     $checked++
+    # TWO KINDS OF FAULT. One has to be CAUGHT; one has to be SILENT, because
+    # the right answer for a quotation is not a failure. And a fault that did
+    # not inject looks identical to a fault that was not caught -- so the
+    # silent case also has to prove that the defect LANDED and that the gate
+    # classified it, rather than that the gate simply never looked.
+    if ($f.Mode -eq 'skip') {
+      $sk = ($script:skipped -join ' | ')
+      if ($probs.Count -gt 0) {
+        Write-Output ('  FAIL: the gate reported a QUOTATION as a defect.')
+        foreach ($pr in $probs) { Write-Output ('        ' + $pr) }
+        $bad++
+      } elseif ($sk -notmatch [regex]::Escape($f.ExpectSkip)) {
+        Write-Output ('  FAIL: the quotation was not classified as one -- the gate did not even see it ("' + $f.ExpectSkip + '").')
+        Write-Output ('        skipped: ' + $sk)
+        $bad++
+      } else {
+        Write-Output '  OK: the gate read it as a quotation, not a pointer, and did not report it.'
+      }
+      continue
+    }
     $hit = @($probs | Where-Object { $_ -match [regex]::Escape($f.Expect) })
     if ($hit.Count -ge 1) {
       Write-Output ('  OK: the gate caught it: ' + $hit[0])
@@ -359,14 +492,14 @@ if ($SelfTest) {
 
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
-  if ($checked -ne 5) {
-    Write-Output ('  FAIL: ' + $checked + ' of 5 checks ran.')
+  if ($checked -ne 7) {
+    Write-Output ('  FAIL: ' + $checked + ' of 7 checks ran.')
     $bad++
   }
 
   Write-Output ''
   if ($bad -eq 0) {
-    Write-Output ('SELFTEST OK: the control passed, and ' + $faults.Count + ' injected defects were caught.')
+    Write-Output ('SELFTEST OK: the control passed, and ' + $faults.Count + ' injected defects were each caught, or read as a quotation.')
     exit 0
   }
   Write-Output ('SELFTEST FAILED: ' + $bad + ' problem(s).')
@@ -377,9 +510,10 @@ if ($SelfTest) {
 Write-Output '=== the URLs the documents name, and whether they answer ==='
 $urls = @(Get-DocumentUrls $root)
 $shapes = @($urls | Where-Object { $_.Shape })
-$concrete = @($urls | Where-Object { -not $_.Shape })
-$distinct = @($concrete | Select-Object -ExpandProperty Url | Select-Object -Unique)
-Write-Output ('  ' + $urls.Count + ' URL(s) in the current documents: ' + $distinct.Count + ' concrete, ' + $shapes.Count + ' shape(s)')
+$pointed = @($urls | Where-Object { -not $_.Shape -and $_.PointerWhere.Count -gt 0 })
+$quoted = @($urls | Where-Object { -not $_.Shape -and $_.PointerWhere.Count -eq 0 })
+$distinct = @($pointed | Select-Object -ExpandProperty Url | Select-Object -Unique)
+Write-Output ('  ' + $urls.Count + ' URL(s) in the current documents: ' + $distinct.Count + ' pointed at, ' + $quoted.Count + ' quoted, ' + $shapes.Count + ' shape(s)')
 foreach ($s in ($shapes | Select-Object -ExpandProperty Url | Select-Object -Unique)) {
   Write-Output ('    a shape, not a URL (it cannot be fetched): ' + $s)
 }
@@ -389,6 +523,7 @@ foreach ($u in $distinct) {
 }
 
 $probs = @(Get-UrlProblems $root)
+foreach ($sk in $script:skipped) { Write-Output $sk }
 foreach ($p in $probs) {
   Write-Output ''
   Write-Output $p
