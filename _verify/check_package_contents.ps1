@@ -112,6 +112,10 @@ $evidence = @(
   # TOOLCHAIN. It is evidence because the thing it checks IS published: the
   # shipped skill files tell the reader which command to run.
   @{ N = 'the toolchain-claims gate';    Want = 1;                R = '^_verify\\check_toolchain_claims\.ps1$' }
+  # 0626. AND THE GATE THAT HOLDS THE PUBLISHED CLAIM TO THE PUBLISHED ARTIFACT. It
+  # is evidence because the thing it checks IS published: the README publishes
+  # numbers, and the released artifact has to be the one they were measured with.
+  @{ N = 'the release-freshness gate';   Want = 1;                R = '^_verify\\check_release_freshness\.ps1$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }

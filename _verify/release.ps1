@@ -1670,7 +1670,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # toolchain no longer has "still works", adds ONE `check_*` gate that ASKS the
 # toolchain, and leaves the DATED copy in `EXTENSIONS.md` alone -- a section
 # stamped 2026-10-06 is a record, and a record is not rewritten.
-$NARRATIVE_CHAPTERS = '136'
+$NARRATIVE_CHAPTERS = '137'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -4769,6 +4769,55 @@ if (-not (Test-Path -LiteralPath $TSC -PathType Leaf)) {
     Write-Output ''
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'transfer-scope'
+  }
+}
+# --- the release-freshness stage -----------------------------------------------
+# 0626. THE PUBLISHED TOOL AND THE PUBLISHED DOCUMENTS DESCRIBE DIFFERENT
+# ANALYZERS, AND NOTHING MEASURED THE GAP.
+#
+# The released artifact was cut at the tag `v0.5.0` (`e11da29`), and the FIRST
+# commit that touched `src/` after that tag is increment 0613 -- the MSA-012 fix.
+# `moon.mod` still says `version = "0.5.0"`, so `src/` has moved 25 files and
+# 1838 lines under a version that is ALREADY on the registry.
+#
+# MEASURED, on this tree, the same flags, the two builds:
+#
+#   the RELEASED 0.5.0   files=280 notices=2128 calls 5611/1122/4489
+#                         native-surface 1344     actionable=19
+#   THIS TREE'S BUILD   files=280 notices=2128 calls 5611/1122/4489
+#                         native-surface 1344     actionable=0
+#
+# Every number agrees except the one the documentation is proudest of. The
+# false-positive pin measures the LOCAL build, so it is right about the tree and
+# silent about the release; `publish.yml` checks `moon.mod` against the TAG, so
+# it cannot publish a second 0.5.0 -- but nothing compared the published CLAIM
+# with the published ARTIFACT. The two could disagree by construction.
+#
+# So the stage asks one question, OFFLINE: does the version in `moon.mod` still
+# describe the source it names? And the answer has to be in the documents.
+$RF = Join-Path $root '_verify\check_release_freshness.ps1'
+if (-not (Test-Path -LiteralPath $RF -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_release_freshness.ps1'
+  $failed += 'release-freshness'
+} else {
+  Stage 'the release freshness: the version must still describe the source' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $RF 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(FAIL|FRESHNESS OK|ABORT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'release-freshness' }
+  $stageName = 'the release freshness: the version must still describe the source'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'release-freshness'
   }
 }
 # --- verdict -----------------------------------------------------------------

@@ -584,6 +584,13 @@ with `--honor-nosec`: the analyzer before these two rules reported **nineteen** 
 suppressions, every one of them this repository's own prose, and the tree with the two
 rules reports **zero** — and the two rules move no notice at all.
 
+**AND THE RELEASED ARTIFACT IS OLDER THAN THIS TREE.** The version in `moon.mod` is
+**0.5.0**, and the source has moved since that version was set, so the artifact on the
+registry is an OLDER BUILD of this analyzer than the one the numbers above were measured
+with — the released one does not reproduce them. `_verify/check_release_freshness.ps1`
+holds this sentence to the version: while the source moves under a version the sentence
+has to be here, and when the next release bumps the version it has to go.
+
 **AND IT REACHES THE FINDING'S OWN LINE, NOT THE WHOLE STATEMENT.** `bandit` unions the
 issue's line with the *context's* line range, so there a `// nosec` on the first line of a
 multi-line call silences what is three lines down. Here the line is the line: a `// nosec`
@@ -2137,6 +2144,7 @@ and is not named here is a stage a reader cannot find:
     the three bandit transfers: measured, not asserted
     the confidence demotion: measured, not asserted
     the transfer scope: the requirements document, the three rows, and where they landed
+    the release freshness: the version must still describe the source
 
 The list is DERIVED from `_verify/release.ps1` and checked by
 `_verify/check_readme_links.ps1`, so a stage added to the gate and not named here makes

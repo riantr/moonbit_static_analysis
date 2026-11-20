@@ -502,6 +502,11 @@ id 上，于是记号后面那个记号不是 id）。在本工具自己的源�
 规则之前报出**十九**条过期抑制，每一条都是本仓库自己的散文；而带上这两条规则的树报出**零**条——
 而且这两条规则一条 notice 都没有移动。
 
+**而且已发布的产物比这棵树旧。** `moon.mod` 里的版本是 **0.5.0**，而这个版本定下来之后源码又动过，
+所以注册表上的那个产物是**比上面那些数字所用的那次构建更旧的构建**——它复现不出那些数字。
+`_verify/check_release_freshness.ps1` 把这句话钉在版本上：源码在一个版本底下动了，这句话就必须在；
+下一次发版把版本抬上去，这句话就必须没有。
+
 **而且它只够到发现自己所在的那一行，不够到整条语句。** `bandit` 把问题所在行和**上下文**的
 行范围并在一起，所以在它那儿，写在多行调用第一行上的 `// nosec` 能压掉三行之后的那个名字。
 这里行就是行：写在语句第一行上的 `// nosec` **够不到**下面的名字，而那个名字会在它自己的位置
@@ -1769,6 +1774,7 @@ stage，就是读者找不到的 stage：
     the three bandit transfers: measured, not asserted
     the confidence demotion: measured, not asserted
     the transfer scope: the requirements document, the three rows, and where they landed
+    the release freshness: the version must still describe the source
 
 这份名单是从 `_verify/release.ps1` **推出来的**，并由 `_verify/check_readme_links.ps1`
 检查：所以一个加了门禁、却没在这里点名的 stage，会让那道门禁变红，而不是悄悄地让门禁做的事

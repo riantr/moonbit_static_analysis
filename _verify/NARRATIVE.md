@@ -23558,3 +23558,123 @@ interface. It corrects the floor in every place it is written down, removes an e
 inserted three times, and adds the locks that catch both.
 
 
+## 0626: THE RELEASED TOOL AND THE RELEASED DOCUMENTS DESCRIBE DIFFERENT ANALYZERS, AND NOTHING MEASURED THE GAP
+
+Not a new increment of the QA plan. A tenth re-reading of what this repository WRITES DOWN --
+and this time the thing that had rotted was not a number but a RELATIONSHIP. The numbers the
+documents publish are measured by THIS TREE'S BUILD; the tool the documents tell the reader to
+run is the RELEASED artifact; and the two had quietly stopped being the same program.
+
+### THE MEASUREMENT, AND IT IS ONE NUMBER OUT OF MANY
+
+The registry's `latest_version` is `0.5.0`, `build_status: success`, created 2026-11-18. The tag
+`v0.5.0` is `e11da29` -- which is also the commit that set `version = "0.5.0"` in `moon.mod`.
+And `src/` has moved since: SIX commits after that tag touched it, 25 files, 1838 insertions and
+27 deletions. The FIRST of those six is `267ff05`, increment 0613 -- "THE ANALYZER READ ITS OWN
+DOCUMENTATION AS TWELVE SUPPRESSIONS".
+
+So the released artifact was cut BEFORE the MSA-012 fix. MEASURED, on this tree, with
+`--exclude _verify --metrics --honor-nosec`:
+
+    the RELEASED 0.5.0   files=280  parsed=280  notices=2128  unchecked=4589
+                         calls sites=5611 checked=1122 not-verified=4489 checked-share=19.9%
+                         native-surface modelled=1344 declared=0 covered=0 missing=0
+                         actionable=19
+
+    THIS TREE'S BUILD   files=280  parsed=280  notices=2128  unchecked=4589
+                         calls sites=5611 checked=1122 not-verified=4489 checked-share=19.9%
+                         native-surface modelled=1344 declared=0 covered=0 missing=0
+                         actionable=0
+
+Every number agrees except the one the documentation is proudest of. And the nineteen are not a
+mystery: all nineteen are `MSA-012 StaleNosec`, and every one of them is this repository's own
+prose -- the `// nosec` documentation in `src/sa/profile.mbt` and the `// nosec` test fixtures in
+`src/sa/sa_0507_test.mbt`. The released artifact reports the analyzer BEFORE the fix; the tree
+reports the analyzer AFTER it.
+
+### AND THE DOCUMENTATION PUBLISHES THE "BEFORE" NUMBER AS ITS OWN
+
+README.md's `nosec` section says, in its own words: "the analyzer BEFORE these two rules
+reported NINETEEN stale suppressions, every one of them this repository's own prose, and the
+tree with the two rules reports ZERO". README.zh.md says the same in Chinese, with the same
+nineteen.
+
+The reader who downloads the tool the README names gets the "before" analyzer, and the README
+describes the "after" one. NEITHER DOCUMENT IS LYING -- each is true -- and together they are a
+trap, because the reader cannot see that they are talking about DIFFERENT programs.
+
+### WHY NOTHING CAUGHT IT
+
+Three places could have, and each of them is looking somewhere else.
+
+  * The false-positive pin, `_verify/check_own_tree_clean.ps1`, measures the LOCAL build. It is
+    right about the tree and silent about the release.
+  * `publish.yml` checks that `moon.mod` agrees with the TAG. That is why a second 0.5.0 cannot
+    be published -- and it is exactly why the version can sit still while the source moves under
+    it.
+  * `check_readme_links.ps1` DERIVES the documents' numbers from the pins in `release.ps1`. The
+    pins are measured on the local build, so the derivation is faithful -- to the wrong program.
+
+So the published claim and the published artifact could disagree BY CONSTRUCTION, and the only
+thing that noticed was a reader.
+
+### THE GATE THAT MEASURES IT NOW
+
+`_verify/check_release_freshness.ps1`, and it is OFFLINE: no registry, no network, no compiler,
+no corpus. It asks git two questions and the documents one.
+
+  * The ANCHOR is the commit that SET the version -- `git log -S<version> -- moon.mod`. The
+    version is bumped at release time, so the anchor IS the release commit.
+  * If `src/` has moved after the anchor, the released artifact is an OLDER BUILD than this
+    tree, and the documents MUST SAY SO.
+  * If `src/` has NOT moved, the sentence must be GONE -- a statement that says the release is
+    stale when it is not is a lie in the other direction.
+
+=> THE VERSION MUST STILL DESCRIBE THE SOURCE IT NAMES.
+
+The sentence is keyed to the VERSION and not to a count, and that is what makes the gate stable.
+The version changes only at release time, so between releases the condition is constant-true and
+the sentence stays; at the next release the anchor moves with the version, the sentence has to be
+rewritten, and once the release catches up it has to be removed. A gate that counted the moved
+LINES would go red on every commit -- the number that moves is the wrong number to pin.
+
+### THE PICKAXE THAT FOUND NOTHING, AND SAID SO CONFIDENTLY
+
+The anchor search is `git log -S'version = "0.5.0"' -- moon.mod`, and it matches NOTHING.
+MEASURED: the same command with `-S0.5.0` matches the release commit. The reason is not git: a
+native command argument that carries DOUBLE QUOTES loses them on the way out of PowerShell, so
+git was asked for `version = 0.5.0` and found nothing.
+
+And the failure was SILENT in the worst way. The gate reported "no commit in this repository ever
+set version 0.5.0, so the anchor cannot be read" -- a confident, specific and completely wrong
+statement about a version that has been in `moon.mod` since it was written. A reader that finds
+nothing must say that it FOUND nothing, and not that the thing is not there.
+
+=> A PICKAXE ON A TOKEN, NOT ON A LINE THAT QUOTES. And the candidate is VERIFIED, not trusted:
+the commit has to BE the one that set the version, so its own `moon.mod` must carry the version
+and its parent's must not.
+
+### IT IS SHOWN TO GO RED
+
+MEASURED: the control green, and FOUR injected defects each caught with the defect NAMED -- the
+statement missing from README.md, the statement missing from README.zh.md, the statement naming
+a version that is not the module's, and the statement present when the source has NOT moved.
+That last one cannot be reached from the tree as it stands, so it is exercised on the CHECK with
+the condition flipped: a gate that only knows how to fail in one direction does not know the
+other direction.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    136 -> 137
+
+and one new line in each README's stage list (48 -> 49), one new evidence entry in
+`check_package_contents.ps1` (34 -> 35), and 16 -> 17 check gates on disk, 11 -> 12 with a live
+`-SelfTest`. No other published number moves: 89 numbered gates, 519 live mutations, 477
+expecting a kill, 400 naming the test; 280 own-source files, 2128 notices, 5611/1122/4489 call
+sites, 1344 native surface.
+
+AND THE VERSION LINE STAYS AT 0.5.0. This increment changes no analyzer behaviour and no public
+interface. It measures a gap that was there, says so in the documents where the numbers are
+published, and adds the gate that holds the two to each other.
+
+
