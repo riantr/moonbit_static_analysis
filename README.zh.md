@@ -64,14 +64,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.5.0
+moon add riantr/moonbit_static_analysis@0.5.1
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.5.0",
+  "riantr/moonbit_static_analysis@0.5.1",
 }
 ```
 
@@ -139,7 +139,7 @@ LinkError: WebAssembly.Instance(): Import #5 "moonbitlang/async" "thread_pool/ma
 被升到了 0.22.6，而 0.22.6 多声明了三个必须由宿主提供的符号——同样那三个 console job。
 自带 0.22.5 的工具链提供不出它们。0.4.45 又要了那三个，外加两个新的，因为它用的运行时
 就是随工具链一起发的那一个。如果你是在 0.4.38 上撞到了这个错误：先用 **0.4.37**，或者升级
-你的 MoonBit 工具链，或者换到 **0.5.0**。
+你的 MoonBit 工具链，或者换到 **0.5.1**。
 
 升级前还有一件事要知道：`moonbitlang/core/async` 目前仍被 core 团队标为 **experimental**，
 所以用到它的那些包在自己的 `moon.pkg` 里明确写了出来。随工具链一起发、但还没稳定——这
@@ -294,7 +294,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.5.0_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.5.1_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # 版本没定下来
 ```
@@ -501,11 +501,6 @@ let y = cmd()          // nosec MSA-002      -- 只压掉这一行上的那一�
 id 上，于是记号后面那个记号不是 id）。在本工具自己的源码上开着 `--honor-nosec` 实测：这两条
 规则之前报出**十九**条过期抑制，每一条都是本仓库自己的散文；而带上这两条规则的树报出**零**条——
 而且这两条规则一条 notice 都没有移动。
-
-**而且已发布的产物比这棵树旧。** `moon.mod` 里的版本是 **0.5.0**，而这个版本定下来之后源码又动过，
-所以注册表上的那个产物是**比上面那些数字所用的那次构建更旧的构建**——它复现不出那些数字。
-`_verify/check_release_freshness.ps1` 把这句话钉在版本上：源码在一个版本底下动了，这句话就必须在；
-下一次发版把版本抬上去，这句话就必须没有。
 
 **而且它只够到发现自己所在的那一行，不够到整条语句。** `bandit` 把问题所在行和**上下文**的
 行范围并在一起，所以在它那儿，写在多行调用第一行上的 `// nosec` 能压掉三行之后的那个名字。

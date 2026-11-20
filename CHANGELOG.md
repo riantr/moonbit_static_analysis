@@ -4827,6 +4827,103 @@ with the control that says the specification is what makes the difference:
     THE CONTROL: the same artifact, the same program, WITHOUT the specification
         SUMMARY  files=1  parsed=1  actionable=0
 
+## 0.5.1 — the newest core refused this tree, and a release is gated on the core
+
+**WHAT THIS RELEASE IS.** A PATCH version, and the reason is a property a user can feel in
+the worst way: the release would not have built at all. Nothing about what the analyzer
+finds changes -- the family roster is at eighteen, and this release adds none of them --
+but the tree the registry compiles had to be repaired before it could be published.
+
+    0611  the coverage measurement named two files, and one of them was wrong in its own
+          header
+    0612  the deck's own course map, and the map that names every deck named nine
+    0613  the analyzer read its own documentation as twelve suppressions, and every one
+          of them was prose
+    0614  the published file count described the local tree, and neither the package nor a
+          clean checkout
+    0615  a switch that selected nothing, five gates that could not go red, and a pinned
+          corpus the toolchain could not compile
+    0616  the remainder was one number, and the sentence beside it named two of its five
+          reasons -- and the two it named were the ones that report
+    0617  a pointer that resolved on one machine and in no published copy -- and
+          twenty-seven gates that named the repository instead of the tree
+    0618  the skill file taught the sentence that had been refuted, and nothing read its
+          numbers
+    0619  the contract document said the evidence was twenty-four times smaller than it
+          is, and nothing read it
+    0620  the shipped CLI skill file showed a finding as an error that the tool demotes to
+          a notice, and nothing ran the CLI to check
+    0621  the workspace skill quoted a test count that was twenty-two times too small, and
+          no gate had ever read it
+    0622  the workspace skill measured its clean `.mbti` audit over a corpus that no longer
+          exists, and nobody held the scope
+    0623  the workspace skill's `.mbti` evidence was measured over another repository's
+          corpus, and the packaged gate is red out of the box
+    0624  two shipped documents told the reader a command the toolchain no longer has
+          still works, and the claim carried its own expiry date
+    0625  the floor moved and only the READMEs moved with it, and the patch that fixed
+          the last defect inserted itself three times
+    0626  the published tool and the published documents describe different analyzers, and
+          nothing measured the gap
+    0627  the cause the repository published for the proof failure was refuted by a WHY3
+          experiment, and it was in four places at once
+    0628  the goal's own checklist was a comment, and two of its pointers resolved to the
+          wrong place
+    0629  a document named a URL that does not exist, and the probe that should have
+          caught it lied twice
+    0630  the gate that caught its own rule, and a document may quote a dead address
+    0631  the newest core refused the tree, and a release is gated on the core
+
+### THE RELEASE WOULD NOT HAVE BUILT, AND THE RUNNER IS NOT THE MACHINE THAT CUTS IT
+
+MEASURED 2026-11-20, on the tree as it stood, against the newest toolchain the CI runner
+installs (`moon 0.1.20261119`, core `0.10.22+124d61d05`):
+
+    moon check --deny-warn   ->  exit 1
+      Error Warning (unused_package): Unused package 'moonbitlang/core/async'
+      Failed with 0 warnings, 2 errors.
+
+`moon check --deny-warn` is the FIRST thing the CI gate runs. Both workflows install the
+toolchain with `install/unix.sh` and NO version, so the runner gets `latest` -- and the
+installer resolves the core SEPARATELY, as `cores/core-$version.tar.gz`, which with
+`version=latest` is the NEWEST core rather than the one the toolchain shipped with. So the
+runner's core moves on its own, independently of the toolchain's version, and a tree that
+compiles on the machine that cuts the release can still fail on the runner.
+
+### THE TREE HAS TO BUILD ON BOTH CORES, AND THAT IS THE HARD PART
+
+Dropping the import breaks the OLD core -- `Cannot use 'async fn main': package
+moonbitlang/async is not imported` (error 4122). Keeping it breaks the NEW one --
+`unused_package` (warning 0029), which `--deny-warn` turns into an error. The import is
+REQUIRED by core 0.10.21 and UNUSED by core 0.10.22, so it STAYS and the warning is
+silenced in the two packages that need it: `warnings = "-unused_package"`, PER PACKAGE, so
+an import that is genuinely unused somewhere else still gets reported.
+
+THE ARTIFACT DOES NOT MOVE: with and without the suppression the wasm has **106** imports
+and **92** of them from `moonbitlang/async`, the contract stays at **93** symbols, and the
+floor stays `moon 0.1.20261117 or later` -- the new core declares 213 host externs and the
+runtime implements 288 more, and together they still cover all 93.
+
+### A RELEASE IS NOW GATED ON THE CORE
+
+`_verify/regate_newest_toolchain.ps1` runs the tree against the newest toolchain -- it is
+the tool that found all of this -- and the release gate grew a stage that asks the registry
+which core is the newest and holds it to the one this tree was re-gated on. When the
+registry publishes a newer core, that stage goes RED and says what to do about it.
+
+### AND THE DOCUMENTS THAT SHIP WERE CHECKED AGAINST WHAT THEY SAY
+
+Two of them were wrong, and both fixes are measured:
+
+* the workspace skill named `mooncakes.io/api-new/v0/manifest/...` to check the registry
+  before choosing a version number. That URL answers **404**; the live one is
+  `api/v0/manifest/...`, and it answers **200** carrying `latest_version`, `build_status`
+  and the full version list. The version segment in that path is **ignored** -- `.../9.9.9`
+  answers 200 with the LATEST manifest -- so a reader who typed a version into it had
+  proved nothing.
+* the goal's own checklist named a line that had moved and a file that had gained a
+  sibling, so two of its pointers resolved to the wrong place.
+
 ## 0.4.13 — the last five: three causes, one of them a trap in narrowing a check
 
 0.4.12 left 5. **All five are analyzer defects** — pyroduct's code is clean, and

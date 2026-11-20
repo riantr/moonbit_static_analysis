@@ -2,7 +2,8 @@
 
 Written 2026-11-19, from the deep QA of this repository (the numbers below are
 MEASURED, through the published artifact `moonx riantr/moonbit_static_analysis@latest`
-= **0.5.0**, `build_status: success`, the same version as `moon.mod`).
+= **0.5.0** at the time of the QA, `build_status: success`; the release this tree
+carries now is named in `CHANGELOG.md`).
 
 This file is the PLAN. It is not a record of what happened — that is
 `_verify/NARRATIVE.md`. It is not a promise of an order — that is `LOOP.md`.
