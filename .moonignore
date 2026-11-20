@@ -99,6 +99,46 @@ _verify/commitmsg*.txt
 # The per-file scan dumps `remeasure.ps1` writes. Also not underscore-prefixed.
 _verify/remeasure_out/
 
+# THE DELIBERATELY DEFECTIVE FIXTURES. 0632.
+#
+# These are the two directories that hold the `.mbt` files each family needs to
+# prove it FIRES: `_verify/fixtures/families/` (one fixture per family) and
+# `_verify/fixtures/blindspot/` (the same shapes wrapped in a `test` declaration).
+# Every one of them contains a real defect on purpose -- a division by a literal
+# zero, a subscript at -1, an argument of the wrong type. That is the POINT of
+# them, and `_verify/check_family_fires.ps1` reads them to measure the families.
+#
+# THEY ARE NOT THE ANALYZER'S SOURCE, AND SHIPPING THEM MADE THE ARTIFACT FAIL
+# ITS OWN CERTIFICATION. MEASURED 2026-11-20, on the published 0.5.1:
+#
+#     the published 0.5.1, scanned by the analyzer that shipped with it
+#       SCANNED 304 files ... actionable=15
+#
+# and every one of those fifteen findings is in this directory -- the analyzer
+# reporting the defects its own fixtures carry, because the package shipped the
+# fixtures. `v0.5.0` shipped 0 `.mbt` files under `_verify/` and scanned clean;
+# 0615 added these 24, and 0.5.1 is the first release whose artifact failed its
+# own self-scan. The repository's own gate did not see it, because
+# `_verify/check_own_tree_clean.ps1` scans the tree with `--exclude _verify` --
+# so the two gates made the SAME claim with DIFFERENT scopes, and they agreed
+# only by accident.
+#
+# So the FIXTURES ARE NOT IN THE PACKAGE, and the tree's own source -- the 280
+# files the README publishes -- is exactly what the package ships. The fixtures
+# stay TRACKED and stay in the repository, because the family sweep needs them;
+# they are the gate's INPUTS, not the tool's source.
+#
+# THE TWO `.out` CAPTURES IN THIS DIRECTORY STAY. They are not `.mbt`, the
+# analyzer does not read them, and `_verify/selftest_selfscan_published.ps1`
+# replays them to show that the self-scan's tree-presence guard can go red.
+# That is why the rule names the two SUBDIRECTORIES and not this one.
+#
+# `_verify/check_package_contents.ps1` asserts that no `.mbt` under
+# `_verify/fixtures/` is in the package, so a fixture added under a THIRD
+# directory cannot slip past these two rules unnoticed.
+_verify/fixtures/families/
+_verify/fixtures/blindspot/
+
 # One file that must never ship, named individually because a shape rule would
 # have to exclude real test files too.
 #

@@ -17,8 +17,12 @@ $ErrorActionPreference = 'Continue'
 #      the failure this check exists to catch -- the one that looks like a
 #      successful cleanup.
 #   3. Every TRACKED file is in the package, except the six the toolchain
-#      excludes by default (files and folders whose name starts with `.`).
-#      So a rule cannot quietly eat a file that belongs to the project.
+#      excludes by default (files and folders whose name starts with `.`) and
+#      the deliberately defective fixtures, which are the GATES' INPUTS and not
+#      the tool's source. So a rule cannot quietly eat a file that belongs to
+#      the project.
+#   4. The deliberately defective fixtures are NOT in the package, and that is
+#      asserted in the other direction: the exception is a rule, not a hole.
 #
 # WHY IT RUNS ON THE WORKING TREE AND NOT ON A CHECKOUT. `moon package` reads the
 # working tree and does not consult git, so the two differ: MEASURED on this
@@ -181,15 +185,50 @@ $tracked = @(git -C $root ls-files | ForEach-Object { $_ -replace '/', '\' })
 $defaultExcluded = @('.gitattributes', '.gitignore', '.moonignore',
   '.github\workflows\gate.yml', '.github\workflows\publish.yml',
   '.dsh\skills\moonbit-static-analysis\SKILL.md')
-$missing = @($tracked | Where-Object { ($pkg -notcontains $_) -and ($defaultExcluded -notcontains $_) })
-Write-Output ('  tracked files: ' + $tracked.Count + '   default-excluded: ' + $defaultExcluded.Count)
+# 0632. AND THE DELIBERATELY DEFECTIVE FIXTURES, WHICH ARE NOT THE SOURCE.
+#
+# The fixture set is DERIVED from the tracked files rather than written out, so
+# a fixture added tomorrow is covered by the same rule as one added today --
+# and so the exception cannot name a file that is not a fixture at all.
+$fixtures = @($tracked | Where-Object { $_ -like '_verify\fixtures\*' -and $_ -like '*.mbt' })
+$missing = @($tracked | Where-Object { ($pkg -notcontains $_) -and ($defaultExcluded -notcontains $_) -and ($fixtures -notcontains $_) })
+Write-Output ('  tracked files: ' + $tracked.Count + '   default-excluded: ' + $defaultExcluded.Count + '   deliberately-not-shipped: ' + $fixtures.Count)
 Write-Output ('  tracked but not in the package: ' + $missing.Count + $(if ($missing.Count -eq 0) { '   OK' } else { '   FAIL' }))
 $missing | Select-Object -First 10 | ForEach-Object { Write-Output ('      ' + $_) }
 if ($missing.Count -gt 0) { $fail++ }
 
+# --- 4. the deliberately defective fixtures are NOT in the package -------------
+# 0632. THE EXCEPTION ABOVE IS NOT A HOLE, IT IS A RULE, AND IT IS ASSERTED IN
+# THE OTHER DIRECTION.
+#
+# MEASURED 2026-11-20, on the published 0.5.1: the package shipped the 24
+# `.mbt` fixtures, the analyzer that shipped with it read all 304 of its source
+# files, and it reported FIFTEEN actionable findings -- every one of them in
+# `_verify/fixtures/`, because that is where the defects those fixtures carry
+# on purpose live. The artifact failed its own certification, and the
+# repository's own gate had not seen it: `check_own_tree_clean.ps1` scans the
+# tree with `--exclude _verify`, so the two gates made the SAME claim with
+# DIFFERENT scopes, and they agreed only until 0615 put `.mbt` files there.
+#
+# So the fixtures do not ship, and THIS is the check that says so: it does not
+# ask whether they were excused from the rule above -- it asks whether they are
+# in the package. A fixture that slips through -- a THIRD directory, a rule that
+# stops matching, a rename -- makes this RED, and a fixture that is DELETED from
+# the repository is not silently excused either.
+Write-Output ''
+Write-Output '=== 4. the deliberately defective fixtures are not in the package ==='
+$fixturesInPkg = @($fixtures | Where-Object { $pkg -contains $_ })
+Write-Output ('  fixtures tracked: ' + $fixtures.Count + '   in the package: ' + $fixturesInPkg.Count + $(if ($fixturesInPkg.Count -eq 0) { '   OK' } else { '   FAIL' }))
+$fixturesInPkg | Select-Object -First 10 | ForEach-Object { Write-Output ('      ' + $_) }
+if ($fixturesInPkg.Count -gt 0) { $fail++ }
+if ($fixtures.Count -eq 0) {
+  Write-Output '  FAIL: no fixture is tracked, so the rule above excuses nothing and this check proves nothing.'
+  $fail++
+}
+
 Write-Output ''
 if ($fail -eq 0) {
-  Write-Output 'PACKAGE OK: the junk is out, the evidence is in, and every tracked file ships.'
+  Write-Output 'PACKAGE OK: the junk is out, the evidence is in, every tracked file ships, and the deliberately defective fixtures do not.'
   exit 0
 }
 Write-Output ('PACKAGE FAILED: ' + $fail + ' problem(s).')

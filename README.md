@@ -89,7 +89,7 @@ supply every one of them when the module is instantiated. `moonx` supplies them 
 async runtime that ships with **your** MoonBit toolchain.
 
 **The set is measured, not stated, and it is a FLOOR rather than a mirror.** The published
-0.5.0 artifact imports **92** symbols; this tree's own release build of the *same source*,
+0.5.1 artifact imports **92** symbols; this tree's own release build of the *same source*,
 rebuilt against the toolchain this host now has, imports **92** as well — and the contract is
 **93**, one wider than either, because a floor has to cover the artifact an older build
 produced as well as the one this build produces. `moon publish` uploads the **source** and
@@ -2217,9 +2217,15 @@ and a list of intentions that nothing exercises is a comment.
 messages, the scan artifacts, the credential, the gate transcripts, the remeasure dumps) and
 that the evidence is **in** (the 89 mutation gates and their harness, the settle scripts, the
 narrative, the roster gate, the documents a reader is sent to), and that every tracked file
-ships. **Both directions have been shown to go red**: disabling the `COMMIT_*.md` rule puts
-23 scratch messages into the package and the gate fails; excluding `_verify/NARRATIVE.md`
-takes the narrative out of it and the gate fails.
+ships **except the deliberately defective fixtures** — the `.mbt` files each family needs in
+order to prove it fires, which are the gates' *inputs* and not the tool's source. Shipping them
+made the published 0.5.1 fail its own self-scan: the analyzer that shipped with it read all 304
+of the package's source files and reported **fifteen** actionable findings, every one of them a
+defect a fixture carries on purpose. The gate now asserts their absence **in the other
+direction**, so the exception is a rule and not a hole. **Both directions have been shown to go
+red**: disabling the `COMMIT_*.md` rule puts 23 scratch messages into the package and the gate
+fails; excluding `_verify/NARRATIVE.md` takes the narrative out of it and the gate fails;
+removing the two fixture rules puts the 24 fixtures back into the package and the gate fails.
 
 **A notice is not an error, and the label says so.** A declared scope limit — "match
 expression is outside the analyzed subset; it was read but not analysed" — is rendered

@@ -1686,7 +1686,14 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # claim in the same sentence that measurement refuted, and adds ONE `check_*`
 # gate that PROBES the URLs the documents name. It moves the `$LOOP_RULES` pin
 # with the rule it adds.
-$NARRATIVE_CHAPTERS = '142'
+# 0632. THE PIN MOVED TO 143 with chapter 0632, which changed NO source file: the
+# increment changes what the PACKAGE carries -- the 24 deliberately defective
+# fixtures stop shipping, because the published 0.5.1 failed its own self-scan
+# with all fifteen of its findings inside them -- and it moves the
+# `$LOOP_RULES` pin with the rule it adds. The published-artifact sentence the
+# 0.5.1 publish moved is corrected in the same increment: the READMEs now name
+# the 0.5.1 artifact, and the number they quote did not move.
+$NARRATIVE_CHAPTERS = '143'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1701,7 +1708,12 @@ $NARRATIVE_CHAPTERS = '142'
 # The pin moved 31 -> 32 with rule 32, and the rule is the lesson this increment
 # measured: a release is gated on the CORE, not on the toolchain this machine
 # happens to carry -- and CI installs the toolchain with no version at all.
-$LOOP_RULES = '32'
+# The pin moved 32 -> 33 with rule 33, and the rule is the lesson the 0632
+# increment measured: a gate that certifies an ARTIFACT must READ the artifact,
+# and a package that carries deliberately defective test inputs cannot be
+# certified by the tool that flags them -- so the fixtures do not ship, and the
+# exception is asserted in the other direction.
+$LOOP_RULES = '33'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

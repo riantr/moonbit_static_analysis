@@ -24157,3 +24157,110 @@ AND THE VERSION LINE STAYS AT 0.5.0 in this increment: it repairs the tree for
 the newest core and it changes no analyzer behaviour and no public interface.
 
 
+## 0632: THE PUBLISHED 0.5.1 FAILED ITS OWN SELF-SCAN, AND THE FIXTURES WERE NOT THE SOURCE
+
+MEASURED 2026-11-20, on the artifact the registry served for `v0.5.1`:
+
+    the published 0.5.1, scanned by the analyzer that shipped with it
+      SCANNED  304 files under .repos/riantr/moonbit_static_analysis/0.5.1
+      SUMMARY  files=304 parsed=304 actionable=15 notices=2136
+      FAIL: actionable=15 on the analyzer's own source.
+
+and every one of those fifteen findings is in the FIXTURE DIRECTORY. The five
+rendered error lines, and the family each one belongs to:
+
+    MSA-007  17:12  ArgTypeMismatch    an argument of the wrong type
+    MSA-008   8:3   OperatorMismatch   a `!` on an Int
+    MSA-009  12:11  MethodError        a method that does not exist
+    MSA-016   5:23  DivisionByZero     a division by a literal zero
+    MSA-017   6:27  NegativeIndex      a subscript at -1
+
+The tool's own source was CLEAN: the analyzer's 280 source files produced no
+actionable finding, and the host contract held on the published bytes -- 106
+imports, 92 of them from `moonbitlang/async`, the contract 93.
+
+### WHAT THE FIXTURES ARE, AND WHY THEY ARE DELIBERATELY DEFECTIVE
+
+`_verify/fixtures/families/` holds one `.mbt` file per family -- eighteen of
+them -- and `_verify/fixtures/blindspot/` holds the same shapes wrapped in a
+`test` declaration. EVERY ONE OF THEM CARRIES A REAL DEFECT ON PURPOSE. That
+is the point of them: `_verify/check_family_fires.ps1` reads the set and
+requires each fixture to fire ITS OWN family, so a family that stopped firing
+turns the gate red instead of quietly shrinking the census.
+
+They are the gate's INPUTS. They are not the tool's source.
+
+### THE TWO GATES SAID THE SAME THING WITH TWO DIFFERENT SCOPES
+
+`_verify/check_own_tree_clean.ps1` scans the tree with `--exclude _verify`
+(line 135), and `_verify/selfscan_published.ps1` scans the shipped tree with
+no exclusion at all. Two gates, one claim, two scopes -- and they agreed only
+BY ACCIDENT:
+
+    v0.5.0    0  `.mbt` files under `_verify/`   the published package scanned CLEAN
+    v0.5.1   24  `.mbt` files under `_verify/`   the published package scans RED
+
+0615 put those twenty-four files there, and nothing else about the package
+changed. `.moonignore` DELIBERATELY ships `_verify/`: "the gates themselves are
+NOT excluded, and deliberately so: ... they are the EVIDENCE for every number
+this project publishes".
+
+So the repository's own certification of its artifact was RED while the tree
+gate was GREEN, and both were right about their own scope.
+
+### WHY THE FIX IS THE PACKAGE AND NOT THE GATE
+
+The obvious repair is to give the published scan the same exclusion the tree
+scan has. That repair is the WRONG one, and the 0.4.30 lesson says why: a
+stage that reports OK while it did not read the artifact has told the release
+that the shipped artifact is clean, and the shipped artifact was never read.
+Narrowing the published scan would leave 24 of the package's 304 source files
+unread while the stage declared the package clean -- the same shape, smaller.
+
+So the FIXTURES STOP SHIPPING, and `.moonignore` names the two directories:
+
+    _verify/fixtures/families/
+    _verify/fixtures/blindspot/
+
+The two `.out` captures in that directory STAY, because they are not `.mbt`,
+the analyzer does not read them, and `_verify/selftest_selfscan_published.ps1`
+replays them to show that the self-scan's tree-presence guard can go red.
+
+THE EXCEPTION IS A RULE AND NOT A HOLE. `_verify/check_package_contents.ps1`
+DERIVES the fixture set from the tracked files -- not a list of twenty-four
+names -- and asserts in the OTHER direction that none of them is in the
+package. MEASURED, with the two rules removed from `.moonignore`:
+
+    fixtures tracked: 24   in the package: 24   FAIL
+    PACKAGE FAILED: 1 problem(s).        (exit 1)
+
+and `.moonignore` was restored byte-for-byte afterwards (SHA256 equal).
+
+### THE TWO GATES NOW MEASURE THE SAME FILES
+
+    the tree, scanned with --exclude _verify   files=280  actionable=0
+    the package, after the fix                  files=280  actionable=0
+
+and the package's source count is the 280 the README already publishes as
+"this project's own source (280 files)". The claim in the documentation and the
+artifact the registry serves are the same set of files now -- which is exactly
+what the 0.5.1 release was not.
+
+### THE COUNTS THAT MOVED
+
+    the package entries             587
+    tracked files                   602
+    default-excluded (dot paths)      6
+    deliberately not shipped         24   (the fixtures)
+    the package's source files      280   (the tree's own source, all of it)
+    $LOOP_RULES                     32 -> 33
+    $NARRATIVE_CHAPTERS            142 -> 143
+
+And the sentence the publish moved: the READMEs said "The published 0.5.0
+artifact imports 92 symbols", and the published 0.5.1 artifact was MEASURED --
+106 imports, 92 of them from `moonbitlang/async`, the contract 93, the same
+numbers. So the sentence now names 0.5.1, and the number did not move.
+
+=> 判据: A GATE THAT CERTIFIES AN ARTIFACT MUST READ THE ARTIFACT, AND A PACKAGE THAT CARRIES DELIBERATELY DEFECTIVE TEST INPUTS CANNOT BE CERTIFIED BY THE TOOL THAT FLAGS THEM. The two gates here said the same thing with two different scopes, and the scopes agreed only until a later increment put source files into the excluded zone. So the claim has to be made about ONE set of files: the artifact's, read whole. Narrowing the scan would have been the shape the 0.4.30 lesson already condemned -- a stage that reports OK on a part of the artifact and tells the release the artifact is clean.
+
+
