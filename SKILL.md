@@ -326,10 +326,9 @@ lens.
 **0 findings** unless something is actually wrong.
 
 **`.mbti` is NOT.** It used to be claimed here alongside the other two, and
-that was wrong — measured, not suspected. On `moonbitlang/core` (1029 files,
-which `moon check --target all` accepts with 0 errors and 1 warning across 716
-tasks) the 80 generated `pkg.generated.mbti` files produced **93** actionable
-findings, every one of them false. Three causes, and all three are now fixed:
+that was wrong — measured, not suspected. On `moonbitlang/core` the generated
+`pkg.generated.mbti` files produced **93** actionable findings, every one of them
+false. Three causes, and all three are now fixed:
 
 - the lens had **its own** builtin list, 33 names, while the `.mbt` walk had a
   different one of **three** (`print`, `len`, `abs`) and no type names at all.
@@ -349,9 +348,10 @@ findings, every one of them false. Three causes, and all three are now fixed:
   `BenchError`) were types genuinely declared in a sibling file. Fixed in
   0.4.11, which gave the `.mbti` audit a module-wide interface symbol table.
 
-MEASURED on that same tree today: **0** `unknown type ... in interface
-signature` findings, out of 1029 files and 80 generated interfaces. The 93 and
-the 13 above are the HISTORY of the defect, not its current size.
+MEASURED on the pinned `moonbitlang/core` corpus (`0.1.20261117+06da1ed44`, the
+tree the release gate scans): **0** `unknown type ... in interface signature`
+findings, out of **1,766** files and **133** generated interfaces. The 93 and the
+13 above are the HISTORY of the defect, not its current size.
 
 ONE MORE CLASS OF THE SAME SHAPE, and it is the one a toolchain upgrade
 creates. On **0.1.20261012** the toolchain changed the **canonical spelling**

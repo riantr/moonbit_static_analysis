@@ -955,6 +955,71 @@ foreach ($e in $more) {
   if (-not $ok) { $fail++ }
 }
 
+# --- 5c  the shipped SKILL.md's `.mbti` claim, AND ITS SCOPE -----------------------
+#
+# The root `SKILL.md` SHIPS, and it says the `.mbti` audit is clean: "0
+# `unknown type ... in interface signature` findings, out of 1029 files and 80
+# generated interfaces".
+#
+# MEASURED (0622): the "0" is TRUE on the pinned corpus, and the SCOPE was stale
+# by 72 % and 66 %. The corpus the release gate scans is
+# `moonbitlang/core@0.1.20261117+06da1ed44`, and it holds 1766 scannable files
+# and 133 generated interfaces. Nothing held those numbers: this gate read
+# SKILL.md for its OWN claims and never checked the corpus the claim was about,
+# and the corpus stage measured the tree without measuring its SIZE.
+#
+# THE RULE: the document must name the corpus by the version the release gate
+# PINS, and must carry the file count and the interface count the corpus stage
+# MEASURED. All of them are derived here, from the pins -- so the sentence
+# cannot drift away from the tree it is about, and a re-pinned corpus holds the
+# document to the new version.
+#
+# AND THE STALE SCOPE MUST NOT COME BACK. The two old phrases are named
+# VERBATIM and they are PHRASES, not numbers: the document keeps other 80s
+# ("removed 80 of the 93"), and a reader who meets both must be able to tell
+# which is which.
+$coreDoc = [System.IO.File]::ReadAllText((Join-Path $root 'SKILL.md'), [System.Text.Encoding]::UTF8)
+# THE DOCUMENT'S OWN FORMATTING IS NORMALISED AWAY, and both parts of it are
+# MEASURED FORMATTING: this file writes its counts with a thousands separator
+# (`**1,766**`) and with bold markers around them. So the separator and the
+# markers are removed before the comparison, and the PIN -- a bare number -- is
+# compared against a bare number. MEASURED: without this the check looked for
+# "1,766 files" while the document said "**1,766** files", which is not the
+# same string -- so the CHECK was wrong, not the document.
+$coreDocPlain = $coreDoc.Replace(',', '').Replace('**', '')
+$cifM  = [regex]::Match($relTxt2, "\`$CORE_IFACES\s*=\s*'(\d+)'")
+$cukM  = [regex]::Match($relTxt2, "\`$CORE_UNKTYPE\s*=\s*'(\d+)'")
+$cverM = [regex]::Match($relTxt2, "'moonbit_core'\s*=\s*'moonbitlang\\core\\([^']+)'")
+$cfilM = [regex]::Match($relTxt2, "'moonbit_core'\s*=\s*'files=(\d+)")
+if (-not ($cifM.Success -and $cukM.Success -and $cverM.Success -and $cfilM.Success)) {
+  Write-Output '  FAIL: release.ps1 no longer carries the pins this gate derives the shipped .mbti claim from.'
+  $fail++
+} else {
+  $coreIfaces  = $cifM.Groups[1].Value
+  $coreUnk     = $cukM.Groups[1].Value
+  $coreVersion = $cverM.Groups[1].Value
+  $coreFiles   = $cfilM.Groups[1].Value
+  $coreWant = @(
+    @{ S = $coreVersion; N = 'the corpus version (the pinned tree)' }
+    @{ S = ($coreFiles + ' files'); N = 'the corpus file count' }
+    @{ S = ($coreIfaces + ' generated interfaces'); N = 'the corpus interface count' }
+    @{ S = ($coreUnk + ' `unknown type ... in interface signature`'); N = 'the unknown-type count' }
+  )
+  foreach ($e in $coreWant) {
+    $ok = $coreDocPlain.Contains($e.S)
+    Write-Output ("  {0,-14} {1,-34} {2}" -f 'SKILL.md', $e.N, $(if ($ok) { 'OK' } else { 'MISSING: ' + $e.S }))
+    if (-not $ok) { $fail++ }
+  }
+  foreach ($stale in @('1029 files', '80 generated interfaces')) {
+    if ($coreDocPlain.Contains($stale)) {
+      Write-Output ('  FAIL: SKILL.md carries the stale scope: ' + $stale)
+      $fail++
+    } else {
+      Write-Output ('  SKILL.md does not carry the stale scope: ' + $stale + '  OK')
+    }
+  }
+}
+
 # --- the SSA COST, DERIVED FROM THE PIN ---------------------------------------
 #
 # The READMEs quote the SSA cost of this project's own source TWICE -- once in

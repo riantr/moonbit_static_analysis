@@ -23246,3 +23246,56 @@ AND THE VERSION LINE STAYS AT 0.5.0, for the reason 0616 gave: this increment ch
 The 0620 chapter had been appended with LF into a CRLF file: MEASURED, 75 bare LFs, all of them inside that one chapter. This append normalises them, which changes no git blob -- `core.autocrlf=true` writes LF either way -- but it makes the working tree match the rule the file has always been kept by.
 
 
+## 0622: THE SHIPPED SKILL FILE MEASURED ITS CLEAN `.mbti` AUDIT OVER A CORPUS THAT NO LONGER EXISTS, AND NOBODY HELD THE SCOPE
+
+The work that follows 0621 was a sixth re-reading of what this repository WRITES DOWN, and it found the same species in the file that a user reads first.
+
+THE FINDING. The root `SKILL.md` SHIPS, and one of its sections says the `.mbti` audit is clean. The sentence carries a SCOPE:
+
+    MEASURED on that same tree today: **0** `unknown type ... in interface
+    signature` findings, out of 1029 files and 80 generated interfaces.
+
+MEASURED, by running the analyzer over the corpus the release gate pins, with the release gate's own flags:
+
+    the pinned corpus   moonbitlang/core@0.1.20261117+06da1ed44
+    the scan            SUMMARY files=1766 parsed=1705 actionable=30 ... total=15144
+    unknown type ... in interface signature findings   0
+    scannable files     1766
+    pkg.generated.mbti  133
+
+So the "0" is TRUE, and the SCOPE is stale: 1029 against 1766 files is 72 % too small, and 80 against 133 interfaces is 66 % too small. And "that same tree" names NO TREE -- the reader cannot tell which corpus the sentence is about, and it is not the corpus this repository measures today.
+
+### WHY NOBODY NOTICED, AND IT IS NOT THE USUAL REASON AGAIN
+
+0618 read this file for its OWN claims -- the two-reason account of `not-verified`, the self-measurement -- and derived them from the pins. What it did not do is ask WHICH TREE the file was talking about.
+
+And the corpus stage, which has the corpus in front of it, measured the tree's FINDINGS and never measured its SIZE. The two gates each held half of the claim and neither held the seam.
+
+=> **THE SCOPE OF A CLAIM IS PART OF THE CLAIM.** "0 findings" is a statement about a population, and a population with no name and no size is not a population.
+
+### AND THE HISTORICAL NUMBER WAS IN THE SAME SENTENCE
+
+The paragraph above it said the audit "produced 93 actionable findings, every one of them false", over "the 80 generated `pkg.generated.mbti` files" of a corpus of "1029 files". That was true THEN, at a core version that no longer exists. So the fix moves the scope to the CURRENT measurement, where it is a live claim, and leaves the history as history -- the paragraph now says what the defect WAS without pretending to name today's corpus.
+
+### THE GATE, AND IT DERIVES THE SCOPE
+
+Two pins, and the corpus stage measures both while it has the corpus in front of it:
+
+    $CORE_IFACES = '133'      the generated interfaces in the pinned corpus
+    $CORE_UNKTYPE = '0'       the unknown-type findings on them
+
+The generated interfaces are a FILE COUNT. The unknown-type findings are counted out of the scan the stage already ran -- and the message carries the type in single quotes (`unknown type 'X' in interface signature`), so the count cannot pick up the analyzer's own PROSE about that finding, which spells it with an ellipsis.
+
+And `check_readme_links.ps1` derives the document's copy from those pins and from the pin table's own `files=` field, so four things are held at once: the corpus VERSION the document names, the file count, the interface count, and the finding count. A re-pinned corpus holds the document to the new version, because the version is derived from the same table the corpus stage reads.
+
+THE STALE SCOPE IS BANNED BY PHRASE, NOT BY NUMBER: "1029 files" and "80 generated interfaces". The document keeps other 80s -- "removed 80 of the 93" is the history of the defect -- so a ban on the bare number would have flagged a true record.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    132 -> 133
+
+and nothing else. There is no new gate on disk -- the checks are inside a gate that already exists and already has a stage -- and no new stage, so the READMEs' stage lists do not move, and the mutation counts do not move either: 89 numbered gates, 519 live mutations, 477 expecting a kill, 400 naming the test.
+
+AND THE VERSION LINE STAYS AT 0.5.0: this increment changes no analyzer behaviour and no public interface. It corrects a shipped document's SCOPE, and it makes the sentence name the tree it is about.
+
+

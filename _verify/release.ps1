@@ -1650,7 +1650,7 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # that says so), adds ONE `check_*` gate that RUNS the CLI and compares the
 # document against the tool's own output, and makes the tool and its own
 # documentation the same thing.
-$NARRATIVE_CHAPTERS = '132'
+$NARRATIVE_CHAPTERS = '133'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -3817,6 +3817,26 @@ $TARGETS = [ordered]@{
   'moonbit_core'    = 'moonbitlang\core\0.1.20261117+06da1ed44'
 }
 
+#   $CORE_IFACES   the generated interfaces in the pinned `moonbit_core` corpus,
+#                  and $CORE_UNKTYPE the `unknown type ... in interface
+#                  signature` findings on them.
+#
+#                  MEASURED 2026-11-20: the corpus holds 133 `pkg.generated.mbti`
+#                  files, and the analyzer reports ZERO unknown-type findings on
+#                  them. The corpus stage measures both while it has the corpus in
+#                  front of it, and `check_readme_links.ps1` DERIVES the shipped
+#                  document's copy from these pins.
+#
+#                  WHY THEY ARE HERE. The shipped `SKILL.md` says the `.mbti` audit
+#                  is clean, and it said so WITH A SCOPE: "0 findings, out of 1029
+#                  files and 80 generated interfaces". MEASURED: the "0" is true
+#                  and the SCOPE was stale by 72 % (files) and 66 % (interfaces)
+#                  -- and nothing held either number. The scope of a claim is part
+#                  of the claim, so the scope is pinned, measured and derived like
+#                  every other published number.
+$CORE_IFACES = '133'
+$CORE_UNKTYPE = '0'
+
 # 0604. THE DECK'S p.57 QUESTION, per corpus: the HAND-MODELLED native surface
 # measured against the DECLARED one.
 #
@@ -4024,6 +4044,28 @@ if ($failed.Count -eq 0) {
         Write-Output ("  [DRIFT ] {0,-16}" -f $k)
         Write-Output ('      pinned : ' + $want)
         Write-Output ('      actual : ' + $sum)
+      }
+
+      # 0622. THE SCOPE OF THE SHIPPED `.mbti` CLAIM, measured here because the
+      # corpus is in front of the stage. The generated interfaces are a FILE
+      # COUNT; the unknown-type findings are counted out of the scan this stage
+      # already ran -- and the message carries the type in single quotes, so the
+      # count cannot pick up the analyzer's own prose about the finding.
+      if ($k -eq 'moonbit_core') {
+        $ifaces = @(Get-ChildItem -LiteralPath $p -Recurse -Filter 'pkg.generated.mbti' -File).Count
+        if ($ifaces -ne [int]$CORE_IFACES) {
+          $drift++
+          Write-Output ("  [DRIFT ] {0,-16} holds {1} generated interfaces, the pin says {2}" -f $k, $ifaces, $CORE_IFACES)
+        } else {
+          Write-Output ("  [MATCH ] {0,-16} generated interfaces: {1}" -f $k, $ifaces)
+        }
+        $unk = ([regex]::Matches($text, "unknown type '[^']*' in interface signature")).Count
+        if ($unk -ne [int]$CORE_UNKTYPE) {
+          $drift++
+          Write-Output ("  [DRIFT ] {0,-16} has {1} unknown-type findings, the pin says {2}" -f $k, $unk, $CORE_UNKTYPE)
+        } else {
+          Write-Output ("  [MATCH ] {0,-16} unknown-type findings: {1}" -f $k, $unk)
+        }
       }
     }
     # THE TOTAL over the seven corpora AND this repository's own source. This
