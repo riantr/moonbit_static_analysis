@@ -23678,3 +23678,96 @@ interface. It measures a gap that was there, says so in the documents where the 
 published, and adds the gate that holds the two to each other.
 
 
+## 0627: THE CAUSE THE REPOSITORY PUBLISHED FOR THE PROOF FAILURE WAS REFUTED BY A WHY3 EXPERIMENT, AND IT WAS IN FOUR PLACES AT ONCE
+
+### WHAT WAS PUBLISHED
+
+Both READMEs, the workspace skill, and the header of the gate that measures the failure all said
+the same thing: `moon prove src/core` fails because the toolchain's proof prelude has no `Map`
+theory, so the generated Why3 file declares `map int bool` and cannot be loaded; and the fix is to
+move `IfaceSymTab` out of the proof subject, which changes the package's public API and is
+therefore a version-line decision rather than a patch.
+
+That advice was being given to the owner as if it were a fact about the toolchain, and it rests on
+a claim about the prelude that a twenty-line experiment refutes.
+
+### THE MEASUREMENT
+
+MEASURED on 2026-11-20, on the toolchain of that day (core 0.10.21+06da1ed44):
+
+- `moon prove src/core` fails with `unbound type symbol 'array'` -- NOT `'map'`. The README named
+  the SECOND error in the queue.
+- The failure needs no `.why3.conf`: `moon prove src/core` on its own fails the same way. The
+  local shim is gitignored and never ships, so the proof lane was never measurable where it would
+  have mattered -- in CI.
+- `why3` itself, run directly on the generated file, reports the same error. So this is a Why3
+  typing error, not an artifact of the way `moon` reports one.
+- The generated file DECLARES both types itself: `type array 'a1` at line 136, `type map 'a1  'a2`
+  at line 138. The prelude is not missing anything; the file carries its own declarations.
+- It USES them earlier: `array` at line 20 (`IfaceSig`), `map` at line 27 (`IfaceSymTab`).
+
+### THE EXPERIMENT
+
+Why3 requires a type to be declared before it is used, and the toolchain's lowering emits those
+two declarations AFTER the records that use them. So:
+
+- hoisting ONLY the `array` declaration moves the error forward -- it becomes
+  `unbound type symbol 'map'` at line 28;
+- hoisting BOTH makes `why3` load the file, generate 21 VCs and exit 0;
+- and of those 21 VCs, cvc5 answers `unsat` for 20. The 21st, `severity_taxonomy_holds`, comes
+  back `unknown (incomplete)` -- a prover-strength fact, not a refuted lemma: a 300-second limit
+  decides it no better.
+
+=> The cause is the ORDER, and the order is the toolchain's to fix. This package's source is not
+what blocks the proof, and nobody has to break the public API of `src/core` to find that out.
+
+### THE FOUR COPIES
+
+The false cause was in four places at once, which is exactly what "one fact, one place" is for:
+
+- `README.md`, in the formal-verification section;
+- `README.zh.md`, its Chinese twin;
+- `.dsh/skills/moonbit-static-analysis/SKILL.md`, which listed the failing command among the
+  commands to RUN, next to four that pass, with nothing said about it;
+- `_verify/check_prove_contracts.ps1` -- the gate that runs the prover and prints the symbols it
+  cannot resolve. Its header and its output repeated the refuted cause, so the gate that MEASURED
+  the failure also PUBLISHED the wrong explanation of it.
+
+All four are corrected, and each now carries the measured cause: `array` is declared after its
+first use, and the reader is told so.
+
+### THE GATE THAT HOLDS THEM
+
+`_verify/check_prove_status.ps1` runs the prover, derives the cause from the generated file -- it
+does not take the cause on trust from a document -- and holds the four documents to what it
+reports today. A document that names a symbol the prover does not report is red; a document that
+carries the refuted cause is red; a document that drops the measured cause is red; and the
+workspace skill may not list the failing command among the commands to run.
+
+THE OTHER DIRECTION IS CHECKED TOO. If a future toolchain makes `moon prove src/core` go green,
+the documents must stop claiming that it fails -- so the same check runs with the measurement
+flipped, and a document that still claims a failure is red.
+
+### IT IS SHOWN TO GO RED
+
+MEASURED: the control green, and FIVE injected defects each caught with the defect NAMED -- the
+README naming a symbol the prover does not report, the README carrying the refuted cause again,
+the workspace skill listing the failing command among the commands to run, the Chinese README
+without the cause, and the sibling gate carrying the refuted cause again. The sixth is the other
+direction: the documents claiming a failure while the prover PASSES.
+
+### THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS    137 -> 138
+
+and two new lines in each README's stage list (49 -> 51), one new evidence entry in
+`check_package_contents.ps1` (35 -> 36), and 17 -> 18 check gates on disk, 12 -> 13 with a live
+`-SelfTest`. No other published number moves: 89 numbered gates, 519 live mutations, 477
+expecting a kill, 400 naming the test; 280 own-source files, 2128 notices, 5611/1122/4489 call
+sites, 1344 native surface.
+
+AND THE VERSION LINE STAYS AT 0.5.0. This increment changes no analyzer behaviour and no public
+interface. It corrects an explanation that measurement refuted, and adds the gate that holds the
+documents to the prover.
+
+

@@ -1743,6 +1743,8 @@ stage，就是读者找不到的 stage：
     the shared harness: the INCONCLUSIVE verdict, shown to go red
     proof contracts: no false #proof_pure
     proof contracts, shown to go red (its own self-test)
+    the proof status: the documents must say what the prover says
+    the proof status, shown to go red (its own self-test)
     package contents: the junk stays out, the evidence stays in
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible
@@ -1859,13 +1861,25 @@ mermaid 图和 JSON 桥全都走它——所以标签和数字不可能互相打
 这 19 条引理在 2026-10-03 实测为 **21/21 个目标 VALID**（unsat），每一个都用 cvc5
 机器验证过。
 
-> **这条命令今天跑不绿，原因已量过。** `moon prove src/core --why3-config .why3.conf`
-> 报 `unbound type symbol 'map'`。`src/core` 在 2026-10-08 多了一个 `IfaceSymTab`——
-> 它的字段是 `Map[String, Bool]`——而工具链的证明前导库**没有 `Map` 理论**，于是生成
-> 的 Why3 文件里出现 `map int bool`，`moon prove` 和 `why3` 都加载不了它。19 条引理
-> 从来没碰过 `IfaceSymTab`：被证明的是**整个包**，而包里有这个类型。修法是把
-> `IfaceSymTab` 移出证明范围，而那会改本包的公开 API（`@core.IfaceSymTab` 是导出的），
-> 所以这是版本线上的决定，不是一个补丁的事。
+> **这条命令今天跑不绿，原因已量过。** `moon prove src/core` 报
+> `unbound type symbol 'array'`——**不是** `'map'`。生成的 Why3 文件自己声明了这两个
+> 抽象类型：`type array 'a1` 在第 136 行，`type map 'a1  'a2` 在第 138 行。它们是**先使用、后声明**的：
+> `array` 用在第 20 行（`IfaceSig`），`map` 用在第 27 行（`IfaceSymTab`）——而 Why3 要求
+> 一个类型先声明再使用。于是文件加载不了，什么也没被证明：`0 of 1 packages proved`，
+> `0 goals proved`。
+>
+> **原因被重新量过了，而这一段原先给出的解释是错的。** 它把责任推给工具链的证明前导
+> 库。下面的实验推翻了它，也推翻了那个解释附带的建议——说 `IfaceSymTab` 必须移出证明
+> 范围，而那会改本包的公开 API，所以是版本线上的决定。**要弄清这件事，不动公开 API
+> 也行。**
+>
+> **实验。** 只把 `array` 的声明提上去，错误就往前走了一步：变成第 28 行的
+> `unbound type symbol 'map'`。两个都提上去，`why3` 就把文件加载了，生成 21 个 VC 并以
+> 0 退出——这 21 个里 cvc5 对 20 个回答 `unsat`，`severity_taxonomy_holds` 回答
+> `unknown (incomplete)`（2026-11-20 实测，core 0.10.21+06da1ed44；把时限放到 300 秒
+> 也一样）。**卡住引理的不是本包源码，而是两条声明被写出来的顺序，那是工具链要修的。**
+> `_verify/check_prove_status.ps1` 会跑证明器，把这一段、它的英文孪生、工作区技能文件和
+> 旁边那道门禁，都钉在证明器今天报出来的东西上。
 >
 > 还有两处 `#proof_pure` 标注是**假的**：`path_tail` 和 `unqualified` 的函数体会
 > 构造 `StringBuilder`，证明器不认（错误 4207）。一处假标注就让整个文件停止证明，

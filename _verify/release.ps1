@@ -1670,7 +1670,13 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # toolchain no longer has "still works", adds ONE `check_*` gate that ASKS the
 # toolchain, and leaves the DATED copy in `EXTENSIONS.md` alone -- a section
 # stamped 2026-10-06 is a record, and a record is not rewritten.
-$NARRATIVE_CHAPTERS = '137'
+# 0627. THE PIN MOVED TO 138 with chapter 0627, which changed NO source file: the
+# increment corrects the cause the repository PUBLISHED for the proof failure --
+# it was refuted by a Why3 experiment, and it was in four places at once, one of
+# them the gate that measures the failure -- adds ONE `check_*` gate that RUNS the
+# prover and holds the documents to what it reports, and leaves the dated
+# 2026-10-03 measurement of the 21 goals alone: a dated number is a record.
+$NARRATIVE_CHAPTERS = '138'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -2598,6 +2604,71 @@ if ($failed.Count -eq 0) {
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'prove-contracts-selftest' }
+  }
+}
+
+# --- 4d2  THE PROOF LANE'S STORY, AND THE PROVER THAT CHECKS IT ----------------
+# 0627. THE CAUSE THE REPOSITORY PUBLISHED FOR THE PROOF FAILURE WAS REFUTED,
+# AND IT WAS IN FOUR PLACES AT ONCE -- BOTH READMEs, THE WORKSPACE SKILL, AND
+# THE HEADER OF THE GATE THAT MEASURED THE FAILURE.
+#
+# They said: the toolchain's proof prelude has no `Map` theory, so the
+# generated Why3 file cannot be loaded, and the fix is to move `IfaceSymTab`
+# out of the proof subject -- a public-API change, and therefore a version-line
+# decision rather than a patch.
+#
+# MEASURED, on the toolchain of 2026-11-20 (core 0.10.21+06da1ed44):
+#
+#   - `moon prove src/core` fails with `unbound type symbol 'array'` -- not
+#     'map'; the README named the SECOND error in the queue;
+#   - the failure needs no `.why3.conf`, so the proof lane is measurable
+#     OFFLINE, in CI, without the local why3 shim (which is gitignored and
+#     never ships);
+#   - `why3` reports the same error on the generated file, so it is a Why3
+#     typing error and not a `moon` artifact;
+#   - the file DECLARES both types itself (`type array 'a1` at line 136,
+#     `type map 'a1  'a2` at line 138) and USES them earlier (lines 20 and
+#     27), so the cause is the ORDER: Why3 requires a type to be declared
+#     before it is used;
+#   - hoisting only the `array` declaration moves the error to 'map' at line
+#     28, and hoisting both makes `why3` load the file, generate 21 VCs and
+#     exit 0 -- of which cvc5 answers `unsat` for 20.
+#
+# => The cause was the order, not the prelude, and this package's source is not
+# what blocks the proof: nobody has to break the public API of `src/core` to
+# find that out. The stage below runs the prover, derives the cause from the
+# generated file, and holds the four documents to what it reports today.
+if ($failed.Count -eq 0) {
+  $PVS = Join-Path $root '_verify\check_prove_status.ps1'
+  if (-not (Test-Path $PVS)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_prove_status.ps1'
+    $failed += 'prove-status'
+  } else {
+    Stage 'the proof status: the documents must say what the prover says' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PVS 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(FAIL|PROVE STATUS|prover exits|used before it is declared)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'prove-status' }
+  }
+  if ($failed.Count -eq 0) {
+    Stage 'the proof status, shown to go red (its own self-test)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $PVS -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(CONTROL|FAULT|SELFTEST|the defect)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'prove-status-selftest' }
   }
 }
 

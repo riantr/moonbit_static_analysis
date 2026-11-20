@@ -18,8 +18,11 @@ moon check --deny-warn      # 0 errors, 0 warnings — first gate
 moon fmt                   # format; `moon fmt --check` must stay clean
 moon test --deny-warn      # 1800/1800 on wasm; 1635/1635 on js and wasm-gc
 moon run src/cli           # program demo + file-kind demo + sample machine audit
-moon prove src/core --why3-config .why3.conf   # formal verification (19 lemma VCs)
 ```
+
+`moon prove src/core` is deliberately NOT in that list. It does not run green today, and the
+Formal verification section below says what it reports instead — a command that fails is not
+listed next to four that pass with nothing said about it.
 
 `--deny-warn` matches what CI actually runs. The official package-configuration page
 requires it in CI; without it a warning regression passes silently while the READMEs
@@ -90,6 +93,16 @@ is the taxonomy and the authority for what each suffix means):
 
 ## Formal verification (moon prove)
 
+- **`moon prove src/core` does not run green today** (measured 2026-11-20 on core
+  0.10.21+06da1ed44): it exits 1 with `unbound type symbol 'array'`, `0 of 1 packages proved`,
+  `0 goals proved`. The generated Why3 file declares the two abstract types itself — `type array 'a1`
+  at line 136, `type map 'a1  'a2` at line 138 — and uses them earlier (`array` at line 20, `map`
+  at line 27), so `array` is **declared after its first use**, and Why3 requires a type to be
+  declared before it is used. Hoisting only the `array` declaration moves the error to
+  `unbound type symbol 'map'` at line 28; hoisting both makes `why3` load the file and exit 0,
+  with 20 of the 21 VCs answering `unsat`. The lemmas are therefore not blocked by this
+  package's source. `_verify/check_prove_status.ps1` runs the prover and holds this file, both
+  READMEs and the sibling gate to what it reports today.
 - `src/core/moon.pkg` has `"proof-enabled": true`; `src/core/core_proof.mbtp` is the logic side:
   predicates + 19 lemmas (rank constants, the three strict-order laws, rank_order_agrees, the
   full severity taxonomy per Family).

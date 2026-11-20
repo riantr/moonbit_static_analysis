@@ -2113,6 +2113,8 @@ and is not named here is a stage a reader cannot find:
     the shared harness: the INCONCLUSIVE verdict, shown to go red
     proof contracts: no false #proof_pure
     proof contracts, shown to go red (its own self-test)
+    the proof status: the documents must say what the prover says
+    the proof status, shown to go red (its own self-test)
     package contents: the junk stays out, the evidence stays in
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible
@@ -2246,15 +2248,28 @@ lemmas were measured **21/21 goals VALID** (unsat) on 2026-10-03, each machine-c
 with cvc5.
 
 > **The command does not run green today, and the reason is measured.**
-> `moon prove src/core --why3-config .why3.conf` fails with
-> `unbound type symbol 'map'`. `src/core` grew `IfaceSymTab` on 2026-10-08 — a struct
-> whose fields are `Map[String, Bool]` — and the toolchain's proof prelude has **no
-> `Map` theory**, so the generated Why3 file declares `map int bool` and neither
-> `moon prove` nor `why3` can load it. The 19 lemmas never touch `IfaceSymTab`: it is
-> the **package** that is proved, and the package carries the type. The fix is to move
-> `IfaceSymTab` out of the proof subject, and that changes this package's public API
-> (`@core.IfaceSymTab` is exported), so it is a version-line decision rather than a
-> patch.
+> `moon prove src/core` fails with `unbound type symbol 'array'` — **not** `'map'`. The
+> generated Why3 file declares the two abstract types itself: `type array 'a1` at line
+> 136, `type map 'a1  'a2` at line 138. It uses them earlier — `array` at line 20
+> (`IfaceSig`), `map` at line 27 (`IfaceSymTab`). Why3 requires a type to be declared
+> before it is used, and `array` is **declared after its first use**. So the file does not
+> load, and nothing is proved: `0 of 1 packages proved`, `0 goals proved`.
+>
+> **THE CAUSE WAS RE-MEASURED, AND THE EXPLANATION THIS PARAGRAPH USED TO GIVE WAS
+> WRONG.** It blamed the toolchain's proof prelude. The experiment below is what refuted
+> it, and it also refuted the advice the old explanation carried — that `IfaceSymTab`
+> has to move out of the proof subject, which changes this package's public API and is
+> therefore a version-line decision. **No public API has to change to find that out.**
+>
+> **THE EXPERIMENT.** Hoisting only the `array` declaration moves the error forward: it
+> becomes `unbound type symbol 'map'` at line 28. Hoisting both makes `why3` load the
+> file, generate 21 VCs and exit 0 — and of those 21, cvc5 answers `unsat` for 20, while
+> `severity_taxonomy_holds` comes back `unknown (incomplete)` (measured 2026-11-20 on
+> core 0.10.21+06da1ed44; a 300 s limit decides it no better). **The lemmas are not
+> blocked by this package's source; they are blocked by the order two declarations are
+> emitted in, which is the toolchain's to fix.**
+> `_verify/check_prove_status.ps1` runs the prover and holds this paragraph, its Chinese
+> twin, the workspace skill and the sibling gate to what the prover reports today.
 >
 > Two `#proof_pure` annotations were also **false**: on `path_tail` and `unqualified`,
 > whose bodies build a `StringBuilder`, which the prover rejects (error 4207). One

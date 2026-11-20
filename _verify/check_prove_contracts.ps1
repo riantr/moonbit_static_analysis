@@ -24,13 +24,13 @@ $ErrorActionPreference = 'Continue'
 # WHAT IT CHECKS, and what it does NOT:
 #   - it FAILS if `moon prove` reports ANY error 4207. That is the false
 #     annotation class, and it is checkable and it can pass.
-#   - it does NOT fail on the toolchain's missing prelude theories. The
-#     generated Why3 file declares `array` and `map` types that the proof
-#     prelude has no theory for, so the file does not load, the lemmas are NOT
+#   - it does NOT fail on the toolchain's declaration order. The generated
+#     Why3 file has `type array 'a1` and `type map 'a1  'a2` declared after its first use
+#     -- the records that use them come first -- and Why3 requires a type to be
+#     declared before it is used. So the file does not load, the lemmas are NOT
 #     being discharged, and `moon prove` reports "0 of 1 packages proved". That
-#     is a separate defect with a separate fix -- moving `IfaceSig` and
-#     `IfaceSymTab` out of the proof subject changes the package's public API
-#     -- and it is reported here, not papered over.
+#     is a separate defect with a separate owner (the toolchain's lowering), and
+#     it is reported here, not papered over.
 #
 # => 判据: a documented command that nothing runs is a comment. The claim was
 # "21/21 goals VALID", and the release gate could not tell a proof from a
@@ -50,6 +50,19 @@ $ErrorActionPreference = 'Continue'
 # The counter is now over EVERY `unbound type symbol '<X>'`, the names it finds
 # are printed as it finds them, and the lemma count is MEASURED rather than
 # written down -- 19 today, and not one of them discharged.
+#
+# 0627, MEASURED: THE CAUSE THIS FILE PUBLISHED WAS REFUTED, AND SO WAS THE
+# ADVICE IT CARRIED. The header above used to blame the toolchain's proof
+# prelude for a missing theory, and to say that the fix is to move `IfaceSig`
+# and `IfaceSymTab` out of the proof subject -- a public-API change, and
+# therefore a version-line decision rather than a patch. The experiment refutes
+# both: the generated file DECLARES both types itself, so the prelude is not
+# what is missing, and hoisting the two declarations makes `why3` load the file
+# and discharge the goals (21 VCs, 20 of them `unsat`), so this package's
+# source is not what blocks the proof. The cause is the ORDER, and the order is
+# the toolchain's to fix. `_verify/check_prove_status.ps1` holds the documents --
+# both READMEs, the workspace skill and THIS file -- to what the prover
+# reports today.
 #
 # 0615, MEASURED: THE SWITCH WAS DEAD. This file declared
 # `param([switch]$SelfTest)` and then never mentioned `$SelfTest` again: a
@@ -242,9 +255,9 @@ Write-Output ('  exit code: ' + $r.Code)
 Write-Output ('  error 4207 (a #proof_pure body the prover rejects): ' + $r.N4207)
 Write-Output ('  the lemma count the prover generated: ' + $r.Lemmas)
 if ($r.Unbound.Count -gt 0) {
-  Write-Output ('  the symbols the proof prelude does not define: ' + ($r.Unbound -join ', '))
+  Write-Output ('  the symbols the toolchain reports as unresolved: ' + ($r.Unbound -join ', '))
 } else {
-  Write-Output '  the symbols the proof prelude does not define: none'
+  Write-Output '  the symbols the toolchain reports as unresolved: none'
 }
 
 if ($r.N4207 -gt 0) {
@@ -261,13 +274,18 @@ if ($r.N4207 -gt 0) {
 if ($r.Unbound.Count -gt 0) {
   Write-Output ''
   Write-Output '  KNOWN, and reported rather than hidden: the generated Why3 file declares'
-  Write-Output '  `array` and `map` types -- `IfaceSig` carries arrays, `IfaceSymTab` carries'
-  Write-Output '  maps -- and the toolchain''s proof prelude defines neither, so the file does'
-  Write-Output ('  not load. The ' + $r.Lemmas + ' lemmas are generated and NOT being discharged.')
-  Write-Output '  The fix is to move those types out of the proof subject -- a public-API'
-  Write-Output '  change, and therefore a version-line decision.'
+  Write-Output '  `array` and `map` itself -- `IfaceSig` carries arrays, `IfaceSymTab` carries'
+  Write-Output '  maps -- and the toolchain emits those declarations AFTER the records that use'
+  Write-Output '  them, while Why3 requires a type to be declared before it is used. So the file'
+  Write-Output ('  does not load: the ' + $r.Lemmas + ' lemmas are generated and NOT being')
+  Write-Output '  discharged.'
+  Write-Output '  The cause is the ORDER, and the order is the toolchain''s to fix: hoisting'
+  Write-Output '  the two declarations makes why3 load the file and discharge the goals, so this'
+  Write-Output '  package''s source is not what blocks the proof and no public API has to change.'
+  Write-Output '  `_verify/check_prove_status.ps1` holds the documents to the symbol this run'
+  Write-Output '  reports.'
   Write-Output '  The names above are the ones the toolchain reports TODAY; why3 stops at the'
-  Write-Output '  first symbol it cannot resolve, so this list grows as the prelude changes.'
+  Write-Output '  first symbol it cannot resolve, so this list grows as the lowering changes.'
 }
 
 Write-Output ''
