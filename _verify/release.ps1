@@ -1711,7 +1711,17 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # increment fixes a defect 0634 introduced -- the checklist gate printed two
 # numbers that it did not compute, one of them asking a question it had never
 # loaded the data for -- and it moves the `$LOOP_RULES` pin with the rule it adds.
-$NARRATIVE_CHAPTERS = '146'
+# 0636. THE PIN MOVED TO 178 with chapter 0636, which changed NO source file: the
+# increment fixes two defects an INDEPENDENT verification found in the
+# objective's OWN artifact -- a criterion that named a file which did not
+# exist at the increment the task rides, and a CHAPTER COUNT that held 146 of
+# the 177 chapters the NARRATIVE actually carries. The count MOVED BY 32, and
+# only ONE of those is the new chapter: the other 31 are the chapters the
+# rule could not SEE, because it knew one of the five forms a chapter takes.
+# The chapter rule, the lost-heading rule and the duplicate rule now widen
+# TOGETHER, off ONE definition, so the pin holds a number the rule can
+# actually verify.
+$NARRATIVE_CHAPTERS = '178'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1742,7 +1752,11 @@ $NARRATIVE_CHAPTERS = '146'
 # The pin moved 35 -> 36 with rule 36, and the rule is the lesson the 0635
 # increment measured: a number a gate PRINTS is a claim, and it must be asked
 # for -- not defaulted, and not computed a second time beside the check.
-$LOOP_RULES = '36'
+# The pin moved 36 -> 37 with rule 37, and the rule is the lesson this increment
+# measured: the question a gate asks must be the question it claims to ask --
+# a path that resolves TODAY is not a path that resolved when the task
+# landed, and a count that cannot see the things it counts is not a count.
+$LOOP_RULES = '37'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

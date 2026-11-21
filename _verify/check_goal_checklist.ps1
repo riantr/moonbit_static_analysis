@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Continue'
 # green on it. The two defects were both a path that resolves and a line that
 # moved, and neither could be caught by asking whether the file is there.
 #
-# WHAT THIS GATE CHECKS, and it is seven things:
+# WHAT THIS GATE CHECKS, and it is eight things:
 #
 #   1. THE TASK LIST: T1..T13, each named exactly once, every one TICKED, and
 #      no open box anywhere.
@@ -57,6 +57,14 @@ $ErrorActionPreference = 'Continue'
 #   7. THE PLAN FILE MUST NOT CLAIM WHAT THE PACKAGE DOES NOT HOLD. A shipped
 #      document that asserts something false about the published package is a
 #      false claim with a reader attached.
+#   8. EVERY PATH A "Done when" NAMES EXISTED AT THE COMMIT THE TASK RIDES.
+#      A path that RESOLVES today is not a path that resolved WHEN THE TASK
+#      LANDED, and the difference is a whole class of defect that checks 3
+#      cannot see: T13's criterion named a file that did not exist until the
+#      NEXT increment, so every "does this path ship?" check was green on it
+#      while the criterion could never have been true at increment 0614. The
+#      path is asked about at that commit, with `git cat-file -e`, and a
+#      criterion that declares a path ABSENT must declare it absent THERE too.
 #
 # THE DIRECTION MATTERS. The rule count is a pin like every other pin here:
 # when a rule is added, the pin moves with it and the release gate's own pin
@@ -150,6 +158,150 @@ function Get-KnownIncrements([string]$Root) {
   return $out
 }
 
+# THE COMMIT EACH INCREMENT LANDED AS. Read from git, so "the commit the task
+# rides" is a COMMIT and not a paragraph. Where an increment has more than one
+# commit -- 0533 has two: the work, and a `moon fmt` after the last edit --
+# the NEWEST is taken, because that is the state the increment LEFT the tree
+# in. 139 of the 140 increments have exactly one commit, so the choice is
+# invisible today; it is written down so it is not made twice.
+function Get-IncrementCommits([string]$Root) {
+  $out = @{}
+  $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+  if ($null -eq $gitCmd) { return $out }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $rows = @(& git -C $Root log --format='%H %s' 2>&1)
+  $ErrorActionPreference = $prev
+  foreach ($s in $rows) {
+    $m = [regex]::Match([string]$s, '^([0-9a-f]{40})\s+(\d{4}):')
+    if ($m.Success -and -not $out.ContainsKey($m.Groups[2].Value)) {
+      $out[$m.Groups[2].Value] = $m.Groups[1].Value
+    }
+  }
+  return $out
+}
+
+# THE INCREMENT A TASK RIDES. ONE implementation, used by the check that the
+# increment exists and by the check that asks whether the task's own paths
+# existed at the commit that increment landed as.
+function Get-TaskRides([string]$Block) {
+  if ([string]::IsNullOrWhiteSpace($Block)) { return '' }
+  $m = [regex]::Match($Block, '(?m)^\s+\*\*Rides:\*\* increment \*\*(\d{4})\*\*')
+  if ($m.Success) { return $m.Groups[1].Value }
+  return ''
+}
+
+# THE PATHS A "Done when" NAMES, and for each one whether it must be ABSENT.
+# ONE implementation, used by the check that resolves the paths against the
+# tree of today and by the check that asks whether they existed at the commit
+# the task rides -- a claim computed in two places is two implementations of
+# one claim, and the second one is the one that drifts.
+function Get-CriterionPaths([string]$Body) {
+  $out = @()
+  if ([string]::IsNullOrWhiteSpace($Body)) { return $out }
+  $doneIdx = $Body.IndexOf('**Done when:**')
+  if ($doneIdx -lt 0) { return $out }
+  $tail = $Body.Substring($doneIdx)
+  $endIdx = $tail.IndexOf('**Rides:**')
+  if ($endIdx -ge 0) { $tail = $tail.Substring(0, $endIdx) }
+  foreach ($m in [regex]::Matches($tail, '`([A-Za-z0-9_./\\-]+\.(?:mbt|ps1|mbtp|md|mlw|mbti))(?::(\d+))?`')) {
+    $line = 0
+    if ($m.Groups[2].Success) { $line = [int]$m.Groups[2].Value }
+    # A CRITERION MAY NAME A PATH THAT MUST NOT BE THERE. A task that
+    # DELETED a file cannot state its criterion in terms of a path that
+    # resolves -- and without this, T12 ("delete the stub") could not say
+    # what it deleted, and the gate would call the deletion a dead pointer.
+    # The word ABSENT after the path turns the check around: the path must
+    # NOT be in the tree.
+    $after = $tail.Substring($m.Index + $m.Length)
+    $absent = $false
+    if ($after -match '^\s+is ABSENT') { $absent = $true }
+    $out += [pscustomobject]@{
+      Raw    = $m.Groups[1].Value
+      Line   = $line
+      Absent = $absent
+    }
+  }
+  return $out
+}
+
+# DOES A REPO-RELATIVE PATH EXIST AT A COMMIT? `git cat-file -e` answers it
+# without reading the blob, and it answers it about the TREE AT THAT COMMIT --
+# which is the question. "Does the file exist now" is a different question,
+# and it is the one that let T13's criterion name a file that had not been
+# written yet.
+function Test-PathAtCommit([string]$Root, [string]$Sha, [string]$RelPath) {
+  if ($Sha -eq '' -or $RelPath -eq '') { return $false }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  & git -C $Root cat-file -e ($Sha + ':' + $RelPath) 2>$null | Out-Null
+  $rc = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  return ($rc -eq 0)
+}
+
+# A CRITERION MAY NAME A BARE FILE NAME -- "sa_0507_test.mbt", with no
+# directory. The path check resolves such a name by looking it up under
+# `src/` in the tree of today; at a COMMIT the same lookup is done against the
+# tree of that commit, so a file that moved between the commit and today is
+# still found. A name that is there ZERO times or MORE THAN ONCE resolves to
+# nothing, and the check then says so.
+function Resolve-NameAtCommit([string]$Root, [string]$Sha, [string]$Base) {
+  if ($Sha -eq '' -or $Base -eq '') { return '' }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $rows = @(& git -C $Root ls-tree -r $Sha --name-only 2>$null)
+  $ErrorActionPreference = $prev
+  $hits = @()
+  foreach ($p in $rows) {
+    $p = ([string]$p).Trim()
+    if ($p -eq '') { continue }
+    $leaf = $p
+    if ($p.Contains('/')) { $leaf = $p.Substring($p.LastIndexOf('/') + 1) }
+    if ($leaf -eq $Base) { $hits += $p }
+  }
+  if ($hits.Count -eq 1) { return $hits[0] }
+  return ''
+}
+
+# DID THE PATH A CRITERION NAMES EXIST AT THE COMMIT THE TASK RIDES? A path
+# with a directory is asked about directly; a BARE FILE NAME is looked up in
+# the tree of that commit.
+function Test-CriterionPathAtCommit([string]$Root, [string]$Sha, [string]$Named) {
+  if ($Sha -eq '' -or $Named -eq '') { return $false }
+  $rel = ($Named -replace '\\', '/')
+  if ($rel.Contains('/')) { return (Test-PathAtCommit $Root $Sha $rel) }
+  $resolved = Resolve-NameAtCommit $Root $Sha $rel
+  return ($resolved -ne '')
+}
+
+# THE AUDIT OF THE CRITERIA'S PATHS AT THE COMMITS THEIR TASKS RIDE. It
+# returns the number of paths it CHECKED as well as the problems it found,
+# because the gate prints that number and a printed number is a claim.
+function Get-RidingCommitAudit([string]$QaTxt, [hashtable]$Commits, [string]$Root) {
+  $checked = 0
+  $problems = @()
+  foreach ($b in @(Get-TaskBlocks $QaTxt)) {
+    $inc = Get-TaskRides $b.Value
+    if ($inc -eq '') { continue }
+    if (-not $Commits.ContainsKey($inc)) { continue }
+    $sha = $Commits[$inc]
+    foreach ($p in @(Get-CriterionPaths $b.Value)) {
+      $checked++
+      if ($p.Absent) {
+        # A criterion that declares a path ABSENT must have declared it
+        # absent AT THE COMMIT TOO: a deletion that had not happened yet is
+        # not a deletion.
+        if (Test-CriterionPathAtCommit $Root $sha $p.Raw) {
+          $problems += ('FAIL: a "Done when" declares ' + $p.Raw + ' ABSENT, and it WAS in the tree at the commit increment ' + $inc + ' rides.')
+        }
+        continue
+      }
+      if (-not (Test-CriterionPathAtCommit $Root $sha $p.Raw)) {
+        $problems += ('FAIL: a "Done when" names ' + $p.Raw + ', and it WAS NOT in the tree at the commit increment ' + $inc + ' rides.')
+      }
+    }
+  }
+  return [pscustomobject]@{ Checked = $checked; Problems = $problems }
+}
+
 # THE RULE LIST OF LOOP.md. The rules are the TRAILING run of numbered items:
 # each rule's number is one more than the rule above it, and the run ends at
 # the document's last numbered item. The earlier numbered lists in the document
@@ -204,7 +356,7 @@ function Remove-RuleHeading([string]$LoopTxt, [int]$Index) {
 # WHAT IS WRONG WITH THE DOCUMENTS, given the measurement. The texts are passed
 # in, so the self-test can hand it a COPY with one thing changed.
 function Get-ChecklistProblems {
-  param([string]$QaTxt, [string]$LoopTxt, [string]$RelTxt, [hashtable]$Increments, [string]$Root)
+  param([string]$QaTxt, [string]$LoopTxt, [string]$RelTxt, [hashtable]$Increments, [string]$Root, [hashtable]$Commits)
   $probs = @()
 
   # THE TASK BLOCKS. Each block runs from a task's heading to the next task's
@@ -248,8 +400,9 @@ function Get-ChecklistProblems {
   if ($rides.Count -ne $taskLines.Count) {
     $probs += ('FAIL: ' + $taskLines.Count + ' task(s) and ' + $rides.Count + ' riding increment(s) -- every task must name the increment it rides.')
   }
-  foreach ($m in $rides) {
-    $inc = $m.Groups[1].Value
+  foreach ($b in $blocks) {
+    $inc = Get-TaskRides $b.Value
+    if ($inc -eq '') { continue }
     if (-not $Increments.ContainsKey($inc)) {
       $probs += ('FAIL: a task rides increment ' + $inc + ', and this repository''s history has no such increment.')
     }
@@ -257,29 +410,17 @@ function Get-ChecklistProblems {
 
   # --- 3. EVERY PATH A "Done when" NAMES RESOLVES -----------------------------
   # The paths are the ones inside the DONE-WHEN blocks: that is where a task
-  # says WHERE ITS EVIDENCE IS, and that is where a pointer rots.
+  # says WHERE ITS EVIDENCE IS, and that is where a pointer rots. The paths
+  # and the ABSENT declaration are read by `Get-CriterionPaths` -- ONE
+  # implementation, shared with the riding-commit check below.
   foreach ($b in $blocks) {
-    $body = $b.Value
-    $doneIdx = $body.IndexOf('**Done when:**')
-    if ($doneIdx -lt 0) { continue }
-    $tail = $body.Substring($doneIdx)
-    $endIdx = $tail.IndexOf('**Rides:**')
-    if ($endIdx -ge 0) { $tail = $tail.Substring(0, $endIdx) }
-    foreach ($m in [regex]::Matches($tail, '`([A-Za-z0-9_./\\-]+\.(?:mbt|ps1|mbtp|md|mlw|mbti))(?::(\d+))?`')) {
-      $rel = $m.Groups[1].Value -replace '/', '\'
-      $line = 0
-      if ($m.Groups[2].Success) { $line = [int]$m.Groups[2].Value }
+    foreach ($p in @(Get-CriterionPaths $b.Value)) {
+      $rel = $p.Raw -replace '/', '\'
+      $line = $p.Line
       $full = Join-Path $Root $rel
-      # A CRITERION MAY NAME A PATH THAT MUST NOT BE THERE. A task that
-      # DELETED a file cannot state its criterion in terms of a path that
-      # resolves -- and without this, T12 ("delete the stub") could not say
-      # what it deleted, and the gate would call the deletion a dead pointer.
-      # The word ABSENT after the path turns the check around: the path must
-      # NOT be in the tree.
-      $after = $tail.Substring($m.Index + $m.Length)
-      if ($after -match '^\s+is ABSENT') {
+      if ($p.Absent) {
         if (Test-Path -LiteralPath $full) {
-          $probs += ('FAIL: a "Done when" declares ' + $m.Groups[1].Value + ' ABSENT, and it is still in the tree.')
+          $probs += ('FAIL: a "Done when" declares ' + $p.Raw + ' ABSENT, and it is still in the tree.')
         }
         continue
       }
@@ -290,13 +431,13 @@ function Get-ChecklistProblems {
         if ($found.Count -eq 1) { $full = $found[0].FullName } else { $full = '' }
       }
       if ($full -eq '') {
-        $probs += ('FAIL: a "Done when" names ' + $m.Groups[1].Value + ', and that file is not in the tree.')
+        $probs += ('FAIL: a "Done when" names ' + $p.Raw + ', and that file is not in the tree.')
         continue
       }
       if ($line -gt 0) {
         $n = @([System.IO.File]::ReadAllLines($full, [Text.Encoding]::UTF8)).Count
         if ($line -gt $n) {
-          $probs += ('FAIL: a "Done when" pins ' + $m.Groups[1].Value + ':' + $line + ', and that file has only ' + $n + ' line(s).')
+          $probs += ('FAIL: a "Done when" pins ' + $p.Raw + ':' + $line + ', and that file has only ' + $n + ' line(s).')
         }
       }
     }
@@ -409,6 +550,25 @@ function Get-ChecklistProblems {
     $probs += 'FAIL: the plan file still claims the fixtures ship. They stopped shipping in increment 0632.'
   }
 
+  # --- 8. EVERY PATH A "Done when" NAMES EXISTED AT THE COMMIT THE TASK RIDES -
+  # A pointer that RESOLVES is not a pointer that resolved WHEN THE TASK
+  # LANDED, and the difference is a whole class of defect that check 3 cannot
+  # see. T13's criterion named `_verify/check_own_tree_clean.ps1` as the file
+  # the comparison lives in -- a file that did not exist until increment 0615,
+  # so the criterion could never have been true at 0614, the increment the task
+  # rides -- and check 3 was GREEN on it, because the file IS in the tree
+  # today. The path is asked about AT THAT COMMIT, with `git cat-file -e`.
+  #
+  # And the other direction: a criterion that declares a path ABSENT must
+  # declare it absent AT THE COMMIT TOO, because a deletion that had not
+  # happened yet is not a deletion.
+  if ($Commits.Count -eq 0) {
+    $probs += 'FAIL: the riding commits could not be read from git, so the criteria were NOT checked against the commits their tasks ride.'
+  } else {
+    $audit = Get-RidingCommitAudit $QaTxt $Commits $Root
+    $probs += @($audit.Problems)
+  }
+
   return $probs
 }
 
@@ -422,11 +582,13 @@ if ($SelfTest) {
   $loop = [System.IO.File]::ReadAllText((Join-Path $root 'LOOP.md'), [Text.Encoding]::UTF8)
   $rel = [System.IO.File]::ReadAllText((Join-Path $root '_verify\release.ps1'), [Text.Encoding]::UTF8)
   $incs = Get-KnownIncrements $root
+  $commits = Get-IncrementCommits $root
   Write-Output ('  the increments this history holds: ' + $incs.Count)
+  Write-Output ('  the riding commits this history holds: ' + $commits.Count)
 
   Write-Output ''
   Write-Output '--- the control: the documents as they stand ---'
-  $ctl = @(Get-ChecklistProblems $qa $loop $rel $incs $root)
+  $ctl = @(Get-ChecklistProblems $qa $loop $rel $incs $root $commits)
   $checked++
   if ($ctl.Count -eq 0) {
     Write-Output '  OK: the control passes.'
@@ -559,18 +721,68 @@ if ($SelfTest) {
         return ,@($q, $l, $r)
       }
     }
+    [pscustomobject]@{
+      N = 'a "Done when" names a file that did not exist at the commit the task rides'
+      Expect = 'WAS NOT in the tree at the commit increment'
+      # THE DEFECT THIS CHECK EXISTS FOR. T13's criterion named a file that
+      # did not exist until the NEXT increment, so it resolved today and could
+      # never have been true when the task landed -- and check 3 was GREEN on
+      # it. The fault reproduces that EXACT shape: a file that IS in the tree
+      # (so the path check stays green) and was NOT in the tree at the riding
+      # commit (so the riding-commit check goes red).
+      #
+      # The replacement is scoped to the Done-when clause, because the
+      # corrected record NAMES THE SAME FILE while explaining the correction.
+      Apply = {
+        param($q, $l, $r)
+        $q = [regex]::Replace($q, '(?m)(\*\*Done when:\*\* the comparison lives in )`_verify/release\.ps1`', '${1}`_verify/check_own_tree_clean.ps1`')
+        return ,@($q, $l, $r)
+      }
+    }
+    [pscustomobject]@{
+      N = 'a "Done when" that declares a path ABSENT names one that WAS there'
+      Expect = 'WAS in the tree at the commit increment'
+      # The other direction. A deletion that had not happened yet is not a
+      # deletion, so a criterion that declares a path ABSENT must declare it
+      # absent AT THE COMMIT TOO. The fault points T12's ABSENT declaration at
+      # a file that WAS in the tree at 0614 -- so the path check goes red as
+      # well, but with its OWN message, and only the riding-commit check
+      # carries this one.
+      Apply = {
+        param($q, $l, $r)
+        $q = [regex]::Replace($q, '(?m)^(\s+\*\*Done when:\*\* `)src/lexer/lexer_0488_test\.mbt(` is ABSENT)', '${1}src/parser/parser_0488_test.mbt${2}')
+        return ,@($q, $l, $r)
+      }
+    }
   )
 
   foreach ($f in $faults) {
     Write-Output ''
     Write-Output ('--- the defect: ' + $f.N + ' ---')
-    $mutated = & $f.Apply $qa $loop $rel
+    $mutated = $null
+    try {
+      $mutated = & $f.Apply $qa $loop $rel
+    } catch {
+      Write-Output ('  FAIL: the mutation threw: ' + $_.Exception.Message)
+      $bad++
+      continue
+    }
     if ($null -eq $mutated -or @($mutated).Count -ne 3) {
       Write-Output '  FAIL: the mutation did not produce a copy of the documents.'
       $bad++
       continue
     }
-    $probs = @(Get-ChecklistProblems $mutated[0] $mutated[1] $mutated[2] $incs $root)
+    # THE FAULT MUST HAVE LANDED. A mutation that changes NOTHING is
+    # indistinguishable from a defect that was not caught -- the gate stays
+    # green either way and the fault reports itself as a miss. So the
+    # documents are compared before and after, and a mutation that did not
+    # change them is reported as what it is: a fault that never landed.
+    if ($mutated[0] -eq $qa -and $mutated[1] -eq $loop -and $mutated[2] -eq $rel) {
+      Write-Output '  FAIL: the mutation did not change the documents, so the fault never landed.'
+      $bad++
+      continue
+    }
+    $probs = @(Get-ChecklistProblems $mutated[0] $mutated[1] $mutated[2] $incs $root $commits)
     $checked++
     $caught = 0
     try {
@@ -588,8 +800,8 @@ if ($SelfTest) {
     }
   }
 
-  if ($checked -ne 14) {
-    Write-Output ('  FAIL: ' + $checked + ' of 14 checks ran.')
+  if ($checked -ne 16) {
+    Write-Output ('  FAIL: ' + $checked + ' of 16 checks ran.')
     $bad++
   }
 
@@ -617,6 +829,7 @@ $qa = [System.IO.File]::ReadAllText($qaPath, [Text.Encoding]::UTF8)
 $loop = [System.IO.File]::ReadAllText($loopPath, [Text.Encoding]::UTF8)
 $rel = [System.IO.File]::ReadAllText($relPath, [Text.Encoding]::UTF8)
 $incs = Get-KnownIncrements $root
+$commits = Get-IncrementCommits $root
 
 $taskCount = @([regex]::Matches($qa, '(?m)^- \[( |x)\] \*\*T\d+\.')).Count
 $openCount = @([regex]::Matches($qa, '(?m)^- \[ \]')).Count
@@ -624,6 +837,7 @@ $rules = @(Get-RuleNumbers $loop)
 Write-Output ('  the tasks: ' + $taskCount + '   the open boxes: ' + $openCount)
 Write-Output ('  the LOOP''s rules: ' + $rules.Count + '   the pin: ' + (Get-Pin $rel 'LOOP_RULES'))
 Write-Output ('  the increments this history holds: ' + $incs.Count)
+Write-Output ('  the riding commits this history holds: ' + $commits.Count)
 $qFiles = @([regex]::Matches($qa, 'files=(\d+)\s+parsed=(\d+)\s+actionable=(\d+)\s+notices=(\d+)'))
 $qGates = @([regex]::Matches($qa, 'MEASURED:\s*(\d+)\s+`check_\*` gates'))
 $liveGates = @(Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'check_*.ps1' -File -ErrorAction SilentlyContinue).Count
@@ -636,8 +850,10 @@ if ($qGates.Count -gt 0) {
 $noCriterion = @(Get-CriterionlessTasks $qa)
 Write-Output ('  the tasks that state no criterion: ' + $noCriterion.Count)
 Write-Output ('  the plan file ASSERTS the fixtures ship: ' + (Test-StaleShippingClaim $qa))
+$audit = Get-RidingCommitAudit $qa $commits $root
+Write-Output ('  the criteria paths checked at the commit their task rides: ' + $audit.Checked)
 
-$probs = @(Get-ChecklistProblems $qa $loop $rel $incs $root)
+$probs = @(Get-ChecklistProblems $qa $loop $rel $incs $root $commits)
 foreach ($p in $probs) {
   Write-Output ''
   Write-Output $p
@@ -649,7 +865,8 @@ if ($fail -eq 0) {
   Write-Output ('CHECKLIST OK: ' + $taskCount + ' task(s), all ticked, every one riding an increment this')
   Write-Output ('history holds, every path it names resolving, and the LOOP''s ' + $rules.Count + ' rule(s) numbered')
   Write-Output 'contiguously and matching the pin, every number the plan file quotes matching the tree,'
-  Write-Output 'every task stating its own criterion, and no claim about the package it does not hold.'
+  Write-Output ('every task stating its own criterion, no claim about the package it does not hold, and')
+  Write-Output ('every criterion path present at the commit its task rides (' + $audit.Checked + ' path(s) checked).')
   exit 0
 }
 Write-Output ('CHECKLIST FAILED: ' + $fail + ' problem(s).')

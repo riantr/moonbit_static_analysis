@@ -206,10 +206,24 @@ the committed tree held 274).
       scan READ with the source files the COMMITTED tree holds (`git ls-tree -r HEAD`),
       one by one. An untracked file under `src/` now makes the gate RED and names
       itself, instead of quietly moving a published number.
-      **Done when:** the comparison lives in `_verify/check_own_tree_clean.ps1`, it
-      compares the files the scan READ against `git ls-tree -r HEAD` one by one,
-      and an untracked file under `src/` turns it RED by name.
+      **Done when:** the comparison lives in `_verify/release.ps1`, it compares the
+      files the scan READ against `git ls-tree -r HEAD` one by one, and an untracked
+      file under `src/` turns it RED by name.
       **Rides:** increment **0614**.
+      **DONE 0614.** Record: `_verify/NARRATIVE.md` §0614. **CORRECTED 2026-11-21**
+      (increment 0636): this criterion named `_verify/check_own_tree_clean.ps1` as
+      the file the comparison lives in, and that file DID NOT EXIST at increment
+      **0614** — it was created at increment **0615** (`0e42cb5`), and it never held
+      the comparison at all: it scans the tree and asserts `actionable == 0`, and it
+      contains no `git`, no `ls-tree` and no `HEAD`. MEASURED: the search
+      `git log -S 'ls-tree' -- _verify/release.ps1` names **2e114fe** — increment
+      **0614**, the very increment this task rides — and the search
+      `git log -S 'ls-tree' -- _verify/check_own_tree_clean.ps1` is EMPTY.
+      The comparison lives in
+      `_verify/release.ps1`, and it has lived there since 0614. A criterion that
+      names a file which does not exist is a criterion that NOTHING can check, and
+      the gate that checked it only asked whether the path RESOLVES; corrected IN
+      PLACE, as this file's own rule says.
 
 AND THE VERIFICATION THE OWNER ASKED FOR, measured: the 275 files the scan reads are
 the SAME 275 files the committed tree holds and the SAME 275 a clean checkout reads,

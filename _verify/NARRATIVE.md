@@ -24542,3 +24542,109 @@ kind of thing, and both are held or neither is.
 => 判据: A NUMBER A GATE PRINTS IS A CLAIM, AND IT MUST BE ASKED FOR, NOT DEFAULTED. The line that printed "the tasks that state no criterion: 0" asked a question it had never loaded the data for, and would have printed 0 whatever the answer was; the line beside it asked about the TEXT while the check it belonged to asked about the ASSERTION, and the two disagreed about the same document in the same run. One implementation each, now: the checks and the printed lines call the same three functions. Because a gate's verdict and its output are both claims, and a human reads the output.
 
 
+## 0636: A PATH THAT RESOLVES IS NOT A PATH THAT RESOLVED WHEN THE TASK LANDED
+
+MEASURED 2026-11-21, by an INDEPENDENT verification of the objective run after
+increment 0635. It reported two gaps in the objective's own artefact, and both
+were confirmed here by measurement before a single byte was changed.
+
+THE FIRST GAP WAS A CRITERION THAT NAMED A FILE WHICH DID NOT EXIST YET.
+
+`_verify/QA_TODO.md`, task T13, read:
+
+    **Done when:** the comparison lives in `_verify/check_own_tree_clean.ps1`, ...
+
+T13 rides increment **0614**. MEASURED:
+
+    git cat-file -e 2e114fe:_verify/check_own_tree_clean.ps1   -> FALSE
+    git cat-file -e 0e42cb5:_verify/check_own_tree_clean.ps1   -> TRUE
+    git log -S 'ls-tree' -- _verify/check_own_tree_clean.ps1   -> (empty)
+    git log -S 'ls-tree' -- _verify/release.ps1                -> 2e114fe
+
+2e114fe IS increment 0614 -- the very commit T13 rides -- and the comparison
+really does land there, in `_verify/release.ps1`. The file the criterion named
+was created at increment **0615** (0e42cb5), one increment LATER, and it never
+held the comparison at all: it scans the tree and asserts `actionable == 0`, and
+it contains no `git`, no `ls-tree` and no `HEAD`.
+
+So the criterion was FALSE when the task landed -- and every check the goal
+gate had was GREEN on it, because the only question asked was "does this path
+resolve?", and it does resolve, TODAY, in a file written an increment later.
+
+THE SECOND GAP WAS A CHAPTER COUNT THAT COULD NOT SEE THE CHAPTERS.
+
+`$NARRATIVE_CHAPTERS` held 146. MEASURED on the NARRATIVE of today: 181 `## `
+headings, of which FOUR are prose and **177 are chapters**, in five forms:
+
+    ## 0564: TITLE                    plain colon            146
+    ## 0477 -- TITLE                  dash                    13
+    ## 0.4.30, 0440: TITLE            release prefix          10
+    ## 0494b: TITLE                   letter suffix            4
+    ## 0521. TITLE                    dot                      4
+
+The gate's rule was `^##\s+(\d{4}):\s+\S` -- the plain-colon form alone. It
+counted 146 of 177, and it could not SEE the other 31: a chapter in any of
+them losing its `## ` prefix was invisible to it. The lost-heading rule was
+narrower still -- `^(\d{4}):\s+[A-Z]` -- so it caught the colon form only, and
+only when the title began with an UPPERCASE letter; a chapter whose title
+begins lowercase (`## 0469: a `match`'s value ...`) lost its prefix in
+SILENCE.
+
+THE FIX, and it is one decision held in one place:
+
+  - ONE definition, `$chapHeadPat`, now serves the three chapter captures, the
+    COUNT, the LOST-HEADING rule and the DUPLICATE rule. They widen TOGETHER,
+    because a count that cannot see a chapter is a count holding a number it
+    cannot verify, and a lost-heading rule that cannot see a chapter is a rule
+    that cannot fail.
+  - The lost-heading rule is the chapter rule AT COLUMN 0. The dot form needs
+    one more test: MEASURED, exactly two lines in this file sit at column 0 and
+    look like a dot-form chapter, and BOTH are prose ("0496. That is not a
+    coverage loss, ..." and "1689. The type lens verifies, ..."). All four
+    dot-form chapters carry an ALL-CAPS tail and both prose lines carry
+    lowercase -- so the tail is the discriminator: two false positives without
+    it, ZERO with it.
+  - The three captures (`0564`, `0572`, `0612`) take the SAME wide terminator.
+    MEASURED: nine plain-colon chapters are immediately followed by a chapter in
+    another form, so the narrow terminator would have let a capture swallow the
+    next chapter's text.
+
+AND THE SECOND HALF OF THE FIRST GAP: the goal gate grew an EIGHTH check.
+
+Every path a "Done when" names must have existed AT THE COMMIT THE TASK RIDES
+-- `git cat-file -e <sha>:<path>` -- and a criterion that declares a path
+ABSENT must declare it absent THERE too, because a deletion that had not
+happened yet is not a deletion. One implementation each: `Get-CriterionPaths`,
+`Get-TaskRides`, `Get-IncrementCommits`.
+
+MEASURED, by injecting two faults into a COPY of the plan file:
+
+    a "Done when" names _verify/check_own_tree_clean.ps1, and it WAS NOT in the tree at the commit increment 0614 rides.
+    a "Done when" declares src/parser/parser_0488_test.mbt ABSENT, and it WAS in the tree at the commit increment 0614 rides.
+
+The first fault is the EXACT shape of the defect: the file IS in the tree, so
+the path check stays GREEN, and only the new check goes red. The self-test now
+catches **15** injected defects, 15 of 15.
+
+AND A QUESTION THE GATE WAS NOT ASKING: DID THE FAULT LAND?
+
+A mutation that changes NOTHING is indistinguishable from a defect that was not
+caught: the gate stays green either way and the fault reports itself as a
+miss. So the self-test now compares the documents before and after, and a
+mutation that did not change them is reported as what it is -- a fault that
+never landed. The two look the same from the outside; they are not the same
+thing, and the difference is the difference between "the gate is blind" and
+"the fault was empty".
+
+THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     36 -> 37
+    $NARRATIVE_CHAPTERS            146 -> 178
+
+and the chapter count MOVED BY 32, of which only ONE is the new chapter: the
+other 31 are the chapters the rule could not see. A pin that moves by 32 when
+one chapter was added is a pin that was holding the wrong number.
+
+=> 判据: A PATH THAT RESOLVES TODAY IS NOT A PATH THAT RESOLVED WHEN THE TASK LANDED, AND A COUNT THAT CANNOT SEE THE THINGS IT COUNTS IS NOT A COUNT. T13's criterion named a file that did not exist until the next increment, and every check was green on it because the only question was "does it resolve?". The NARRATIVE's chapter count held 146 of 177 chapters because the rule knew one of the five forms a chapter takes, and a rule that cannot see a thing cannot fail when that thing goes wrong -- so the rule, the lost-heading rule and the duplicate rule now widen together off one definition, and every criterion path is asked about at the commit its task rides.
+
+

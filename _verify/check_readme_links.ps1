@@ -1471,7 +1471,17 @@ $narrTxt2 = [System.IO.File]::ReadAllText($narrPath2, [System.Text.Encoding]::UT
 #
 # A gate that says how much it checked, and checks something else, is a green
 # row that measured nothing. So the capture stops at the next chapter heading.
-$chapM = [regex]::Match($narrTxt2, '(?ms)^## 0564:.*?(?=^## \d{4}:|\z)')
+#
+# AND THE TERMINATOR IS THE WIDE CHAPTER RULE, not `^## \d{4}:`. MEASURED: nine
+# plain-colon chapters in this file are IMMEDIATELY FOLLOWED by a chapter in
+# another form (`## 0498:` -> `## 0477 --`, `## 0520:` -> `## 0521.`), so the
+# narrow terminator would have let a capture swallow the next chapter's text.
+#
+# ONE DEFINITION, `$chapHeadPat`, serves the three captures AND section 9's
+# count, lost-heading and duplicate rules. A rule spelled twice is two rules,
+# and the second one is the one that drifts.
+$chapHeadPat = '(?:\d+\.\d+\.\d+,\s+)?(\d{4}[a-z]?)(?::|\s--|\.)(?=\s)'
+$chapM = [regex]::Match($narrTxt2, '(?ms)^## 0564:.*?(?=^##\s+' + $chapHeadPat + '|\z)')
 if (-not $chapM.Success) {
   Write-Output '  FAIL: the NARRATIVE has no chapter 0564, so the course map cannot be checked.'
   $fail++
@@ -1539,15 +1549,50 @@ $chapSeen = @{}
 $dupChaps = @()
 $chapCount = 0
 foreach ($ln in $narrLines) {
-  $m = [regex]::Match($ln, '^##\s+(\d{4}):\s+\S')
+  # THE CHAPTER, IN EVERY FORM IT TAKES IN THIS FILE. MEASURED on the NARRATIVE
+  # of today: 181 `## ` headings, of which 177 are chapters and FOUR are prose
+  # ("A HARNESS DEFECT ...", "DIRECTION 2: ...", "0.4.30 POST-PUBLISH: ...",
+  # "DIRECTION 4: ..."). The chapters come in FIVE forms:
+  #
+  #     ## 0564: TITLE                    plain colon            146
+  #     ## 0477 -- TITLE                  dash                    13
+  #     ## 0.4.30, 0440: TITLE            release prefix          10
+  #     ## 0494b: TITLE                   letter suffix            4
+  #     ## 0521. TITLE                    dot                      4
+  #
+  # The old rule (`^##\s+(\d{4}):\s+\S`) counted only the FIRST of those, so
+  # the pin held 146 while the file carried 177 -- and a chapter in any of the
+  # other four forms losing its `## ` prefix was INVISIBLE to this gate. The
+  # count, the lost-heading rule and the duplicate rule all widen TOGETHER, in
+  # this one loop, off the one `$chapHeadPat`.
+  $m = [regex]::Match($ln, '^##\s+' + $chapHeadPat)
   if ($m.Success) {
     $chapCount++
     $c = $m.Groups[1].Value
     if ($chapSeen.ContainsKey($c)) { $dupChaps += $c } else { $chapSeen[$c] = $true }
     continue
   }
-  $m2 = [regex]::Match($ln, '^(\d{4}):\s+[A-Z]')
-  if ($m2.Success) { $lostHeads += $ln.Trim() }
+  # THE LOST-HEADING RULE. A chapter that loses its `## ` prefix renders as
+  # body text. The old rule was `^(\d{4}):\s+[A-Z]` -- it caught the COLON
+  # form only, and only when the title began with an UPPERCASE letter, so a
+  # chapter whose title begins lowercase (`## 0469: a `match`'s value ...`)
+  # lost its prefix in SILENCE. The rule is now the chapter rule AT COLUMN 0.
+  #
+  # THE DOT FORM NEEDS ONE MORE TEST. MEASURED: exactly two lines in this file
+  # sit at column 0 and look like a dot-form chapter, and BOTH are prose --
+  # "0496. That is not a coverage loss, ..." and "1689. The type lens
+  # verifies, ...". All four dot-form chapters carry an ALL-CAPS tail and both
+  # prose lines carry lowercase, so the tail is the discriminator: two false
+  # positives without it, ZERO with it.
+  $m2 = [regex]::Match($ln, '^' + $chapHeadPat)
+  if ($m2.Success) {
+    $isLost = $true
+    if ([regex]::IsMatch($ln, '^\d{4}[a-z]?\.(?=\s)')) {
+      $tail = $ln.Substring($m2.Length)
+      if ([regex]::IsMatch($tail, '[a-z]')) { $isLost = $false }
+    }
+    if ($isLost) { $lostHeads += $ln.Trim() }
+  }
 }
 $ncM = [regex]::Match($relTxt2, "\`$NARRATIVE_CHAPTERS\s*=\s*'(\d+)'")
 if (-not $ncM.Success) {
@@ -1737,7 +1782,7 @@ function Get-PdfPages {
   return [regex]::Matches($txt, '/Type\s*/Page(?![s])').Count
 }
 
-$mapChapM = [regex]::Match($narrTxt2, '(?ms)^## 0572:.*?(?=^## \d{4}:|\z)')
+$mapChapM = [regex]::Match($narrTxt2, '(?ms)^## 0572:.*?(?=^##\s+' + $chapHeadPat + '|\z)')
 if (-not $mapChapM.Success) {
   Write-Output '  FAIL: the NARRATIVE has no chapter 0572, so the deck map cannot be checked.'
   $fail++
@@ -1745,7 +1790,7 @@ if (-not $mapChapM.Success) {
 } else {
   $mapRows = Get-DeckRows $mapChapM.Value
 }
-$invChapM = [regex]::Match($narrTxt2, '(?ms)^## 0612:.*?(?=^## \d{4}:|\z)')
+$invChapM = [regex]::Match($narrTxt2, '(?ms)^## 0612:.*?(?=^##\s+' + $chapHeadPat + '|\z)')
 if ($invChapM.Success) { $invRows = Get-DeckInventory $invChapM.Value } else { $invRows = [ordered]@{} }
 
 # 10a. THE MAP NAMES EVERY DECK, AND THE PAGE COUNTS ARE THE MEASURED ONES.
