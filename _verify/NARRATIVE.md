@@ -24648,3 +24648,91 @@ one chapter was added is a pin that was holding the wrong number.
 => 判据: A PATH THAT RESOLVES TODAY IS NOT A PATH THAT RESOLVED WHEN THE TASK LANDED, AND A COUNT THAT CANNOT SEE THE THINGS IT COUNTS IS NOT A COUNT. T13's criterion named a file that did not exist until the next increment, and every check was green on it because the only question was "does it resolve?". The NARRATIVE's chapter count held 146 of 177 chapters because the rule knew one of the five forms a chapter takes, and a rule that cannot see a thing cannot fail when that thing goes wrong -- so the rule, the lost-heading rule and the duplicate rule now widen together off one definition, and every criterion path is asked about at the commit its task rides.
 
 
+## 0637: A RELEASE THAT IS SUPERSEDED BEFORE ITS ROW IS WRITTEN LEAVES A HOLE NOBODY LOOKS AT
+
+MEASURED 2026-11-21, while the release gate for increment 0636 was running. It
+failed on ONE stage --
+
+    the transfer scope: the requirements document, the three rows, and where they landed    False
+
+-- and the reason was one line:
+
+    FAIL: v0.5.2 is TAGGED but the record has no published-bytes row for it.
+          A reader of that release cannot check the bytes they were given.
+
+A published artifact's bytes are a fact that can be recorded once and re-checked
+forever. v0.5.2 IS published. The record did not have its row.
+
+AND THAT WAS THE LUCKY HALF OF IT. The gate asks ONE question about the rows: does
+the version THIS TREE DECLARES have one? It named v0.5.2 -- the declared version --
+because that is the only version it ever asks about. It never asked about v0.5.1,
+which is ALSO tagged, ALSO published, and ALSO had no row. MEASURED, before this
+increment changed anything:
+
+    tagged versions at or after the first recorded row (0.4.40)     16
+    of those, carrying no published-bytes row                        2
+                                                                    0.5.1, 0.5.2
+
+THE ROW A RELEASE OWES TRAVELS WITH THE RELEASE, NOT WITH THE VERSION NUMBER. The
+obligation is written down in the gate itself -- "cut the version -> run the gate ->
+tag -> CI publishes -> add the row" -- and the ROW is the last step of it. But the
+question is asked of whoever is CURRENT: so a release that is superseded before its
+row is written loses the row in silence, and the gate is not able to see it because
+that version is no longer the version being asked about.
+
+THE TWO ROWS, MEASURED
+
+    published 0.5.1  wasm A7E5B458F605772FE176FC543DD0907163ECD302F6E971D395632CE057A2DE77  731143 bytes  checksum 6406dee8be675b6fff0e872215762dc77f5e48e112eeec196991a310cbe87445  2026-11-20T17:34:37.351372+00:00
+    published 0.5.2  wasm 8CE86C4A8C41A277358B1007DF7644A35CAFB944CD5C4DD980D1151190F6877F  731143 bytes  checksum b18af90ea7e7186a3aa583f1ddf0eace54cc960ab20d76bcd3d749418d2bc6b9  2026-11-20T23:59:59.792391+00:00
+
+THE READER IS SELF-CHECKED BEFORE IT IS TRUSTED. Asked about 0.5.0, the same reader
+reproduced the recorded row -- checksum
+b7b76393766bdc61973bcce6c52441e48576893246050c6380cc404b79085e17 and created_at
+2026-11-18T13:38:17.131204+00:00 -- byte for byte, BEFORE it was applied to 0.5.1
+and 0.5.2. A reader that has never reproduced a known row is a guess, not a reader.
+
+THE WASM HASH WAS MEASURED TWICE AND THE TWO PATHS AGREE: once from the local
+registry cache, once from a fresh download of the file the registry serves.
+
+    0.5.1  A7E5B458F605772FE176FC543DD0907163ECD302F6E971D395632CE057A2DE77  731143 bytes
+    0.5.2  8CE86C4A8C41A277358B1007DF7644A35CAFB944CD5C4DD980D1151190F6877F  731143 bytes
+
+THE CHECKSUM IS THE REGISTRY'S OWN, AND IT WAS CHECKED A THIRD WAY: it is the SHA-256
+of the published source package, and the local registry's copy of that package hashes
+to it -- for 0.5.0, for 0.5.1 and for 0.5.2.
+
+AND THE TWO ARTIFACTS ARE ALMOST THE SAME FILE. MEASURED, byte for byte: they are the
+same LENGTH, and they differ in EXACTLY ONE BYTE -- the version digit in the producer
+name the wasm carries.
+
+    ...moonbit_static_analysis@0.5.1.E...   offset 731071   '1'
+    ...moonbit_static_analysis@0.5.2.E...   offset 731071   '2'
+
+So 0.5.2 shipped 0.5.1's compiled code. What it shipped that 0.5.1 did not was the
+VERSION.
+
+THE GATE NOW ASKS ABOUT EVERY RELEASE, NOT ONLY THE CURRENT ONE.
+
+`check_transfer_scope.ps1` gained one more check in the same section: EVERY tagged
+version from the first recorded row onwards must have a row. The first recorded row is
+the boundary on purpose -- the rows begin at 0.4.40, and the versions before that
+PREDATE the rule rather than break it.
+
+AND THE FAULT THAT PROVES IT IS THE ONE THE OLD CHECK CANNOT SEE: a tagged version
+that is NOT the declared one. The copy loses its 0.5.1 row and the copy is tagged
+v0.5.1, while moon.mod still declares 0.5.2 and 0.5.2 still has its row. The old
+check stays GREEN -- it never asked about 0.5.1 -- and the new check goes RED.
+
+THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     37 -> 38
+    $NARRATIVE_CHAPTERS            178 -> 179
+
+=> 判据: THE ROW A RELEASE OWES TRAVELS WITH THE RELEASE, NOT WITH THE VERSION NUMBER.
+The gate asked the version this tree declares, so a release that was superseded before
+its row was written lost the row in silence: v0.5.1 was tagged, published, and had no
+row, and nothing could see it because it was no longer the question being asked. Both
+rows are now in the record, each measured on three independent paths, and the gate
+asks about EVERY tagged release from the first recorded row onwards.
+
+

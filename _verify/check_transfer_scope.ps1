@@ -32,7 +32,10 @@
 #   7. the three rows are MEASURED, and the measuring scripts are release-gate
 #      stages, so a row cannot be satisfied by prose alone;
 #   8. the PUBLISHED BYTES are checkable by hash, and the hash is re-checked
-#      against the local registry copy whenever that copy is here.
+#      against the local registry copy whenever that copy is here; and EVERY
+#      tagged release carries a row, not only the version this tree declares
+#      -- a release that is superseded before its row is written is invisible
+#      to a gate that only ever asks about the current one.
 #
 # WHY IT IS OFFLINE. It reads files and nothing else: no network, no registry, no
 # compiler, no corpus. It is fast enough to run next to anything, and it cannot
@@ -340,6 +343,53 @@ function Test-TransferScope {
         Write-Output ('        on disk:  ' + $actual)
       }
     }
+
+    # EVERY TAGGED RELEASE SINCE THE FIRST RECORDED ONE MUST HAVE A ROW.
+    #
+    # Why this is a SEPARATE question from the one above: the check above
+    # asks about the version THIS TREE DECLARES, which is the right question
+    # for the release being cut -- but a release that is SUPERSEDED before
+    # its row is written is invisible to it. MEASURED on 2026-11-21: v0.5.1
+    # and v0.5.2 were both tagged, both published and both had no row, and
+    # the gate named only v0.5.2 -- the one it happened to be asking about,
+    # because that was the declared version.
+    #
+    # So the question is asked of EVERY tagged version from the FIRST
+    # RECORDED ROW onwards. That boundary is deliberate: the rows begin at
+    # 0.4.40, and the versions before that PREDATE the rule rather than break
+    # it. A gate that asked about every tag since 0.1.0 would be reporting a
+    # history, not a hole.
+    $rowVers = @($rows | ForEach-Object { $_.Ver } | Sort-Object -Unique)
+    $versOrdered = @($rowVers | Sort-Object { [version]$_ })
+    $prevEap3 = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $allTags = @(& git -C $Root tag --list 'v*' 2>$null)
+    $tagCode3 = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap3
+    if ($tagCode3 -ne 0) {
+      Write-Output '  the tag list could not be read here, so the releases older than the current one could not be asked about.'
+      Write-Output '  (a copy of the tree that is not a repository cannot answer it, and saying so is the honest answer.)'
+    } elseif ($versOrdered.Count -gt 0) {
+      $firstRow = $versOrdered[0]
+      $tagVers = @()
+      foreach ($tg in $allTags) {
+        $tv = ([string]$tg).Trim()
+        if ($tv.StartsWith('v')) { $tv = $tv.Substring(1) }
+        if ($tv -match '^\d+\.\d+\.\d+$') { $tagVers += $tv }
+      }
+      $asked = @()
+      foreach ($tv in @($tagVers | Sort-Object -Unique)) {
+        if ([version]$tv -ge [version]$firstRow) { $asked += $tv }
+      }
+      $missingRows = @()
+      foreach ($tv in $asked) { if ($versOrdered -notcontains $tv) { $missingRows += $tv } }
+      if ($missingRows.Count -eq 0) {
+        Write-OK ('every tagged release from ' + $firstRow + ' onwards has a published-bytes row (' + $asked.Count + ' release(s) asked about)')
+      } else {
+        Write-Bad ('a TAGGED release has no published-bytes row: ' + ($missingRows -join ', '))
+        Write-Output '        A reader of that release cannot check the bytes they were given.'
+      }
+    }
   }
 
   Write-Output ''
@@ -422,6 +472,50 @@ function Set-RowHashes {
   if (-not [regex]::IsMatch($t, $pat)) { return $false }
   $enc = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($Path, [regex]::Replace($t, $pat, '${1}' + $Hash), $enc)
+  return $true
+}
+
+function Move-MappedSite {
+  # Moves the FIRST mapped implementation site by ONE line, in the copy.
+  #
+  # The site is FOUND by the map's own shape, not by a literal. The fault
+  # this replaced named `src/core/core.mbt:482`, and that literal occurs
+  # ZERO times in the NARRATIVE today -- the map says 605 -- so the mutation
+  # found nothing to change and the self-test reported "the defect did not
+  # apply". A fault that does not apply is a fault that tested nothing, and
+  # a fault that tests nothing is indistinguishable from a gate that works.
+  param([string]$Path)
+  $t = Get-Text $Path
+  if ($null -eq $t) { return $false }
+  $b = $t.IndexOf($MAP_BEGIN)
+  $e = $t.IndexOf($MAP_END)
+  if ($b -lt 0 -or $e -le $b) { return $false }
+  $blk = $t.Substring($b, $e - $b)
+  $m = [regex]::Match($blk, '(?m)^\s*row\s+[123]\s+\S+?:(\d+)\s+\S')
+  if (-not $m.Success) { return $false }
+  $newLine = ([int]$m.Groups[1].Value + 1)
+  $old = $m.Value
+  $new = [regex]::Replace($old, ':(\d+)', ':' + $newLine)
+  if ($new -eq $old) { return $false }
+  $idx = $t.IndexOf($old, $b)
+  if ($idx -lt 0) { return $false }
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, ($t.Substring(0, $idx) + $new + $t.Substring($idx + $old.Length)), $enc)
+  return $true
+}
+
+function Remove-RowForVersion {
+  # Drops the published-bytes row for ONE version, so the self-test can build
+  # the exact shape this gate missed: a release that is TAGGED and has no
+  # row. The line is found by its OWN version, not by its position, and the
+  # file's line endings are kept.
+  param([string]$Path, [string]$Ver)
+  $t = Get-Text $Path
+  if ($null -eq $t) { return $false }
+  $pat = '(?m)^[ \t]*published\s+' + [regex]::Escape($Ver) + '\s+wasm\s+[0-9A-Fa-f]{64}[^\r\n]*'
+  if (-not [regex]::IsMatch($t, $pat)) { return $false }
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, [regex]::Replace($t, $pat, ''), $enc)
   return $true
 }
 
@@ -518,7 +612,8 @@ $defects = @(
   @{ N = 'a requirement is paraphrased instead of quoted';
      M = { param($d) Replace-InFile (Join-Path $d '_verify\NARRATIVE.md') '**stable family ids** and a checked profile' 'stable family ids and a checked profile' } },
   @{ N = 'a mapped site has moved';
-     M = { param($d) Replace-InFile (Join-Path $d '_verify\NARRATIVE.md') 'src/core/core.mbt:482' 'src/core/core.mbt:483' } },
+     Expect = 'does not carry';
+     M = { param($d) Move-MappedSite (Join-Path $d '_verify\NARRATIVE.md') } },
   @{ N = 'a row has no implementation site';
      M = { param($d) Remove-MapRows (Join-Path $d '_verify\NARRATIVE.md') '3' } },
   @{ N = 'the row-3 rationale is gone';
@@ -531,6 +626,43 @@ $defects = @(
      M = { param($d) Replace-InFile (Join-Path $d '_verify\NARRATIVE.md') $assetHash ('0000000000000000000000000000000000000000000000000000000000000000') } },
   @{ N = 'a README no longer names the requirements document';
      M = { param($d) Replace-InFile (Join-Path $d 'README.md') 'bandit_review.md' 'the_review.md' } },
+  @{ N = 'a TAGGED release that is NOT the current one has no row';
+     Expect = 'a TAGGED release has no published-bytes row: {TARGET}';
+     Avoid  = 'is TAGGED but the record has no published-bytes row for it';
+     M = {
+       param($d)
+       # THE FAULT THE OLD CHECK CANNOT SEE. The old check asks about the
+       # version this tree DECLARES, so it stays GREEN here -- and the new
+       # check goes RED. That is the whole point of this defect: a gate
+       # that goes red for the old reason would prove nothing about the
+       # new one.
+       #
+       # The target is READ, not hardcoded: it is the newest recorded row
+       # that is NOT the declared version. A mutation that names a literal
+       # stops applying the moment the tree's version moves, and a mutation
+       # that does not apply has tested nothing.
+       $mmPath = Join-Path $d 'moon.mod'
+       $t = Get-Text $mmPath
+       if ($null -eq $t) { return $false }
+       $vm = [regex]::Match($t, '(?m)^version\s*=\s*"([^"]+)"')
+       if (-not $vm.Success) { return $false }
+       $declared = $vm.Groups[1].Value
+       $narrP = Join-Path $d '_verify\NARRATIVE.md'
+       $nt = Get-Text $narrP
+       if ($null -eq $nt) { return $false }
+       $target = ''
+       $best = $null
+       foreach ($m in [regex]::Matches($nt, '(?m)^\s*published\s+(\d+\.\d+\.\d+)\s+wasm\s+')) {
+         $v = $m.Groups[1].Value
+         if ($v -eq $declared) { continue }
+         if ($null -eq $best -or ([version]$v -gt [version]$best)) { $best = $v; $target = $v }
+       }
+       if ($target -eq '') { return $false }
+       $script:mutTarget = $target
+       if (-not (Remove-RowForVersion -Path $narrP -Ver $target)) { return $false }
+       if (-not (New-TagInCopy -Dir $d -Tag ('v' + $target))) { return $false }
+       return $true
+     } },
   @{ N = 'a version is TAGGED but the record has no row for it';
      M = {
        param($d)
@@ -559,18 +691,47 @@ foreach ($x in $defects) {
   Copy-ScopeFiles -Src $pristine -Dst $case
   # A mutation that DOES NOT APPLY is a defect that was never injected, and a
   # gate that stays green because nothing changed has proved nothing.
+  # The target is cleared BEFORE the mutation runs: a mutation that sets it
+  # and a reset that runs afterwards would leave the expectation with an
+  # EMPTY version -- and an empty suffix matches the real message as a
+  # PREFIX, so the check would pass for the wrong reason.
+  $script:mutTarget = ''
   $applied = & $x.M $case
   if ($applied -ne $true) {
     Write-Output '  FAIL: the defect did not apply -- the mutation found nothing to change.'
     $bad++
     continue
   }
-  Test-TransferScope -Root $case -AssetPath $asset | Out-Null
+  $caseOut = Test-TransferScope -Root $case -AssetPath $asset 2>&1 | Out-String
   if ($script:scopeFail -gt 0) {
     Write-Output ('  OK: the gate caught it (' + $script:scopeFail + ' problem(s)).')
   } else {
     Write-Output '  FAIL: the gate did NOT catch it.'
     $bad++
+    continue
+  }
+  # A GATE THAT GOES RED FOR THE WRONG REASON HAS NOT CAUGHT THIS. So when a
+  # defect names the message it must produce, that message has to be the one
+  # that appeared -- and when it names a message that must NOT appear, that
+  # message has to be ABSENT. "The gate is red" is not "the gate caught
+  # THIS"; the two look the same from the outside.
+  if ($x.ContainsKey('Expect')) {
+    $expect = [string]$x.Expect
+    if ($expect.Contains('{TARGET}')) { $expect = $expect.Replace('{TARGET}', [string]$script:mutTarget) }
+    if ($caseOut.Contains($expect)) {
+      Write-Output ('  OK: the message is the expected one: ' + $expect)
+    } else {
+      Write-Output ('  FAIL: the gate went red, but NOT with the expected message: ' + $expect)
+      $bad++
+    }
+  }
+  if ($x.ContainsKey('Avoid')) {
+    if (-not $caseOut.Contains([string]$x.Avoid)) {
+      Write-Output '  OK: the gate did not go red for the old reason as well.'
+    } else {
+      Write-Output ('  FAIL: the gate ALSO went red with: ' + $x.Avoid)
+      $bad++
+    }
   }
 }
 

@@ -1721,7 +1721,14 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # The chapter rule, the lost-heading rule and the duplicate rule now widen
 # TOGETHER, off ONE definition, so the pin holds a number the rule can
 # actually verify.
-$NARRATIVE_CHAPTERS = '178'
+# 0637. THE PIN MOVED TO 179 with chapter 0637, which changed NO source file: the
+# increment records the PUBLISHED BYTES of the two releases the record was
+# missing rows for -- v0.5.1 and v0.5.2, both tagged, both published, both
+# without a row -- and it adds ONE check to `check_transfer_scope.ps1` that
+# asks about EVERY tagged release from the first recorded row onwards, not
+# only the version this tree declares. The count moved by ONE, and the ONE is
+# the new chapter.
+$NARRATIVE_CHAPTERS = '179'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1756,7 +1763,12 @@ $NARRATIVE_CHAPTERS = '178'
 # measured: the question a gate asks must be the question it claims to ask --
 # a path that resolves TODAY is not a path that resolved when the task
 # landed, and a count that cannot see the things it counts is not a count.
-$LOOP_RULES = '37'
+# The pin moved 37 -> 38 with rule 38, and the rule is the lesson this
+# increment measured: the row a release OWES travels with the release, not
+# with the version number -- so a release that is superseded before its row
+# is written loses the row in silence, and the gate asked only about whoever
+# happened to be current.
+$LOOP_RULES = '38'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
