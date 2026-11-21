@@ -24470,3 +24470,75 @@ it is.
 => 判据: A DOCUMENT THAT DESCRIBES THE PACKAGE IS IN THE PACKAGE, AND A TASK WITH NO CRITERION IS A TASK NO GATE CAN SEE. The plan file told the reader that the twenty-four fixtures travel with the package, and they stopped travelling in 0632 -- and the gate that KNEW the truth (the package gate, asserting their absence in the other direction) was two files away from the gate that held the claim. Meanwhile two of the thirteen tasks stated no criterion at all, and a criterion-less task is skipped in silence rather than refused. A false claim in a shipped document is a false claim with a reader attached, and a criterion that no gate reads is a comment: both are fixed in place here, and both are now held -- including the words that make a DELETION stateable at all.
 
 
+## 0635: A NUMBER A GATE PRINTS IS A CLAIM TOO, AND IT MUST BE ASKED FOR
+
+This increment fixes a defect increment 0634 introduced: the checklist gate's
+own PRINTED lines.
+
+    _verify/check_goal_checklist.ps1, in the live section:
+      $noCriterion = @($blocks | Where-Object { $_.Value.IndexOf('**Done when:**') -lt 0 })
+
+`$blocks` is a local of `Get-ChecklistProblems`, and the live section is a
+DIFFERENT scope -- so `$blocks` was `$null` there, and the line asked a question
+it had never loaded the data for:
+
+    You cannot call a method on a null-valued expression.
+      the tasks that state no criterion: 0
+
+It printed 0. It would have printed 0 whether the answer was 0 or 13. A number
+that is not computed is not a MEASUREMENT: it is a default wearing a
+measurement's clothes.
+
+And the second line was worse. It asked `$qa.Contains('they DO ship')` -- a
+question about the TEXT -- while the CHECK it belongs to asks whether the
+document ASSERTS that the fixtures ship, and the difference between the two
+questions is exactly the quotation the corrected record carries. So the gate
+printed
+
+    the plan file claims the fixtures ship: True
+
+about a document that quotes the sentence in order to say it is false. The CHECK
+was right; the LINE was wrong; and the two disagreed about the same document in
+the same run.
+
+### THE FIX IS ONE IMPLEMENTATION EACH
+
+Three functions now hold the decisions:
+
+    Get-TaskBlocks          the task blocks
+    Get-CriterionlessTasks  the tasks that state no criterion
+    Test-StaleShippingClaim whether the document ASSERTS the fixtures ship
+
+and the CHECKS and the PRINTED LINES both call them. A claim computed in two
+places is two implementations of one claim -- the shape this repository has been
+refusing since 0.4.30 -- and the second implementation is always the one that
+drifts.
+
+MEASURED, after the fix:
+
+      the tasks that state no criterion: 0
+      the plan file ASSERTS the fixtures ship: False
+
+with the stderr silent, the verdict unchanged, and the self-test still catching
+thirteen of thirteen injected defects.
+
+### HOW IT WAS FOUND: BY READING THE OUTPUT
+
+The gate was green. The exit code was 0. The self-test was green. And the
+transcript carried a PowerShell error on every run. A gate that is green while
+its transcript shows an error is a gate whose VERDICT and whose OUTPUT disagree,
+and the output is the part a human reads.
+
+The whole increment is one lesson with three faces: the numbers 0634 corrected
+in the plan file, the claim 0634 corrected in the plan file, and now the numbers
+the GATE prints about them. A document's claims and a gate's claims are the same
+kind of thing, and both are held or neither is.
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     35 -> 36
+    $NARRATIVE_CHAPTERS            145 -> 146
+
+=> 判据: A NUMBER A GATE PRINTS IS A CLAIM, AND IT MUST BE ASKED FOR, NOT DEFAULTED. The line that printed "the tasks that state no criterion: 0" asked a question it had never loaded the data for, and would have printed 0 whatever the answer was; the line beside it asked about the TEXT while the check it belonged to asked about the ASSERTION, and the two disagreed about the same document in the same run. One implementation each, now: the checks and the printed lines call the same three functions. Because a gate's verdict and its output are both claims, and a human reads the output.
+
+

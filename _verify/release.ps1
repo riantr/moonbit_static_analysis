@@ -1707,7 +1707,11 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # (they stopped shipping in 0632), and two of the thirteen tasks that stated no
 # criterion at all, so the goal gate could not cover their evidence. It HOLDS both
 # classes now, and it moves the `$LOOP_RULES` pin with the rule it adds.
-$NARRATIVE_CHAPTERS = '145'
+# 0635. THE PIN MOVED TO 146 with chapter 0635, which changed NO source file: the
+# increment fixes a defect 0634 introduced -- the checklist gate printed two
+# numbers that it did not compute, one of them asking a question it had never
+# loaded the data for -- and it moves the `$LOOP_RULES` pin with the rule it adds.
+$NARRATIVE_CHAPTERS = '146'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1735,7 +1739,10 @@ $NARRATIVE_CHAPTERS = '145'
 # The pin moved 34 -> 35 with rule 35, and the rule is the lesson the 0634
 # increment measured: a document that describes the PACKAGE is in the package,
 # and a task with no criterion is a task no gate can see.
-$LOOP_RULES = '35'
+# The pin moved 35 -> 36 with rule 36, and the rule is the lesson the 0635
+# increment measured: a number a gate PRINTS is a claim, and it must be asked
+# for -- not defaulted, and not computed a second time beside the check.
+$LOOP_RULES = '36'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

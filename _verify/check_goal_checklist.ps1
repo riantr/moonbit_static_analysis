@@ -91,6 +91,50 @@ function Get-PinText([string]$RelTxt, [string]$Name) {
   return ''
 }
 
+# THE TASK BLOCKS. Each block runs from a task's heading to the next task's
+# heading, and it is what "the task's own words" means here: the criterion it
+# states, the paths that criterion names, and whether it states one at all.
+function Get-TaskBlocks([string]$QaTxt) {
+  if ([string]::IsNullOrWhiteSpace($QaTxt)) { return @() }
+  return @([regex]::Matches($QaTxt, '(?ms)^\- \[x\] \*\*T\d+\..*?(?=^\- \[x\] \*\*T\d+\.|\z)'))
+}
+
+# THE TASKS THAT STATE NO CRITERION. ONE implementation, used by the CHECK and
+# by the line the gate PRINTS. A number a gate prints is a claim too, and a
+# claim computed in two places is two implementations of one claim -- which is
+# how a line ends up answering a question it never asked.
+function Get-CriterionlessTasks([string]$QaTxt) {
+  $out = @()
+  foreach ($b in @(Get-TaskBlocks $QaTxt)) {
+    if ($b.Value.IndexOf('**Done when:**') -lt 0) { $out += $b }
+  }
+  return $out
+}
+
+# DOES THE PLAN FILE ASSERT THAT THE FIXTURES SHIP? A QUOTATION IS NOT A CLAIM:
+# the corrected record quotes the sentence it retired, so the quote count on the
+# line BEFORE the phrase decides it -- and it is counted PER LINE, because this
+# document's double-quote count is unbalanced overall and a global count would
+# misjudge every position after the imbalance. The test is the one the URL gate
+# already uses: a quote on the same line before the phrase makes it a quotation.
+function Test-StaleShippingClaim([string]$QaTxt) {
+  if ([string]::IsNullOrWhiteSpace($QaTxt)) { return $false }
+  $stale = 'they DO ship'
+  $idx = 0
+  while ($true) {
+    $idx = $QaTxt.IndexOf($stale, $idx)
+    if ($idx -lt 0) { return $false }
+    $lineStart = 0
+    if ($idx -gt 0) { $lineStart = $QaTxt.LastIndexOf("`n", $idx - 1) + 1 }
+    $prevStart = $lineStart
+    if ($prevStart -gt 0) { $prevStart = $QaTxt.LastIndexOf("`n", $prevStart - 1) + 1 }
+    $before = $QaTxt.Substring($prevStart, $idx - $prevStart)
+    $quotes = ([regex]::Matches($before, '"')).Count
+    if (($quotes % 2) -eq 0) { return $true }
+    $idx += $stale.Length
+  }
+}
+
 # THE INCREMENTS THIS REPOSITORY'S HISTORY ACTUALLY CONTAINS. Read from git,
 # so a task cannot claim to ride an increment that never shipped.
 function Get-KnownIncrements([string]$Root) {
@@ -166,7 +210,7 @@ function Get-ChecklistProblems {
   # THE TASK BLOCKS. Each block runs from a task's heading to the next task's
   # heading, and it is what "the task's own words" means here: the criterion it
   # states, the paths that criterion names, and whether it states one at all.
-  $blocks = @([regex]::Matches($QaTxt, '(?ms)^\- \[x\] \*\*T\d+\..*?(?=^\- \[x\] \*\*T\d+\.|\z)'))
+  $blocks = @(Get-TaskBlocks $QaTxt)
 
   # --- 1. THE TASK LIST -------------------------------------------------------
   $taskLines = @()
@@ -349,44 +393,20 @@ function Get-ChecklistProblems {
   # SILENCE -- which is how two of the thirteen (T12 and T13) held their
   # evidence as prose while every tick was green. A QA that is not a gate is a
   # comment, and a criterion that no gate reads is one too.
-  foreach ($b in $blocks) {
-    if ($b.Value.IndexOf('**Done when:**') -lt 0) {
-      $tid = [regex]::Match($b.Value, '^\- \[x\] \*\*(T\d+)\.').Groups[1].Value
-      $probs += ('FAIL: the task ' + $tid + ' states no "Done when", so the gate cannot cover its evidence.')
-    }
+  foreach ($b in @(Get-CriterionlessTasks $QaTxt)) {
+    $tid = [regex]::Match($b.Value, '^\- \[x\] \*\*(T\d+)\.').Groups[1].Value
+    $probs += ('FAIL: the task ' + $tid + ' states no "Done when", so the gate cannot cover its evidence.')
   }
 
   # --- 7. THE PLAN FILE MUST NOT CLAIM WHAT THE PACKAGE DOES NOT HOLD ---------
   # A shipped document that asserts something FALSE about the published package
   # is a false claim with a reader attached: the plan file said the twenty-four
-  # fixtures ship, and they stopped shipping in 0632.
-  #
-  # A QUOTATION IS NOT A CLAIM. The corrected record QUOTES the sentence it
-  # retired, and a document that quotes a claim in order to say it is false must
-  # not be caught by the guard against making the claim. The test is the one the
-  # URL gate already uses: a quote ON THE SAME LINE before the phrase makes it a
-  # quotation. The count is taken over that line AND the one before it, and it
-  # is taken PER LINE -- a document with an unbalanced quote somewhere else
-  # would flip a global count and misjudge every position after it.
-  #
-  # This is a NARROW guard, keyed to the phrase the false claim used. It is not
-  # a general truth machine for prose, and it does not pretend to be one.
-  $stale = 'they DO ship'
-  $idx = 0
-  while ($true) {
-    $idx = $QaTxt.IndexOf($stale, $idx)
-    if ($idx -lt 0) { break }
-    $lineStart = 0
-    if ($idx -gt 0) { $lineStart = $QaTxt.LastIndexOf("`n", $idx - 1) + 1 }
-    $prevStart = $lineStart
-    if ($prevStart -gt 0) { $prevStart = $QaTxt.LastIndexOf("`n", $prevStart - 1) + 1 }
-    $before = $QaTxt.Substring($prevStart, $idx - $prevStart)
-    $quotes = ([regex]::Matches($before, '"')).Count
-    if (($quotes % 2) -eq 0) {
-      $probs += 'FAIL: the plan file still claims the fixtures ship. They stopped shipping in increment 0632.'
-      break
-    }
-    $idx += $stale.Length
+  # fixtures ship, and they stopped shipping in 0632. The decision is
+  # `Test-StaleShippingClaim` -- ONE implementation, shared with the line the
+  # gate prints, because a quotation is not a claim and the two places that
+  # talk about it must agree on what a quotation is.
+  if (Test-StaleShippingClaim $QaTxt) {
+    $probs += 'FAIL: the plan file still claims the fixtures ship. They stopped shipping in increment 0632.'
   }
 
   return $probs
@@ -613,9 +633,9 @@ if ($qFiles.Count -gt 0) {
 if ($qGates.Count -gt 0) {
   Write-Output ('  the plan file quotes: ' + $qGates[0].Groups[1].Value + ' check gates   the tree holds: ' + $liveGates)
 }
-$noCriterion = @($blocks | Where-Object { $_.Value.IndexOf('**Done when:**') -lt 0 })
+$noCriterion = @(Get-CriterionlessTasks $qa)
 Write-Output ('  the tasks that state no criterion: ' + $noCriterion.Count)
-Write-Output ('  the plan file claims the fixtures ship: ' + $qa.Contains('they DO ship'))
+Write-Output ('  the plan file ASSERTS the fixtures ship: ' + (Test-StaleShippingClaim $qa))
 
 $probs = @(Get-ChecklistProblems $qa $loop $rel $incs $root)
 foreach ($p in $probs) {
