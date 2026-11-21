@@ -219,12 +219,49 @@ if ($SelfTest) {
     $bad++
   }
 
+  # THE DOCUMENTS THE FAULTS WORK ON.
+  #
+  # MEASURED 2026-11-21: this self-test was written for a tree in which the
+  # source HAD moved under the version, and it asked its faults with the tree's
+  # OWN condition. The tree then crossed the release boundary -- the anchor is
+  # now the release commit, so the source has NOT moved -- and every fault
+  # stopped landing: the three document faults were asked with $moved = $false,
+  # where a MISSING statement is CORRECT, and the fourth was asked with
+  # documents that no longer carry a statement at all. Four faults, none of
+  # them applied, and the self-test said so honestly -- but nothing was
+  # watching, because the release gate did not run this self-test.
+  #
+  # So the documents the faults work on are BUILT here: the real text plus a
+  # statement paragraph that names the version, placed FIRST so that the gate
+  # finds it. And each fault is asked with the branch it is a defect OF. The
+  # gate has two branches, and a fault that exercises only one of them says
+  # nothing about the other.
+  #
+  # The Chinese sentence is built from \u escapes because this file is
+  # ASCII-only on purpose: a BOM-less .ps1 with non-ASCII in it is read as ANSI
+  # by PowerShell 5.1.
+  $zhMarkerText = [regex]::Unescape('\u5DF2\u53D1\u5E03\u7684\u4EA7\u7269\u6BD4\u8FD9\u68F5\u6811\u65E7')
+  $zhTail = [regex]::Unescape('\uFF0C\u56E0\u4E3A\u6E90\u7801\u5728\u7248\u672C')
+  $zhTail2 = [regex]::Unescape('\u4E4B\u540E\u79FB\u52A8\u8FC7\u3002')
+  $statements = @(
+    ('NOTE: the released artifact is older than this tree, because the source has moved under version ' + $version + '.'),
+    ('NOTE: ' + $zhMarkerText + $zhTail + ' ' + $version + ' ' + $zhTail2)
+  )
+  $withStatement = @()
+  for ($i = 0; $i -lt $texts.Count; $i++) {
+    $withStatement += ($statements[$i] + "`r`n`r`n" + $texts[$i])
+  }
+  # A VERSION THAT IS NOT THIS ONE, derived rather than typed: a fault that
+  # names a literal stops applying the moment the tree's version moves.
+  $wrongVersion = [regex]::Replace($version, '(\d+)$', { param($m) ([int]$m.Groups[1].Value + 1000).ToString() })
+
   # THE FAULTS. Each one takes a COPY of the documents and changes exactly one
   # thing, and the gate has to go red with the RIGHT message.
   $faults = @(
     [pscustomobject]@{
       N = 'the statement is missing from README.md'
       Expect = 'does not carry the statement'
+      Moved = $true
       Apply = {
         param($t, $n, $v)
         $out = @()
@@ -232,7 +269,6 @@ if ($SelfTest) {
           $s = $t[$i]
           if ($n[$i] -eq 'README.md') {
             $s = [regex]::Replace($s, '(?im)^.*the released artifact is older than this tree.*$\r?\n?', '')
-            $s = [regex]::Replace($s, '(?im)^.*\u5DF2\u53D1\u5E03\u7684\u4EA7\u7269\u6BD4\u8FD9\u68F5\u6811\u65E7.*$\r?\n?', '')
           }
           $out += $s
         }
@@ -242,6 +278,7 @@ if ($SelfTest) {
     [pscustomobject]@{
       N = 'the statement is missing from README.zh.md'
       Expect = 'does not carry the statement'
+      Moved = $true
       Apply = {
         param($t, $n, $v)
         $out = @()
@@ -258,6 +295,7 @@ if ($SelfTest) {
     [pscustomobject]@{
       N = 'the statement names a version that is not the module version'
       Expect = 'does not name version'
+      Moved = $true
       Apply = {
         param($t, $n, $v)
         $out = @()
@@ -271,7 +309,7 @@ if ($SelfTest) {
           $paras = @([regex]::Split($s, '(?:\r?\n)[ \t]*(?:\r?\n)+'))
           for ($j = 0; $j -lt $paras.Count; $j++) {
             if ($paras[$j] -imatch $markers[$i].M) {
-              $paras[$j] = [regex]::Replace($paras[$j], '(?<![\w.])\d+\.\d+\.\d+(?![\w])', '0.4.52', 1)
+              $paras[$j] = [regex]::Replace($paras[$j], '(?<![\w.])\d+\.\d+\.\d+(?![\w])', $v, 1)
             }
           }
           $out += ($paras -join "`r`n`r`n")
@@ -284,13 +322,27 @@ if ($SelfTest) {
   foreach ($f in $faults) {
     Write-Output ''
     Write-Output ('--- the defect: ' + $f.N + ' ---')
-    $mutated = & $f.Apply $texts $names $version
-    if ($null -eq $mutated -or @($mutated).Count -ne $texts.Count) {
+    $mutated = & $f.Apply $withStatement $names $wrongVersion
+    if ($null -eq $mutated -or @($mutated).Count -ne $withStatement.Count) {
       Write-Output '  FAIL: the mutation did not produce a copy of the documents.'
       $bad++
       continue
     }
-    $probs = @(Get-StatementProblems $mutated $names $version $moved)
+    # DID THE FAULT LAND? A mutation that changed NOTHING is a fault that was
+    # never injected, and a gate that stays green because nothing changed has
+    # proved nothing. This is the shape the four faults above had: they were
+    # applied to documents that did not carry what the fault needed, so they
+    # changed nothing and the gate was right to stay green.
+    $landed = $false
+    for ($i = 0; $i -lt $mutated.Count; $i++) {
+      if ($mutated[$i] -ne $withStatement[$i]) { $landed = $true }
+    }
+    if (-not $landed) {
+      Write-Output '  FAIL: the fault did not land -- the mutation changed nothing.'
+      $bad++
+      continue
+    }
+    $probs = @(Get-StatementProblems $mutated $names $version $f.Moved)
     $checked++
     $caught = 0
     try {
@@ -308,13 +360,13 @@ if ($SelfTest) {
   }
 
   # AND THE OTHER DIRECTION: the sentence must be GONE when the source has not
-  # moved under the version. This branch cannot be reached from the tree as it
-  # stands -- the source HAS moved -- so it is exercised on the CHECK, with the
-  # condition flipped. A gate that only knows how to fail in one direction does
-  # not know the other direction.
+  # moved under the version. The documents here CARRY the statement, and the
+  # condition is flipped, so the statement is stale -- and the gate has to say
+  # so. A gate that only knows how to fail in one direction does not know the
+  # other direction.
   Write-Output ''
   Write-Output '--- the defect: the statement is there, and the source has NOT moved ---'
-  $otherProbs = @(Get-StatementProblems $texts $names $version $false)
+  $otherProbs = @(Get-StatementProblems $withStatement $names $version $false)
   $checked++
   if (($otherProbs -join ' | ') -match 'has NOT moved under version') {
     Write-Output ('  OK: the gate caught it: ' + $otherProbs[0])

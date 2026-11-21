@@ -1728,7 +1728,12 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # asks about EVERY tagged release from the first recorded row onwards, not
 # only the version this tree declares. The count moved by ONE, and the ONE is
 # the new chapter.
-$NARRATIVE_CHAPTERS = '179'
+# 0638. THE PIN MOVED TO 180 with chapter 0638, which changed NO source file: the
+# increment runs the FOUR check-gate self-tests the release gate was not running,
+# fixes the TWO that had rotted into faults that could not land, and adds ONE
+# check to `check_gate_roster.ps1` that holds the CLASS -- every check gate that
+# carries a live -SelfTest must have that self-test RUN by the release gate.
+$NARRATIVE_CHAPTERS = '180'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1768,7 +1773,11 @@ $NARRATIVE_CHAPTERS = '179'
 # with the version number -- so a release that is superseded before its row
 # is written loses the row in silence, and the gate asked only about whoever
 # happened to be current.
-$LOOP_RULES = '38'
+# The pin moved 38 -> 39 with rule 39, and the rule is the lesson this increment
+# measured: a proof that nobody runs is a comment, and a comment rots without
+# saying so -- eleven check gates' self-tests ran in the release gate and four
+# did not, and two of the four had rotted into faults that could not land.
+$LOOP_RULES = '39'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -2082,6 +2091,32 @@ Stage 'the host contract of the artifact (what a user''s toolchain must supply)'
   Run-Gate (Join-Path $root '_verify\check_host_requirements.ps1')
 }
 if (-not $script:lastOk) { $failed += 'host-requirements' }
+
+# 0638. THE PROOF THAT A GATE CAN GO RED IS A SELF-TEST, AND A SELF-TEST
+# NOBODY RUNS IS A COMMENT. MEASURED on 2026-11-21: the release gate ran
+# ELEVEN check gates' self-tests and did NOT run four more -- and two of
+# those four had rotted. `check_transfer_scope.ps1`'s carried a fault that
+# had stopped applying (it named a `file:line` the map had moved away
+# from), and `check_release_freshness.ps1`'s carried four that had. Nothing
+# noticed, because a proof that is never run cannot rot in a way anybody
+# sees -- and the gate that holds the ROSTER was asking whether a gate's
+# `-SelfTest` switch was LIVE, never whether anybody RUNS it.
+#
+# So the four gates that had no self-test stage of their own GET one, and
+# `check_gate_roster.ps1` holds the class: every check gate that carries a
+# live -SelfTest must have that self-test run by the release gate.
+$HR = Join-Path $root '_verify\check_host_requirements.ps1'
+Stage 'the host requirements, shown to go red (its own self-test)' {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $HR -SelfTest 2>&1 | Out-String
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  foreach ($ln in ($o -split "`r?`n")) {
+    if ($ln -match '(SELFTEST|CONTROL|FAIL|the defect|CAUGHT|MISSED|did not apply|did NOT catch)') { Write-Output ('  ' + $ln.Trim()) }
+  }
+  if ($code -ne 0) { $script:stageOk = $false }
+}
+if (-not $script:lastOk) { $failed += 'host-requirements-selftest' }
 
 # --- 3b  the grammar probe's own verdicts can go red ---------------------------
 # Placed after the wasm build because the control reads the scanner through it,
@@ -2578,7 +2613,7 @@ if ($failed.Count -eq 0) {
     Write-Output 'MISSING: _verify\check_gate_roster.ps1'
     $failed += 'gate-roster'
   } else {
-    Stage 'gate roster: self-test (eleven injected defects must be caught)' {
+    Stage 'gate roster: self-test (every injected defect must be caught)' {
       $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $GR -SelfTest 2>&1 | Out-String
       $code = $LASTEXITCODE
@@ -3077,6 +3112,17 @@ if ($failed.Count -eq 0) {
       if ($code -ne 0) { $script:stageOk = $false }
     }
     if (-not $script:lastOk) { $failed += 'family-roster' }
+    Stage 'the family roster, shown to go red (its own self-test)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $FR -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(SELFTEST|CONTROL|FAIL|the defect|CAUGHT|MISSED|did not apply|did NOT catch)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'family-roster-selftest' }
   }
 }
 
@@ -5128,6 +5174,17 @@ if (-not (Test-Path -LiteralPath $TSC -PathType Leaf)) {
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'transfer-scope'
   }
+  Stage 'the transfer scope, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $TSC -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(SELFTEST|CONTROL|FAIL|the defect|CAUGHT|MISSED|did not apply|did NOT catch)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'transfer-scope-selftest' }
 }
 # --- the release-freshness stage -----------------------------------------------
 # 0626. THE PUBLISHED TOOL AND THE PUBLISHED DOCUMENTS DESCRIBE DIFFERENT
@@ -5177,6 +5234,17 @@ if (-not (Test-Path -LiteralPath $RF -PathType Leaf)) {
     Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
     $failed += 'release-freshness'
   }
+  Stage 'the release freshness, shown to go red (its own self-test)' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $RF -SelfTest 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(SELFTEST|CONTROL|FAIL|the defect|CAUGHT|MISSED|did not apply|did NOT catch)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'release-freshness-selftest' }
 }
 # --- verdict -----------------------------------------------------------------
 Write-Output ''

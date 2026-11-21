@@ -1729,11 +1729,12 @@ stage，就是读者找不到的 stage：
     moon build --target wasm
     moon build --release --target wasm
     the host contract of the artifact (what a user's toolchain must supply)
+    the host requirements, shown to go red (its own self-test)
     grammar probe control (its verdicts can go red)
     self-scan (own source)
     ssa cost (own source)
     README links, anchors, versions and counts
-    gate roster: self-test (eleven injected defects must be caught)
+    gate roster: self-test (every injected defect must be caught)
     gate roster: one harness, one list, a count that matches, and every check gate accounted for
     the shared harness: the INCONCLUSIVE verdict, shown to go red
     proof contracts: no false #proof_pure
@@ -1748,6 +1749,7 @@ stage，就是读者找不到的 stage：
     package contents: the junk stays out, the evidence stays in
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible
+    the family roster, shown to go red (its own self-test)
     frame audit: a region silences the bindings it could have read, and no others
     match arms: the arms are read, the findings are true ones, and the fallback is exact
     the family sweep: every family fires, from its own fixture
@@ -1776,7 +1778,9 @@ stage，就是读者找不到的 stage：
     the three bandit transfers: measured, not asserted
     the confidence demotion: measured, not asserted
     the transfer scope: the requirements document, the three rows, and where they landed
+    the transfer scope, shown to go red (its own self-test)
     the release freshness: the version must still describe the source
+    the release freshness, shown to go red (its own self-test)
 
 这份名单是从 `_verify/release.ps1` **推出来的**，并由 `_verify/check_readme_links.ps1`
 检查：所以一个加了门禁、却没在这里点名的 stage，会让那道门禁变红，而不是悄悄地让门禁做的事

@@ -24736,3 +24736,91 @@ rows are now in the record, each measured on three independent paths, and the ga
 asks about EVERY tagged release from the first recorded row onwards.
 
 
+## 0638: A PROOF THAT NOBODY RUNS IS A COMMENT, AND A COMMENT ROTS WITHOUT SAYING SO
+
+MEASURED 2026-11-21, while increment 0637 was being finished. The obvious thing
+to do before shipping a gate is to run the gate's own SELF-TEST, so every check
+gate's self-test was run. ELEVEN were green. FOUR were not run at all -- and two
+of those four had rotted.
+
+`check_transfer_scope.ps1`'s self-test carried a fault that had stopped
+applying. It mutated the literal `src/core/core.mbt:482`, and that literal
+occurs ZERO times in the NARRATIVE today -- the map says 605 -- so the mutation
+found nothing to change, and the self-test said so honestly:
+
+    FAIL: the defect did not apply -- the mutation found nothing to change.
+
+`check_release_freshness.ps1`'s self-test carried FOUR faults, and all four had
+stopped landing. It asked its faults with the tree's OWN condition, and the tree
+has since crossed the release boundary: the anchor is the release commit, so
+`src/` has NOT moved under the version -- and in that branch a MISSING statement
+is CORRECT, so removing it changes nothing. The fourth fault asked for a stale
+statement, using documents that no longer carry one.
+
+MEASURED, the class:
+
+    check gates on disk                                      20
+    of those, carrying a live -SelfTest                      15
+    of those, the release gate ran the self-test              11
+    of those, nobody ran the self-test                         4
+                                          check_family_roster.ps1
+                                          check_host_requirements.ps1
+                                          check_release_freshness.ps1
+                                          check_transfer_scope.ps1
+
+THE POINT IS NOT THE TWO ROTTED FAULTS. It is that NOTHING COULD SEE THEM. A
+self-test that is never run cannot rot in a way anybody notices -- and the gate
+that holds the ROSTER was asking the wrong question. It asked whether a gate's
+`-SelfTest` switch was LIVE, and never asked whether anybody RUNS it. A switch
+can be alive and its proof can still be a comment.
+
+THE FIX HAS TWO HALVES.
+
+THE FIRST: the rotted faults are fixed where they rotted.
+
+  - the transfer-scope fault now READS the map instead of naming a line: it
+    finds the first `row N file:line` entry in the TRANSFER MAP and moves that
+    line number by one. The fault it replaced is the exact shape the gate
+    itself warns about -- "a mutation that names a literal stops applying the
+    moment the tree's version moves".
+  - the release-freshness faults now run against DOCUMENTS THE SELF-TEST BUILDS:
+    the real text plus a statement paragraph that names the version, placed
+    FIRST so the gate finds it. And each fault is asked with the branch it is a
+    defect OF, because the gate has TWO branches -- `the source HAS moved` and
+    `the source has NOT moved` -- and a fault that exercises only one of them
+    says nothing about the other. The self-test now also asks whether the fault
+    LANDED, so a mutation that changed nothing is reported as what it is.
+
+THE SECOND: the release gate RUNS the four self-tests it was not running, and
+`check_gate_roster.ps1` holds the CLASS -- every check gate that carries a live
+`-SelfTest` must have that self-test run by the release gate. The gate is
+invoked through a VARIABLE, so the filename alone cannot answer the question:
+the roster reads the variables `release.ps1` assigns to the gates, and then
+looks for those variables with `-SelfTest`.
+
+AND ONE MORE NUMBER, IN THREE PLACES, THAT NOBODY ASKED FOR. The roster's own
+stage name said "eleven injected defects must be caught", and both READMEs carried
+the same sentence -- and the count there was TYPED, while the gate prints the real
+one itself (`$faults.Count`). The count moved to twelve with the fault above, so the
+typed copy would have been wrong in THREE places at once and nothing would have
+noticed. So the number leaves the name: the name says what the property IS, and
+the gate prints how many there are.
+
+AND THE FAULT THAT PROVES THE NEW CHECK IS THE SHAPE THE OLD CHECKS CANNOT
+SEE: the copy's `release.ps1` runs one gate's self-test WITHOUT `-SelfTest`.
+Everything else about that gate is right -- it is on disk, the release gate
+names it, and its switch is live -- and the roster goes red anyway.
+
+THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     38 -> 39
+    $NARRATIVE_CHAPTERS            179 -> 180
+
+=> 判据: A PROOF THAT NOBODY RUNS IS A COMMENT, AND A COMMENT ROTS WITHOUT SAYING SO.
+Eleven check gates' self-tests ran in the release gate and four did not, and two
+of the four had rotted into faults that could not land -- and nothing could see
+it, because a self-test that is never run cannot rot in a way anybody notices.
+The four now run, the two rotted faults are fixed where they rotted, and the
+roster holds the class: a gate's proof has to be RUN by the gate that holds it.
+
+

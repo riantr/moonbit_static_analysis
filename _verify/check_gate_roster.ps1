@@ -228,6 +228,24 @@ if ($SelfTest) {
       }
     }
     [pscustomobject]@{
+      N = 'a check gate whose self-test the release gate does not run'
+      Expect = 'SELF-TEST NOT RUN'
+      Apply = {
+        param($c)
+        # THE FAULT THE OTHER CHECKS CANNOT SEE. The gate is on disk, the
+        # release gate names it, and its -SelfTest switch is LIVE -- the only
+        # thing wrong with it is that nobody RUNS the self-test. One thing is
+        # wrong with it, so the check that catches it cannot be catching
+        # something else.
+        $p = Join-Path $c 'release.ps1'
+        $t = Get-Text $p
+        if ($t.IndexOf('-File $GCL -SelfTest') -lt 0) { return $false }
+        $t = $t.Replace('-File $GCL -SelfTest', '-File $GCL')
+        [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
+        return $true
+      }
+    }
+    [pscustomobject]@{
       N = 'a check gate whose -SelfTest switch is declared and never used'
       Expect = 'DEAD SWITCH'
       Apply = {
@@ -552,6 +570,41 @@ if ($deadSwitch.Count -gt 0) {
   $fail++
 } else {
   Write-Output ('  OK: ' + $liveSwitch.Count + ' carry a live -SelfTest, ' + $stated.Count + ' state why they carry none.')
+}
+# 0638. AND THE PROOF HAS TO BE RUN. A gate that carries a live `-SelfTest`
+# is a gate that can be SHOWN to go red -- and a self-test nobody runs is a
+# comment. MEASURED on 2026-11-21: the release gate ran eleven check
+# gates' self-tests and did NOT run four, and two of those four had rotted
+# into faults that could not land -- and nothing could see it, because the
+# question had never been asked.
+#
+# The gate is invoked through a VARIABLE, so the filename alone cannot
+# answer the question: the variables `release.ps1` assigns to the gates are
+# read first, and then those variables are looked for with `-SelfTest`.
+$gateVars = @{}
+foreach ($m in [regex]::Matches($relTxt, '(?m)^\s*(\$[A-Za-z0-9_]+)\s*=\s*[^\r\n]*?(check_[A-Za-z0-9_]+\.ps1)')) {
+  $fn = $m.Groups[2].Value
+  if (-not $gateVars.ContainsKey($fn)) { $gateVars[$fn] = @() }
+  $gateVars[$fn] += $m.Groups[1].Value
+}
+$selfTestNotRun = @()
+foreach ($f in $checkFiles) {
+  $code = Get-CodeLines (Get-Content -LiteralPath $f.FullName -Encoding UTF8)
+  $nRef = @($code | Where-Object { $_ -match '\$SelfTest' }).Count
+  if ($nRef -lt 2) { continue }
+  $run = $false
+  foreach ($v in @($gateVars[$f.Name])) {
+    if ([string]::IsNullOrEmpty([string]$v)) { continue }
+    if ($relTxt -match ([regex]::Escape([string]$v) + '\s+-SelfTest')) { $run = $true }
+  }
+  if (-not $run) { $selfTestNotRun += $f.Name }
+}
+if ($selfTestNotRun.Count -gt 0) {
+  Write-Output ('  SELF-TEST NOT RUN (the gate carries one, and nothing runs it): ' + ($selfTestNotRun -join ', '))
+  Write-Output '    A proof that is never run is a comment, and a comment rots without saying so.'
+  $fail++
+} else {
+  Write-Output '  OK: every check gate that carries a live -SelfTest has that self-test run by the release gate.'
 }
 if ($noSelfTest.Count -gt 0) {
   Write-Output ('  NO SELF-TEST AND NO STATED REASON: ' + ($noSelfTest -join ', '))
