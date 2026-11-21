@@ -249,8 +249,12 @@ way a hand-written table rots. **A QA that is not a gate is a comment.**
       actionable count — it has to, it needs the same scan for the notice table and
       the file set — but it no longer TAKES the verdict, because two assertions of
       one claim in two files is a second implementation of that claim. MEASURED:
-      `files=278 parsed=278 actionable=0 notices=2114`; the self-test plants a
-      stale suppression in a copy and the count moves 0 -> 1.
+      `files=280 parsed=280 actionable=0 notices=2128`; the self-test plants a
+      stale suppression in a copy and the count moves 0 -> 1. **RE-MEASURED 2026-11-21**
+      (increment 0633): these counts moved in increment **0616**, which added
+      `src/pipeline/pipeline_0616_test.mbt` and `src/sa/sa_0616_test.mbt` — the tree
+      0615 measured had **278** scannable files and **2114** notices, and today's tree
+      has **280** and **2128**. The pins in `_verify/release.ps1` say the same.
 
 - [x] **T7. Register both gates.** The gate roster
       (`_verify/check_gate_roster.ps1`) enumerates the gates, and
@@ -264,9 +268,17 @@ way a hand-written table rots. **A QA that is not a gate is a comment.**
       "Done when" FORCED MORE THAN THE PLAN ASKED FOR: "a gate that is in the
       roster but has no `-SelfTest` cannot be shown to work" — so the roster now
       covers the `check_*` gates too, and every one of them is accounted for.
-      MEASURED: 12 `check_*` gates, 12 named by the release gate, 7 with a live
-      `-SelfTest`, 5 stating why they have none. Two of the twelve turned out to
-      be defective: `check_prove_contracts.ps1` declared `param([switch]$SelfTest)`
+      MEASURED: 20 `check_*` gates, 20 named by the release gate, 15 with a live
+      `-SelfTest`, 5 stating why they have none. **RE-MEASURED 2026-11-21**
+      (increment 0633): this count moved in increments **0616**, **0617**, **0620**,
+      **0624**, **0626**, **0627**, **0628** and **0629**, which added eight gates —
+      `_verify/check_blindspot_rate.ps1`, `_verify/check_published_pointers.ps1`,
+      `_verify/check_cli_output.ps1`, `_verify/check_toolchain_claims.ps1`,
+      `_verify/check_release_freshness.ps1`, `_verify/check_prove_status.ps1`,
+      `_verify/check_goal_checklist.ps1` and `_verify/check_registry_urls.ps1` — the
+      tree 0615 measured had twelve, and today's tree has **20**. Two of the twelve
+      that 0615 registered turned out to be defective: `check_prove_contracts.ps1`
+      declared `param([switch]$SelfTest)`
       and then never mentioned `$SelfTest` again — a DEAD SWITCH, in the one gate
       whose subject is a red that had never been shown — and it also counted
       `unbound type symbol 'map'` while the toolchain now reports `array` first,

@@ -1693,7 +1693,15 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # `$LOOP_RULES` pin with the rule it adds. The published-artifact sentence the
 # 0.5.1 publish moved is corrected in the same increment: the READMEs now name
 # the 0.5.1 artifact, and the number they quote did not move.
-$NARRATIVE_CHAPTERS = '143'
+# 0633. THE PIN MOVED TO 144 with chapter 0633, which changed NO source file: the
+# increment corrects two numbers in `_verify/QA_TODO.md` that had MOVED -- the
+# file count of the tree itself, moved by increment 0616, and the number of
+# `check_*` gates, moved by eight increments that each added one -- and it HOLDS
+# the rule that file states about those numbers, which nothing held until now.
+# It moves the `$LOOP_RULES` pin with the rule it adds. The published-artifact
+# sentence the 0.5.2 publish moved is corrected in the same increment: the READMEs
+# now name the 0.5.2 artifact, and the number they quote did not move.
+$NARRATIVE_CHAPTERS = '144'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1713,7 +1721,12 @@ $NARRATIVE_CHAPTERS = '143'
 # and a package that carries deliberately defective test inputs cannot be
 # certified by the tool that flags them -- so the fixtures do not ship, and the
 # exception is asserted in the other direction.
-$LOOP_RULES = '33'
+# The pin moved 33 -> 34 with rule 34, and the rule is the lesson the 0633
+# increment measured: a rule a document states about its OWN numbers is not a
+# rule until a gate holds it -- the plan file wrote that rule itself, and two of
+# its numbers sat stale for eight increments while the gate that holds the file
+# stayed green.
+$LOOP_RULES = '34'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -2742,10 +2755,11 @@ if ($failed.Count -eq 0) {
 # of. The checklist itself is corrected IN PLACE, with the increment that moved
 # each line.
 #
-# The stage below asks four things, each of which can be wrong: the tasks are
+# The stage below asks five things, each of which can be wrong: the tasks are
 # unique and all ticked; every task rides an increment this history actually
 # holds; every path a "Done when" names resolves AND the line it pins is inside
-# that file; and the LOOP's rule list is contiguous with a COUNT equal to the
+# that file; the numbers the plan file quotes equal the tree they measure; and
+# the LOOP's rule list is contiguous with a COUNT equal to the
 # pin -- the count, because a DELETED rule leaves a shorter run that is still
 # perfectly contiguous.
 if ($failed.Count -eq 0) {
@@ -2761,7 +2775,7 @@ if ($failed.Count -eq 0) {
       $code = $LASTEXITCODE
       $ErrorActionPreference = $prev
       foreach ($ln in ($o -split "`r?`n")) {
-        if ($ln -match '(FAIL|CHECKLIST|the tasks:|the LOOP''s rules)') { Write-Output ('  ' + $ln.Trim()) }
+        if ($ln -match '(FAIL|CHECKLIST|the tasks:|the LOOP''s rules|the plan file quotes)') { Write-Output ('  ' + $ln.Trim()) }
       }
       if ($code -ne 0) { $script:stageOk = $false }
     }

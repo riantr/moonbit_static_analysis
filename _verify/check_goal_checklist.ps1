@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Continue'
 # green on it. The two defects were both a path that resolves and a line that
 # moved, and neither could be caught by asking whether the file is there.
 #
-# WHAT THIS GATE CHECKS, and it is four things:
+# WHAT THIS GATE CHECKS, and it is five things:
 #
 #   1. THE TASK LIST: T1..T13, each named exactly once, every one TICKED, and
 #      no open box anywhere.
@@ -40,6 +40,14 @@ $ErrorActionPreference = 'Continue'
 #      the pin. The rules are the trailing run of the document, and a deleted
 #      rule would otherwise leave a shorter run that is still perfectly
 #      contiguous -- so the COUNT is pinned, and the pin moves deliberately.
+#   5. THE NUMBERS THE PLAN FILE QUOTES ARE THE LIVE NUMBERS. The file's own
+#      header says that a number which has since MOVED is corrected IN PLACE,
+#      with the increment that moved it -- and until 0633 nothing checked that,
+#      so two of its numbers sat stale for eight increments. The numbers it
+#      quotes are the ones this repository PINS elsewhere, so they are read
+#      from the pins and compared, never re-measured here: one place says how
+#      many files the tree has, one place says how many notices it carries,
+#      and one place says how many check gates are on disk.
 #
 # THE DIRECTION MATTERS. The rule count is a pin like every other pin here:
 # when a rule is added, the pin moves with it and the release gate's own pin
@@ -61,6 +69,15 @@ $fail = 0
 # has, and the gate asks whether the document agrees with it.
 function Get-Pin([string]$RelTxt, [string]$Name) {
   $m = [regex]::Match($RelTxt, "\`$" + $Name + "\s*=\s*'(\d+)'")
+  if ($m.Success) { return $m.Groups[1].Value }
+  return ''
+}
+
+# A PIN THAT IS NOT A SINGLE NUMBER. `$SELF_NOTICES` is a breakdown -- "kind=count"
+# pairs -- and the number the plan file quotes is its SUM, so the pin is read as
+# TEXT here and summed where it is used.
+function Get-PinText([string]$RelTxt, [string]$Name) {
+  $m = [regex]::Match($RelTxt, "\`$" + $Name + "\s*=\s*'([^']*)'")
   if ($m.Success) { return $m.Groups[1].Value }
   return ''
 }
@@ -234,6 +251,72 @@ function Get-ChecklistProblems {
     }
   }
 
+  # --- 5. THE NUMBERS THE PLAN FILE QUOTES ARE THE LIVE NUMBERS ---------------
+  # The file's own header says that a number which has since MOVED is corrected
+  # IN PLACE, with the increment that moved it. Nothing checked that until 0633,
+  # and two of its numbers had been sitting stale for eight increments while
+  # this gate stayed green -- because this gate held the ticks, the riding
+  # increments, the paths and the rule count, and NOT the numbers inside a
+  # record. A rule written in a document about itself is prose until a gate
+  # holds it.
+  #
+  # The numbers the file quotes are the ones the REST of this repository PINS,
+  # so they are READ from the pins and compared here rather than re-measured: a
+  # second measurement would be a second implementation of a claim that already
+  # has one. The one number with no pin -- how many check gates are on disk --
+  # is counted the way `check_gate_roster.ps1` counts it, on disk.
+  $filesPin = Get-Pin $RelTxt 'SELF_FILES'
+  $noticesPin = Get-PinText $RelTxt 'SELF_NOTICES'
+  $noticeSum = 0
+  if ($noticesPin -ne '') {
+    foreach ($pair in ($noticesPin -split '\|')) {
+      $kv = $pair -split '='
+      if ($kv.Count -ge 2) { $noticeSum += [int]$kv[1] }
+    }
+  }
+  $gateCount = 0
+  if ($Root -ne '') {
+    $gateCount = @(Get-ChildItem -LiteralPath (Join-Path $Root '_verify') -Filter 'check_*.ps1' -File -ErrorAction SilentlyContinue).Count
+  }
+
+  $fileQuotes = @([regex]::Matches($QaTxt, 'files=(\d+)\s+parsed=(\d+)\s+actionable=(\d+)\s+notices=(\d+)'))
+  if ($fileQuotes.Count -eq 0) {
+    $probs += 'FAIL: the plan file quotes no file-and-notice measurement at all, so the numbers it holds cannot be checked against the tree.'
+  }
+  foreach ($m in $fileQuotes) {
+    $f = [int]$m.Groups[1].Value
+    $p = [int]$m.Groups[2].Value
+    $a = [int]$m.Groups[3].Value
+    $n = [int]$m.Groups[4].Value
+    if ($filesPin -eq '') {
+      $probs += 'FAIL: release.ps1 no longer carries the $SELF_FILES pin, so the plan file''s file count would be measured against nothing.'
+    } elseif ($f -ne [int]$filesPin) {
+      $probs += ('FAIL: the plan file quotes files=' + $f + ', and the tree''s own pin says ' + $filesPin + '.')
+    }
+    if ($p -ne $f) {
+      $probs += ('FAIL: the plan file quotes parsed=' + $p + ' against files=' + $f + '.')
+    }
+    if ($a -ne 0) {
+      $probs += ('FAIL: the plan file quotes actionable=' + $a + ', and this tree has none.')
+    }
+    if ($noticesPin -eq '') {
+      $probs += 'FAIL: release.ps1 no longer carries the $SELF_NOTICES pin, so the plan file''s notice count would be measured against nothing.'
+    } elseif ($n -ne $noticeSum) {
+      $probs += ('FAIL: the plan file quotes notices=' + $n + ', and the tree''s own pins say ' + $noticeSum + '.')
+    }
+  }
+
+  $gateQuotes = @([regex]::Matches($QaTxt, 'MEASURED:\s*(\d+)\s+`check_\*` gates'))
+  if ($gateQuotes.Count -eq 0) {
+    $probs += 'FAIL: the plan file quotes no check-gate count at all, so the number of gates it holds cannot be checked against the tree.'
+  }
+  foreach ($m in $gateQuotes) {
+    $c = [int]$m.Groups[1].Value
+    if ($c -ne $gateCount) {
+      $probs += ('FAIL: the plan file quotes ' + $c + ' check_* gates, and the tree holds ' + $gateCount + '.')
+    }
+  }
+
   return $probs
 }
 
@@ -323,6 +406,34 @@ if ($SelfTest) {
       # not name the current one -- so it does not rot when the pin moves.
       Apply = { param($q, $l, $r) $r = [regex]::Replace($r, "(\`$LOOP_RULES\s*=\s*')(\d+)(')", '${1}99${3}'); return ,@($q, $l, $r) }
     }
+    [pscustomobject]@{
+      N = 'the plan file quotes a file count the tree does not have'
+      Expect = 'the tree''s own pin says'
+      # The number the document quotes is READ and then moved by one, so the
+      # fault does not name the current one -- a fault that hard-coded "280"
+      # would rot the day the tree's own count moved, which is the very
+      # defect class this check exists for.
+      Apply = {
+        param($q, $l, $r)
+        $m = [regex]::Match($q, 'files=(\d+)\s+parsed=(\d+)\s+actionable=(\d+)\s+notices=(\d+)')
+        if (-not $m.Success) { return ,@($q, $l, $r) }
+        $f = [int]$m.Groups[1].Value + 1
+        $q = $q.Replace($m.Value, ('files=' + $f + ' parsed=' + $f + ' actionable=' + $m.Groups[3].Value + ' notices=' + $m.Groups[4].Value))
+        return ,@($q, $l, $r)
+      }
+    }
+    [pscustomobject]@{
+      N = 'the plan file quotes a check-gate count the tree does not have'
+      Expect = 'the tree holds'
+      Apply = {
+        param($q, $l, $r)
+        $m = [regex]::Match($q, 'MEASURED:\s*(\d+)\s+`check_\*` gates')
+        if (-not $m.Success) { return ,@($q, $l, $r) }
+        $c = [int]$m.Groups[1].Value + 1
+        $q = $q.Replace($m.Value, ('MEASURED: ' + $c + ' `check_*` gates'))
+        return ,@($q, $l, $r)
+      }
+    }
   )
 
   foreach ($f in $faults) {
@@ -352,8 +463,8 @@ if ($SelfTest) {
     }
   }
 
-  if ($checked -ne 9) {
-    Write-Output ('  FAIL: ' + $checked + ' of 9 checks ran.')
+  if ($checked -ne 11) {
+    Write-Output ('  FAIL: ' + $checked + ' of 11 checks ran.')
     $bad++
   }
 
@@ -388,6 +499,15 @@ $rules = @(Get-RuleNumbers $loop)
 Write-Output ('  the tasks: ' + $taskCount + '   the open boxes: ' + $openCount)
 Write-Output ('  the LOOP''s rules: ' + $rules.Count + '   the pin: ' + (Get-Pin $rel 'LOOP_RULES'))
 Write-Output ('  the increments this history holds: ' + $incs.Count)
+$qFiles = @([regex]::Matches($qa, 'files=(\d+)\s+parsed=(\d+)\s+actionable=(\d+)\s+notices=(\d+)'))
+$qGates = @([regex]::Matches($qa, 'MEASURED:\s*(\d+)\s+`check_\*` gates'))
+$liveGates = @(Get-ChildItem -LiteralPath (Join-Path $root '_verify') -Filter 'check_*.ps1' -File -ErrorAction SilentlyContinue).Count
+if ($qFiles.Count -gt 0) {
+  Write-Output ('  the plan file quotes: files=' + $qFiles[0].Groups[1].Value + ' notices=' + $qFiles[0].Groups[4].Value + '   the tree''s pins say: files=' + (Get-Pin $rel 'SELF_FILES'))
+}
+if ($qGates.Count -gt 0) {
+  Write-Output ('  the plan file quotes: ' + $qGates[0].Groups[1].Value + ' check gates   the tree holds: ' + $liveGates)
+}
 
 $probs = @(Get-ChecklistProblems $qa $loop $rel $incs $root)
 foreach ($p in $probs) {
@@ -400,7 +520,7 @@ Write-Output ''
 if ($fail -eq 0) {
   Write-Output ('CHECKLIST OK: ' + $taskCount + ' task(s), all ticked, every one riding an increment this')
   Write-Output ('history holds, every path it names resolving, and the LOOP''s ' + $rules.Count + ' rule(s) numbered')
-  Write-Output 'contiguously and matching the pin.'
+  Write-Output 'contiguously and matching the pin, and every number the plan file quotes matching the tree.'
   exit 0
 }
 Write-Output ('CHECKLIST FAILED: ' + $fail + ' problem(s).')

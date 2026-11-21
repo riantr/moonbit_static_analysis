@@ -24264,3 +24264,117 @@ numbers. So the sentence now names 0.5.1, and the number did not move.
 => 判据: A GATE THAT CERTIFIES AN ARTIFACT MUST READ THE ARTIFACT, AND A PACKAGE THAT CARRIES DELIBERATELY DEFECTIVE TEST INPUTS CANNOT BE CERTIFIED BY THE TOOL THAT FLAGS THEM. The two gates here said the same thing with two different scopes, and the scopes agreed only until a later increment put source files into the excluded zone. So the claim has to be made about ONE set of files: the artifact's, read whole. Narrowing the scan would have been the shape the 0.4.30 lesson already condemned -- a stage that reports OK on a part of the artifact and tells the release the artifact is clean.
 
 
+## 0633: A PLAN FILE'S OWN RULE ABOUT ITS OWN NUMBERS WAS NOT HELD BY ANYTHING
+
+MEASURED 2026-11-21, by an INDEPENDENT verification of the objective -- a
+verifier that read the tree, the history and the registry for itself rather
+than taking this repository's word for any of it:
+
+    _verify/QA_TODO.md  T6  MEASURED: files=278 parsed=278 actionable=0 notices=2114
+    _verify/QA_TODO.md  T7  MEASURED: 12 `check_*` gates, 12 named by the release gate,
+                               7 with a live `-SelfTest`, 5 stating why they have none
+
+    the tree of today      files=280 parsed=280 actionable=0 notices=2128
+    the tree of today      20 check_* gates, 20 named by the release gate,
+                           15 with a live `-SelfTest`, 5 stating why they have none
+
+Both numbers had MOVED, and neither record said so.
+
+### THE FILE STATES THE RULE ITSELF
+
+`_verify/QA_TODO.md` says, in its own header:
+
+    The numbers below that have since MOVED are corrected IN PLACE, each with
+    the increment that moved it.
+
+T1 and T2 carry that correction -- `**RE-MEASURED 2026-11-20** (increment 0628)`.
+T6 and T7 did not. And the numbers they quote are numbers this repository
+publishes elsewhere, so they were not stale by accident: they were stale by
+being unwatched.
+
+### WHICH INCREMENT MOVED EACH NUMBER
+
+The file count is the tree's own, and the tree's scannable file set is counted
+over the five source kinds (`.mbt`, `.mbti`, `.mbtp`, `.mbt.md`, `.mbtx`):
+
+    the tree at 0615 (0e42cb5)   302 source files, 278 of them outside the fixtures
+    the tree at HEAD (221bbf9)    304 source files, 280 of them outside the fixtures
+
+and exactly TWO source files were added between those two commits, both by
+increment 0616 (`5a43fad`):
+
+    src/pipeline/pipeline_0616_test.mbt
+    src/sa/sa_0616_test.mbt
+
+278 + 2 = 280, and nothing was deleted. So 0616 moved T6's file count, and the
+notice count moved with it -- the notices pin is `$SELF_NOTICES`, a breakdown
+whose parts sum to 2128, and the scan prints exactly that.
+
+T7's count moved EIGHT times, once per increment that added a gate:
+
+    0616  check_blindspot_rate.ps1        0624  check_toolchain_claims.ps1
+    0617  check_published_pointers.ps1    0626  check_release_freshness.ps1
+    0620  check_cli_output.ps1            0627  check_prove_status.ps1
+                                           0628  check_goal_checklist.ps1
+                                           0629  check_registry_urls.ps1
+
+    12 -> 20
+
+### WHY NOTHING NOTICED FOR EIGHT INCREMENTS
+
+`_verify/check_goal_checklist.ps1` holds this file. It holds the ticks, the
+increments the tasks ride, the paths the "Done when" clauses name, and the
+count of the LOOP's rules -- and it held NONE of the numbers inside a record.
+The gate was green, and it was green about the right things, but the numbers
+were not among them.
+
+That is the whole defect: a rule a document states about itself is PROSE until
+a gate holds it. The file's rule was written on 2026-11-20 and went unenforced
+through eight increments, each of which moved a number it covered.
+
+### THE FIX: CORRECTED IN PLACE, AND THEN HELD
+
+Both numbers are corrected in place, each with the increment that moved it, in
+the vocabulary the file already uses:
+
+    MEASURED: `files=280 parsed=280 actionable=0 notices=2128` ...
+    **RE-MEASURED 2026-11-21** (increment 0633): these counts moved in increment **0616** ...
+
+    MEASURED: 20 `check_*` gates, 20 named by the release gate, 15 with a live `-SelfTest` ...
+    **RE-MEASURED 2026-11-21** (increment 0633): this count moved in increments **0616**, **0617**, ...
+
+And the rule is now HELD, by the gate that already held the file. It gained a
+fifth check: every number the plan file quotes must equal the live number.
+The file's own numbers are read from the pins the rest of the repository uses
+-- `$SELF_FILES`, and the sum of `$SELF_NOTICES` -- and the gate count is
+counted the way `check_gate_roster.ps1` counts it. Nothing is re-measured
+here: a second measurement would be a second implementation of a claim that
+already has one.
+
+MEASURED, the two new faults, both of which inject into a COPY:
+
+    the plan file quotes a file count the tree does not have
+      FAIL: the plan file quotes files=281, and the tree's own pin says 280.
+    the plan file quotes a check-gate count the tree does not have
+      FAIL: the plan file quotes 21 check_* gates, and the tree holds 20.
+
+The faults READ the number the document quotes and move it by one, so they do
+not rot when the number moves -- a fault that hard-coded "280" would have
+rotted the day the tree's own count moved, which is the defect class this
+check exists for.
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     33 -> 34
+    $NARRATIVE_CHAPTERS            143 -> 144
+
+And the sentence the 0.5.2 publish moved: the READMEs said "The published 0.5.1
+artifact imports 92 symbols", and the published 0.5.2 artifact was MEASURED --
+106 imports, 92 of them from `moonbitlang/async`, the contract 93, the same
+numbers. So the sentence now names 0.5.2, and the number did not move. (This
+is the same sentence 0632 moved from 0.5.0 to 0.5.1, and it moves after every
+publish for the same reason: the published artifact is the one a reader gets.)
+
+=> 判据: A DOCUMENT'S RULE ABOUT ITS OWN NUMBERS IS NOT A RULE UNTIL A GATE HOLDS IT, AND A NUMBER THAT MOVED MUST BE CORRECTED IN PLACE WITH THE INCREMENT THAT MOVED IT. The plan file wrote that rule itself, and nothing read it: the gate that holds the file held its ticks, its increments, its paths and the LOOP's rule count, and none of its numbers. Eight increments later two of them were stale -- the tree's own file count, moved by the increment that added two test files, and the number of gates, moved once by each of eight increments that added one. Correcting them in place is half of it; the half that keeps them correct is the gate, and the gate's own faults read the number and move it so that they do not rot when the number does.
+
+
