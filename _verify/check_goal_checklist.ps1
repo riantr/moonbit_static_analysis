@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Continue'
 # green on it. The two defects were both a path that resolves and a line that
 # moved, and neither could be caught by asking whether the file is there.
 #
-# WHAT THIS GATE CHECKS, and it is five things:
+# WHAT THIS GATE CHECKS, and it is seven things:
 #
 #   1. THE TASK LIST: T1..T13, each named exactly once, every one TICKED, and
 #      no open box anywhere.
@@ -35,7 +35,10 @@ $ErrorActionPreference = 'Continue'
 #      history is readable -- so the gate reads it.
 #   3. EVERY PATH A TASK'S "Done when" NAMES RESOLVES, and every `path:line`
 #      pin's line is INSIDE the file it names. This is the class the two
-#      defects above were made of.
+#      defects above were made of. A criterion may also name a path that must
+#      NOT be there -- the word ABSENT turns the check around -- because a
+#      task that DELETED a file cannot state its criterion in terms of a path
+#      that resolves.
 #   4. THE LOOP'S RULE LIST: 1..N, contiguous, each rule once, and N equals
 #      the pin. The rules are the trailing run of the document, and a deleted
 #      rule would otherwise leave a shorter run that is still perfectly
@@ -48,6 +51,12 @@ $ErrorActionPreference = 'Continue'
 #      from the pins and compared, never re-measured here: one place says how
 #      many files the tree has, one place says how many notices it carries,
 #      and one place says how many check gates are on disk.
+#   6. EVERY TASK STATES ITS OWN CRITERION. A task with no "Done when" is a
+#      task this gate cannot cover -- the path check reads the criterion, and
+#      a task that states none is skipped in silence.
+#   7. THE PLAN FILE MUST NOT CLAIM WHAT THE PACKAGE DOES NOT HOLD. A shipped
+#      document that asserts something false about the published package is a
+#      false claim with a reader attached.
 #
 # THE DIRECTION MATTERS. The rule count is a pin like every other pin here:
 # when a rule is added, the pin moves with it and the release gate's own pin
@@ -154,6 +163,11 @@ function Get-ChecklistProblems {
   param([string]$QaTxt, [string]$LoopTxt, [string]$RelTxt, [hashtable]$Increments, [string]$Root)
   $probs = @()
 
+  # THE TASK BLOCKS. Each block runs from a task's heading to the next task's
+  # heading, and it is what "the task's own words" means here: the criterion it
+  # states, the paths that criterion names, and whether it states one at all.
+  $blocks = @([regex]::Matches($QaTxt, '(?ms)^\- \[x\] \*\*T\d+\..*?(?=^\- \[x\] \*\*T\d+\.|\z)'))
+
   # --- 1. THE TASK LIST -------------------------------------------------------
   $taskLines = @()
   if (-not [string]::IsNullOrWhiteSpace($QaTxt)) {
@@ -200,7 +214,6 @@ function Get-ChecklistProblems {
   # --- 3. EVERY PATH A "Done when" NAMES RESOLVES -----------------------------
   # The paths are the ones inside the DONE-WHEN blocks: that is where a task
   # says WHERE ITS EVIDENCE IS, and that is where a pointer rots.
-  $blocks = @([regex]::Matches($QaTxt, '(?ms)^\- \[x\] \*\*T\d+\..*?(?=^\- \[x\] \*\*T\d+\.|\z)'))
   foreach ($b in $blocks) {
     $body = $b.Value
     $doneIdx = $body.IndexOf('**Done when:**')
@@ -213,6 +226,19 @@ function Get-ChecklistProblems {
       $line = 0
       if ($m.Groups[2].Success) { $line = [int]$m.Groups[2].Value }
       $full = Join-Path $Root $rel
+      # A CRITERION MAY NAME A PATH THAT MUST NOT BE THERE. A task that
+      # DELETED a file cannot state its criterion in terms of a path that
+      # resolves -- and without this, T12 ("delete the stub") could not say
+      # what it deleted, and the gate would call the deletion a dead pointer.
+      # The word ABSENT after the path turns the check around: the path must
+      # NOT be in the tree.
+      $after = $tail.Substring($m.Index + $m.Length)
+      if ($after -match '^\s+is ABSENT') {
+        if (Test-Path -LiteralPath $full) {
+          $probs += ('FAIL: a "Done when" declares ' + $m.Groups[1].Value + ' ABSENT, and it is still in the tree.')
+        }
+        continue
+      }
       if (-not (Test-Path -LiteralPath $full)) {
         # A BARE FILE NAME (no directory) is looked up by name, because the
         # checklist writes `sa_0507_test.mbt` and not its path.
@@ -315,6 +341,52 @@ function Get-ChecklistProblems {
     if ($c -ne $gateCount) {
       $probs += ('FAIL: the plan file quotes ' + $c + ' check_* gates, and the tree holds ' + $gateCount + '.')
     }
+  }
+
+  # --- 6. EVERY TASK STATES ITS OWN CRITERION ---------------------------------
+  # A task that states no "Done when" is a task this gate CANNOT cover: the
+  # path check above reads the criterion, and a task with none is skipped in
+  # SILENCE -- which is how two of the thirteen (T12 and T13) held their
+  # evidence as prose while every tick was green. A QA that is not a gate is a
+  # comment, and a criterion that no gate reads is one too.
+  foreach ($b in $blocks) {
+    if ($b.Value.IndexOf('**Done when:**') -lt 0) {
+      $tid = [regex]::Match($b.Value, '^\- \[x\] \*\*(T\d+)\.').Groups[1].Value
+      $probs += ('FAIL: the task ' + $tid + ' states no "Done when", so the gate cannot cover its evidence.')
+    }
+  }
+
+  # --- 7. THE PLAN FILE MUST NOT CLAIM WHAT THE PACKAGE DOES NOT HOLD ---------
+  # A shipped document that asserts something FALSE about the published package
+  # is a false claim with a reader attached: the plan file said the twenty-four
+  # fixtures ship, and they stopped shipping in 0632.
+  #
+  # A QUOTATION IS NOT A CLAIM. The corrected record QUOTES the sentence it
+  # retired, and a document that quotes a claim in order to say it is false must
+  # not be caught by the guard against making the claim. The test is the one the
+  # URL gate already uses: a quote ON THE SAME LINE before the phrase makes it a
+  # quotation. The count is taken over that line AND the one before it, and it
+  # is taken PER LINE -- a document with an unbalanced quote somewhere else
+  # would flip a global count and misjudge every position after it.
+  #
+  # This is a NARROW guard, keyed to the phrase the false claim used. It is not
+  # a general truth machine for prose, and it does not pretend to be one.
+  $stale = 'they DO ship'
+  $idx = 0
+  while ($true) {
+    $idx = $QaTxt.IndexOf($stale, $idx)
+    if ($idx -lt 0) { break }
+    $lineStart = 0
+    if ($idx -gt 0) { $lineStart = $QaTxt.LastIndexOf("`n", $idx - 1) + 1 }
+    $prevStart = $lineStart
+    if ($prevStart -gt 0) { $prevStart = $QaTxt.LastIndexOf("`n", $prevStart - 1) + 1 }
+    $before = $QaTxt.Substring($prevStart, $idx - $prevStart)
+    $quotes = ([regex]::Matches($before, '"')).Count
+    if (($quotes % 2) -eq 0) {
+      $probs += 'FAIL: the plan file still claims the fixtures ship. They stopped shipping in increment 0632.'
+      break
+    }
+    $idx += $stale.Length
   }
 
   return $probs
@@ -434,6 +506,39 @@ if ($SelfTest) {
         return ,@($q, $l, $r)
       }
     }
+    [pscustomobject]@{
+      N = 'a task states no "Done when"'
+      Expect = 'states no "Done when"'
+      # The marker is removed from T1's OWN block -- the lazy match stops at the
+      # first "Done when" after T1's heading, which is T1's -- so no other task
+      # is touched and the fault is about the one thing it says it is about.
+      Apply = {
+        param($q, $l, $r)
+        $q = [regex]::Replace($q, '(?ms)^(- \[x\] \*\*T1\..*?)\*\*Done when:\*\*', '${1}')
+        return ,@($q, $l, $r)
+      }
+    }
+    [pscustomobject]@{
+      N = 'a "Done when" that declares a path ABSENT loses the word'
+      Expect = 'that file is not in the tree'
+      # The word ABSENT is what turns the path check around. Without it, the
+      # deleted stub is a path that does not resolve -- which is exactly what a
+      # deletion IS, and what the gate used to call a dead pointer.
+      Apply = {
+        param($q, $l, $r)
+        $q = $q.Replace(' is ABSENT', ' is present')
+        return ,@($q, $l, $r)
+      }
+    }
+    [pscustomobject]@{
+      N = 'the plan file claims the fixtures ship again'
+      Expect = 'still claims the fixtures ship'
+      Apply = {
+        param($q, $l, $r)
+        $q = [regex]::Replace($q, 'only the two `\.out`\s+captures still ship\.', 'and they DO ship, because the evidence a reader is sent to has to be in the package.')
+        return ,@($q, $l, $r)
+      }
+    }
   )
 
   foreach ($f in $faults) {
@@ -463,8 +568,8 @@ if ($SelfTest) {
     }
   }
 
-  if ($checked -ne 11) {
-    Write-Output ('  FAIL: ' + $checked + ' of 11 checks ran.')
+  if ($checked -ne 14) {
+    Write-Output ('  FAIL: ' + $checked + ' of 14 checks ran.')
     $bad++
   }
 
@@ -508,6 +613,9 @@ if ($qFiles.Count -gt 0) {
 if ($qGates.Count -gt 0) {
   Write-Output ('  the plan file quotes: ' + $qGates[0].Groups[1].Value + ' check gates   the tree holds: ' + $liveGates)
 }
+$noCriterion = @($blocks | Where-Object { $_.Value.IndexOf('**Done when:**') -lt 0 })
+Write-Output ('  the tasks that state no criterion: ' + $noCriterion.Count)
+Write-Output ('  the plan file claims the fixtures ship: ' + $qa.Contains('they DO ship'))
 
 $probs = @(Get-ChecklistProblems $qa $loop $rel $incs $root)
 foreach ($p in $probs) {
@@ -520,7 +628,8 @@ Write-Output ''
 if ($fail -eq 0) {
   Write-Output ('CHECKLIST OK: ' + $taskCount + ' task(s), all ticked, every one riding an increment this')
   Write-Output ('history holds, every path it names resolving, and the LOOP''s ' + $rules.Count + ' rule(s) numbered')
-  Write-Output 'contiguously and matching the pin, and every number the plan file quotes matching the tree.'
+  Write-Output 'contiguously and matching the pin, every number the plan file quotes matching the tree,'
+  Write-Output 'every task stating its own criterion, and no claim about the package it does not hold.'
   exit 0
 }
 Write-Output ('CHECKLIST FAILED: ' + $fail + ' problem(s).')

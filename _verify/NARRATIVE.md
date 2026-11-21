@@ -24378,3 +24378,95 @@ publish for the same reason: the published artifact is the one a reader gets.)
 => 判据: A DOCUMENT'S RULE ABOUT ITS OWN NUMBERS IS NOT A RULE UNTIL A GATE HOLDS IT, AND A NUMBER THAT MOVED MUST BE CORRECTED IN PLACE WITH THE INCREMENT THAT MOVED IT. The plan file wrote that rule itself, and nothing read it: the gate that holds the file held its ticks, its increments, its paths and the LOOP's rule count, and none of its numbers. Eight increments later two of them were stale -- the tree's own file count, moved by the increment that added two test files, and the number of gates, moved once by each of eight increments that added one. Correcting them in place is half of it; the half that keeps them correct is the gate, and the gate's own faults read the number and move it so that they do not rot when the number does.
 
 
+## 0634: A DOCUMENT THAT DESCRIBES THE PACKAGE IS IN THE PACKAGE, AND A TASK WITH NO CRITERION IS A TASK NO GATE CAN SEE
+
+MEASURED 2026-11-21, by an INDEPENDENT verification of the objective run AFTER
+increment 0633 -- the same verifier, against the tree as it stands now. It
+found two defects, and both of them are in the objective's own artifact:
+
+    _verify/QA_TODO.md  T8's DONE record, the last clause:
+      "so they do not move `$SELF_FILES` or `$SSA_COST` -- and they DO ship, because
+       the evidence a reader is sent to has to be in the package."
+
+    the published 0.5.2 package, built from a clean checkout of the released tag:
+      the 24 fixture .mbt files          NOT IN THE PACKAGE
+      the two .out captures               in the package
+
+So a SHIPPED document -- `_verify/QA_TODO.md` travels with the package -- told
+the reader that the twenty-four fixtures travel with it. The claim was TRUE
+when increment 0615 wrote it, and it stopped being true in increment **0632**:
+the published 0.5.1 failed its own self-scan with all fifteen of its findings
+inside those very files. It was false for two increments, and nothing noticed,
+because the sentence is PROSE.
+
+### WHY IT WAS NOT NOTICED
+
+The package gate KNEW the truth. `_verify/check_package_contents.ps1` rule 4
+DERIVES the fixture set from the tracked files and asserts their ABSENCE in the
+other direction. The plan file said the opposite. Two assertions of one claim,
+in two files, disagreeing -- and the disagreement was invisible to the pointer
+gate, because that gate flags a citation only when the cited path is in the
+package AND not tracked, and its citation regex requires a FILE EXTENSION, so
+a DIRECTORY never matches at all.
+
+### THE SECOND DEFECT: TWO TASKS WITH NO CRITERION
+
+T12 and T13 stated no `**Done when:**` clause at all.
+`_verify/check_goal_checklist.ps1` reads the criterion of each task and checks
+the paths that criterion names -- and a task that states none is SKIPPED IN
+SILENCE. So two of the thirteen tasks held their evidence as prose, while every
+tick was green and the gate reported "13 task(s), all ticked".
+
+T12 is the sharp one: its whole subject is a DELETION --
+`src/lexer/lexer_0488_test.mbt` is gone -- and a criterion that names a path
+which does not resolve reads, to the path check, exactly like a broken pointer.
+So the task that DELETED a file could not say what it deleted.
+
+### THE FIX, AND THE THREE GUARDS
+
+1. The false clause is corrected IN PLACE, naming the increment that moved it
+   (0632), in the vocabulary the file's own header uses.
+2. T12 and T13 state their criteria. T12's criterion declares a path ABSENT,
+   so the path check turns around for it: the path must NOT be in the tree.
+   Without that, the deletion could not be stated at all.
+3. `_verify/check_goal_checklist.ps1` gained two more checks and three more
+   faults: every task states its own criterion (a task with none is a FAIL, not
+   a silent skip), and the plan file must not claim the fixtures ship.
+
+A QUOTATION IS NOT A CLAIM. The corrected record quotes the sentence it
+retired, so the guard reads the quote count on the line BEFORE the phrase --
+and it reads it PER LINE, because this document's double-quote count is
+unbalanced overall and a global count would misjudge every position after the
+imbalance. The test is the one the URL gate already uses: a quote on the same
+line before the phrase makes it a quotation.
+
+MEASURED, the three new faults, all of which inject into a COPY:
+
+    a task states no "Done when"
+      FAIL: the task T1 states no "Done when", so the gate cannot cover its evidence.
+    a "Done when" that declares a path ABSENT loses the word
+      FAIL: a "Done when" names src/lexer/lexer_0488_test.mbt, and that file is not in the tree.
+    the plan file claims the fixtures ship again
+      FAIL: the plan file still claims the fixtures ship. They stopped shipping in increment 0632.
+
+and the self-test now catches THIRTEEN of thirteen injected defects, with the
+control -- the documents as they stand -- green.
+
+### THE BOUNDARY, STATED RATHER THAN HIDDEN
+
+The fifth check holds the plan file against the PINS, not against a
+measurement: if a pin itself went stale, the plan file and the pin would agree
+with each other and the check would stay green. That is the price of "one
+claim, one implementation", and it is a deliberate trade, not an oversight --
+the pins are held elsewhere, by the release self-scan that measures the tree
+itself. This is recorded here so that nobody mistakes the guard for more than
+it is.
+
+### THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     34 -> 35
+    $NARRATIVE_CHAPTERS            144 -> 145
+
+=> 判据: A DOCUMENT THAT DESCRIBES THE PACKAGE IS IN THE PACKAGE, AND A TASK WITH NO CRITERION IS A TASK NO GATE CAN SEE. The plan file told the reader that the twenty-four fixtures travel with the package, and they stopped travelling in 0632 -- and the gate that KNEW the truth (the package gate, asserting their absence in the other direction) was two files away from the gate that held the claim. Meanwhile two of the thirteen tasks stated no criterion at all, and a criterion-less task is skipped in silence rather than refused. A false claim in a shipped document is a false claim with a reader attached, and a criterion that no gate reads is a comment: both are fixed in place here, and both are now held -- including the words that make a DELETION stateable at all.
+
+

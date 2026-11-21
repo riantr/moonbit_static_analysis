@@ -199,11 +199,16 @@ the committed tree held 274).
       fact — 0488's rows live in `src/parser` because a test file lives in the package
       it tests — is already in NARRATIVE §0548's own record and in the tracked test
       file's header. Recoverable (`mavis-trash`).
+      **Done when:** `src/lexer/lexer_0488_test.mbt` is ABSENT from the tree, and
+      the rows it carried live in `src/parser/parser_0488_test.mbt`.
       **Rides:** increment **0614**.
 - [x] **T13. Guard the CLASS, not the file.** The gate now compares the files the
       scan READ with the source files the COMMITTED tree holds (`git ls-tree -r HEAD`),
       one by one. An untracked file under `src/` now makes the gate RED and names
       itself, instead of quietly moving a published number.
+      **Done when:** the comparison lives in `_verify/check_own_tree_clean.ps1`, it
+      compares the files the scan READ against `git ls-tree -r HEAD` one by one,
+      and an untracked file under `src/` turns it RED by name.
       **Rides:** increment **0614**.
 
 AND THE VERIFICATION THE OWNER ASKED FOR, measured: the 275 files the scan reads are
@@ -297,8 +302,15 @@ way a hand-written table rots. **A QA that is not a gate is a comment.**
       **DONE 0615.** Record: `_verify/NARRATIVE.md` §0615. `_verify/fixtures/families/`
       holds 18 files named `MSA-NNN_<name>.mbt`; `_verify/fixtures/blindspot/` holds the
       6 blind-spot fixtures. They live under `_verify`, which the self-scan excludes,
-      so they do not move `$SELF_FILES` or `$SSA_COST` — and they DO ship, because
-      the evidence a reader is sent to has to be in the package.
+      so they do not move `$SELF_FILES` or `$SSA_COST`. **CORRECTED 2026-11-21**
+      (increment 0634): this record used to end "and they DO ship, because the
+      evidence a reader is sent to has to be in the package", and that was TRUE when
+      increment 0615 wrote it. It stopped being true in increment **0632**: the
+      published 0.5.1 failed its own self-scan with all fifteen of its findings
+      inside these very files, so they do NOT ship now — `.moonignore` names
+      `_verify/fixtures/families/` and `_verify/fixtures/blindspot/`, the package
+      gate asserts their absence in the other direction, and only the two `.out`
+      captures still ship.
 
 ### What the 0615 gate found when it came back RED
 

@@ -1701,7 +1701,13 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # It moves the `$LOOP_RULES` pin with the rule it adds. The published-artifact
 # sentence the 0.5.2 publish moved is corrected in the same increment: the READMEs
 # now name the 0.5.2 artifact, and the number they quote did not move.
-$NARRATIVE_CHAPTERS = '144'
+# 0634. THE PIN MOVED TO 145 with chapter 0634, which changed NO source file: the
+# increment fixes two defects an independent verification found in the objective's
+# OWN artifact -- a DONE record that still claimed the twenty-four fixtures ship
+# (they stopped shipping in 0632), and two of the thirteen tasks that stated no
+# criterion at all, so the goal gate could not cover their evidence. It HOLDS both
+# classes now, and it moves the `$LOOP_RULES` pin with the rule it adds.
+$NARRATIVE_CHAPTERS = '145'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1726,7 +1732,10 @@ $NARRATIVE_CHAPTERS = '144'
 # rule until a gate holds it -- the plan file wrote that rule itself, and two of
 # its numbers sat stale for eight increments while the gate that holds the file
 # stayed green.
-$LOOP_RULES = '34'
+# The pin moved 34 -> 35 with rule 35, and the rule is the lesson the 0634
+# increment measured: a document that describes the PACKAGE is in the package,
+# and a task with no criterion is a task no gate can see.
+$LOOP_RULES = '35'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
