@@ -617,6 +617,140 @@ if ($null -eq $core) {
   $fail += $countFails
 }
 
+# --- 0639. THE SENTENCE THAT PUBLISHES THE ARTIFACT'S OWN IMPORT COUNT ----------
+#
+# MEASURED 2026-11-22, while increment 0639 was being written: the READMEs publish
+# "The published 0.5.2 artifact imports **92** symbols" -- a number about ONE
+# artifact, named by version -- and NOTHING held it. The search for a gate that
+# holds it came back EMPTY: the search for `artifact imports` across `_verify/`
+# matches nothing, and the only sentence this gate holds in the READMEs about
+# imports is the SUBSET rule. The number had been moved BY HAND after every
+# publish -- 0632 for 0.5.1, 0633 for 0.5.2 -- and no gate could say whether it
+# was right.
+#
+# So the sentence is now measured against the artifact it NAMES:
+#
+#   the version it names    the artifact a reader of THIS release gets, so once
+#                           that version has been published it has to be the
+#                           version this tree declares -- and "has been published"
+#                           is MEASURED, by the artifact's presence in the local
+#                           registry cache, which is the same file the
+#                           published-bytes rows are re-hashed against.
+#   the numbers it quotes   the MEASURED import count of that artifact, of this
+#                           tree's own release build, and the contract's own
+#                           symbol count.
+#
+# "STILL TRUE" IS NOT "STILL ABOUT THE RIGHT ARTIFACT". The sentence said 0.5.2
+# while 0.5.3 was the published release, and 92 WAS the truth about 0.5.2 -- so a
+# gate that asks "is this number true?" stays green while the sentence is about
+# the wrong bytes. This one asks WHICH artifact.
+#
+# AND THE ORDER IS THE ORDER. Before the registry has compiled the version, its
+# bytes do not exist, so the version and the number it publishes cannot be
+# measured yet: that is stated, not failed. It is the ordering the published-bytes
+# rows obey too -- cut the version, run the gate, tag, CI publishes, then measure
+# and record.
+#
+# THE SENTENCE IS ONE REGION AND FOUR NUMBERS, in both languages. The region is
+# BOUNDED, so a reworded paragraph cannot make the match run away into another
+# one, and the four numbers come out of ONE match, so a document that states the
+# contract's count twice is not read twice.
+$sentPatterns = @{
+  'en' = '(?s)published\s+(\d+\.\d+\.\d+)\s+artifact\s+imports\s+\*\*(\d+)\*\*\s+symbols.{0,600}?imports\s+\*\*(\d+)\*\*\s+as\s+well.{0,600}?the\s+contract\s+is\s+\*\*(\d+)\*\*'
+  'zh' = '(?s)\u53D1\u5E03\u51FA\u53BB\u7684\s+(\d+\.\d+\.\d+)\s+\u4EA7\u7269\u5BFC\u5165\u4E86\s+\*\*(\d+)\*\*.{0,600}?\u7684\u4E5F\u662F\s+\*\*(\d+)\*\*.{0,600}?\u5951\u7EA6\u662F\s+\*\*(\d+)\*\*'
+}
+
+function Get-PublishedSentence {
+  param([string]$Path, [string]$Kind)
+  $txt = [System.IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+  $m = [regex]::Match($txt, $sentPatterns[$Kind])
+  if (-not $m.Success) { return $null }
+  return @{
+    Version   = $m.Groups[1].Value
+    Published = [int]$m.Groups[2].Value
+    Local     = [int]$m.Groups[3].Value
+    Contract  = [int]$m.Groups[4].Value
+  }
+}
+
+function Test-PublishedSentence {
+  param(
+    [string]$Path,
+    [string]$Label,
+    [string]$Kind,
+    [string]$ExpectVersion,
+    [int]$ExpectPublished,
+    [int]$ExpectLocal,
+    [int]$ExpectContract,
+    [bool]$VersionChecked
+  )
+  $problems = @()
+  $s = Get-PublishedSentence -Path $Path -Kind $Kind
+  if ($null -eq $s) {
+    $problems += 'it does not state the published artifact''s import count in the published form.'
+    return @{ ok = $false; problems = $problems }
+  }
+  if ($VersionChecked -and $s.Version -ne $ExpectVersion) {
+    $problems += ('it names the published ' + $s.Version + ' artifact, and this release published ' + $ExpectVersion + '.')
+  }
+  if ($s.Published -ne $ExpectPublished) {
+    $problems += ('it says the published artifact imports ' + $s.Published + ' symbols, and that artifact imports ' + $ExpectPublished + '.')
+  }
+  if ($s.Local -ne $ExpectLocal) {
+    $problems += ('it says this tree''s own release build imports ' + $s.Local + ' symbols, and that build imports ' + $ExpectLocal + '.')
+  }
+  if ($s.Contract -ne $ExpectContract) {
+    $problems += ('it says the contract is ' + $s.Contract + ' symbols, and the contract holds ' + $ExpectContract + '.')
+  }
+  return @{ ok = ($problems.Count -eq 0); problems = $problems }
+}
+
+# THE MEASUREMENTS THE SENTENCE IS HELD AGAINST. The published artifact is the
+# one in the local registry cache -- the same file the published-bytes rows are
+# re-hashed against -- and this tree's own release build is the one the sentence
+# names. Both are read with the SAME reader the rest of this gate uses, so "one
+# reader, one answer" holds.
+$mv = ([regex]::Match([string]$moonMod, '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
+$pubWasm = Join-Path ([Environment]::GetFolderPath('UserProfile')) ('.moon\registry\cache\assets\riantr\moonbit_static_analysis\' + $mv + '\moonbit_static_analysis.wasm')
+$pubAsync = -1
+$publishedHere = $false
+if (Test-Path -LiteralPath $pubWasm) {
+  $pubR = Test-ContractAgainst $pubWasm $contractData.symbols $contractData.abi
+  $pubAsync = $pubR.async
+  $publishedHere = $true
+}
+$releaseWasm = Join-Path $root '_build\wasm\release\build\moonbit_static_analysis.wasm'
+$localAsync = -1
+$localHere = $false
+if (Test-Path -LiteralPath $releaseWasm) {
+  $localR = Test-ContractAgainst $releaseWasm $contractData.symbols $contractData.abi
+  $localAsync = $localR.async
+  $localHere = $true
+}
+$sentDocs = @(
+  @{ Label = 'README.md';    Path = (Join-Path $root 'README.md');    Kind = 'en' },
+  @{ Label = 'README.zh.md'; Path = (Join-Path $root 'README.zh.md'); Kind = 'zh' }
+)
+Write-Output ''
+Write-Output '=== the published-artifact sentence is held against the artifact it names ==='
+if (-not $publishedHere) {
+  Write-Output ('  note  the published ' + $mv + ' artifact is not in the local registry cache, so the version and the number it publishes were not measured here.')
+  Write-Output '        The bytes do not exist before the registry compiles them. That is the release order, not a defect.'
+}
+if (-not $localHere) {
+  Write-Output '  note  this tree''s release build is not present, so the number the document quotes about it was not measured here.'
+}
+if ($publishedHere -and $localHere) {
+  foreach ($d in $sentDocs) {
+    $r = Test-PublishedSentence -Path $d.Path -Label $d.Label -Kind $d.Kind -ExpectVersion $mv -ExpectPublished $pubAsync -ExpectLocal $localAsync -ExpectContract $contractData.symbols.Count -VersionChecked $true
+    if ($r.ok) {
+      Write-Output ('  ok  ' + $d.Label.PadRight(14) + ' names the published ' + $mv + ' artifact and quotes the counts that were measured (' + $pubAsync + ' published, ' + $localAsync + ' local, ' + $contractData.symbols.Count + ' contracted)')
+    } else {
+      foreach ($pr in $r.problems) { Write-Output ('FAIL: ' + $d.Label + ' -- ' + $pr); $fail++ }
+    }
+  }
+}
+
 # --- the self-test: the comparison can go red -------------------------------------
 if ($SelfTest) {
   # 0625. THE FLOOR'S COPIES, SHOWN TO GO RED. The defect is in the DOCUMENTS,
@@ -780,6 +914,74 @@ if ($SelfTest) {
       } else {
         Write-Output ('  ok  accepted ' + $c.name + ' as a NOTE (' + $c.want + '=' + $saw + '), because the contract is a floor')
       }
+    }
+  }
+function Replace-InSentence {
+  param([string]$Text, [string]$Kind, [string]$FromPattern, [string]$To)
+  $m = [regex]::Match($Text, $sentPatterns[$Kind])
+  if (-not $m.Success) { return $null }
+  $region = $m.Value
+  $rm = [regex]::Match($region, $FromPattern)
+  if (-not $rm.Success) { return $null }
+  $mut = $region.Substring(0, $rm.Index) + $To + $region.Substring($rm.Index + $rm.Length)
+  return $Text.Replace($region, $mut)
+}
+
+
+  # AND THE PUBLISHED-ARTIFACT SENTENCE (0639). The document that PUBLISHES the
+  # artifact's import count has to be HELD, and the self-test has to show the
+  # hold can go red: a copy that names a DIFFERENT artifact, or that quotes a
+  # DIFFERENT number, has to be caught -- and each fault asks whether it LANDED,
+  # because a mutation that changed nothing proves nothing.
+  Write-Output ''
+  Write-Output '=== the self-test: the published-artifact sentence has to be held ==='
+  if (-not ($publishedHere -and $localHere)) {
+    Write-Output '  note  the published artifact or this tree''s release build is not on this machine, so there is nothing here to measure.'
+  } else {
+    $sentScratch = Join-Path $env:TEMP ('hostreq_sent_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path $sentScratch | Out-Null
+    # THE CONTROL: the documents as they stand must be green.
+    foreach ($d in $sentDocs) {
+      $r = Test-PublishedSentence -Path $d.Path -Label $d.Label -Kind $d.Kind -ExpectVersion $mv -ExpectPublished $pubAsync -ExpectLocal $localAsync -ExpectContract $contractData.symbols.Count -VersionChecked $true
+      if ($r.ok) {
+        Write-Output ('  ok  the control: ' + $d.Label + ' names the published artifact and quotes the measured counts')
+      } else {
+        Write-Output ('FAIL: the control: ' + $d.Label + ' -- ' + ($r.problems -join '; '))
+        $fail++
+      }
+    }
+    # THE FAULTS. They are the two things the sentence can get wrong -- it names
+    # the wrong ARTIFACT, or it quotes the wrong NUMBER -- in both languages.
+    $sentCases = @(
+      @{ Label = 'README.md';    Kind = 'en'; From = ([regex]::Escape($mv)); To = '0.5.2'; Want = 'names the published' },
+      @{ Label = 'README.md';    Kind = 'en'; From = ('\*\*' + $pubAsync + '\*\* symbols'); To = ('**' + ($pubAsync + 1) + '** symbols'); Want = 'that artifact imports' },
+      @{ Label = 'README.zh.md'; Kind = 'zh'; From = ('\*\*' + $pubAsync + '\*\*'); To = ('**' + ($pubAsync + 1) + '**'); Want = 'that artifact imports' },
+      @{ Label = 'README.zh.md'; Kind = 'zh'; From = ([regex]::Escape($mv)); To = '0.5.2'; Want = 'names the published' }
+    )
+    foreach ($c in $sentCases) {
+      $src = Join-Path $root $c.Label
+      $txt = [System.IO.File]::ReadAllText($src, [Text.Encoding]::UTF8)
+      $mutated = Replace-InSentence $txt $c.Kind $c.From $c.To
+      if ($null -eq $mutated -or $mutated -eq $txt) {
+        Write-Output ('FAIL: ' + $c.Label + ' -- the mutation changed nothing, so the case proved nothing')
+        $fail++
+        continue
+      }
+      $dst = Join-Path $sentScratch $c.Label
+      [System.IO.File]::WriteAllText($dst, $mutated, (New-Object System.Text.UTF8Encoding($false)))
+      $r = Test-PublishedSentence -Path $dst -Label $c.Label -Kind $c.Kind -ExpectVersion $mv -ExpectPublished $pubAsync -ExpectLocal $localAsync -ExpectContract $contractData.symbols.Count -VersionChecked $true
+      if ($r.ok) {
+        Write-Output ('FAIL: ' + $c.Label + ' -- a wrong published-artifact sentence was ACCEPTED')
+        $fail++
+        continue
+      }
+      $joined = ($r.problems -join ' | ')
+      if ($joined -notmatch [regex]::Escape($c.Want)) {
+        Write-Output ('FAIL: ' + $c.Label + ' -- the copy went red, but not with the right message: ' + $joined)
+        $fail++
+        continue
+      }
+      Write-Output ('  ok  ' + $c.Label + ' -- a wrong published-artifact sentence is caught: ' + $joined)
     }
   }
 }

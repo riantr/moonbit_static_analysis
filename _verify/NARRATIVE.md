@@ -24824,3 +24824,124 @@ The four now run, the two rotted faults are fixed where they rotted, and the
 roster holds the class: a gate's proof has to be RUN by the gate that holds it.
 
 
+## 0639: A DOCUMENT THAT PUBLISHES A NUMBER ABOUT AN ARTIFACT HAS TO SAY WHICH ARTIFACT, AND A GATE HAS TO MEASURE IT
+
+MEASURED 2026-11-22, after the 0.5.3 release. The registry serves
+`riantr/moonbit_static_analysis@0.5.3`, the publish workflow for the tag
+`v0.5.3` is green, and for the first time the published bytes are measurable.
+
+    the publish run              44992812246, conclusion success
+    the registry's checksum      7d217856828b4a5afa446374b7ac01a3567391028cb1ebe8735a5d752e490a0b
+    the registry's created_at    2026-11-22T06:14:41.983521+00:00
+
+THE WASM HASH WAS MEASURED TWICE AND THE TWO PATHS AGREE: once from the local
+registry cache, once from a fresh download of the file the registry serves.
+
+    published 0.5.3  wasm 4A8EF637D8222FB68CBB0E9F4973E1504FA86BD60595393ACC2D1B1E2C7914F5  731143 bytes  checksum 7d217856828b4a5afa446374b7ac01a3567391028cb1ebe8735a5d752e490a0b  2026-11-22T06:14:41.983521+00:00
+
+AND THE CHECKSUM IS THE REGISTRY'S OWN, CHECKED A THIRD WAY: it is the SHA-256
+of the published SOURCE package, and the local copy of that package hashes to
+exactly it.
+
+THE PUBLISHED PACKAGE SCANS ITS OWN SHIPPED SOURCE CLEAN: 280 files, 280/280
+parsed, `actionable=0`, and the host contract holds -- the artifact requires 92
+symbols and the contract covers 93.
+
+### THE IMPORT SETS ARE MEASURED, NOT ASSUMED
+
+    the PUBLISHED 0.5.3 artifact   106 imports, 92 from `moonbitlang/async`
+    this tree's release build      106 imports, 92 from `moonbitlang/async`
+    this tree's debug build        106 imports, 92 from `moonbitlang/async`
+    a build with the NEWEST toolchain (moon 0.1.20261119, core 0.10.22)
+                                  106 imports, 92 from `moonbitlang/async`
+    the contract                   93
+
+The last line matters: the number the READMEs publish is not an artefact of one
+toolchain. The newest toolchain's build asks for the same 92 symbols as the
+contracted floor's build does, so the published number is a fact about the
+source rather than about the machine that measured it.
+
+### THE TWO ARTIFACTS ARE ALMOST THE SAME FILE
+
+    published 0.5.2  wasm 8CE86C4A8C41A277358B1007DF7644A35CAFB944CD5C4DD980D1151190F6877F  731143 bytes
+    published 0.5.3  wasm 4A8EF637D8222FB68CBB0E9F4973E1504FA86BD60595393ACC2D1B1E2C7914F5  731143 bytes
+
+Same length, and they differ in exactly ONE byte:
+
+    offset 731071   0.5.2 = 0x32 ('2')   0.5.3 = 0x33 ('3')
+
+which is the version digit in the producer name -- the same offset, and the same
+one-byte difference, that 0637 measured between 0.5.1 and 0.5.2. The analyzer's
+source did not move at all between the two releases: `git diff --stat 221bbf9
+HEAD -- src` is EMPTY. So the 0.5.3 artifact is the 0.5.2 artifact with a
+different version in it, and the import set is identical for that reason.
+
+### THE DEBT 0637's GATE DEMANDED WAS OWED
+
+`check_transfer_scope.ps1` asks, of every tagged release from the first recorded
+row onwards, "does the record have a published-bytes row for it?". When this
+increment started it was RED, and it named the gap:
+
+    FAIL: v0.5.3 is TAGGED but the record has no published-bytes row for it.
+    FAIL: a TAGGED release has no published-bytes row: 0.5.3
+
+So the row is not a nicety: a reader of the 0.5.3 release could not check the
+bytes they were given. It is written above, and the gate goes green on it.
+
+### THE NUMBER THE READMEs PUBLISH WAS HELD BY NOTHING
+
+And then the measurement turned up something the row did not ask about. The
+READMEs publish a second claim about the same artifact:
+
+    The published 0.5.2 artifact imports **92** symbols; this tree's own
+    release build of the *same source*, rebuilt against the toolchain this host
+    now has, imports **92** as well -- and the contract is **93**
+
+That is a NUMBER about ONE artifact, NAMED by version. And nothing held it.
+MEASURED, BEFORE this increment: the search for `artifact imports` across
+`_verify/` matches NOTHING, and the only sentence `check_host_requirements.ps1`
+holds in the READMEs about imports is the SUBSET rule. The number had been moved
+BY HAND after every publish -- 0632 for 0.5.1, 0633 for 0.5.2 -- and no gate
+could say whether it was right.
+
+THE DEFECT THIS MEASURED IS NOT "THE NUMBER WAS WRONG". 92 WAS right, for 0.5.2
+and for 0.5.3, because the analyzer's source did not move. The defect is that
+the sentence named the wrong ARTIFACT: the tree declared 0.5.3, 0.5.3 was
+published, and a reader of the 0.5.3 package was told what the 0.5.2 artifact
+imports. **STILL TRUE IS NOT STILL ABOUT THE RIGHT ARTIFACT.** A gate that asks
+"is this number true?" stays green through exactly this, because the number IS
+true.
+
+AND ONE THING NO INCREMENT CAN FIX, MEASURED AND STATED: the registry freezes a
+version's bytes at the publish, so the README inside the PUBLISHED 0.5.3
+package says `0.5.2` forever. The correction lands in the NEXT published
+version. That is the same fact 0633 recorded for the 0.5.1 sentence, and it is
+why the sentence is moved AFTER the publish and not before it.
+
+So the sentence is now MEASURED against the artifact it names: the version it
+names has to be the version this tree published, and the numbers it quotes have
+to be the measured import count of that artifact, of this tree's own release
+build, and the contract's own symbol count. `check_host_requirements.ps1` holds
+it, and its self-test shows the hold going red on copies that name a different
+artifact or quote a different number -- in both languages, and each fault asks
+whether it LANDED.
+
+AND THE ORDER IS THE ORDER: before the registry has compiled the version, its
+bytes do not exist, so the version and the number cannot be measured yet. That
+is STATED, not failed -- the same ordering the published-bytes rows obey.
+
+THE COUNTS THAT MOVED
+
+    $LOOP_RULES                     39 -> 40
+    $NARRATIVE_CHAPTERS            180 -> 181
+
+=> 判据: A DOCUMENT THAT PUBLISHES A NUMBER ABOUT AN ARTIFACT HAS TO SAY WHICH
+ARTIFACT, AND A GATE HAS TO MEASURE IT. The READMEs published "the published
+0.5.2 artifact imports 92 symbols" while 0.5.3 was the release, and nothing held
+the number or the version -- and the number was RIGHT the whole time, which is
+exactly why a gate that only asks "is this true?" would never have seen it. The
+sentence is now measured against the artifact it names, and what is left is the
+defect: a document that publishes a number without saying which artifact it is
+about.
+
+

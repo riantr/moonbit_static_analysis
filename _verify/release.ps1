@@ -1733,7 +1733,14 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # fixes the TWO that had rotted into faults that could not land, and adds ONE
 # check to `check_gate_roster.ps1` that holds the CLASS -- every check gate that
 # carries a live -SelfTest must have that self-test RUN by the release gate.
-$NARRATIVE_CHAPTERS = '180'
+# 0639. THE PIN MOVED TO 181 with chapter 0639, which changed NO source file: the
+# increment writes the published-bytes row of the release that was just
+# published (v0.5.3), moves the READMEs' published-artifact sentence onto the
+# artifact the reader of this release actually gets, and adds ONE check to
+# `check_host_requirements.ps1` that holds that sentence -- the version it names
+# and the numbers it quotes -- against the MEASURED artifact. The count moved by
+# ONE, and the ONE is the new chapter.
+$NARRATIVE_CHAPTERS = '181'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1777,7 +1784,12 @@ $NARRATIVE_CHAPTERS = '180'
 # measured: a proof that nobody runs is a comment, and a comment rots without
 # saying so -- eleven check gates' self-tests ran in the release gate and four
 # did not, and two of the four had rotted into faults that could not land.
-$LOOP_RULES = '39'
+# The pin moved 39 -> 40 with rule 40, and the rule is the lesson this increment
+# measured: a document that publishes a number about an artifact has to say WHICH
+# artifact, and a gate has to measure it -- because a number that was RIGHT the
+# whole time, about the wrong artifact, is invisible to a gate that only asks
+# whether the number is true.
+$LOOP_RULES = '40'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

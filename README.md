@@ -89,7 +89,7 @@ supply every one of them when the module is instantiated. `moonx` supplies them 
 async runtime that ships with **your** MoonBit toolchain.
 
 **The set is measured, not stated, and it is a FLOOR rather than a mirror.** The published
-0.5.2 artifact imports **92** symbols; this tree's own release build of the *same source*,
+0.5.3 artifact imports **92** symbols; this tree's own release build of the *same source*,
 rebuilt against the toolchain this host now has, imports **92** as well — and the contract is
 **93**, one wider than either, because a floor has to cover the artifact an older build
 produced as well as the one this build produces. `moon publish` uploads the **source** and
