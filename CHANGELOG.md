@@ -5218,3 +5218,80 @@ exactly what the 0.5.1 release was not.
 The READMEs said "The published 0.5.0 artifact imports 92 symbols", and the published 0.5.1
 artifact was measured: 106 imports, 92 of them from `moonbitlang/async`, the contract 93 --
 the same numbers. So the sentence now names 0.5.1, and the number did not move.
+
+## 0.5.3 -- the published package shipped a criterion that was false, and four proofs that never ran
+
+**WHAT THIS RELEASE IS.** A PATCH version, and the analyzer is BYTE-IDENTICAL to what 0.5.2
+shipped: `src/` has not moved since the 0.5.2 release commit (`git diff --stat 221bbf9 HEAD --
+src` is empty), so nothing about what the analyzer finds changes -- the family roster is at
+eighteen, and this release adds none of them. What this release fixes is the PACKAGE: the
+documents and the gates that ship inside it, which every reader who installs it inherits.
+
+    0636  a path that resolves is not a path that resolved when the task landed
+    0637  a release that is superseded before its row is written leaves a hole nobody looks at
+    0638  a proof that nobody runs is a comment, and a comment rots without saying so
+
+### THE PACKAGE 0.5.2 SHIPPED SAID SOMETHING FALSE
+
+`_verify/QA_TODO.md` TRAVELS WITH THE PACKAGE -- `.moonignore` deliberately ships `_verify/`,
+because those gates are the evidence for every number this project publishes. The 0.5.2 package
+therefore shipped a task criterion naming `_verify/check_own_tree_clean.ps1` as the file that
+holds the committed-tree comparison. MEASURED on the published 0.5.2 package:
+
+    the criterion names                 _verify/check_own_tree_clean.ps1
+    that file contains                  0 occurrences of git, committed, untracked or HEAD
+    it does not exist at 2e114fe        the increment T13 rides   (created at 0e42cb5, 0615)
+    git log -S 'ls-tree' over it        empty
+    git log -S 'ls-tree' over release.ps1   2e114fe
+
+The criterion was false in the package a reader downloads, and false in the one way no gate
+could see: every "does this path ship?" check was green on it.
+
+### AND THE PACKAGE'S OWN GATE WAS RED ON THE PACKAGE'S OWN TREE
+
+The package carried no published-bytes row for 0.5.2, nor for 0.5.1: 18 rows, the newest of
+them 0.5.0. The transfer-scope gate asks whether the version this tree DECLARES has a row once
+it is TAGGED, and 0.5.2 was tagged -- so a reader who checked out `v0.5.2` and ran the gate the
+package ships got:
+
+    FAIL: v0.5.2 is TAGGED but the record has no published-bytes row for it.
+          A reader of that release cannot check the bytes they were given.
+
+0637 fixed the CLASS of that hole: the obligation is now asked of EVERY tagged release from the
+first recorded row onwards, and not only of the version the tree happens to declare. A release
+that is superseded before its row is written can no longer leave a hole nobody looks at.
+
+### FOUR OF THE PACKAGE'S OWN PROOFS NEVER RAN
+
+The package's release gate ran 13 `-SelfTest` invocations; the repository's runs 20. The four
+that were missing -- the family roster, the host requirements, the release freshness and the
+transfer scope -- are four gates that PROVE they can go red, and a proof nobody runs is a
+comment that rots without saying so. Two of the four had already rotted: the transfer-scope
+fault named a line that no longer exists in the record, and all four release-freshness faults
+asked their question with the tree's OWN condition, which the tree had just crossed out of.
+
+    the package's release gate    13 -SelfTest invocations
+    the repository's             20 -SelfTest invocations
+    the four that never ran in the package
+        the family roster, the host requirements, the release freshness, the transfer scope
+
+### WHAT THE REPOSITORY NOW HOLDS THAT THE PACKAGE DID NOT
+
+    the NARRATIVE pin        143 in the package    180 in the repository
+    the NARRATIVE chapters   0636, 0637 and 0638 are absent from the package
+    published-bytes rows     18 in the package     20 in the repository, with 0.5.1 and 0.5.2
+    the eighth check         absent from the package's check_goal_checklist.ps1
+    T13's criterion          names a file that never held the comparison
+
+The eighth check is the one that makes the class unmissable: every path a "Done when" names
+must have EXISTED at the commit its task rides, asked with `git cat-file -e`. Its self-test goes
+red on the very defect this release exists to correct.
+
+### AND THE SENTENCE THE PUBLISH WILL MOVE
+
+The READMEs say "The published 0.5.2 artifact imports 92 symbols", and that sentence still names
+0.5.2 in THIS release -- deliberately. The registry freezes a version's README at the moment it
+publishes, and the import count belongs to the registry's builder toolchain rather than to this
+repository: the number cannot be known before the bytes exist. So the sentence moves in the
+increment that FOLLOWS the publish, measured on the published artifact -- exactly what increment
+0633 did for 0.5.2.
