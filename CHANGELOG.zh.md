@@ -4573,3 +4573,85 @@ README 写的是「发布出去的 0.5.2 产物导入了 **92** 个符号」，�
 0.5.2——这是故意的。注册表在发布的那一刻把一个版本的 README 固定下来，而 import 的个数属于
 注册表那边的构建工具链，不属于本仓库：字节还不存在的时候，这个数是量不出来的。所以那句话
 在**发布之后**的那个增量里移动，对着发布出来的产物实测——0.5.2 那次正是增量 0633 这么做的。
+
+## 0.5.4 —— `let` 的模式左边本来可以带类型标注，而四条路里有三条从来没问过
+
+**这一版是什么。** 一个 PATCH 版本。分析器的**公开表面没有动**：没有新家族、没有新 AST 节点、
+没有给 `pub` 类型加字段——`SLetDestruct(Array[String], Expr)` 一个字没改，而给 `pub` 枚举加字段
+是 MINOR 升级、不是 patch。这一版修的是解析器**读不下来**的一个构造，而这份代价是每一个
+被指向的语料都在付。
+
+    0640  一条规则如果不能从每一个入口走到，它就不是规则；而读不下来的文件是沉默，不是发现
+
+### 缺陷是入口，不是规则
+
+`let` 可以带类型标注，而解析器**早就**会读普通绑定那一条：`let b : Int = a + 1` →
+`SLet("b", "Int", ..)`。规则本来就在解析器里，缺的是**通往它的路**：元组、结构体、构造器
+这三条**模式**路径从模式直接跳到 `expect(TAssign)`，中间没有 `:` 的位置。
+
+    let (a, b) : (Int, Int) = p        工具链接受，分析器读不下来
+    let C(r) : Shape = s               工具链接受，分析器读不下来
+    let { x, .. } : Point = p          工具链接受，分析器读不下来
+
+### 而一行读不下去的代价是整个文件
+
+`riantr/pyroduct` 0.1.5 的 `evolution/gate.mbt` 有 190 行，而分析器停在第 113 行：
+
+    let (objective, causal) : (Objective, CausalPlan?) = match criterion {
+
+**实测**，这一版之前：
+
+    PARTIAL  .mbt  read up to line 113, 2 after it not shown  ./pyroduct/evolution/gate.mbt
+    SUMMARY  files=77 parsed=76 actionable=0 notices=296 unreliable=2 withheld=0 total=298
+
+这一版之后：
+
+    SUMMARY  files=77 parsed=77 actionable=0 notices=298 unreliable=0 withheld=0 total=298
+
+**读不下来的文件不是发现，是沉默。** 所以这个缺陷在「报发现的报告」里是**看不见**的，而它对
+每一个扫过这个语料的增量都一直看不见——因为这个语料不在里面。
+
+### 而提前停下来的解析器还会凭空造出假阳性
+
+`riantr/moonbit_labeler` 0.2.13 的 `app_moui/app.mbt:1851` 写的是同一个形状，所以这一版之前
+分析器也停在那里——而没读到的那截里有一个参数**看起来**没被读过。**两边都量**，而不是讲道理：
+
+    把 0640 的解析器改动撤掉   UnusedLocal=701  UnusedParam=1339   （和 pin 一字不差）
+    把 0640 的解析器改动放回去   UnusedLocal=701  UnusedParam=1338
+
+差的就是那一个文件。⇒ 所以这次修好是**少报了一条假阳性**，不是多报了一条：读得更多，
+正是让分析器**看见那次读**的原因。
+
+### 另一个分析器在这上面什么也没找到，而这值得写下来
+
+`riantr/LunaFlow` 0.1.34 在同一棵树上 43 条抽象发现、0 条 actionable，而那 43 条**全是区间
+形状的 may-alarm**，没有一条是实测到的越界。读得**更多语言**的那个工具没找到这个——因为这个
+构造是**解析**问题而不是**数据流**问题，而**taint 分析永远看不见一个前端没读完的文件**。
+
+### 还有哪些数动了，为什么动
+
+    $NOTICE_TOTAL                     24110 -> 24130      语料那半 +13，自己源码那半 +7
+    $NOTICE_SPLIT_PRINTED             4021 -> 4034        语料那半：解析器以前停下那行以下的 notice
+    $NOTICE_SPLIT_AGGREGATED          20089 -> 20096      这一版自己的七个 test 声明
+    $SELF_FILES                       280 -> 281          这一版自己的测试文件
+    $SELF_NOTICES                     test declaration 1800 -> 1807
+    $SELF_AGGREGATED                  1970 -> 1977
+    $SELF_CALLS                       sites 5611 -> 5619, not-verified 4489 -> 4497
+    $SELF_UNCHECKED                   4589 -> 4597
+    $SSA_COST                         files 262 -> 263, functions 1436 -> 1437
+    $SUPPOFF_PARAM                    1339 -> 1338        少了一条假阳性；见上
+    $UNVERIFIED_SPLIT_EIGHT           method 25150 -> 25158, not-verified 35547 -> 35555
+    `moonbit_labeler` 那一行          notices 698 -> 711, total 699 -> 712
+    $NARRATIVE_CHAPTERS                181 -> 182
+    $LOOP_RULES                       40 -> 41
+
+**没动**的是：`$SELF_PRINTED`（158）、`$IFACE_SIG_AVAILABLE`（2943）、`$IFACE_SIG_AGREES`
+（2282）、`$SURFACE_*` 那一行、`$UNVERIFIED_SPLIT_CORPORA`、`$RAISEQ_REACH`、
+`$RAISEQ_OTHERS`、`$SOUNDINESS_*` 那一行，以及**另外六个**语料——包括 `moonbit_core`，
+它自己的 `parsed=1705`（共 `files=1766`）也没动。
+
+### 对着工具链定过案
+
+`_verify/settle_0640_let_pattern_annotation.ps1`，5 条 ACCEPT + 1 条 RECORD + 2 条对照，GATE OK。
+语料形状那份 fixture 的**第一稿**被工具链用 4014 **拒了**——是**脚手架**错了，不是判据错了——
+而这道 settle 在写代码之前就抓住了它。

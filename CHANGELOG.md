@@ -5295,3 +5295,93 @@ publishes, and the import count belongs to the registry's builder toolchain rath
 repository: the number cannot be known before the bytes exist. So the sentence moves in the
 increment that FOLLOWS the publish, measured on the published artifact -- exactly what increment
 0633 did for 0.5.2.
+
+## 0.5.4 -- a `let` pattern could carry a type annotation, and three of the four paths never asked
+
+**WHAT THIS RELEASE IS.** A PATCH version. The analyzer's PUBLIC SURFACE DOES NOT MOVE: no new
+family, no new AST node, no new field on a `pub` type -- `SLetDestruct(Array[String], Expr)` is
+unchanged, and a `pub` enum gaining a field is a MINOR bump, not a patch. What this release fixes
+is a construct the parser could not READ, and the cost of that was paid by every corpus the
+analyzer was pointed at.
+
+    0640  a rule that is not reached from every entry point is not a rule, and an
+          unreadable file is a silence and not a finding
+
+### THE DEFECT WAS AN ENTRY POINT, NOT A RULE
+
+A `let` may carry a type annotation, and the parser has read one since long before this release:
+`let b : Int = a + 1` gives `SLet("b", "Int", ..)`. The RULE was in the parser. What was missing
+was the PATH TO IT: the three PATTERN paths -- the tuple, the struct and the constructor -- went
+straight from the pattern to `expect(TAssign)`, with no room for a `:` between them.
+
+    let (a, b) : (Int, Int) = p        ACCEPTED by the toolchain, UNREADABLE by the analyzer
+    let C(r) : Shape = s               ACCEPTED by the toolchain, UNREADABLE by the analyzer
+    let { x, .. } : Point = p          ACCEPTED by the toolchain, UNREADABLE by the analyzer
+
+### AND THE COST OF ONE UNREAD LINE IS THE WHOLE FILE
+
+`riantr/pyroduct` 0.1.5's `evolution/gate.mbt` is 190 lines, and the analyzer stopped at line
+113:
+
+    let (objective, causal) : (Objective, CausalPlan?) = match criterion {
+
+MEASURED, before this release:
+
+    PARTIAL  .mbt  read up to line 113, 2 after it not shown  ./pyroduct/evolution/gate.mbt
+    SUMMARY  files=77 parsed=76 actionable=0 notices=296 unreliable=2 withheld=0 total=298
+
+and after it:
+
+    SUMMARY  files=77 parsed=77 actionable=0 notices=298 unreliable=0 withheld=0 total=298
+
+An unreadable file is not a FINDING -- it is a SILENCE. The defect was invisible in the report
+that reports defects, and it stayed invisible for every increment that scanned this corpus,
+because the corpus was not in it.
+
+### AND A PARSER THAT STOPS EARLY ALSO INVENTS
+
+`riantr/moonbit_labeler` 0.2.13's `app_moui/app.mbt:1851` writes the same shape, so until this
+release the analyzer stopped there too -- and a parameter in the unread remainder looked UNREAD.
+MEASURED BOTH WAYS, rather than argued:
+
+    with 0640's parser change REVERTED   UnusedLocal=701  UnusedParam=1339   (the pin, exactly)
+    with 0640's parser change IN PLACE   UnusedLocal=701  UnusedParam=1338
+
+The whole of the difference is that one file. So the fix REMOVED a false positive rather than
+adding one: reading more code is what let the analyzer see the read.
+
+### THE SECOND ANALYZER FOUND NOTHING HERE, AND THAT IS WORTH SAYING
+
+`riantr/LunaFlow` 0.1.34 over the same tree reports 43 abstract findings and 0 actionable ones,
+and every one of the 43 is an interval-shaped may-alarm rather than a witnessed access. The tool
+that reads MORE languages did not find this one, because the construct is a PARSE question and not
+a data-flow one -- and no amount of taint analysis will notice a file the front end stopped
+reading.
+
+### WHAT ELSE MOVED, AND WHY
+
+    $NOTICE_TOTAL                     24110 -> 24130      the corpus half by 13, the own-source half by 7
+    $NOTICE_SPLIT_PRINTED             4021 -> 4034        the corpus half: the notices below the line the parser used to stop at
+    $NOTICE_SPLIT_AGGREGATED          20089 -> 20096      this increment's own seven test declarations
+    $SELF_FILES                       280 -> 281          this increment's own test file
+    $SELF_NOTICES                     test declaration 1800 -> 1807
+    $SELF_AGGREGATED                  1970 -> 1977
+    $SELF_CALLS                       sites 5611 -> 5619, not-verified 4489 -> 4497
+    $SELF_UNCHECKED                   4589 -> 4597
+    $SSA_COST                         files 262 -> 263, functions 1436 -> 1437
+    $SUPPOFF_PARAM                    1339 -> 1338        ONE false positive removed; see above
+    $UNVERIFIED_SPLIT_EIGHT           method 25150 -> 25158, not-verified 35547 -> 35555
+    the `moonbit_labeler` corpus row  notices 698 -> 711, total 699 -> 712
+    $NARRATIVE_CHAPTERS                181 -> 182
+    $LOOP_RULES                       40 -> 41
+
+AND WHAT DID NOT MOVE: `$SELF_PRINTED` (158), `$IFACE_SIG_AVAILABLE` (2943), `$IFACE_SIG_AGREES`
+(2282), the `$SURFACE_*` row, `$UNVERIFIED_SPLIT_CORPORA`, `$RAISEQ_REACH`, `$RAISEQ_OTHERS`, the
+`$SOUNDINESS_*` row, and the other SIX corpus rows -- including `moonbit_core`, whose own
+`parsed=1705` of `files=1766` did not move.
+
+### SETTLED AGAINST THE TOOLCHAIN
+
+`_verify/settle_0640_let_pattern_annotation.ps1`, 5 ACCEPT rows + 1 RECORD + 2 controls, GATE OK.
+The first draft of the corpus-shaped fixture was REJECTED by the toolchain with 4014 -- the
+SCAFFOLD was wrong, not the claim -- and the settle caught it before the code did.

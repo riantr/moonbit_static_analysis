@@ -70,14 +70,14 @@ analyzer could not resolve — are counted as notices and are not in that 30. On
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.5.3
+moon add riantr/moonbit_static_analysis@0.5.4
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.5.3",
+  "riantr/moonbit_static_analysis@0.5.4",
 }
 ```
 
@@ -331,7 +331,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.5.3_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.5.4_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # version not determined
 ```
@@ -583,13 +583,6 @@ the id, so the token after the marker is not an id). Measured on this tool's own
 with `--honor-nosec`: the analyzer before these two rules reported **nineteen** stale
 suppressions, every one of them this repository's own prose, and the tree with the two
 rules reports **zero** — and the two rules move no notice at all.
-
-**AND THE RELEASED ARTIFACT IS OLDER THAN THIS TREE.** The version in `moon.mod` is
-**0.5.3**, and the source has moved since that version was set, so the artifact on the
-registry is an OLDER BUILD of this analyzer than the one the numbers above were measured
-with — the released one does not reproduce them. `_verify/check_release_freshness.ps1`
-holds this sentence to the version: while the source moves under a version the sentence
-has to be here, and when the next release bumps the version it has to go.
 
 **AND IT REACHES THE FINDING'S OWN LINE, NOT THE WHOLE STATEMENT.** `bandit` unions the
 issue's line with the *context's* line range, so there a `// nosec` on the first line of a
