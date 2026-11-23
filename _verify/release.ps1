@@ -1833,7 +1833,7 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # chapter's own lesson is in the title, and it is the one the increment
 # measured: a rule that is not reached from every entry point is not a rule,
 # and an unreadable file is a silence rather than a finding.
-$NARRATIVE_CHAPTERS = '183'
+$NARRATIVE_CHAPTERS = '184'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1882,7 +1882,7 @@ $NARRATIVE_CHAPTERS = '183'
 # artifact, and a gate has to measure it -- because a number that was RIGHT the
 # whole time, about the wrong artifact, is invisible to a gate that only asks
 # whether the number is true.
-$LOOP_RULES = '42'
+$LOOP_RULES = '43'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -5258,6 +5258,91 @@ if (-not (Test-Path -LiteralPath $MDT -PathType Leaf)) {
     $failed += 'confidence-demotion'
   }
 }
+
+# --- the 0640 stage ------------------------------------------------------------
+# 0640 IS THE `let` PATTERN ANNOTATION. The parser read a type annotation on a
+# plain binding for a long time, and the three PATTERN paths -- the tuple, the
+# struct and the constructor -- went straight from the pattern to `expect(TAssign)`,
+# so a `let (a, b) : (Int, Int) = p` ended its file. The cost was not a missing
+# finding: it was a file the analyzer could not READ, which is a silence, and a
+# silence makes a parameter look unread while the code that reads it sits two
+# lines further down.
+#
+# The settle MEASURES the shapes against the toolchain: two controls, the tuple,
+# the constructor, the struct, the corpus's own line, and a refutable pattern that
+# is RECORDED rather than predicted, because the parser is type-blind and
+# exhaustiveness is `infer`'s question.
+#
+# 0641 LEFT THIS PROOF UNWIRED -- it was on disk and referenced by nothing but the
+# CHANGELOG, which is rule 39's exact defect: a proof nobody runs is a comment.
+# So it is wired here, with the house's four parts: the precondition is checked,
+# the stage is NAMED, the failure is appended to `$failed`, and the stage must
+# APPEAR in the summary by name.
+$S0640 = Join-Path $root '_verify\settle_0640_let_pattern_annotation.ps1'
+if (-not (Test-Path -LiteralPath $S0640 -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\settle_0640_let_pattern_annotation.ps1'
+  $failed += 'let-pattern-annotation'
+} else {
+  Stage 'the let pattern annotation: the three paths that never asked, measured' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $S0640 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(GATE OK|ABORT|MISMATCH|ACCEPT|REJECT)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'let-pattern-annotation' }
+  $stageName = 'the let pattern annotation: the three paths that never asked, measured'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'let-pattern-annotation'
+  }
+}
+
+# --- the 0642 stage ------------------------------------------------------------
+# 0642 IS THE VERDICT OF A CHAINED VERIFICATION. A compound command that prints
+# each stage's exit code and lets the PROCESS exit code be the last native
+# command's reports the LAST stage's verdict while looking like a verdict about
+# all of them -- and it reports SUCCESS when the first stage is red and the last
+# one is green.
+#
+# The settle holds the CLASS in the tree: every child-gate invocation in `_verify`
+# has to take its exit code before the next child process overwrites it, an
+# exception is allowed only with a mechanism that is FOUND IN THE FILE, and the
+# negative control copies a real site, strips its capture, and requires the
+# detector to SEE the copy. A check that has never been seen to fail is a
+# comment, so the control is not optional.
+$S0642 = Join-Path $root '_verify\settle_0642_exit_code_aggregation.ps1'
+if (-not (Test-Path -LiteralPath $S0642 -PathType Leaf)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\settle_0642_exit_code_aggregation.ps1'
+  $failed += 'exit-code-aggregation'
+} else {
+  Stage 'the exit code of a chained check: every stage, not the last one, measured' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $S0642 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(GATE OK|ABORT|FAIL|OK:|RECORDED|invocation site)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -ne 0) { $script:stageOk = $false }
+  }
+  if (-not $script:lastOk) { $failed += 'exit-code-aggregation' }
+  $stageName = 'the exit code of a chained check: every stage, not the last one, measured'
+  $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
+  if ($seen -ne 1) {
+    Write-Output ''
+    Write-Output ('MISSING STAGE: "' + $stageName + '" ran ' + $seen + ' time(s); it must run once.')
+    $failed += 'exit-code-aggregation'
+  }
+}
+
 # --- the transfer-scope stage ------------------------------------------------
 # 0514. THE OBJECTIVE WAS A DOCUMENT THAT IS NOT IN THIS REPOSITORY. The three
 # transfers were built, gated and released, and nothing in the tree pointed at

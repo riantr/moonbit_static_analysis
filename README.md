@@ -2149,6 +2149,8 @@ and is not named here is a stage a reader cannot find:
     the transfer scope, shown to go red (its own self-test)
     the release freshness: the version must still describe the source
     the release freshness, shown to go red (its own self-test)
+    the let pattern annotation: the three paths that never asked, measured
+    the exit code of a chained check: every stage, not the last one, measured
 
 The list is DERIVED from `_verify/release.ps1` and checked by
 `_verify/check_readme_links.ps1`, so a stage added to the gate and not named here makes

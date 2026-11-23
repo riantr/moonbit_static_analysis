@@ -10,12 +10,32 @@ param([string]$Root = '')
 #   counts the rest BY SHAPE.
 #
 #     moui                printed 1126  total 3457   behavior 0
-#     moonbit_labeler     printed  142  total  699   behavior 0
+#     moonbit_labeler     printed  155  total  712   behavior 0
 #     moonbit_image       printed   93  total  186   behavior 0
 #     async               printed  252  total 1656   behavior 0
 #     proton              printed  497  total 1799   behavior 0
 #     proton_contract     printed    0  total   29   behavior 0
 #     moonbit_core        printed 1784  total 15144  behavior 5  only 4
+#
+# CORRECTED 2026-11-23. THIS ROW MOVED WITH 0640, AND 0642 IS THE INCREMENT THAT
+# PAYS THE DEBT. The row said:
+#
+#     moonbit_labeler WAS   printed  142  total  699   behavior 0
+#
+# WHY IT MOVED. 0640's parser fix -- a `let` PATTERN may carry a type annotation, and
+# three of the four paths never asked -- made the analyzer READ `moonbit_labeler`'s source
+# PAST the annotated `let` at `app_moui/app.mbt:1851`, which is the same shape
+# `riantr/pyroduct` writes. Before 0640 the reader stopped there, so the rest of that
+# function was never read. Thirteen more findings are printed and thirteen more are
+# counted: printed 142 -> 155, total 699 -> 712. The other six corpora did not move, and
+# their rows say so.
+#
+# THE MOVE WAS RECORDED AND THE TABLE WAS NOT CORRECTED, and that is the defect: 0640's
+# own commit message carries the number ("the `moonbit_labeler` corpus row  notices 698 ->
+# 711, total 699 -> 712"), so the MOVEMENT was published -- and the table this file reads
+# back as a CHECKED CLAIM was not moved with it. A table that is read back and compared is
+# only a checked claim if it is CORRECTED when the measurement moves; otherwise the check
+# that exists to catch a stale number becomes the stale number.
 #
 # WHY THE OLD TABLE WAS WRONG, AND WHY IT WAS WRONG QUIETLY. It said "7493 findings" in
 # total and gave per-corpus numbers (moui 4152, async 1677, proton 959, ...) that matched

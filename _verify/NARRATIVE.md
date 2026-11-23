@@ -25158,6 +25158,120 @@ THE COUNTS THAT MOVED
 AND NO OTHER PIN MOVED: this increment changes no analyzer behaviour, no public
 interface, and no measurement of the tree.
 
+
+## 0642: THE VERDICT OF A CHAINED VERIFICATION MUST BE EVERY STAGE'S, NOT THE LAST STAGE'S
+
+MEASURED 2026-11-23, on this tree at 0641's HEAD.
+
+THE DEFECT WAS IN A COMMAND, NOT IN THE REPOSITORY. A background task ran the tests and
+the README gate as ONE compound command:
+
+    moon -C $m test --deny-warn ... ; Write-Output "TEST=$LASTEXITCODE"
+    powershell ... check_readme_links.ps1 ... ; Write-Output "README_GATE=$LASTEXITCODE"
+
+Each stage's exit code was PRINTED, and nothing aggregated them. The PROCESS exit code was
+whatever the LAST native command left behind -- so the verdict was the LAST stage's
+verdict, and a red FIRST stage was invisible.
+
+MEASURED, both directions, on the same synthetic fixture -- a red stage that exits 2 and
+a green one that exits 0:
+
+    stage A red (exit 2), stage B green (exit 0)
+      the OLD shape   -> process exit 0    the red stage was MASKED
+      the FIXED shape -> process exit 1    the red stage is CAUGHT
+    stage A green (exit 0), stage B green (exit 0)
+      the FIXED shape -> process exit 0    so the fix is not "always red"
+
+AND THE TASK THAT CARRIED IT WAS FAILING HONESTLY:
+
+    moon test --deny-warn   Total tests: 1807, passed: 1807, failed: 0    TEST=0
+    check_readme_links.ps1  VERIFY FAILED: 26 problem(s)                   README_GATE=1
+
+The README gate really was red at that moment -- 26 stale numbers, since corrected -- and
+the test suite really was green. So the task failed for a real reason AND its shape was
+wrong, and only the second of those would have misled the next person to use it.
+
+THE REPOSITORY DOES NOT HAVE THE DEFECT, and that is a MEASUREMENT and not an assumption:
+`_verify/release.ps1` sets `$script:stageOk` per stage, appends every failure to
+`$failed`, and the verdict is `$failed.Count`. So what 0642 holds is the CLASS, in the
+tree, from now on. MEASURED by `_verify/settle_0642_exit_code_aggregation.ps1`:
+
+    child-gate invocation sites in _verify       68
+    of those, without an exit-code capture        2
+    of those two, with a stated mechanism         2   (both verified IN the file)
+    of those, with NO stated mechanism            0
+    toolchain call sites, outside this class     57   (counted, not asserted)
+
+The two exceptions are allowed because they carry a DIFFERENT mechanism that makes the
+failure visible, and the mechanism is FOUND IN THE FILE rather than asserted beside it:
+`ab_0456_0457_coverage.ps1` validates the reach map for TOTALITY and throws, and
+`grammar_probe_control.ps1` carries a canary whose absence says "the probe did not run".
+
+AND THE NEGATIVE CONTROL LANDS. The settle copies a file that HAS a capture, strips that
+one capture line, and asks the same detector about the copy:
+
+    the copy of check_family_fires.ps1 lost exactly one capture line (1 -> 0)
+    the detector SAW it: 1 site(s) without a capture, and the copy carries no exception
+
+so R1's zero is a measurement and not a vacuous scan.
+
+AND 0641 LEFT A PROOF NOBODY RAN. The 0640 settle was on disk and referenced by nothing
+but the CHANGELOG -- which is rule 39's exact defect, "a proof nobody runs is a comment".
+So 0642 wires BOTH settles into the release gate, with the house's four parts: the
+precondition is checked, the stage is NAMED, the failure is appended to `$failed`, and
+the stage must APPEAR in the summary by name.
+
+BUT THE RELEASE GATE FOUND A DEBT 0640 LEFT, AND 0642 PAYS IT. Running the gate with the
+two new stages wired in produced a real red:
+
+    RELEASE GATE FAILED: dir2-behavior
+
+`_verify/dir2_behavior_reach.ps1` READS ITS OWN HEADER and fails when the measured
+numbers differ from the ones written down, so that header is a CHECKED claim rather than
+a comment. One row of the seven was stale, and only that row:
+
+    the header said      printed  142  total  699
+    the measurement said printed  155  total  712
+    the other six corpora rows all agreed
+
+THE MOVE WAS 0640's. 0640's parser fix -- a `let` PATTERN may carry a type annotation,
+and three of the four paths never asked -- made the analyzer read `moonbit_labeler` PAST
+the annotated `let` at `app_moui/app.mbt:1851`, so the rest of that function was read
+for the first time: thirteen more findings printed, thirteen more counted. 0640's own
+commit message carries the number ("the `moonbit_labeler` corpus row  notices 698 -> 711,
+total 699 -> 712"), so the MOVEMENT was published -- and the table this file reads back
+as a checked claim was not moved with it.
+
+WHY IT STAYED QUIET FOR A WHOLE RELEASE. The table is read back by exactly one file,
+and that file is a release-gate STAGE, so the drift was never a green check sitting over
+a wrong number -- it was a RED stage that nobody re-ran, because 0641 changed no
+measurement and the gate had been green before it. 0.5.4 therefore shipped WITH THE
+STALE ROW. The cost of a number that is written in one place and compared in another is
+that ONE of the two has to be re-measured; and the side that is re-measured is the side
+that catches the other -- so the side that is written down has to be kept true.
+
+=> 判据: A TABLE THAT IS READ BACK AND COMPARED IS A CHECKED CLAIM, AND A CHECKED CLAIM
+MUST BE CORRECTED WHEN THE MEASUREMENT MOVES. A check that exists to catch a stale
+number becomes the stale number itself the moment its own source of truth moves without
+it, and "the movement was recorded somewhere else" is not a defence: the record and the
+claim have to live in the same place, or the claim is the one that gets trusted.
+
+THE COUNTS THAT MOVED, COMPLETE
+
+    $NARRATIVE_CHAPTERS                183 -> 184
+    $LOOP_RULES                         42 -> 43
+    the dir2 `moonbit_labeler` row      printed 142 -> 155, total 699 -> 712
+
+AND NOTHING ELSE MOVED: this increment changes no analyzer behaviour, no public
+interface, and no analyzer measurement of the tree.
+
+=> 判据: THE VERDICT OF A CHAINED VERIFICATION MUST BE EVERY STAGE'S, NOT THE LAST
+STAGE'S. A printed exit code is a LOG, not a verdict, and a process that reports the
+last stage's code reports a verdict about one stage while looking like a verdict about
+all of them. The defect is invisible exactly when it is most dangerous -- when the LAST
+stage is green -- and a check that cannot be SEEN to fail is not a check, so the settle
+copies a real site, breaks it, and requires the detector to catch the copy.
+
 => 判据: A TAGGED RELEASE WITH NO BYTES ROW IS A RELEASE NOBODY CAN CHECK, AND A
 ROW IS ONLY WORTH WHAT WAS MEASURED FROM THE ARTIFACT. The bytes of a published
 artifact are a fact, and the fact is worth recording only if it is MEASURED FROM

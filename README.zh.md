@@ -1781,6 +1781,8 @@ stage，就是读者找不到的 stage：
     the transfer scope, shown to go red (its own self-test)
     the release freshness: the version must still describe the source
     the release freshness, shown to go red (its own self-test)
+    the let pattern annotation: the three paths that never asked, measured
+    the exit code of a chained check: every stage, not the last one, measured
 
 这份名单是从 `_verify/release.ps1` **推出来的**，并由 `_verify/check_readme_links.ps1`
 检查：所以一个加了门禁、却没在这里点名的 stage，会让那道门禁变红，而不是悄悄地让门禁做的事
