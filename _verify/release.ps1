@@ -1833,7 +1833,7 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # chapter's own lesson is in the title, and it is the one the increment
 # measured: a rule that is not reached from every entry point is not a rule,
 # and an unreadable file is a silence rather than a finding.
-$NARRATIVE_CHAPTERS = '182'
+$NARRATIVE_CHAPTERS = '183'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1882,7 +1882,7 @@ $NARRATIVE_CHAPTERS = '182'
 # artifact, and a gate has to measure it -- because a number that was RIGHT the
 # whole time, about the wrong artifact, is invisible to a gate that only asks
 # whether the number is true.
-$LOOP_RULES = '41'
+$LOOP_RULES = '42'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

@@ -25084,3 +25084,88 @@ which is a silence, and which made a parameter look unread while the code that
 reads it sat two lines further down.
 
 
+## 0641: A TAGGED RELEASE WITH NO BYTES ROW IS A RELEASE NOBODY CAN CHECK, AND A ROW IS ONLY WORTH WHAT WAS MEASURED FROM THE ARTIFACT
+
+MEASURED 2026-11-23, after the 0.5.4 release. The registry serves
+`riantr/moonbit_static_analysis@0.5.4`, the publish workflow for the tag
+`v0.5.4` is green, and the published bytes are measurable for the second time.
+
+    the publish run              45196457391, conclusion success
+    the registry's checksum      a2a1c6869795a0f28062f59a66296554945c00bbc04504907d91f7528f4d615b
+    the registry's created_at    2026-11-23T14:39:24.322552+00:00
+
+THE WASM HASH WAS MEASURED TWICE AND THE TWO PATHS AGREE: once from the local
+registry cache, once from a fresh download of the file the registry serves.
+
+    published 0.5.4  wasm 27C337D8A464C0ED1C843EE8BCA234813FC898841A6EFCA49702CA88FCA8FC4F  731409 bytes  checksum a2a1c6869795a0f28062f59a66296554945c00bbc04504907d91f7528f4d615b  2026-11-23T14:39:24.322552+00:00
+
+AND THE CHECKSUM IS THE REGISTRY'S OWN, CHECKED A THIRD WAY: it is the SHA-256 of
+the published SOURCE package, and the local copy of that package -- fetched by
+`moon add riantr/moonbit_static_analysis@0.5.4`, 3,429,940 bytes -- hashes to
+exactly it.
+
+THE PROOF THAT THE RELEASE CARRIES THE FIX IS A DISCRIMINATING MEASUREMENT ON
+THE PUBLISHED BYTES, NOT ON THE LOCAL BUILD. The same corpus, the same command,
+two published artifacts:
+
+    published 0.5.3 over pyroduct   PARSED 76/77   SUMMARY unreliable=2   notices=296
+    published 0.5.4 over pyroduct   PARSED 77/77   SUMMARY unreliable=0   notices=298
+
+The two released artifacts DISAGREE on that corpus, and the difference is the
+fix: 0.5.4 reads `evolution/gate.mbt` past line 113. So the release is not merely
+published -- it is published WITH the change, and the number that proves it is a
+number the OLD artifact gets WRONG. Two artifacts that agreed everywhere would
+have proved nothing about either.
+
+THE IMPORT SETS ARE MEASURED, NOT ASSUMED.
+
+    the PUBLISHED 0.5.4 artifact   106 imports, 92 from `moonbitlang/async`
+    this tree's release build      106 imports, 92 from `moonbitlang/async`
+    the contract                   93
+
+92 is the count 0.5.3 published too, and that is what a parser fix that adds no
+import and no host symbol must look like: THE PUBLIC SURFACE DID NOT MOVE.
+
+AND THE PUBLISHED PACKAGE SCANS ITS OWN SHIPPED SOURCE CLEAN: 281 files under the
+published package, `actionable=0`, and the host contract holds -- the published
+artifact requires 92 symbols and the contract covers 93.
+
+AND THE SENTENCE THE PUBLISH MOVED. The READMEs said "The published 0.5.3
+artifact imports 92 symbols" through the release commit, DELIBERATELY: the
+registry freezes a version's README at the moment it publishes, and the import
+count belongs to the registry's builder toolchain rather than to this repository,
+so the number cannot be known before the bytes exist. Now the bytes exist, and the
+sentence names 0.5.4, measured on the published artifact. The gate that holds it
+said so out loud before this increment touched it:
+
+    FAIL: README.md -- it names the published 0.5.3 artifact, and this release published 0.5.4.
+
+and that FAIL is what this increment fixes -- the same order 0633 did for 0.5.2 and
+0639 did for 0.5.3.
+
+AND THE ROW WAS NOT OPTIONAL. `check_transfer_scope.ps1` asks of every TAGGED
+release from the first recorded row onwards whether the record has a published-bytes
+row, and it was RED between the tag and this increment:
+
+    FAIL: v0.5.4 is TAGGED but the record has no published-bytes row for it.
+          A reader of that release cannot check the bytes they were given.
+
+THE COUNTS THAT MOVED
+
+    $NARRATIVE_CHAPTERS                182 -> 183
+    $LOOP_RULES                         41 -> 42
+
+AND NO OTHER PIN MOVED: this increment changes no analyzer behaviour, no public
+interface, and no measurement of the tree.
+
+=> 判据: A TAGGED RELEASE WITH NO BYTES ROW IS A RELEASE NOBODY CAN CHECK, AND A
+ROW IS ONLY WORTH WHAT WAS MEASURED FROM THE ARTIFACT. The bytes of a published
+artifact are a fact, and the fact is worth recording only if it is MEASURED FROM
+THE ARTIFACT -- the local cache and a fresh download for the wasm, the registry's
+own checksum for the source package -- because a row typed in by hand is a claim
+about a version rather than a fact about an artifact, and a claim cannot be
+re-checked by anybody. And the proof that a fix SHIPPED belongs on the same
+bytes: the reader runs the released artifact, so the old release and the new one
+have to be measured against each other, on a corpus the fix was written for.
+
+
