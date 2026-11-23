@@ -24944,4 +24944,143 @@ sentence is now measured against the artifact it names, and what is left is the
 defect: a document that publishes a number without saying which artifact it is
 about.
 
+## 0640: A RULE THAT IS NOT REACHED FROM EVERY ENTRY POINT IS NOT A RULE, AND AN UNREADABLE FILE IS A SILENCE AND NOT A FINDING
+
+MEASURED 2026-11-23, while this increment was being written. It started as a QA
+PASS: this repository's own analyzer was pointed at `riantr/pyroduct` 0.1.5, which
+lives beside it in the same workspace, and it reported:
+
+    PARTIAL  .mbt  defects=0  notices=6  unchecked=10  read up to line 113, 2 after it not shown  ./pyroduct/evolution/gate.mbt
+    SUMMARY  files=77 parsed=76 actionable=0 notices=296 unreliable=2 withheld=0 unchecked=1229 total=298
+
+ONE FILE OF SEVENTY-SEVEN was unreadable past line 113, and `evolution/gate.mbt`
+is 190 lines long. Line 113 is:
+
+    let (objective, causal) : (Objective, CausalPlan?) = match criterion {
+
+and the reason it could not be read is the whole of the report:
+
+    2x  expected '='
+        e.g. ./pyroduct/evolution/gate.mbt
+
+### THE DEFECT WAS AN ENTRY POINT, NOT A RULE
+
+A `let` may carry a type annotation, and the parser has read one since long before
+this increment: `let b : Int = a + 1` gives `SLet("b", "Int", ..)`. So the RULE was
+already in the parser. What was missing was the PATH TO IT: the three PATTERN
+paths -- the tuple, the struct and the constructor -- went straight from the
+pattern to `expect(TAssign)`, with no room for a `:` between them. The plain-name
+path reached the rule; the three pattern paths did not.
+
+⇒ A RULE THAT IS NOT REACHED FROM EVERY ENTRY POINT IS NOT A RULE. It is a rule
+that happens to hold on the shape the author happened to try.
+
+### AND THE COST OF ONE UNREAD LINE IS THE WHOLE FILE
+
+Line 113 is inside `judge`, and everything below it -- the score, the
+constitutional check, the backdating branch -- was invisible to the analyzer. And an
+unreadable file is not a FINDING: it is a SILENCE. The defect was invisible in the
+report that reports defects, and it stayed invisible for every increment that
+scanned this corpus, because the corpus was not in it.
+
+THE SECOND ANALYZER FOUND NOTHING HERE, and that is worth saying rather than
+leaving out. `riantr/LunaFlow` 0.1.34 over the same tree reports 43 abstract
+findings and 0 actionable ones, and every one of the 43 is an interval-shaped
+may-alarm rather than a witnessed access. The tool that reads MORE languages did
+not find this one -- because this construct is a PARSE question and not a
+data-flow one, and no amount of taint analysis will notice a file the front end
+stopped reading.
+
+### THE FIX, AND WHAT IT DELIBERATELY DOES NOT DO
+
+`Parser::let_pattern_annotation` reads the optional annotation on the left of a
+`let` whose pattern binds several names, and the three pattern paths now call it.
+It is a CALL SITE, not a second reader -- `type_annotation()` already reads tuple
+types, and its `(` arm's body makes the `-> R` of a function type optional.
+
+THE ANNOTATION IS READ AND THEN DROPPED, and the report says so: a skip is
+recorded, because a reader of the report must not come away believing the
+annotation was CHECKED. The subset has no tuple types to per-element it --
+`SLetDestruct` binds every name the type of the INITIALISER as a whole -- so there
+is nothing to check it against.
+
+AND NO NEW AST NODE, AND NO NEW AST FIELD. `SLetDestruct(Array[String], Expr)` is
+public (`src/ast/pkg.generated.mbti`), and a `pub` enum gaining a field breaks
+every consumer that constructs it. This annotation has no consumer here to break,
+so it is not given one.
+
+### SETTLED AGAINST THE TOOLCHAIN, NOT AGAINST THE DOC
+
+`_verify/settle_0640_let_pattern_annotation.ps1`, 5 ACCEPT rows + 1 RECORD + 2
+controls, GATE OK:
+
+    ctl_plain_name                             ACCEPT
+    ctl_unannotated_tuple                      ACCEPT
+    S1_annotated_tuple                         ACCEPT
+    S2_annotated_constructor                   ACCEPT
+    S3_annotated_struct                        ACCEPT
+    S4_the_corpus_shape                        ACCEPT
+    S5_refutable_constructor                   REJECT(0011)
+
+THE FIRST DRAFT OF THE FIXTURE FAILED, AND THE SETTLE CAUGHT IT: `Weighted` carried
+an `Int` while the annotation demanded an `Objective`, and the toolchain rejected
+the fixture with 4014. The SCAFFOLD was wrong, not the claim -- the same
+discipline 0477's settle settled, and the reason a settle is worth writing before
+the code is.
+
+### MEASURED, BOTH WAYS, ON THE ONE NUMBER THAT MOVED THE OTHER WAY
+
+`measure_suppression_off.ps1` reads 701 UnusedLocal and 1,338 UnusedParam, and the
+pin said 1,339. Rather than argue about it, the parser change was REVERTED and the
+measurement re-run:
+
+    with 0640's parser change REVERTED   UnusedLocal=701  UnusedParam=1339   (the pin)
+    with 0640's parser change IN PLACE   UnusedLocal=701  UnusedParam=1338
+
+and the whole of the difference is `riantr/moonbit_labeler` 0.2.13 -- 23 -> 22.
+Every other corpus, and this analyzer's own source, are byte-identical.
+
+THE MECHANISM IS THE POINT. `moonbit_labeler/app_moui/app.mbt:1851` writes the same
+annotated `let` as pyroduct does, so until 0640 the analyzer stopped there and the
+rest of that function was never read -- and a parameter in it looked UNREAD. The
+fix REMOVED a false positive rather than adding one: reading more code is what let
+the analyzer see the read.
+
+⇒ A PARSER THAT STOPS EARLY DOES NOT JUST MISS FINDINGS; IT INVENTS THEM. The
+unread remainder is not "no information" -- it is a truncated tree, and a truncated
+tree makes a read look unread.
+
+THE COUNTS THAT MOVED
+
+    $NOTICE_TOTAL                     24110 -> 24130
+    $NOTICE_SPLIT_PRINTED             4021 -> 4034
+    $NOTICE_SPLIT_AGGREGATED          20089 -> 20096
+    $SELF_FILES                       280 -> 281
+    $SELF_NOTICES                     test declaration 1800 -> 1807
+    $SELF_AGGREGATED                  1970 -> 1977
+    $SELF_CALLS                       sites 5611 -> 5619, not-verified 4489 -> 4497
+    $SELF_UNCHECKED                   4589 -> 4597
+    $SSA_COST                         files 262 -> 263, functions 1436 -> 1437,
+                                      declined 6533 -> 6541, instructions 9219 -> 9222
+    $SUPPOFF_PARAM                    1339 -> 1338
+    $UNVERIFIED_SPLIT_EIGHT           method 25150 -> 25158, not-verified 35547 -> 35555
+    the `moonbit_labeler` corpus row  notices 698 -> 711, total 699 -> 712
+    $NARRATIVE_CHAPTERS                181 -> 182
+    $LOOP_RULES                       40 -> 41
+
+AND WHAT DID NOT MOVE: `$SELF_PRINTED` (158), `$IFACE_SIG_AVAILABLE` (2943),
+`$IFACE_SIG_AGREES` (2282), `$SURFACE_DECLARED` / `$SURFACE_COVERED` /
+`$SURFACE_MISSING` (1165 / 1075 / 90), `$UNVERIFIED_SPLIT_CORPORA`,
+`$RAISEQ_REACH`, `$RAISEQ_OTHERS`, the `$SOUNDINESS_*` row, `$SELF_SAMPLES`, and
+the other SIX corpus rows -- including `moonbit_core`, whose own `parsed=1705` of
+`files=1766` did not move.
+
+=> 判据: A RULE THAT IS NOT REACHED FROM EVERY ENTRY POINT IS NOT A RULE, AND AN
+UNREADABLE FILE IS A SILENCE AND NOT A FINDING. The parser already knew that a
+`let` may carry a type annotation, and the three pattern paths never asked it --
+so the rule held on the shape the author tried and nowhere else. And the file it
+cost was not "a file with no findings": it was a file the analyzer could not READ,
+which is a silence, and which made a parameter look unread while the code that
+reads it sat two lines further down.
+
 

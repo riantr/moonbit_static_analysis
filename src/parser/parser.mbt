@@ -3174,6 +3174,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
         }
       }
       self.expect(TRParen, "')'")
+      self.let_pattern_annotation()
       self.expect(TAssign, "'='")
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(names, init), }
@@ -3207,6 +3208,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     // `at_shorthand_struct_pattern`.
     if self.at(TLBrace) && self.at_shorthand_struct_pattern() {
       let names = self.parse_is_pattern()
+      self.let_pattern_annotation()
       self.expect(TAssign, "'='")
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(names, init), }
@@ -3254,6 +3256,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt {
     // to be lowercase besides. `OSError` is neither, so the constructor stays a constructor.
     if self.peek_name() != "" && self.at_next(TLParen) {
       let names = self.parse_is_pattern()
+      self.let_pattern_annotation()
       self.expect(TAssign, "'='")
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(names, init), }
@@ -6731,6 +6734,54 @@ fn Parser::note_skip(self : Parser, msg : String, sp : @core.Span) -> Unit {
     span: sp,
     vst: [],
   })
+}
+
+///|
+/// The optional type annotation on the LEFT of a `let` whose pattern binds
+/// SEVERAL names:
+///
+///     let (a, b) : (Int, Int) = f()
+///     let C(x) : Criterion = c
+///     let { x, .. } : Point = p
+///
+/// THE TOOLCHAIN ACCEPTS ALL THREE. Measured on `moon check` 0.1.20261117
+/// against a probe module carrying one function per shape: 0 errors. The
+/// constructor-pattern shape needs a SINGLE-constructor type, because the
+/// toolchain refuses a REFUTABLE pattern in a `let` position with 0011 -- and
+/// that refusal is 0477's subject, not this one's.
+/// (`_verify/settle_0640_let_pattern_annotation.ps1`.)
+///
+/// BEFORE THIS, EACH OF THE THREE REPORTED "expected '='" AND ENDED ITS FILE.
+/// The reader took the `:` as the start of the initialiser, met the annotation
+/// where it wanted `=`, and the whole file was unreadable -- so the corpus
+/// counted it as unreadable rather than as a finding. The corpus is not
+/// exotic: `riantr/pyroduct` 0.1.5 writes exactly this at
+/// `evolution/gate.mbt:113` -- `let (objective, causal) : (Objective,
+/// CausalPlan?) = match criterion { .. }` -- and that ONE file was the whole
+/// of pyroduct's unreadable-file count under this analyzer.
+///
+/// THE ANNOTATION IS READ AND NOT ANALYSED, AND THE REPORT SAYS SO. The subset
+/// has no tuple types to per-element it: `SLetDestruct` binds every name the
+/// type of the INITIALISER as a whole, which is what the AST says
+/// (`src/ast/ast.mbt`). So the annotation is read -- which is what finds the
+/// `=` and makes the file READABLE -- and then dropped, and a skip is
+/// recorded, because a reader of the report must not come away believing the
+/// annotation was checked.
+///
+/// NO NEW NODE, AND NO NEW AST FIELD. `SLetDestruct(Array[String], Expr)` is
+/// public (`src/ast/pkg.generated.mbti`), and a `pub` enum gaining a field
+/// breaks every consumer that constructs it. This annotation has no consumer
+/// here to break, so it is not given one.
+fn Parser::let_pattern_annotation(self : Parser) -> Unit {
+  if self.at(TColon) {
+    let sp = self.span()
+    let _ = self.bump()
+    let _ = self.type_annotation()
+    self.note_skip(
+      "the type annotation of a `let` pattern is outside the analyzed subset; it was read but not analysed",
+      sp,
+    )
+  }
 }
 
 ///|

@@ -268,7 +268,7 @@ way a hand-written table rots. **A QA that is not a gate is a comment.**
       actionable count — it has to, it needs the same scan for the notice table and
       the file set — but it no longer TAKES the verdict, because two assertions of
       one claim in two files is a second implementation of that claim. MEASURED:
-      `files=280 parsed=280 actionable=0 notices=2128`; the self-test plants a
+      `files=281 parsed=281 actionable=0 notices=2135`; the self-test plants a
       stale suppression in a copy and the count moves 0 -> 1. **RE-MEASURED 2026-11-21**
       (increment 0633): these counts moved in increment **0616**, which added
       `src/pipeline/pipeline_0616_test.mbt` and `src/sa/sa_0616_test.mbt` — the tree
@@ -463,8 +463,8 @@ fixed and measured.
 
 | # | candidate | the number that would rank it | step |
 |---|---|---|---|
-| C1 | the 1800 test-declaration bodies outside the subset | the largest blind region BY COUNT | 广 |
-| C2 | the 4489 unverified call sites (five reasons, three of them silent) | the largest blind region BY DEFECT RISK | 深 |
+| C1 | the 1807 test-declaration bodies outside the subset | the largest blind region BY COUNT | 广 |
+| C2 | the 4497 unverified call sites (five reasons, three of them silent) | the largest blind region BY DEFECT RISK | 深 |
 | C3 | the merge group `arg-type` hiding MSA-007/MSA-008 | how many corpus findings are merged echoes | 深 (report shape) |
 | C4 | MSA-001 never being actionable | how many corpus files are withheld | 广 |
 
@@ -480,6 +480,13 @@ fixed and measured.
   and split by T11 into `sig-unknown 191`, `not-callable 498`, `unresolved 0`,
   `method 3800`, `dotdot 0`. The seven corpora measure 31,058; §4's T11 record
   carries both published numbers.
+- **C1: 1800 → 1807, and C2: 4489 → 4497.** MEASURED on this tree at 0640
+  (2026-11-23), by the same self-scan the release gate runs:
+  `NOTICES count=1807 test declaration is outside the analyzed subset; its body was
+  not analyzed`, and `sites=5619 checked=1122 not-verified=4497 checked-share=19.9%`.
+  The seven new test declarations are 0640's own seven tests, and the eight new
+  call sites are that file's, so the `method` row of the split moves with them:
+  3800 → 3808. `checked` did not move (1122) and neither did the share (19.9 %).
 
 **AND FROM 0619 ONWARD NEITHER OF THEM IS HAND-CORRECTED ANY MORE — THEY ARE DERIVED.**
 `_verify/check_readme_links.ps1` builds both rows of this table from the pins in

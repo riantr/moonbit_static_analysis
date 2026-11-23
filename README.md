@@ -584,6 +584,13 @@ with `--honor-nosec`: the analyzer before these two rules reported **nineteen** 
 suppressions, every one of them this repository's own prose, and the tree with the two
 rules reports **zero** — and the two rules move no notice at all.
 
+**AND THE RELEASED ARTIFACT IS OLDER THAN THIS TREE.** The version in `moon.mod` is
+**0.5.3**, and the source has moved since that version was set, so the artifact on the
+registry is an OLDER BUILD of this analyzer than the one the numbers above were measured
+with — the released one does not reproduce them. `_verify/check_release_freshness.ps1`
+holds this sentence to the version: while the source moves under a version the sentence
+has to be here, and when the next release bumps the version it has to go.
+
 **AND IT REACHES THE FINDING'S OWN LINE, NOT THE WHOLE STATEMENT.** `bandit` unions the
 issue's line with the *context's* line range, so there a `// nosec` on the first line of a
 multi-line call silences what is three lines down. Here the line is the line: a `// nosec`
@@ -625,17 +632,17 @@ the sentence named are the only two that **report** anything. The other three ar
 
 | reason | this tree | the seven corpora | reports? |
 |---|---:|---:|---|
-| a method call — the lens has no signature for a method | **3,800** | **21,350** | silent |
+| a method call — the lens has no signature for a method | **3,808** | **21,350** | silent |
 | a callee that is not callable | **498** | **7,647** | reports (`MSA-008`) |
 | a cross-file value whose signature was never read | **191** | **1,941** | silent |
 | a `..` chain link — the lens has no signature for it | **0** | **104** | silent |
 | a name that did not resolve at all | **0** | **16** | reports (`MSA-002`) |
-| **the remainder** | **4,489** | **31,058** | |
+| **the remainder** | **4,497** | **31,058** | |
 
-So **88.9 %** of this tree's 4,489 unverified call sites are silent, **75.3 %** of the
+So **88.9 %** of this tree's 4,497 unverified call sites are silent, **75.3 %** of the
 corpora's 31,058 are, and **84.7 %** of this tree's remainder is one reason the old
 sentence never named — a method call. Across the seven corpora and this repository's own
-source together: **35,547** unverified call sites, of which **25,150** are method calls.
+source together: **35,555** unverified call sites, of which **25,158** are method calls.
 The old sentence was not wrong about the two classes it named — those are the two that
 report — but it was wrong about the **whole**, and a reader could not tell which part of
 the remainder was which. The split is printed by the analyzer as its own
@@ -685,12 +692,12 @@ implements, and the one place where the framework and this tree disagree — are
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (280 files), with the per-file printing cap lifted so the count is the
+project's own source (281 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1800 | | `const` declaration | 7 |
+| `test` declaration | 1807 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -699,7 +706,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **158** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1970** sit outside every function's
+audit off, so they are printed one per line; the other **1977** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -752,10 +759,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **24,110** notices —
+per-file printing cap lifted so the count is the whole finding set: **24,130** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
-says so itself: its `NOTICES` table counts **4,021** of them as printed per line and
-**20,089** as aggregated — which is 4,021 + 20,089 = 24,110, the same number — and the 4,021
+says so itself: its `NOTICES` table counts **4,034** of them as printed per line and
+**20,096** as aggregated — which is 4,034 + 20,096 = 24,130, the same number — and the 4,034
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -778,12 +785,12 @@ false positive on correct code.
 
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
-the tool produces **701** `UnusedLocal` and **1,339** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 280 files the notice table
+the tool produces **701** `UnusedLocal` and **1,338** `UnusedParam` findings across the
+seven pinned corpora and this repository's own source — the same 281 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
-suppression is hiding **700** locals and **1,339** parameters, and the per-binding
+suppression is hiding **700** locals and **1,338** parameters, and the per-binding
 narrowing recovers **none** of them on today's corpora — every one of those bindings is
 declared *before* its region, and the region could still have read it. What the narrowing
 buys is that regions are judged one binding at a time, so that **reading** a region
@@ -2030,25 +2037,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 262 files, 1,436 functions, 9,219
+would need **16** copies. Over this project's own source — 263 files, 1,437 functions, 9,222
 instructions of 3AC — the same measurement gives **1,171** variables becoming **2,808** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=262	unreadable=0	functions=1436	converted=5	partial=1431	declined=6533	…
+SSA-COST	files=263	unreadable=0	functions=1437	converted=5	partial=1432	declined=6541	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,533
+number: the files read, the functions measured, and the statements the lowering declined (6,541
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1800/1800 on wasm; 1635/1635 on js and wasm-gc
+moon test --deny-warn                # 1807/1807 on wasm; 1642/1642 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

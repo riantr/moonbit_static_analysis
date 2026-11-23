@@ -911,7 +911,34 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # (it carried 2091). The nine notices are the nine new test declarations,
 # and they are ALL AGGREGATED: a test declaration sits outside every
 # function's extent, so the PRINTED half of the split did not move.
-$NOTICE_TOTAL = '24110'
+# 0640. AND THE PIN MOVED AGAIN, 24110 -> 24130, and THE MOVEMENT IS TWO
+# THINGS AND NOT ONE. The seven corpora carry 21,995 notices (they carried
+# 21,982), and this repository's own source carries 2,135 (it carried 2,128).
+#
+# THE CORPUS HALF MOVED BY 13, AND THE MOVEMENT IS THE ANALYZER READING MORE
+# CODE. `riantr/moonbit_labeler` 0.2.13 writes
+#
+#     let (annotations, bindings) : (Array[Annotation], Array[Binding]) =
+#       parse_label_text(text, model.classes)
+#
+# at `app_moui/app.mbt:1851`, and until 0640 the analyzer stopped there --
+# so everything below that line, and the 13 notices in it, were invisible. The
+# other six corpora and `moonbit_core` carry byte-identical summaries.
+#
+# THE OWN-SOURCE HALF MOVED BY 7, and those 7 ARE THIS INCREMENT'S OWN SEVEN
+# TEST DECLARATIONS: a test declaration sits outside every function's extent,
+# so the PRINTED half of the split did not move because of them.
+#
+# AND THE SAME THING HAPPENED TO THE UNUSED-PARAMETER COUNT, IN THE OTHER
+# DIRECTION. `measure_suppression_off.ps1` measures 701 UnusedLocal and 1,338
+# UnusedParam, and the pin said 1,339. MEASURED BOTH WAYS: with this
+# increment's parser change REVERTED, the measurement reads 701 / 1,339 -- the
+# pin exactly -- and with it in place it reads 701 / 1,338. The ONE finding
+# that disappeared is in `moonbit_labeler`, and it disappeared because the file
+# it lives in is now READ PAST the line the parser used to stop at. So the fix
+# REMOVED a false positive rather than adding one: reading more code is what
+# let the analyzer see the read.
+$NOTICE_TOTAL = '24130'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -1046,8 +1073,16 @@ $NOTICE_TOTAL = '24110'
 # AT ALL, for the same reason -- the nine new test declarations sit outside
 # every function's extent, so they are counted by shape and not printed. The
 # corpora did not move.
-$NOTICE_SPLIT_PRINTED = '4021'
-$NOTICE_SPLIT_AGGREGATED = '20089'
+# 0640. AND AGAIN, AND THIS TIME THE PRINTED HALF DID MOVE: 4021 + 20089 ->
+# 4034 + 20096. The AGGREGATED half moved by 7 -- this increment's own seven
+# test declarations, which sit outside every function's extent, exactly as
+# 0611 and 0613 recorded. The PRINTED half moved by 13, and THAT is the corpus
+# half: `riantr/moonbit_labeler` 0.2.13's `app_moui/app.mbt` is now read PAST
+# the annotated `let` at line 1851, so the notices below that line -- which
+# sit inside function extents, and are therefore printed -- are visible for
+# the first time. The other six corpora and `moonbit_core` did not move.
+$NOTICE_SPLIT_PRINTED = '4034'
+$NOTICE_SPLIT_AGGREGATED = '20096'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -1208,10 +1243,24 @@ $NOTICE_SPLIT_AGGREGATED = '20089'
 # gate row compares the files the scan READ with the files the committed
 # tree HOLDS, so an untracked file under `src/` can never move this number
 # again without the gate naming it.
-$SELF_FILES = '280'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1800|try expression=1|type declaration=7'
+#
+# 0640. AND THEY MOVED, AND THE MOVEMENT IS THIS INCREMENT'S OWN FILE AND
+# ITS OWN SEVEN TESTS: 280 -> 281 files, the `test` declaration row
+# 1800 -> 1807, and the aggregated half 1970 -> 1977. The PRINTED half did
+# NOT move at all (158 is 158), because a `test` declaration sits outside
+# every function's extent -- and that is the same shape 0613 and 0614
+# recorded, for the same reason.
+#
+# AND THE OTHER THREE ROWS ARE BYTE-IDENTICAL: `anonymous function literal`
+# 48, `if expression` 101, `short lambda` 8, `try expression` 1,
+# `struct declaration` 121, `enum declaration` 35, `type declaration` 7 and
+# `const declaration` 7. The parser change adds NO notice to this tree --
+# this repository's own source writes no `let <pattern> : <type> = ...` --
+# so the analyzer's own reading of itself did not move.
+$SELF_FILES = '281'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1807|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
-$SELF_AGGREGATED = '1970'
+$SELF_AGGREGATED = '1977'
 #   $SELF_SAMPLES  the embedded sample set the CLI demo runs over: the entries of
 #                  `src/samples/samples.mbt`'s `all()` array.
 #
@@ -1245,7 +1294,14 @@ $SELF_SAMPLES = '6'
 #
 # THE SHARE IS THE ANALYZER'S OWN, TRUNCATED: 1122 of 5611 is 19.996 %, and the
 # analyzer prints 19.9 %. It is pinned as printed, because the analyzer publishes it.
-$SELF_CALLS = 'sites=5611|checked=1122|not-verified=4489|checked-share=19.9%'
+#
+# 0640. AND THE ROW MOVED, AND IT MOVED BECAUSE THIS INCREMENT ADDED A FILE:
+# 5611 -> 5619 sites and 4489 -> 4497 not-verified, with `checked` UNCHANGED at
+# 1122 and the share UNCHANGED at 19.9 %. The eight new sites are this
+# increment's own test file's calls, and every one of them is a method call
+# the lens cannot type -- so the `method` row of the eight-tree split moved
+# with it and nothing else did.
+$SELF_CALLS = 'sites=5619|checked=1122|not-verified=4497|checked-share=19.9%'
 #   $SELF_UNCHECKED  the `unchecked=` on this tree's own SUMMARY: the number of call
 #                   VISITS the lens could not type, counted before de-duplication.
 #
@@ -1259,7 +1315,11 @@ $SELF_CALLS = 'sites=5611|checked=1122|not-verified=4489|checked-share=19.9%'
 # counts a VISIT, and a call in a block's tail position is typed twice. So the
 # subtraction is not an arithmetic identity and never was, and pinning it as if it were
 # would be pinning a nonsense number.
-$SELF_UNCHECKED = '4589'
+#
+# 0640. AND IT MOVED, 4589 -> 4597, with the same eight new visits the `sites` row
+# records: this increment's own test file is a test file, and a test body is
+# visited by the lens even though its body is outside the analyzed subset.
+$SELF_UNCHECKED = '4597'
 #   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
 #                   the hand-modelled native surface measured against the
 #                   DECLARED one.
@@ -1338,7 +1398,7 @@ $IFACE_SIG_AGREES = '2282'
 # 31,058 not-verified call sites, of which 21,350 are a METHOD call -- the
 # class the old sentence never named, and 68.7 % of the whole.
 $UNVERIFIED_SPLIT_CORPORA = 'sig-unknown=1941|not-callable=7647|unresolved=16|method=21350|dotdot=104|not-verified=31058'
-$UNVERIFIED_SPLIT_EIGHT = 'sig-unknown=2132|not-callable=8145|unresolved=16|method=25150|dotdot=104|not-verified=35547'
+$UNVERIFIED_SPLIT_EIGHT = 'sig-unknown=2132|not-callable=8145|unresolved=16|method=25158|dotdot=104|not-verified=35555'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -1419,8 +1479,28 @@ $UNVERIFIED_SPLIT_EIGHT = 'sig-unknown=2132|not-callable=8145|unresolved=16|meth
 # increment's own source grew. The measurement was re-run on this
 # tree and it reads the same pair, because this increment's code has
 # no parameter that is read only inside a closure the lint cannot see.
+#
+# 0640. AND THE PARAMETER HALF MOVED DOWN BY ONE, 1339 -> 1338, AND THAT
+# IS THE MOST INTERESTING NUMBER IN THIS INCREMENT -- so it is measured
+# BOTH WAYS rather than argued. With this increment's parser change
+# REVERTED, `_verify/measure_suppression_off.ps1` reads 701 / 1,339, which
+# is the pin exactly. With the change in place it reads 701 / 1,338.
+#
+# THE ONE FINDING THAT DISAPPEARED IS IN `riantr/moonbit_labeler` 0.2.13,
+# and it disappeared because that file is now READ PAST the line the
+# parser used to stop at:
+#
+#     let (annotations, bindings) : (Array[Annotation], Array[Binding]) =
+#       parse_label_text(text, model.classes)
+#
+# `app_moui/app.mbt:1851`. Before 0640 the analyzer stopped there, so the
+# rest of that function was never read and a parameter in it looked
+# unread. Reading more code is what let the analyzer SEE THE READ. So the
+# fix REMOVED a false positive rather than adding one -- and the `other
+# six corpora and this analyzer's own source` rows are byte-identical, so
+# the whole of the movement is that one file.
 $SUPPOFF_LOCAL = '701'
-$SUPPOFF_PARAM = '1339'
+$SUPPOFF_PARAM = '1338'
 
 #   $SSA_COST     what STATIC SINGLE ASSIGNMENT would COST on this project's
 #                 own source, measured by the scanner's own `--ssa-cost` mode
@@ -1589,7 +1669,15 @@ $SUPPOFF_PARAM = '1339'
 # (unchanged), undef_operands 202 (unchanged), dead_blocks 470 (unchanged),
 # undef_uses 1295 (unchanged). ONE field moved, and it is the one that
 # counts files.
-$SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|declined=6533|instructions=9219|variables=1171|versions=2808|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
+# 0640. AND IT MOVED AGAIN WITH THE ONE NEW FILE: files 262 -> 263, functions
+# 1436 -> 1437, partial 1431 -> 1432, declined 6533 -> 6541, instructions
+# 9219 -> 9222, variables 1171 (unchanged), versions 2808 (unchanged), phis
+# 975 (unchanged), copies 2408 (unchanged), undef_operands 202 (unchanged),
+# dead_blocks 470 (unchanged), undef_uses 1295 (unchanged). The one new file
+# is this increment's own test file, and the eight new instructions and the
+# eight new declined statements are its calls -- a test body is outside the
+# analyzed subset, so the lowering declines it.
+$SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|declined=6541|instructions=9222|variables=1171|versions=2808|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1740,7 +1828,12 @@ $SSA_COST = 'files=262|unreadable=0|functions=1436|converted=5|partial=1431|decl
 # `check_host_requirements.ps1` that holds that sentence -- the version it names
 # and the numbers it quotes -- against the MEASURED artifact. The count moved by
 # ONE, and the ONE is the new chapter.
-$NARRATIVE_CHAPTERS = '181'
+#
+# 0640. AND IT MOVED AGAIN, 181 -> 182, and the new chapter is 0640's. The
+# chapter's own lesson is in the title, and it is the one the increment
+# measured: a rule that is not reached from every entry point is not a rule,
+# and an unreadable file is a silence rather than a finding.
+$NARRATIVE_CHAPTERS = '182'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1789,7 +1882,7 @@ $NARRATIVE_CHAPTERS = '181'
 # artifact, and a gate has to measure it -- because a number that was RIGHT the
 # whole time, about the wrong artifact, is invisible to a gate that only asks
 # whether the number is true.
-$LOOP_RULES = '40'
+$LOOP_RULES = '41'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -4291,9 +4384,29 @@ if ($SkipMutations) {
 # a finding, not which findings it makes. A transfer that had moved a finding
 # count would be a transfer that changed the analysis, and that is a different
 # increment with a different justification.
+#
+# 0640. AND ONE OF THESE ROWS MOVED, AND IT IS THE FIRST TIME A PARSER FIX
+# MOVED A CORPUS PIN. `moonbit_labeler` 0.2.13: notices 698 -> 711, total
+# 699 -> 712, with `files`, `parsed`, `actionable`, `unreliable`, `withheld` and
+# `unchecked` ALL UNCHANGED. The cause is `app_moui/app.mbt:1851` --
+#
+#     let (annotations, bindings) : (Array[Annotation], Array[Binding]) =
+#       parse_label_text(text, model.classes)
+#
+# -- a `let` whose pattern carries a TYPE ANNOTATION, which until 0640 the
+# parser could not read: it reported `expected '='` and STOPPED there. So the
+# file was readable only up to that line, and the notices below it were never
+# counted. 0640 reads it, and the notices below it are counted. The other six
+# corpora are byte-identical, and so is `moonbit_core` -- whose own
+# `parsed=1705` of `files=1766` did not move either.
+#
+# AND THE `unchecked` FIELD DID NOT MOVE, which is the interesting half: the
+# thirteen new notices are notices, not new CALL SITES. The analyzer did not
+# start reaching new code it could not type; it started reaching code it could
+# already type and now READS.
 $PINNED = [ordered]@{
   'moui'            = 'files=608 parsed=608 actionable=0 notices=3457 unreliable=0 withheld=0 unchecked=7678 total=3457'
-  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=698 unreliable=0 withheld=0 unchecked=1340 total=699'
+  'moonbit_labeler' = 'files=37 parsed=37 actionable=1 notices=711 unreliable=0 withheld=0 unchecked=1340 total=712'
   'moonbit_image'   = 'files=18 parsed=18 actionable=0 notices=186 unreliable=0 withheld=0 unchecked=755 total=186'
   'async'           = 'files=419 parsed=419 actionable=0 notices=1656 unreliable=0 withheld=0 unchecked=2879 total=1656'
   'proton'          = 'files=137 parsed=137 actionable=0 notices=1799 unreliable=0 withheld=0 unchecked=2901 total=1799'
