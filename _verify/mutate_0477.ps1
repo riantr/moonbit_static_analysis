@@ -50,14 +50,47 @@ Invoke-MutationGate -Name '0477' -Target 'wasm' -Mutations @(
   @{
     Name = 'M2 the pattern binds one invented name instead of the names it introduces'
     File = $PARSER
+    # 0646. THE ANCHOR IS THE WHOLE BRANCH, AND HERE IS WHY IT MUST BE.
+    #
+    # It was four lines -- the `let names = ...` line and the three after it -- and it was
+    # UNIQUE when this gate was written (0477: ONE occurrence). Then:
+    #
+    #   0494  COPIED the block: the shorthand-struct-pattern branch got the same four lines,
+    #         so the anchor matched TWICE -- and the harness applies the replacement at
+    #         EVERY occurrence, so this row perturbed BOTH branches and its red belonged
+    #         to neither of them individually.
+    #   0640  INSERTED `self.let_pattern_annotation()` between the first line and the
+    #         second, so the four-line anchor stopped matching AT ALL. The gate has been
+    #         RED since, and nothing said so: the mutation gates had not been run since
+    #         2026-11-22, and 0640 landed after that.
+    #
+    # 0646. THE "FIRST OCCURRENCE" SENTENCE THIS USED TO CARRY WAS WRONG. It said the
+    # harness "mutates the FIRST occurrence". The harness applies the replacement at
+    # EVERY occurrence -- `$norm.Replace($findN, $replN)`, and .NET's String.Replace
+    # replaces all of them -- and it has done so since the harness was created
+    # (`git log -L` on the write line). The defect is the same one either way and the
+    # fix is the same either way, but the MECHANISM is not: it was never "the wrong
+    # site was mutated", it was "SEVERAL sites were mutated, so the red was not this
+    # row's to claim". MEASURED 2026-11-24 on one fixture, with the two readings side
+    # by side: the expression replaced two occurrences and a first-occurrence splice
+    # replaced one.
+    #
+    # So the anchor starts at the BRANCH HEAD, which is what makes it unique (the other
+    # branch's head is a different condition), and it carries the annotation call, which
+    # is what the current source actually reads. The intent is unchanged: the CONSTRUCTOR
+    # pattern's names are replaced by one invented name.
     Find = @'
+    if self.peek_name() != "" && self.at_next(TLParen) {
       let names = self.parse_is_pattern()
+      self.let_pattern_annotation()
       self.expect(TAssign, "'='")
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(names, init), }
 '@.Replace("`r`n", "`n")
     Repl = @'
+    if self.peek_name() != "" && self.at_next(TLParen) {
       let _ = self.parse_is_pattern()
+      self.let_pattern_annotation()
       self.expect(TAssign, "'='")
       let init = self.parse_expr()
       return { span: sp, kind: @ast.SLetDestruct(["bound"], init), }
@@ -86,8 +119,30 @@ Invoke-MutationGate -Name '0477' -Target 'wasm' -Mutations @(
   @{
     Name = 'M4 the constructor head is bound as a name'
     File = $PARSER
-    Find = '      let names = self.parse_is_pattern()'
-    Repl = '      let names = [self.peek_name()] + self.parse_is_pattern()'
+    # 0646. THIS ANCHOR WAS A SINGLE LINE, AND IT STOPPED BEING ONE SITE. 0494 copied the
+    # block, so the line matched TWICE -- and the harness applies the replacement at EVERY
+    # occurrence, so this row perturbed the shorthand-struct-pattern branch AND the
+    # constructor branch, while this mutation is about the CONSTRUCTOR branch alone.
+    # It still killed, and a kill that a row cannot attribute to the site it names is a
+    # green result that means nothing. So the anchor starts at the branch head, exactly as
+    # M2's does, and it is now UNIQUE -- and the harness now PRINTS how many sites it
+    # applied the replacement at, so a row that perturbs several sites says so.
+    Find = @'
+    if self.peek_name() != "" && self.at_next(TLParen) {
+      let names = self.parse_is_pattern()
+      self.let_pattern_annotation()
+      self.expect(TAssign, "'='")
+      let init = self.parse_expr()
+      return { span: sp, kind: @ast.SLetDestruct(names, init), }
+'@.Replace("`r`n", "`n")
+    Repl = @'
+    if self.peek_name() != "" && self.at_next(TLParen) {
+      let names = [self.peek_name()] + self.parse_is_pattern()
+      self.let_pattern_annotation()
+      self.expect(TAssign, "'='")
+      let init = self.parse_expr()
+      return { span: sp, kind: @ast.SLetDestruct(names, init), }
+'@.Replace("`r`n", "`n")
     MustRed = '0477: a labeled constructor pattern binds both names'
   }
 )

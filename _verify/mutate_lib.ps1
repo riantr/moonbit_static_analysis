@@ -319,19 +319,51 @@ function Invoke-MutationGate {
     # not even show you.
     $hayEol = if ($hay.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { $nl }
     $hay = $hay.Replace($hayEol, $nl)
-    # COUNT, do not merely test presence. `mutate_lib` removes the FIRST literal match, so
-    # an anchor that occurs twice silently targets the wrong site while the gate reports
-    # a clean kill. Four anchors have now been found that way, across three increments:
+    # COUNT, do not merely test presence. A pre-flight that tests PRESENCE cannot
+    # distinguish a unique anchor from a duplicated one, and a duplicated anchor
+    # produces a red that belongs to no single site.
+    #
+    # 0646. THIS PARAGRAPH WAS WRONG, AND THE WRONGNESS WAS WORTH A WHOLE CHAPTER.
+    # It used to say: "`mutate_lib` removes the FIRST literal match, so an anchor that
+    # occurs twice silently targets the wrong site while the gate reports a clean kill",
+    # and it listed four anchors found "that way". The write below is
+    #
+    #     $norm.Replace($findN, $replN)
+    #
+    # and .NET's String.Replace replaces EVERY occurrence -- there is no first-occurrence
+    # splice anywhere in this file. MEASURED 2026-11-24, on ONE fixture, with the two
+    # readings side by side: the expression above replaced BOTH occurrences, and a
+    # splice of the first one replaced ONE. And `git log -L 562,562:_verify/mutate_lib.ps1`
+    # says the line has read that way since the harness was created (`9cb31b2`) -- the
+    # sentence was never true, and every "wrong site" argument built on it (0433's M4
+    # "mutated `errdefer` while naming `defer`", 0646's first draft) was an INFERENCE
+    # about this code's behaviour that nobody measured.
+    #
+    # WHAT AN ANCHOR THAT OCCURS TWICE ACTUALLY DOES. The replacement is applied at
+    # EVERY site, so the row perturbs N places at once -- and the red it produces cannot
+    # be attributed to the site the row names. That is the defect, and it is a different
+    # defect from the one this paragraph used to describe: not "the wrong site was
+    # mutated" but "SEVERAL sites were mutated, so the red is not this row's to claim".
+    #
+    # Four anchors had been found that way, across three increments:
     #   0467  a DEDENT that made a `Find` stop matching, indistinguishable from a deletion
     #   0468  a RENAME (`fn_body` -> `value_block`) in 0426's M3/M4
     #   0468  a DUPLICATED block: 0433's M4 named `defer` and removed `errdefer`
     #   0469  the same rename again in 0433's M1 (`let scrutinee` -> `let subject`)
     # => 判据: a pre-flight that tests PRESENCE cannot distinguish a unique anchor from a
-    # duplicated one, and a wrong site is a green result that means nothing.
+    # duplicated one, and a row that perturbs SEVERAL sites reports a red that belongs to
+    # none of them individually.
     #
     # This WARNS and does not fail. Several gates legitimately anchor on text that occurs
     # more than once, and turning that into an error would abort working gates over a
-    # diagnostic. The count is printed so it is in front of whoever reads the output.
+    # diagnostic. The count is printed so it is in front of whoever reads the output --
+    # and since 0646 the harness prints how many sites it actually applied the
+    # replacement at, so the two numbers are ONE number and neither can drift.
+    #
+    # => 判据: A COMMENT ABOUT WHAT THE CODE DOES IS A CLAIM ABOUT THE CODE, AND A CLAIM
+    # THAT WAS NEVER MEASURED IS A COMMENT THAT CAN BE WRONG. The sentence this paragraph
+    # replaced had been in the file since the harness was created, and it was wrong the
+    # whole time.
     $count = 0
     $step = [Math]::Max(1, $findText.Length)
     $first = -1
@@ -375,8 +407,9 @@ function Invoke-MutationGate {
     } elseif ($count -gt 1) {
       $ambiguous += $m.Name
       Write-Output ('PREFLIGHT AMBIGUOUS x' + $count + ': ' + $m.Name + '  (' + $m.File + ')')
-      Write-Output ('  the FIRST occurrence is the one that will be mutated -- check that')
-      Write-Output ('  it is the one the mutation names.')
+      Write-Output ('  the replacement is applied at EVERY one of those ' + $count + ' site(s), so')
+      Write-Output ('  this row perturbs ' + $count + ' places at once and its red belongs to')
+      Write-Output ('  none of them individually. Re-anchor it onto the site it names.')
     }
   }
   if ($absent.Count -gt 0) {
@@ -560,6 +593,44 @@ function Invoke-MutationGate {
       continue
     }
     Write-TextWithRetry -Path $path -Text ($norm.Replace($findN, $replN).Replace($nl, $eol)) -Enc $enc
+
+    # 0646. HOW MANY SITES THE REPLACEMENT WAS ACTUALLY APPLIED AT, MEASURED ON THE
+    # FILE AS WRITTEN and not on the text before it.
+    #
+    # The write above is `$norm.Replace($findN, $replN)`, and .NET's String.Replace
+    # replaces EVERY occurrence -- so the number of sites this row perturbed is the
+    # number of occurrences of the anchor, and it is NOT one unless the anchor is
+    # unique.
+    #
+    # IT IS MEASURED, NOT ASSUMED, because the harness's own comment had claimed the
+    # opposite ("removes the FIRST literal match") for as long as the harness has
+    # existed, and that claim was never true. MEASURED 2026-11-24: the comment said
+    # one site and the code replaced two, on one fixture, with the two readings side
+    # by side.
+    #
+    # So this line counts the anchor in the text BEFORE the write and counts what
+    # REMAINS in the file the write produced, and the difference is the number of
+    # sites the replacement touched. Two numbers that are OBSERVATIONS of the file,
+    # not one number copied twice -- and the self-test pins the answer.
+    $beforeCount = 0
+    $beforeStep = [Math]::Max(1, $findN.Length)
+    $beforeAt = $norm.IndexOf($findN, [System.StringComparison]::Ordinal)
+    while ($beforeAt -ge 0) {
+      $beforeCount++
+      $beforeAt = $norm.IndexOf($findN, $beforeAt + $beforeStep, [System.StringComparison]::Ordinal)
+    }
+    $afterText = [System.Text.Encoding]::UTF8.GetString((Read-BytesWithRetry -Path $path))
+    $afterEol = if ($afterText.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { $nl }
+    $afterNorm = $afterText.Replace($afterEol, $nl)
+    $remainCount = 0
+    $remainAt = $afterNorm.IndexOf($findN, [System.StringComparison]::Ordinal)
+    while ($remainAt -ge 0) {
+      $remainCount++
+      $remainAt = $afterNorm.IndexOf($findN, $remainAt + $beforeStep, [System.StringComparison]::Ordinal)
+    }
+    $appliedAt = $beforeCount - $remainCount
+    Write-Output ('      applied at ' + $appliedAt + ' site(s): the anchor occurred ' + $beforeCount +
+      ' time(s) before the write, and ' + $remainCount + ' occurrence(s) remain in the file as written')
 
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $out = & $MoonExe -C $Root test --target $Target 2>&1 | Out-String

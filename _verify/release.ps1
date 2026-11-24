@@ -326,13 +326,38 @@ function Restore-SourceFiles {
 # tree is not back where it was, or when the tree could not be read at all.
 #
 # 0608. The answer is `$script:treeRestoredOk`, for the reason above.
+#
+# 0646. AND THE READING IS ALSO KEPT WHERE NO ASSIGNMENT CAN SWALLOW IT.
+#
+# MEASURED on the third full run of this gate (2026-11-24): the run reported
+# `RELEASE GATE FAILED: mutate-restore:0432, exit-code-aggregation`, and the
+# log did not say WHICH FILE was still patched, or why the check could not read
+# the tree -- it said only that a stage named `mutate-restore:0432` was red.
+#
+# The reason is one token. The mutation loop called
+# `$treeOk = Assert-SourceTreeRestored (...)`, and in PowerShell an assignment
+# CAPTURES what a function prints: the reading went into `$treeOk`, and
+# `$treeOk` was never used again. The same function, called WITHOUT the
+# assignment at the harness self-test, printed fine -- and the run's log
+# carried exactly ONE "the tree is back at HEAD" line for EIGHTY-NINE gates,
+# which is the one the uncaptured call had printed. Two call sites, one
+# function, one of them swallowed.
+#
+# So the reading is now kept in `$script:treeRestoredDetail` as well, and the
+# callers print it. The script-scope variable is not reachable by an
+# assignment at the call site, so the culprit is named EVEN IF someone puts
+# the capture back. A fix that has to be remembered is not a fix; a fix that
+# cannot be undone by accident is a guard.
+$script:treeRestoredDetail = ''
 $script:treeRestoredOk = $false
 function Assert-SourceTreeRestored {
   param([string]$Label)
   $script:treeRestoredOk = $false
+  $script:treeRestoredDetail = ''
   $d = Get-SourceTreeDrift
   if (-not $d.Ok) {
-    Write-Output ('  FAIL: the tree-restored check could not read the tree after ' + $Label + ': ' + $d.Reason)
+    $script:treeRestoredDetail = 'the tree-restored check could not read the tree after ' + $Label + ': ' + $d.Reason
+    Write-Output ('  FAIL: ' + $script:treeRestoredDetail)
     Write-Output '      A check that could not read is NOT a clean tree. This measurement is INVALID, not passed.'
     $script:stageOk = $false
     if ($script:results.Count -gt 0) { $script:results[$script:results.Count - 1].Ok = $false }
@@ -343,7 +368,8 @@ function Assert-SourceTreeRestored {
     $script:treeRestoredOk = $true
     return
   }
-  Write-Output ('  FAIL: the tree is not back at HEAD after ' + $Label + ':')
+  $script:treeRestoredDetail = 'the tree is not back at HEAD after ' + $Label + ': ' + (($d.Files | Select-Object -First 8) -join ', ')
+  Write-Output ('  FAIL: ' + $script:treeRestoredDetail)
   $d.Files | Select-Object -First 8 | ForEach-Object { Write-Output ('      ' + $_) }
   Write-Output '      A restore that throws leaves the file MUTATED, and the next gate then measures a'
   Write-Output '      tree nobody intended to measure. THIS gate is named; the file is restored from'
@@ -352,17 +378,20 @@ function Assert-SourceTreeRestored {
   if ($script:results.Count -gt 0) { $script:results[$script:results.Count - 1].Ok = $false }
   Restore-SourceFiles -Files $d.Files
   if (-not $script:restoreOk) {
-    Write-Output '  FAIL: the tree could not be restored byte-for-byte.'
+    $script:treeRestoredDetail = 'the tree could not be restored byte-for-byte after ' + $Label
+    Write-Output ('  FAIL: ' + $script:treeRestoredDetail)
     return
   }
   # AND THE RESTORE IS CHECKED, not assumed: the tree is read again.
   $after = Get-SourceTreeDrift
   if (-not $after.Ok) {
-    Write-Output ('  FAIL: the tree could not be re-read after the restore: ' + $after.Reason)
+    $script:treeRestoredDetail = 'the tree could not be re-read after the restore of ' + $Label + ': ' + $after.Reason
+    Write-Output ('  FAIL: ' + $script:treeRestoredDetail)
     return
   }
   if ($after.Files.Count -gt 0) {
-    Write-Output ('  FAIL: the tree is STILL patched after the restore: ' + ($after.Files -join ', '))
+    $script:treeRestoredDetail = 'the tree is STILL patched after the restore of ' + $Label + ': ' + ($after.Files -join ', ')
+    Write-Output ('  FAIL: ' + $script:treeRestoredDetail)
     return
   }
   Write-Output ('      the tree is back at HEAD (restored ' + $d.Files.Count + ' file(s), byte for byte)')
@@ -1862,7 +1891,27 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # normalisation in the pre-flight, plus a self-test case that runs one CRLF
 # fixture through BOTH readers. It changed NO analyzer behaviour and no public
 # interface, and it moved NO other pin.
-$NARRATIVE_CHAPTERS = '187'
+# 0646. 187 -> 188, and the new chapter is 0646's. The chapter's own lesson is
+# in the title: AN ANCHOR THAT MATCHES TWO PLACES PINS BOTH OF THEM, AND A GATE
+# THAT NOBODY RUNS IS A COMMENT. The increment ran the FULL gate with the
+# mutations in for the second time; after 0645's fix exactly ONE of the 89
+# mutation gates was still red, and its transcript blamed the ANCHORS, not the
+# code: one anchor had stopped matching at all when 0640 inserted a call into
+# it, and another matched TWO places after 0494 copied the block. Both anchors
+# now point at the branch head, which is unique and names the branch the
+# mutations are about.
+#
+# AND THE CHAPTER'S FIRST DRAFT WAS WRONG ABOUT THE MECHANISM, AND THE WRONGNESS
+# WAS IN THE HARNESS'S OWN COMMENT: it said the harness "removes the FIRST
+# literal match", and it has never done that -- the write is
+# `$norm.Replace($findN, $replN)`, and .NET replaces EVERY occurrence. Measured on
+# one fixture with the anchor twice: the expression replaced two, a first-only
+# splice replaced one. So a duplicated anchor does not mutate "the wrong site",
+# it mutates SEVERAL sites and its red belongs to none of them -- and the
+# harness now PRINTS how many sites it applied the replacement at, beside the
+# pre-flight's own count, and the self-test pins that number. It changed NO
+# analyzer behaviour and no public interface, and it moved NO other pin.
+$NARRATIVE_CHAPTERS = '188'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1928,7 +1977,19 @@ $NARRATIVE_CHAPTERS = '187'
 # the file first, so 64 of the 89 mutation gates went red on a tree whose
 # `git status` was CLEAN, because git normalises before it compares and a
 # line-ending change is invisible to it.
-$LOOP_RULES = '46'
+# The pin moved 46 -> 47 with rule 47, and the rule is the lesson 0646 measured:
+# an ANCHOR that matches TWO places pins BOTH of them, and a gate that nobody
+# runs is a comment -- the second full run with the mutations in left ONE red
+# gate, and its anchor had matched two places since 0494 copied the block (so
+# the row perturbed two branches and its red belonged to neither of them) while
+# its second anchor had matched NOTHING since 0640 inserted a call into it;
+# that gate had been red for six increments and nothing said so, because the
+# mutation suite had not been RUN since 2026-11-22. And the harness's own
+# comment about which site it mutates was FALSE from the day the harness was
+# written -- it said "the FIRST literal match" and the code replaced EVERY
+# occurrence -- so the sentence this increment quoted was an inference nobody
+# measured, and the harness now prints how many sites it touched.
+$LOOP_RULES = '47'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -2816,7 +2877,10 @@ if ($failed.Count -eq 0) {
         $code = $LASTEXITCODE
         $ErrorActionPreference = $prev
         foreach ($ln in ($o -split "`r?`n")) {
-          if ($ln -match '(SELFTEST OK|FAIL|INCONCLUSIVE|NO RUN|RETRY)') { Write-Output ('  ' + $ln.Trim()) }
+          # 0646. `\.ps1:\d+` keeps the lines that NAME a site, for the reason
+          # the exit-code stage's filter carries: a verdict without the site it
+          # names is a verdict without a culprit.
+          if ($ln -match '(SELFTEST OK|FAIL|INCONCLUSIVE|NO RUN|RETRY|\.ps1:\d+)') { Write-Output ('  ' + $ln.Trim()) }
         }
         if ($code -ne 0) { $script:stageOk = $false }
       }
@@ -2830,7 +2894,10 @@ if ($failed.Count -eq 0) {
       # 0608. AND THE CHECK MUST NOT BE ABLE TO PASS BY NOT READING. The
       # assertion below fails the run when the tree could not be read at all.
       Assert-SourceTreeRestored 'the harness self-test'
-      if (-not $script:treeRestoredOk) { $failed += 'harness-selftest-restore' }
+      if (-not $script:treeRestoredOk) {
+        $failed += 'harness-selftest-restore'
+        if ($script:treeRestoredDetail -ne '') { Write-Output ('  CULPRIT: ' + $script:treeRestoredDetail) }
+      }
       $stageName = 'the shared harness: the INCONCLUSIVE verdict, shown to go red'
       $seen = @($script:results | Where-Object { $_.Stage -eq $stageName }).Count
       if ($seen -ne 1) {
@@ -3746,8 +3813,16 @@ if ($SkipMutations) {
     # below FAILS the gate when the tree is patched, and it FAILS the run when
     # the tree could not be read at all -- a check that could not read is not a
     # clean tree, and a silent pass is not a verdict.
-    $treeOk = Assert-SourceTreeRestored ("mutation gate " + $g)
-    if (-not $script:treeRestoredOk) { $failed += ('mutate-restore:' + $g) }
+    # 0646. THE CALL MUST NOT CAPTURE THE READING. See the note on the
+    # function: the `$treeOk =` that used to stand here SWALLOWED every line it
+    # printed, and the run reported a red row with no culprit in it.
+    Assert-SourceTreeRestored ("mutation gate " + $g)
+    if (-not $script:treeRestoredOk) {
+      $failed += ('mutate-restore:' + $g)
+      # AND THE CULPRIT IS NAMED, from the script-scope reading that no
+      # assignment at this call site can swallow.
+      if ($script:treeRestoredDetail -ne '') { Write-Output ('  CULPRIT: ' + $script:treeRestoredDetail) }
+    }
   }
 }
 
@@ -5374,8 +5449,44 @@ if (-not (Test-Path -LiteralPath $S0642 -PathType Leaf)) {
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $S0642 2>&1 | Out-String
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
+    # 0646. KEEP THE WHOLE TRANSCRIPT, the way `Run-Gate` keeps a gate's. The
+    # filter below is for READING, not for evidence.
+    $logDir = Join-Path $root '_verify\_gatelogs'
+    if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
+    [System.IO.File]::WriteAllText((Join-Path $logDir 'settle_0642_exit_code_aggregation.log'), $o, (New-Object System.Text.UTF8Encoding($false)))
+    #
+    # 0646. AND THE FILTER MUST KEEP THE LINE THAT NAMES THE SITE.
+    #
+    # MEASURED on the third full run of this gate: the settle printed
+    #
+    #     FAIL: 1 site(s) take no exit code and have NO stated mechanism:
+    #         mutate_lib_selftest.ps1:305  $o = & powershell ... -File $g
+    #
+    # and the run's log carried the FIRST of those two lines and NOT the second.
+    # The filter kept the verdicts and dropped the naming, so the stage said
+    # that a site was at fault and did not say WHICH one -- a red row with no
+    # culprit in it, read by whoever has to fix it. The pattern `\.ps1:\d+` is
+    # what a naming line looks like, and the filter now keeps it.
+    $printed = @()
     foreach ($ln in ($o -split "`r?`n")) {
-      if ($ln -match '(GATE OK|ABORT|FAIL|OK:|RECORDED|invocation site)') { Write-Output ('  ' + $ln.Trim()) }
+      if ($ln -match '(GATE OK|ABORT|FAIL|OK:|RECORDED|invocation site|\.ps1:\d+)') {
+        $printed += $ln.Trim()
+        Write-Output ('  ' + $ln.Trim())
+      }
+    }
+    # THE CONTROL. A filter that keeps the verdicts and drops the naming turns
+    # a red row into a red row with no culprit in it, and that is exactly what
+    # it did. The check below is against the REAL output of the settle, so it
+    # fails if the filter is ever narrowed again -- and it is not a check that
+    # can be satisfied by the filter itself.
+    $named = @($printed | Where-Object { $_ -match '\.ps1:\d+' })
+    if ($named.Count -eq 0) {
+      Write-Output '  FAIL: the exit-code stage printed no line that NAMES a site (file.ps1:NNN).'
+      Write-Output '      A verdict without the site it names is a verdict without a culprit.'
+      Write-Output '      The whole transcript is in _verify\_gatelogs\settle_0642_exit_code_aggregation.log.'
+      $script:stageOk = $false
+    } else {
+      Write-Output ('  the filter kept ' + $named.Count + ' line(s) that name a site.')
     }
     if ($code -ne 0) { $script:stageOk = $false }
   }

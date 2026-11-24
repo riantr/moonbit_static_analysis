@@ -25540,5 +25540,202 @@ the gate READS that git does not -- and the answer has to be measured with the s
 through both readers, or the fix is a guess.
 
 
+## 0646: A RED THAT CANNOT BE ATTRIBUTED IS NOT A VERDICT, AND A RED THAT CANNOT BE READ IS NOT A MEASUREMENT
+
+MEASURED 2026-11-24, while the full gate was running with the mutations in, on this tree at
+0645's HEAD.
+
+AFTER 0645's fix, the full gate reported exactly ONE red gate:
+
+    RELEASE GATE FAILED: mutate:0477
+    (88 of the 89 mutation gates green, every other stage green, exit 1, 2877 s)
+
+and its transcript said two things about the SAME file:
+
+    PREFLIGHT MISS: M2 the pattern binds one invented name instead of the names it introduces
+      looking for: |      let names = self.parse_is_pattern()|
+    PREFLIGHT AMBIGUOUS x2: M4 the constructor head is bound as a name
+
+BOTH OF THEM ARE ABOUT THE ANCHOR, AND NEITHER IS ABOUT THE CODE.
+
+M2's ANCHOR WAS FOUR LINES -- the `let names = ...` line and the three after it -- and it was
+UNIQUE when this gate was written. Then 0640 inserted `self.let_pattern_annotation()` between the
+first line and the second, and the four-line anchor stopped matching AT ALL. The gate has been RED
+since, and nothing said so.
+
+M4's ANCHOR WAS ONE LINE, and 0494 COPIED the block, so the line matched TWICE.
+
+THE MECHANISM WAS WRONG, AND IT WAS WRONG IN THE HARNESS'S OWN COMMENT. The first draft of this
+chapter said that the harness "mutates the FIRST occurrence, which is the SHORTHAND-struct-pattern
+branch", and quoted the harness's own sentence: "an anchor that occurs twice silently targets the
+wrong site while the gate reports a clean kill". MEASURED 2026-11-24, that sentence is FALSE:
+
+    the write          $norm.Replace($findN, $replN)   -- .NET replaces EVERY occurrence
+    the first one      a splice of one occurrence      -- what the comment described
+
+and the two readings were run on ONE fixture with the anchor twice: the expression replaced TWO
+occurrences, the splice replaced ONE. And `git log -L 562,562:_verify/mutate_lib.ps1` says the
+write line has read that way since the harness was CREATED (`9cb31b2`) -- so the sentence was never
+true, and every "wrong site" argument ever built on it (0433's M4 "mutated `errdefer` while naming
+`defer`", 0423's M7 and M8 "the harness removes the FIRST match", and this chapter's own first
+draft) was an INFERENCE about the code's behaviour that nobody measured.
+
+WHAT AN ANCHOR THAT OCCURS TWICE ACTUALLY DOES. The replacement is applied at EVERY site, so the
+row perturbs BOTH branches at once -- and the red it produces cannot be attributed to the site the
+row names. That is a real defect and it is a DIFFERENT defect from the one that was described: not
+"the wrong site was mutated" but "SEVERAL sites were mutated, so the red is not this row's to
+claim". The FIX is the same either way, and it is the fix this increment made: an anchor that
+matches exactly one place.
+
+MEASURED, the anchor's history, counted from the committed blobs:
+
+    7b7ba11  0477 writes it        1 occurrence
+    731659c  0494 copies the block 2 occurrences
+    769a593  0640 inserts a call   0 occurrences   <- the gate went RED here
+    6ef403d  0642                  0 occurrences
+
+AND NOTHING SAID SO, because the mutation gates had not been RUN since 2026-11-22, and 0640 landed
+after that. LOOP's own rule 39 -- "a proof that nobody runs is a comment" -- was true of the
+mutation suite itself, and the first run that included them found it.
+
+THE REPAIR re-points both anchors at the BRANCH HEAD:
+
+    if self.peek_name() != "" && self.at_next(TLParen) {
+
+which is what makes them UNIQUE (the other branch's head is a different condition) and what
+names the branch the mutations are about; and the replacement carries the annotation call, so the
+mutant still fails for the intended reason and not because a call went missing.
+
+MEASURED after:
+
+    Pre-flight: all 4 live patterns present and UNIQUE.      (the AMBIGUOUS warning is gone)
+    M1  52 of 1807 red   [named test confirmed]
+    M2   9 of 1807 red   [named test confirmed]
+    M3   6 of 1807 red   [named test confirmed]
+    M4   4 of 1807 red   [named test confirmed]
+    4 killed, 0 expected survivor(s), of 4; every restore verified byte-identical
+    GATE OK: 0477
+
+THE CENSUS: WHAT ELSE IS AMBIGUOUS, AND WHAT DOES AMBIGUOUS MEAN NOW. The eleven other anchors
+the pre-flight reports as AMBIGUOUS were counted with the harness's OWN counting code (an
+`IndexOf` loop with `Ordinal` comparison over the EOL-normalised text -- the same loop the
+pre-flight runs), and the probe's counts were checked against the harness's own printed counts
+before any of its output was believed: ELEVEN of ELEVEN agree. They are:
+
+    0413 N1  src/types/infer.mbt     x2      0418 M6  src/parser/parser.mbt   x3
+    0421 M3  src/parser/parser.mbt   x4      0422 M3  src/parser/parser.mbt   x2
+    0427 M5  src/parser/parser.mbt   x5      0433 M1  src/parser/parser.mbt   x3
+    0460 M2  src/parser/parser.mbt   x3      0468 M1  src/parser/parser.mbt   x2
+    0469 M1  src/parser/parser.mbt   x2      0502 M4  src/parser/parser.mbt   x2
+    0502 M6  src/walk/walk.mbt       x3
+
+and each one was read against the source it points at. The finding is NOT that any of them points
+at the wrong place -- because there is no "first place": every one of them perturbs ALL of its
+sites, and the site its row names is among them. The finding is that each of them perturbs SEVERAL
+sites at once, so its red belongs to none of them individually. 0413 is the sharpest case: N1
+("the read arm") and N2 ("the write arm") carry the SAME anchor and the SAME replacement, so the
+two rows are the same edit -- and each of them perturbs both arms.
+
+AND THE HARNESS NOW SAYS SO, INSTEAD OF SAYING SOMETHING FALSE. `mutate_lib.ps1` prints how many
+sites the replacement was applied at ("applied at N site(s)"), beside the pre-flight's own count,
+so the two are ONE number and neither can drift. `mutate_lib_selftest.ps1` gained a case that runs
+ONE fixture whose anchor occurs TWICE through the real harness and requires the harness to report
+TWO sites -- so the sentence this chapter used to quote cannot come back.
+
+
+AND THE RUN THAT REPORTED IT COULD NOT SAY WHY. The third full run of this gate, on this tree at
+0645's HEAD, ended with TWO red rows:
+
+    RELEASE GATE FAILED: mutate-restore:0432, exit-code-aggregation
+    Nothing was published and no tag should be pushed.
+
+`mutate-restore:0432` names a STAGE and not a CAUSE. It says that after mutation gate 0432 the
+tree was not back where it was, and it does not say WHICH file was still patched -- or whether the
+check could not READ the tree at all, which is a different fault with a different fix. The log of
+that run was asked, and this is what it answered:
+
+    the tree is back at HEAD after the harness self-test (0 file(s) differ)
+
+ONE line. There were EIGHTY-NINE mutation gates. The run says the tree was back at HEAD ONCE, and
+the one line that survived names the HARNESS SELF-TEST -- which is not a mutation gate -- while the
+EIGHTY-NINE lines that should have followed the mutation gates are not in the log at all.
+
+THE MECHANISM IS ONE TOKEN. The mutation loop called
+
+    $treeOk = Assert-SourceTreeRestored ("mutation gate " + $g)
+
+and in PowerShell an ASSIGNMENT CAPTURES what a function prints. The reading went into `$treeOk`,
+and `$treeOk` was never read again. The SAME function, called WITHOUT the assignment by the
+harness self-test a few hundred lines earlier, printed its reading perfectly -- which is why the
+one surviving line is that one. Two call sites, one function, and the difference between them was
+an `=`.
+
+THE FIX IS NOT "REMEMBER NOT TO ASSIGN". A fix that has to be remembered is not a fix, so the
+reading is ALSO kept in `$script:treeRestoredDetail`, which the callers PRINT, and a script-scope
+variable is not reachable by an assignment at the call site. MEASURED against the REAL function --
+extracted from `release.ps1` with the AST, not re-typed:
+
+    green:       the reading is printed and the flag is set
+    red, with the call site CAPTURING the output:
+                 the detail still names src\parser\parser.mbt and src\walk\walk.mbt
+    unreadable:  the detail records why the tree could not be read
+    0 call site(s) capture the reading; 2 call site(s) print the culprit from the script scope
+
+THE OTHER RED ROW WAS THE SAME DISEASE, ONE STAGE EARLIER. `exit-code-aggregation` runs
+`settle_0642_exit_code_aggregation.ps1`, and the settle had this to say:
+
+    FAIL: 1 site(s) take no exit code and have NO stated mechanism:
+        mutate_lib_selftest.ps1:305  $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $g ...
+
+The stage printed the FIRST line and DROPPED the second, so the run's log ends a SENTENCE WITH A
+COLON AND NOTHING AFTER IT. The filter was
+
+    (GATE OK|ABORT|FAIL|OK:|RECORDED|invocation site)
+
+and a line that names a site contains none of those. MEASURED on the settle's real output: the old
+filter kept 5 line(s), of which ONE names a site -- and that one only because `FAIL` matches
+"failed" case-insensitively. The filter now also keeps `\.ps1:\d+`: 7 line(s) kept, THREE of them
+naming a site; the synthetic culprit line itself is KEPT by the new filter and DROPPED by the old
+one. And the stage now FAILS if no line naming a site survived its own filter, so the filter
+cannot be narrowed again without the gate going red.
+
+AND THAT ROW HAD A SECOND, QUIETER DEFECT. The site the settle named was
+`mutate_lib_selftest.ps1:305` -- the site this increment had ADDED -- and it was added with the
+exit code taken TEN LINES FURTHER DOWN, below the comment that explains why it is taken. The
+settle's rule is that the capture has to be there before the next child process runs, and its
+window is three lines; a capture that is present but OUT OF THE RULE'S REACH is not a capture.
+The capture now sits on the line after the invocation, and the settle says:
+
+    OK: every one of them takes its exit code, or carries a stated mechanism that makes a failure visible
+
+THE TWO FINDINGS ARE ONE FINDING. A red has to be ATTRIBUTED to a site, and the site has to be
+VISIBLE in the report. The first half of this chapter is about the attribution: an anchor that
+matched two places perturbed both, so its red belonged to neither. This half is about the
+visibility: the report named a site, and the reader never saw the name. A red that cannot be
+attributed is not a verdict, and a red that cannot be read is not a measurement.
+
+
+=> 判据: 一条红若不能归因到一个点，就不是裁决；而一条红若点了名却没人看见，就还不是点名。 A row that
+perturbs several sites reports a red that belongs to none of them individually -- and the harness
+saying which site it WOULD have mutated is not a fact about the harness, it is a fact about a
+DIFFERENT harness. The date a gate last ran is a fact about the gate, and it belongs next to the
+gate -- the roster says which gates exist, and nothing said when they last ran. And a comment that
+describes what the code does is a CLAIM about the code: the sentence this chapter first quoted had
+been in the harness since the harness was created, and it was wrong the whole time, and every
+argument built on it was an inference nobody measured. THE OTHER HALF IS THE SAME ARGUMENT ONE
+STAGE LATER: a report that NAMES a site and a reader who never sees the name are the same
+failure, and the fix for it is not "remember not to assign" -- it is to keep the reading where an
+assignment cannot reach it, to keep the naming lines the filter used to drop, and to let the gate
+go red when it cannot name what it found.
+COMMENT. A row that perturbs several sites reports a red that belongs to none of them
+individually -- and the harness saying which site it WOULD have mutated is not a fact about the
+harness, it is a fact about a DIFFERENT harness. The date a gate last ran is a fact about the
+gate, and it belongs next to the gate -- the roster says which gates exist, and nothing said when
+they last ran. And a comment that describes what the code does is a CLAIM about the code: the
+sentence this chapter first quoted had been in the harness since the harness was created, and it
+was wrong the whole time, and every argument built on it was an inference nobody measured.
+
+
+
 
 

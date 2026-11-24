@@ -220,8 +220,162 @@ if (-not $brokenMiss -or -not $brokenAbort) {
 }
 Write-Output '  ok  the same fixture, the same anchor: the real harness finds it and the un-fixed one misses it.'
 
+# --- 5. 0646. THE REPLACEMENT IS APPLIED AT EVERY SITE, AND THE HARNESS SAYS SO ----
+#
+# THE DEFECT THIS PROVES. The harness's own comment said it "removes the FIRST literal
+# match", and it has NEVER done that: the write is `$norm.Replace($findN, $replN)`, and
+# .NET's String.Replace replaces EVERY occurrence. MEASURED 2026-11-24: the comment
+# said one site and the code replaced two, on one fixture, with the two readings side
+# by side. The comment had been in the file since the harness was created, and it was
+# the source of a chapter that explained a red the WRONG way -- so a claim about the
+# harness's behaviour has to be measured, like anything else.
+#
+# THE FIXTURE. A REAL, TINY MoonBit project in TEMP -- because the harness aborts
+# BEFORE the mutation phase when the baseline cannot run, so a plain text file
+# would never reach the code under test. The project's source carries the anchor
+# TWICE, and its test goes red when the mutation is applied.
+#
+# THE NUMBER THE HARNESS PRINTS IS NOT A COPY OF THE PRE-FLIGHT'S COUNT. It is the
+# difference between the anchor's occurrences BEFORE the write and the occurrences
+# that REMAIN in the file the write produced -- two observations of the file. If the
+# harness ever went back to mutating one site, the second number would be 1 and the
+# line would say "applied at 1 site(s)".
+#
+# THE COUNTERFACTUAL IS THE SECOND READING OF THE SAME FIXTURE: a copy of the harness
+# whose write splices the FIRST occurrence only. It must report ONE site. Two readings
+# that agree on this fixture would prove nothing, so the case FAILS if they agree.
+$dupDir = Join-Path $tmp 'dup'
+$dupPkg = Join-Path $dupDir 'src\dup'
+New-Item -ItemType Directory -Force -Path $dupPkg | Out-Null
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText((Join-Path $dupDir 'moon.mod'), "name = `"dupfixture`"`nversion = `"0.1.0`"`n", $utf8)
+[System.IO.File]::WriteAllText((Join-Path $dupDir 'moon.pkg'), "supported_targets = `"+js+native`"`n", $utf8)
+[System.IO.File]::WriteAllText((Join-Path $dupPkg 'moon.pkg'), "supported_targets = `"+js+native`"`n", $utf8)
+[System.IO.File]::WriteAllText((Join-Path $dupPkg 'dup.mbt'), @'
+pub fn classify(n : Int) -> Int {
+  if n > 0 {
+    1
+  } else {
+    0
+  }
+}
+
+pub fn twice(n : Int) -> Int {
+  if n > 0 {
+    2
+  } else {
+    0
+  }
+}
+'@, $utf8)
+[System.IO.File]::WriteAllText((Join-Path $dupPkg 'dup_test.mbt'), @'
+test "classify_positive" {
+  assert_eq(classify(1), 1)
+}
+
+test "twice_positive" {
+  assert_eq(twice(1), 2)
+}
+'@, $utf8)
+
+$dupGate = Join-Path $tmp 'mutate_dup_fixture.ps1'
+$dupSrc = @'
+$ErrorActionPreference = 'Stop'
+. '__HARNESS__'
+Invoke-MutationGate -Name 'selftest-dup' -Target 'js' -Root '__ROOT__' -Mutations @(
+  @{
+    Name = 'M1 the anchor occurs twice'
+    File = 'src\dup\dup.mbt'
+    Find = '  if n > 0 {'
+    Repl = '  if n > 0 && false {'
+    MustRed = 'classify_positive'
+  }
+)
+Write-MutationGateVerdict -Name 'selftest-dup'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
+exit 0
+'@
+
+function Invoke-DupFixture {
+  param([string]$Harness, [string]$Tag)
+  $g = Join-Path $tmp ('mutate_dup_' + $Tag + '.ps1')
+  [System.IO.File]::WriteAllText($g, $dupSrc.Replace('__HARNESS__', $Harness).Replace('__ROOT__', $dupDir), (New-Object System.Text.UTF8Encoding($false)))
+  $prev3 = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $g 2>&1 | Out-String
+  $c = $LASTEXITCODE
+  # 0646. THE EXIT CODE IS TAKEN, AND IT IS TAKEN AT ONCE -- the very next line.
+  # The first version of this function did not take it, and the release gate's own
+  # exit-code stage said so, by name:
+  #
+  #     FAIL: 1 site(s) take no exit code and have NO stated mechanism:
+  #         mutate_lib_selftest.ps1:305  $o = & powershell ... -File $g
+  #
+  # which is the rule this very repository holds every other child gate to. A gate
+  # that invokes a child and does not take its exit code cannot tell a child that
+  # failed from a child that said nothing.
+  #
+  # IT IS TAKEN AT ONCE, and that is not a detail of style. $LASTEXITCODE is
+  # overwritten by the next child process, so a capture that is separated from its
+  # invocation by prose is a capture of whatever ran next. The first version of
+  # this function took the exit code ten lines further down, below this comment,
+  # and the gate's detector still named the site: its window is three lines, for
+  # the same reason. A fix that is technically present but placed where the rule
+  # does not reach is not a fix.
+  $ErrorActionPreference = $prev3
+  return @{ Out = $o; Code = $c }
+}
+
+Write-Output ''
+Write-Output '=== 0646: the replacement is applied at EVERY site, and the harness says so ==='
+$dupReal = Invoke-DupFixture (Join-Path $verify 'mutate_lib.ps1') 'real'
+$realTwo = ($dupReal.Out -match 'applied at 2 site\(s\)')
+$realKilled = ($dupReal.Out -match 'KILLED')
+Write-Output ('  the real harness on a project whose anchor occurs twice: reported 2 site(s) = ' + $realTwo + ', and killed = ' + $realKilled + ', and the fixture gate exited ' + $dupReal.Code)
+if (-not $realTwo) {
+  Write-Output 'FAIL: the real harness did not report that it applied the replacement at TWO sites.'
+  Write-Output '      The harness REPLACES every occurrence, so an anchor that occurs twice must say 2.'
+  Write-Output '      What it said instead:'
+  foreach ($ln in ($dupReal.Out -split "`r?`n" | Where-Object { $_ -match 'applied at|site\(s\)' })) { Write-Output ('        | ' + $ln.Trim()) }
+  exit 1
+}
+if (-not $realKilled) {
+  Write-Output 'FAIL: the fixture mutation did not kill the fixture suite -- the case measured nothing.'
+  exit 1
+}
+if ($dupReal.Code -ne 0) {
+  Write-Output ('FAIL: the fixture gate exited ' + $dupReal.Code + '; the case ran against a gate that failed.')
+  exit 1
+}
+
+# THE COUNTERFACTUAL. The write line is replaced by a splice of the FIRST occurrence
+# only, in a COPY of the harness. The copy must report ONE site -- and if it did not,
+# this fixture could not tell the two readings apart and the case would prove nothing.
+$spliceLib = Join-Path $tmp 'mutate_lib_firstonly.ps1'
+$libText2 = [System.IO.File]::ReadAllText((Join-Path $verify 'mutate_lib.ps1'), [System.Text.Encoding]::UTF8)
+$writeLine = 'Write-TextWithRetry -Path $path -Text ($norm.Replace($findN, $replN).Replace($nl, $eol)) -Enc $enc'
+$spliceLine = 'Write-TextWithRetry -Path $path -Text ($norm.Substring(0, $norm.IndexOf($findN)) + $replN + $norm.Substring($norm.IndexOf($findN) + $findN.Length)).Replace($nl, $eol) -Enc $enc'
+if (-not $libText2.Contains($writeLine)) {
+  Write-Output 'FAIL: the harness does not carry the write line this self-test rewrites -- the case would prove nothing.'
+  exit 1
+}
+$spliced = $libText2.Replace($writeLine, $spliceLine)
+[System.IO.File]::WriteAllText($spliceLib, $spliced, (New-Object System.Text.UTF8Encoding($false)))
+$dupSplice = Invoke-DupFixture $spliceLib 'splice'
+$spliceOne = ($dupSplice.Out -match 'applied at 1 site\(s\)')
+Write-Output ('  the same fixture, first-occurrence only: reported 1 site(s) = ' + $spliceOne + ', and the fixture gate exited ' + $dupSplice.Code)
+if (-not $spliceOne) {
+  Write-Output 'FAIL: a harness that mutates the FIRST occurrence only did not report 1 site -- so the'
+  Write-Output '      real harness and the first-occurrence one cannot be told apart by this fixture,'
+  Write-Output '      and the case above would prove nothing.'
+  exit 1
+}
+Write-Output '  ok  the same fixture, two readings: EVERY occurrence (2) and the FIRST only (1).'
+
 Write-Output ''
 Write-Output 'SELFTEST OK: the INCONCLUSIVE verdict fires, is retried once, and FAILS the gate;'
-Write-Output '              and the pre-flight finds a two-line anchor in a CRLF file, exactly as'
-Write-Output '              the mutation phase does.'
+Write-Output '              the pre-flight finds a two-line anchor in a CRLF file, exactly as'
+Write-Output '              the mutation phase does;'
+Write-Output '              and the replacement is applied at EVERY site the anchor matches, and the'
+Write-Output '              harness prints how many that was.'
 exit 0

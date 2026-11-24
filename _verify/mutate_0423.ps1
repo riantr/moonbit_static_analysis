@@ -108,10 +108,19 @@ $mutations = @(
   # RE-ANCHORED 0503, for the same reason as M1 -- and this one NEEDED THE
   # `out = out + "?"` LINE TO STAY UNIQUE, because the `bare_raise` block is now
   # written at three call sites (the function-type path, the return path and the
-  # fn-literal path) and an anchor that matched all three would be ambiguous. The
-  # harness removes the FIRST match, so an ambiguous anchor mutates the WRONG site
-  # and reports a clean kill for it -- the one failure mode a pre-flight cannot
-  # catch, because it warns and continues.
+  # fn-literal path) and an anchor that matched all three would be ambiguous.
+  #
+  # 0646. THE SENTENCE THAT USED TO STAND HERE WAS WRONG ABOUT THE HARNESS. It said
+  # "the harness removes the FIRST match, so an ambiguous anchor mutates the WRONG
+  # site". The harness applies the replacement at EVERY occurrence --
+  # `$norm.Replace($findN, $replN)`, and .NET's String.Replace replaces all of
+  # them -- and it has done so since the harness was created (`git log -L` on the
+  # write line). MEASURED 2026-11-24 on one fixture, with the two readings side by
+  # side: the expression replaced TWO occurrences and a first-occurrence splice
+  # replaced ONE. So an ambiguous anchor does not mutate "the wrong site" -- it
+  # mutates SEVERAL sites at once, and the red it produces belongs to none of them
+  # individually. The re-anchoring is still right, and still necessary; only the
+  # reason was wrong. The harness now prints how many sites it touched.
   #
   # THE MUTATION IS UNCHANGED IN MEANING: the raise clause is still not read in the
   # type position, so `raise` is left where the `)` is expected and the function
@@ -217,10 +226,12 @@ $mutations = @(
   #
   # RE-ANCHORED 0487, AND THIS ONE MATTERS MORE THAN THE PREFLIGHT MISS. `eat_joined_effect`
   # introduced a SECOND `type_head` guard with the same four lines, so the old three-line anchor
-  # became AMBIGUOUS -- it matched twice, and the harness removes the FIRST match, which is now the
-  # helper's guard rather than this one. The gate would have reported a clean kill for a mutation
-  # applied to the wrong site, which is the one failure mode a pre-flight cannot catch: it warns
-  # and continues. `if !type_head` is what distinguishes this guard from the helper's `if type_head`.
+  # became AMBIGUOUS -- it matched twice. 0646: the sentence that used to stand here said the
+  # harness "removes the FIRST match, which is now the helper's guard rather than this one" --
+  # and that was wrong about the harness: the replacement is applied at EVERY occurrence, so the
+  # row perturbed BOTH guards and its red belonged to neither of them individually. The
+  # re-anchoring is still right and still necessary; only the reason was wrong.
+  # `if !type_head` is what distinguishes this guard from the helper's `if type_head`.
   @{
     Name = 'M7 type-head guard admits everything'
     File = $PARSER
