@@ -19,14 +19,26 @@ cvc5wrap.ps1
 # EXTENSIONS.md, and these files are megabytes of per-file listing.
 _qa/
 
-# Measurement dumps written by the `_verify` gates: full per-file scan output and
-# the gate-on/gate-off captures used to price a behaviour change. Evidence, not
-# source — the numbers they produced are quoted in README.md, and each file is
-# megabytes. `_verify` also holds the GATES themselves (.ps1), which ARE
-# committed, so the ignore is deliberately narrow and only covers `_`-prefixed
-# captures.
-_verify/_*.txt
-_verify/_*.json
+# `_verify` scratch. THE RULE IS THE CONVENTION: a file whose name starts with
+# an underscore is a SCRATCH FILE, and a scratch file is never tracked. It is
+# the same rule `.moonignore` states for the package, and the same one the
+# package gate checks ("the scratch probes and working copies", `^_verify\_`).
+#
+# 0643 MEASURED WHAT THE CONVENTION COST. Seventy files sat in this directory
+# as UNTRACKED scratch, and six of them were doing real work -- a TRACKED file
+# NAMED them, so a reader of the shipped documents was pointed at a file that
+# no clean checkout carried. The fix was NOT an exception list: the same names
+# would then have to be spelled in `.gitignore`, in `.moonignore` AND in the
+# package gate -- a rule spelled three times is a rule that drifts. It was to
+# PROMOTE them: a file that does work is RENAMED to drop the underscore and
+# tracked, and every reference to it is updated.
+#
+# So: `_` = scratch = never tracked. A scratch file that starts doing work gets
+# PROMOTED, not excepted. The one tracked underscore file is the provenance of
+# `_verify/NARRATIVE.md` -- the NARRATIVE's own first line names it, so a
+# reader has to be able to open it.
+_verify/_*
+!_verify/_split_release_narrative.ps1
 # `remeasure.ps1` writes one full per-file scan per corpus into this directory,
 # for the same reason and with the same size. It is NOT covered by the
 # `_verify/_*.txt` rule above because that rule only matches files directly in

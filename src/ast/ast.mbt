@@ -452,7 +452,7 @@ pub(all) struct Param {
   ///
   /// TWO SPELLINGS MAKE A PARAMETER OMITTABLE, and both are settled against
   /// the toolchain (`moon check` 0.1.20261012, re-settled on 0.1.20261016 --
-  /// see `_verify/_settle_0490_resettle.ps1`):
+  /// see `_verify/settle_0490_resettle.ps1`):
   ///
   ///   - `name? : T` -- the OPTIONAL spelling. Settled ACCEPT: a call that
   ///     omits it compiles.

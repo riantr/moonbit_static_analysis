@@ -1833,7 +1833,16 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # chapter's own lesson is in the title, and it is the one the increment
 # measured: a rule that is not reached from every entry point is not a rule,
 # and an unreadable file is a silence rather than a finding.
-$NARRATIVE_CHAPTERS = '184'
+#
+# 0642. 182 -> 183, and then 0643. 184 -> 185, and the new chapter is 0643's.
+# The chapter's own lesson is in the title: a file that does work must not look
+# like scratch, and a name that promises a file is a promise. The increment
+# measured SEVENTY-SIX untracked files in `_verify/`, found that SIX of them were
+# named by TRACKED files -- so the shipped documents pointed at files that no
+# clean checkout carried -- and promoted them: renamed to drop the underscore,
+# tracked, and every reference updated. It changed NO analyzer behaviour and no
+# public interface, and it moved NO other pin.
+$NARRATIVE_CHAPTERS = '185'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1882,7 +1891,12 @@ $NARRATIVE_CHAPTERS = '184'
 # artifact, and a gate has to measure it -- because a number that was RIGHT the
 # whole time, about the wrong artifact, is invisible to a gate that only asks
 # whether the number is true.
-$LOOP_RULES = '43'
+# The pin moved 43 -> 44 with rule 44, and the rule is the lesson 0643 measured:
+# a file that does work must not look like scratch, and a name that promises a
+# file is a promise -- SEVENTY-SIX untracked files sat in `_verify/` and SIX of
+# them were named by tracked files, so the shipped documents were pointing at
+# files that no clean checkout carried.
+$LOOP_RULES = '44'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

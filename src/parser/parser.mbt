@@ -2797,7 +2797,7 @@ fn Parser::parse_param_list(self : Parser) -> Array[@ast.Param] {
     // `= default` below -- and a default is legal only on a `~`, since a
     // default on a POSITIONAL parameter is rejected with 3010.
     //
-    // Settled in `_verify/_settle_0490_resettle.ps1`, 18 rows, one package
+    // Settled in `_verify/settle_0490_resettle.ps1`, 18 rows, one package
     // each, on `moon check` 0.1.20261016.
     let mut more_mods = true
     let mut omittable = false

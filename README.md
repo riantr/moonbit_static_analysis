@@ -2293,6 +2293,11 @@ The release-by-release history — every version's changes, the measurement behi
 change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGELOG.md)**
 ([中文](CHANGELOG.zh.md)).
 
+> **NOTE: the released artifact is older than this tree, because the source has moved under
+> version 0.5.4.** The published 0.5.4 was cut before this tree's `src/` moved, and what moved
+> is three comment lines — the paths of two proof scripts that were promoted from scratch to
+> tracked. No behavior moved with them; the next release ships the moved source.
+
 ## Contributing
 
 1. Fork the repository and create a feature branch.

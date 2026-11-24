@@ -3443,7 +3443,7 @@ same shape:
 That is the SAME defect 0490 fixed in four files, in the five files 0490 did not touch: 0.1.20261012
 renamed the default integer type, `moon fmt` rewrote this repository's SOURCE to `Int32`, and the
 committed interface files kept the old spelling. They were stale, and the new toolchain noticed.
-Measured, not assumed: `_verify/_mbti_regen_probe.ps1` restores `src/core/pkg.generated.mbti` from
+Measured, not assumed: `_verify/mbti_regen_probe.ps1` restores `src/core/pkg.generated.mbti` from
 `HEAD` (the `Int` spelling) and runs `moon check` -- and the file comes back with `Int32`. The
 toolchain regenerates it.
 
@@ -3478,7 +3478,7 @@ there before 0490. So the defect was not a missing measurement -- it was a SECON
 copy of a measurement the repository already held, and a reader who went to the lexer would have
 found the truth.
 
-THE RE-SETTLE that caught it is `_verify/_settle_0490_resettle.ps1`: EIGHTEEN rows, ONE PACKAGE
+THE RE-SETTLE that caught it is `_verify/settle_0490_resettle.ps1`: EIGHTEEN rows, ONE PACKAGE
 EACH, on the installed toolchain. One package per row because a single package cannot hold two
 rows -- one row's error would mask another's -- and the whole point of a settle is to see each
 verdict separately. All eighteen agree with 0490's conclusions, and the two the old comment got
@@ -3650,7 +3650,7 @@ AND THE 102 SPLIT CLEANLY ONCE IT WAS MEASURED, into two different upgrades:
          `builtin/pkg.generated.mbti`, gone from the installed one), and a few more.
 
 Those 102 are NOT all dropped names. One module per name, with a control module that must be
-rejected (`_verify/_settle_0490_builtins_alive.ps1`): 33 are DEAD -- the call is rejected, so
+rejected (`_verify/settle_0490_builtins_alive.ps1`): 33 are DEAD -- the call is rejected, so
 reporting it would be CORRECT -- and 69 are ALIVE, the call is accepted, and dropping them turns
 valid code into `undefined function`. Measured on the analyzer itself, in the per-function view:
 `Int::popcnt`, `Int::next_power_of_two`, `UInt::trunc_double`, `Int::reinterpret_as_uint`,
@@ -5489,7 +5489,7 @@ and, under the 0.4.31 changelog:
 ```
 
 **THE CENSUS THAT PRODUCED THOSE TWO COVERED SIX CORPORA.** The script that ran it --
-`_verify/_dir2_corpora.ps1`, an untracked scratch file, so no history and no pin --
+`_verify/dir2_corpora.ps1`, an untracked scratch file WHEN IT RAN, so it carried no history and no pin (it is tracked as of 0643) --
 lists exactly six: `moui`, `moonbit_labeler`, `moonbit_image`, `async`, `proton`,
 `proton_contract`. `moonbit_core` is not in it. The README's own vocabulary calls
 the corpora "the seven pinned corpora" three paragraphs above the claim, so the
@@ -25281,5 +25281,83 @@ about a version rather than a fact about an artifact, and a claim cannot be
 re-checked by anybody. And the proof that a fix SHIPPED belongs on the same
 bytes: the reader runs the released artifact, so the old release and the new one
 have to be measured against each other, on a corpus the fix was written for.
+
+## 0643: A FILE THAT DOES WORK MUST NOT LOOK LIKE SCRATCH, AND A NAME THAT PROMISES A FILE IS A PROMISE
+
+MEASURED 2026-11-24, on this tree at 0642's HEAD.
+
+THE QUESTION WAS NOT "WHY IS MY TREE DIRTY". It was "WHY ARE SEVENTY-SIX FILES UNTRACKED
+AT ALL", and the repository had already answered it, in two places that agree:
+
+    `.gitignore` / `.moonignore`   a file whose name starts with `_` is SCRATCH
+    `check_package_contents.ps1`   'the scratch probes and working copies', `^_verify\_`
+
+So they were untracked because they were scratch BY NAME, and the package gate would have
+gone RED if a scratch-looking file had ever been tracked and shipped. The naming was the
+convention working, not an oversight.
+
+BUT SIX OF THEM WERE DOING REAL WORK, and the test for that was not "does it look useful"
+but "DOES A TRACKED FILE NAME IT":
+
+    _verify/settle_0490_resettle.ps1          NARRATIVE, src/ast/ast.mbt, src/interp/interp.mbt, src/parser/parser.mbt
+    _verify/settle_0490_builtins_alive.ps1    NARRATIVE, tools/gen_builtin_methods.ps1
+    _verify/mbti_regen_probe.ps1              NARRATIVE
+    _verify/dir2_corpora.ps1                  NARRATIVE
+    _verify/scan_0421.ps1                     scan_0422.ps1, scan_0423.ps1, scan_0426.ps1
+    _verify/settle_0427_retfn.ps1             NARRATIVE, settle_0471_fn_literal_tail.ps1, src/parser/parser.mbt
+
+So a reader of the SHIPPED documents was pointed at files that no clean checkout carried.
+That is 0617's defect with a different body: there the pointer resolved on the
+maintainer's machine and not in the registry, and here it resolves on the maintainer's
+machine and NOT in a clean checkout -- because the file was never committed at all. A
+pointer in a tracked document is a promise, and the promise is kept by exactly one thing:
+the file being TRACKED.
+
+THE REPAIR WAS NOT AN EXCEPTION LIST. Tracking a `_`-prefixed file makes the package
+gate's junk rule fire, so the repair could have been to exempt them -- and the exemption
+would then have to be spelled in `.gitignore`, in `.moonignore` AND in
+`check_package_contents.ps1`. Three copies of one list is three ways to drift, and a rule
+spelled twice is a rule that drifts. So the files were PROMOTED: renamed to drop the
+underscore, tracked, and every reference updated.
+
+AND TWO OF THE SIX NEEDED NO REFERENCE EDIT AT ALL, because the REFERENCES were already
+right and the FILES were wrong:
+
+    the reference said   measure_0474_m3.ps1   the tracked file was exactly that
+    the reference said   settle_0427_retfn    the file on disk was settle_0427_retfn.ps1
+
+The first is the shape the whole increment is about: a scratch copy sat next to the
+tracked file, and the tracked TEXT named the tracked one. So the scratch copy of
+`measure_0474_m3.ps1` was DELETED, and the tracked file is the one the references mean.
+
+THE COUNTS
+
+    untracked files in _verify/                76
+    of those, named by a tracked file           8
+    of those, a runtime temporary               1   (`_head_tmp`, written by `ab_0456_0457_coverage.ps1`)
+    of those, a copy of a tracked file          1   (`_measure_0474_m3.ps1`)
+    PROMOTED (renamed where the name was wrong, tracked)   6
+    DELETED                                                      70
+    untracked files in _verify/ after          0
+
+AND THE `.gitignore` RULE IS THE CONVENTION, NOT A FILTER. `_verify/_*` is ignored now,
+so a scratch file stops showing up as untracked -- and a scratch file that starts doing
+work has to be PROMOTED, not excepted. The ONE tracked underscore file is
+`_verify/_split_release_narrative.ps1`, because `_verify/NARRATIVE.md`'s own first line
+names it as its provenance, and a provenance a reader cannot open is not provenance.
+
+AND THE SOURCE MOVED, SO THE DOCUMENTS SAY SO. Three comment lines under `src/` now
+carry the new paths (`src/ast/ast.mbt`, `src/interp/interp.mbt`, `src/parser/parser.mbt`),
+so the published 0.5.4's source is older than this tree, and `check_release_freshness.ps1`
+requires both READMEs to say so -- which they now do. No BEHAVIOR moved: the published
+artifact and this tree's build differ in comments, and the next release ships them.
+
+=> 判据: A FILE THAT DOES WORK MUST NOT LOOK LIKE SCRATCH, AND A NAME THAT PROMISES A FILE
+IS A PROMISE. "Is this file doing anything" has a MEASURABLE answer -- does a tracked file
+name it -- and "may it be tracked" has a mechanical one -- its name, and the package gate's
+junk rule. Six of the seventy-six were failing the first test while LOOKING like they had
+passed the second, and the repair is to change the NAME and follow the references, NOT to
+widen the ignore rule: a widened rule is where the next scratch file goes to hide.
+
 
 

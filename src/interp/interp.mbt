@@ -3440,7 +3440,7 @@ fn omittable_at(def : MethodDef, i : Int32) -> Bool {
 /// re-checked against what is actually installed -- and this one was found
 /// inverted by that re-check rather than by the upgrade: the old toolchain
 /// agrees with the new one on all eighteen rows of
-/// `_verify/_settle_0490_resettle.ps1`.
+/// `_verify/settle_0490_resettle.ps1`.
 ///
 /// => 判据: A SETTLED FACT IS A CLAIM ABOUT A TOOLCHAIN, AND THE CLAIM HAS TO NAME
 /// THE VERSION. A comment that says "the toolchain settles that" and then

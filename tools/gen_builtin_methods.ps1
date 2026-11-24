@@ -57,7 +57,7 @@
 #   dropping a name the toolchain still HAS    -> a FALSE POSITIVE
 #
 # And the 102 are NOT all dropped names. Measured one module per name against
-# the new toolchain (`_verify/_settle_0490_builtins_alive.ps1`, with a control
+# the new toolchain (`_verify/settle_0490_builtins_alive.ps1`, with a control
 # module that must be rejected): 33 are DEAD -- the call is rejected, so
 # reporting it would be CORRECT -- and 69 are ALIVE, the call is accepted, and
 # dropping them turns valid code into `undefined function`. Measured on the
