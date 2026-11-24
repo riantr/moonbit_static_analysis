@@ -309,6 +309,80 @@ function Compare-SymbolSets {
   return @{ added = $added; missing = $missing; ok = ($added.Count -eq 0) }
 }
 
+# --- the floor's VERSION rule --------------------------------------------------
+#
+# A FLOOR IS A LOWER BOUND. The contract's `min-host-core` is the MINIMUM core a
+# host has to bundle -- both READMEs say "0.10.21+06da1ed44 **or later**" -- so
+# the question asked of the toolchain standing in front of this gate is "is it AT
+# OR ABOVE the floor", and NOT "is it EXACTLY the floor".
+#
+# MEASURED 2026-11-24: this gate compared the two for EQUALITY, and the
+# toolchain that 0631 RE-GATED this tree on -- core `0.10.22+124d61d05`, the
+# `$CORE_REGATED` pin in `_verify/release.ps1` -- turned it RED, while the
+# coverage check right underneath it said the contract is still satisfiable
+# (213 core externs + 289 runtime names cover all 93). So the gate reported a
+# defect where there was none, and it did so on the one machine whose toolchain
+# the tree was re-gated on. The tree was re-gated against 0.10.22 (0631), so
+# 0.10.22 is the SANCTIONED state and the gate has to be GREEN in it.
+#
+# THAT IS THE SAME MISTAKE 0606 FIXED FOR THE SYMBOL SET AND NEVER CARRIED OVER
+# TO THE VERSION. 0606: "the contract is a FLOOR, so the check is a SUBSET
+# check" -- a symbol outside the contract is a failure, a symbol inside it that
+# one build does not ask for is a note. The version was left as an EQUALITY, so
+# the floor was compared as if it were a MIRROR: a mirror is a floor's opposite.
+# And 0631 already ruled the question: "the floor stays `moon 0.1.20261117 or
+# later` -- the new core declares 213 host externs and the runtime implements
+# 288 more, and together they still cover all 93."
+#
+# THE ORDER. The core's own version is `0.10.<n>+<hash>`, so the numeric part
+# orders and the hash only says WHICH BUILD. An incomparable pair is treated as
+# OLDER -- a gate that guesses is worse than a gate that says it cannot tell --
+# which is the rule `_verify/check_toolchain_claims.ps1` already uses for the
+# toolchain's own versions.
+function Compare-CoreVersion {
+  param([string]$A, [string]$B)
+  if ($A -eq '' -or $B -eq '') { return -1 }
+  $ma = [regex]::Match($A, '^(\d+)\.(\d+)\.(\d+)')
+  $mb = [regex]::Match($B, '^(\d+)\.(\d+)\.(\d+)')
+  if (-not $ma.Success -or -not $mb.Success) { return -1 }
+  for ($i = 1; $i -le 3; $i++) {
+    $x = [int]$ma.Groups[$i].Value
+    $y = [int]$mb.Groups[$i].Value
+    if ($x -lt $y) { return -1 }
+    if ($x -gt $y) { return 1 }
+  }
+  return 0
+}
+
+# THE FLOOR'S VERDICT ON ONE CORE VERSION. ONE definition of the question, used
+# by the gate AND by its self-test: a comparison the self-test exercises is not
+# a copy of the gate's logic.
+function Test-CoreFloor {
+  param([hashtable]$Contract, [string]$CoreVersion)
+  $rel = Compare-CoreVersion $CoreVersion $Contract.min
+  if ($rel -lt 0) {
+    return @{
+      ok = $false
+      relation = 'older'
+      problems = @('this toolchain bundles core ' + $CoreVersion + ', which is OLDER than the contracted floor ' + $Contract.min + '. A toolchain below the floor cannot satisfy the contract, so the floor is not met by the toolchain that has to meet it.')
+    }
+  }
+  return @{ ok = $true; relation = $(if ($rel -eq 0) { 'equal' } else { 'newer' }); problems = @() }
+}
+
+# A CORE VERSION WITH ITS MINOR MOVED. The self-test's fixtures are DERIVED
+# from the floor, not written down: a case that hardcodes a version rots the
+# day the floor moves, and then the "above the floor" case silently becomes a
+# "below the floor" case and proves the opposite of what it claims.
+function Shift-CoreVersion {
+  param([string]$Version, [int]$Delta)
+  $m = [regex]::Match($Version, '^(\d+)\.(\d+)\.(\d+)(.*)$')
+  if (-not $m.Success) { return '' }
+  $n = [int]$m.Groups[3].Value + $Delta
+  if ($n -lt 0) { return '' }
+  return ($m.Groups[1].Value + '.' + $m.Groups[2].Value + '.' + $n + $m.Groups[4].Value)
+}
+
 function Get-AsyncExterns {
   param([string]$Version, [string]$Root)
   $dir = Join-Path $Root ('.repos\moonbitlang\async\' + $Version)
@@ -528,18 +602,22 @@ if ($asyncImports.Count -gt 0) {
 # THE FLOOR IS A TOOLCHAIN NOW. The host supplies the ABI from the async
 # runtime bundled with the USER's toolchain, so the floor is checked against
 # that bundle: it has to declare every contracted symbol, and its version has
-# to BE the recorded floor.
+# to be AT OR ABOVE the recorded floor -- a floor is a LOWER BOUND, and both
+# READMEs say "0.10.21+06da1ed44 or later".
 $core = Get-BundledCore $CoreDir
 if ($null -eq $core) {
   Write-Output ('  note  no bundled core at ' + $CoreDir + ' -- the coverage check needs the toolchain that built the artifact.')
 } else {
   Write-Output ('  bundled core  : ' + $core.name + ' ' + $core.version)
-  if ($core.version -ne $contractData.min) {
-    Write-Output ('FAIL: the toolchain bundles core ' + $core.version + ', the contracted floor is ' + $contractData.min + '.')
-    Write-Output '      The floor and the toolchain are one fact, and a toolchain that moved must move the floor.'
-    $fail++
-  } else {
+  $floorVerdict = Test-CoreFloor $contractData $core.version
+  if (-not $floorVerdict.ok) {
+    foreach ($pr in $floorVerdict.problems) { Write-Output ('FAIL: ' + $pr); $fail++ }
+  } elseif ($floorVerdict.relation -eq 'equal') {
     Write-Output ('  ok  the toolchain bundles core ' + $core.version + ', the contracted floor')
+  } else {
+    Write-Output ('  ok  the toolchain bundles core ' + $core.version + ', which is NEWER than the contracted floor ' + $contractData.min + '.')
+    Write-Output '      The floor is a floor: it stays where it is when the toolchain moves (0631), and the'
+    Write-Output '      coverage check below is what decides whether the contract is still satisfiable.'
   }
   $externs = Get-CoreAsyncExterns $CoreDir $contractData.abi
   if ($null -eq $externs) {
@@ -568,10 +646,12 @@ if ($null -eq $core) {
 # document that quotes one has to quote the current one -- so the gate measures
 # them and the documents are held to the measurement.
 #
-# They are checked only when the bundled core IS the contracted one: when the
-# toolchain has moved, the floor has to move first, and that failure is already
-# reported above in the gate's own words. A count measured against a different
-# core would be a second, confusing failure.
+# They are checked only when the bundled core IS the contracted one: the counts
+# are MEASUREMENTS of the floor's own build, and a toolchain that bundles a
+# NEWER core measures its own numbers instead -- the floor's counts are then
+# the ones the contract and the documents recorded, not the ones this machine
+# can re-measure. (The toolchain being older than the floor is already
+# reported above, in the gate's own words.)
 if ($null -eq $core) {
   Write-Output '  note  no bundled core, so the counts the documents quote are not checked'
 } elseif ($core.version -ne $contractData.min) {
@@ -984,6 +1064,91 @@ function Replace-InSentence {
       Write-Output ('  ok  ' + $c.Label + ' -- a wrong published-artifact sentence is caught: ' + $joined)
     }
   }
+
+  # --- the VERSION rule: a floor is a LOWER BOUND, and it can still go red ------
+  #
+  # THE THREE CASES ARE THREE COPIES OF ONE CORE, AND THE VERSION IS THE ONLY
+  # DIFFERENCE BETWEEN THEM. Every one of them declares EVERY contracted
+  # symbol, so the COVERAGE check passes in all three -- and that is MEASURED
+  # here, recomputed from each fixture with the SAME reader the gate uses,
+  # rather than asserted. A case that also failed coverage would prove
+  # something about the coverage, not about the version.
+  #
+  #   the floor itself        ACCEPTED -- it is the floor
+  #   a core BELOW the floor  REJECTED -- a host cannot be below the minimum
+  #                        the contract asks for, and this is the direction
+  #                        that DROPS USERS
+  #   a core ABOVE the floor  ACCEPTED -- this is the case that was RED on
+  #                        2026-11-24, and 0631 already ruled it: "the floor
+  #                        stays moon 0.1.20261117 or later"
+  #
+  # THE VERSIONS ARE DERIVED FROM THE FLOOR, never written down, so that the
+  # cases survive the floor moving.
+  Write-Output ''
+  Write-Output '=== the self-test: the floor is a lower bound, and the version rule can still go red ==='
+  $verScratch = Join-Path $env:TEMP ('hostreq_ver_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  $rt = Get-RuntimeNames $RuntimeDir
+  $verCases = @(
+    @{ label = 'the floor itself';      version = $contractData.min;                      want = 'ok'  },
+    @{ label = 'a core below the floor'; version = (Shift-CoreVersion $contractData.min -1); want = 'red' },
+    @{ label = 'a core above the floor'; version = (Shift-CoreVersion $contractData.min 1); want = 'ok'  }
+  )
+  foreach ($c in $verCases) {
+    if ($c.version -eq '') {
+      Write-Output ('FAIL: ' + $c.label + ' -- the floor ' + $contractData.min + ' could not be shifted, so the case proved nothing')
+      $fail++
+      continue
+    }
+    $cdir = Join-Path $verScratch ([regex]::Replace($c.version, '[^0-9A-Za-z]', '_'))
+    New-Item -ItemType Directory -Force -Path (Join-Path $cdir 'async') | Out-Null
+    $mm = @('name = "moonbitlang/core"', ('version = "' + $c.version + '"'), '') -join "`n"
+    [System.IO.File]::WriteAllText((Join-Path $cdir 'moon.mod'), $mm, (New-Object System.Text.UTF8Encoding($false)))
+    # EVERY contracted symbol, declared the way the bundled core declares them.
+    $decls = @()
+    foreach ($s in $contractData.symbols) {
+      $decls += ('fn host_' + $decls.Count + '() = "' + $contractData.abi + '" "' + $s + '"')
+    }
+    [System.IO.File]::WriteAllText((Join-Path $cdir 'async\externs.mbt'), (($decls -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+    # THE SAME READERS THE GATE USES: the version out of the fixture's own
+    # moon.mod, the coverage out of the fixture's own async package.
+    $fc = Get-BundledCore $cdir
+    $fx = Get-CoreAsyncExterns $cdir $contractData.abi
+    if ($null -eq $fc -or $null -eq $fx) {
+      Write-Output ('FAIL: ' + $c.label + ' -- the fixture could not be read back, so the case proved nothing')
+      $fail++
+      continue
+    }
+    if ($fc.version -ne $c.version) {
+      Write-Output ('FAIL: ' + $c.label + ' -- the fixture reads back as ' + $fc.version + ' instead of ' + $c.version + ', so the case proved nothing')
+      $fail++
+      continue
+    }
+    $covered = @($contractData.symbols | Where-Object {
+      $bare = $_.Substring($_.LastIndexOf('/') + 1)
+      $fx.ContainsKey($_) -or $rt.ContainsKey($bare)
+    })
+    if ($covered.Count -ne $contractData.symbols.Count) {
+      Write-Output ('FAIL: ' + $c.label + ' -- the fixture covers only ' + $covered.Count + ' of the ' + $contractData.symbols.Count + ' contracted symbols, so the version rule is not the only thing that can decide')
+      $fail++
+      continue
+    }
+    $r = Test-CoreFloor $contractData $fc.version
+    if ($c.want -eq 'ok') {
+      if (-not $r.ok) {
+        Write-Output ('FAIL: ' + $c.label + ' (' + $fc.version + ') was REJECTED: ' + ($r.problems -join '; '))
+        $fail++
+      } else {
+        Write-Output ('  ok  accepted ' + $c.label + ' (' + $fc.version + '), and the verdict says it is ' + $r.relation + ' the floor')
+      }
+    } else {
+      if ($r.ok) {
+        Write-Output ('FAIL: ' + $c.label + ' (' + $fc.version + ') was ACCEPTED. A floor that cannot be checked is a comment.')
+        $fail++
+      } else {
+        Write-Output ('  ok  rejected ' + $c.label + ' (' + $fc.version + '): ' + ($r.problems -join '; '))
+      }
+    }
+  }
 }
 
 Write-Output ''
@@ -991,5 +1156,5 @@ if ($fail -gt 0) {
   Write-Output ('ABORT: {0} check(s) failed.' -f $fail)
   exit 1
 }
-Write-Output 'GATE OK: every symbol the artifact requires is in the contract, the dependency has not come back, and the toolchain -- its bundled core AND its runtime -- is the contracted floor and can satisfy every one of them.'
+Write-Output 'GATE OK: every symbol the artifact requires is in the contract, the dependency has not come back, and the toolchain -- its bundled core AND its runtime -- is at or above the contracted floor and can satisfy every one of them.'
 exit 0

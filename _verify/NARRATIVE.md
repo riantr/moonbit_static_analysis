@@ -25359,5 +25359,110 @@ junk rule. Six of the seventy-six were failing the first test while LOOKING like
 passed the second, and the repair is to change the NAME and follow the references, NOT to
 widen the ignore rule: a widened rule is where the next scratch file goes to hide.
 
+## 0644: A FLOOR IS A FLOOR, AND THE GATE THAT COMPARED IT AS A MIRROR WAS WRONG
+
+MEASURED 2026-11-24, on this tree at 0643's HEAD.
+
+THE RELEASE GATE WENT RED, and it named three stages:
+
+    RELEASE GATE FAILED: host-requirements, host-requirements-selftest, selfscan-selftest
+
+THREE STAGES, AND THEY ARE ONE FAILURE. `_verify/selfscan_published.ps1`'s replay path RUNS the
+host-contract check, so a single comparison propagated into the self-test's four red checks.
+Nothing else was wrong: the tree guard that catches a scan which read NOTHING was still firing
+correctly on the empty-tree capture -- it is the guard's job to fire, and the replay's OTHER
+failure was what made the capture red for a second reason.
+
+SO THE FIRST QUESTION WAS NOT "WHAT IS WRONG WITH THE GATE". It was "WHOSE FAULT IS THE RED",
+and the answer had to be MEASURED, because the gate reads the tree AND the machine:
+
+    the tree before this fix (6ef403d), same machine   -> exit 1, the SAME one FAIL line
+    this tree, same machine                           -> exit 1, the same one FAIL line
+
+The tree did not do it. And the machine had moved:
+
+    ~/.moon/lib/core/moon.mod   mtime 2026-11-24 06:01:40
+    the toolchain then           moon 0.1.20261119, bundled core 0.10.22+124d61d05
+    the toolchain at 0642        moon 0.1.20261117, bundled core 0.10.21+06da1ed44
+
+which is AFTER the 0642 gate run that was green. So: the machine moved forward, and the gate
+went red for it.
+
+BUT A MOVING MACHINE IS NOT YET A DEFECT. The next question was whether the red was RIGHT --
+and this repository had already answered it, in three places that agree.
+
+THE FLOOR IS A LOWER BOUND. Both READMEs say "a MoonBit toolchain bundling `moonbitlang/core`
+0.10.21+06da1ed44 **or later**", and the contract's field is named `min-host-core`. A toolchain
+that bundles a NEWER core does not violate a floor.
+
+0631 ALREADY RULED THIS QUESTION, and it ruled it with the numbers:
+
+    the new core declares 213 host externs and the runtime implements 288 more, and together
+    they still cover all 93 -- so THE FLOOR STAYS `moon 0.1.20261117 or later`.
+
+MEASURED on this machine the coverage still holds: 213 core externs plus 289 runtime names
+cover all 93 contracted symbols. So by the repository's own ruling, the floor does not move.
+
+AND 0606 HAD ALREADY FIXED THIS SHAPE -- FOR THE SYMBOLS. "The contract is a FLOOR, so the check
+is a SUBSET check": a symbol outside the contract is a failure, a symbol inside it that one
+build does not ask for is a note. The VERSION was left as an EQUALITY:
+
+    if ($core.version -ne $contractData.min) { FAIL }
+
+That is the same mistake 0606 fixed for the symbols, in the same file, and it was never carried
+over: the symbol set was compared as a FLOOR and the version as a MIRROR, and a mirror is a
+floor's opposite. The line dates from `752624b` (2026-11-10) -- SIX DAYS BEFORE 0631's ruling,
+which is why it was never revisited.
+
+AND THE TREE WAS RE-GATED ON THE NEW CORE. `_verify/release.ps1` carries
+
+    $CORE_REGATED = '0.10.22+124d61d05'
+
+set by 0631, because that is the core this tree was re-gated against. So 0.10.22 is not a drift
+the tree has to be dragged along by: it is the SANCTIONED state, and a gate that is red in the
+sanctioned state is a gate that is wrong.
+
+THE REPAIR WAS NOT TO RAISE THE FLOOR. Raising it to 0.10.22 would drop every user on
+`moon 0.1.20261117` -- and the gate's own words for that direction are "the direction that
+DROPS USERS", which is the direction a floor's whole purpose is to avoid. The repair was to
+compare the version the way a floor is compared: AT OR ABOVE.
+
+    below the floor  -> FAIL, with the reason
+    at the floor     -> ok
+    above the floor  -> ok, and the floor stays where it is
+
+AND THE NEW RULE HAS TO BE ABLE TO GO RED, or it is a comment. The self-test builds three
+fixture cores that differ in ONE thing -- the version in their own `moon.mod` -- and every one
+of them declares every contracted symbol, so the coverage check passes in all three and the
+version rule is the only thing that can decide. The fixture versions are DERIVED from the floor
+rather than written down, so the cases survive the floor moving.
+
+    the floor itself        accepted
+    a core below the floor  REJECTED
+    a core above the floor  accepted
+
+`_verify/settle_0644_floor_is_a_floor.ps1` runs the GATE ITSELF against the two shifted cores
+-- not a copy of its logic -- and reads the exit code and the FAIL lines:
+
+    a core below the floor  -> exit 1, ONE FAIL line, and it is the version rule
+    a core above the floor  -> exit 0, zero FAIL lines
+
+"ONE FAIL line" is the isolation: a gate that went red for a second reason as well would not
+prove that the version rule is what decides. And the same script runs the whole question on the
+tree BEFORE this fix, in a git worktree, with this tree's wasm -- a fresh worktree carries no
+`_build`, and the gate would then ABORT with "there is no artifact to audit" before it ever
+reached the version rule:
+
+    the previous tree, same machine -> exit 1, the same one FAIL line
+
+=> 判据: A FLOOR IS A FLOOR, AND A GATE THAT COMPARED IT AS A MIRROR WAS WRONG. "The toolchain
+is not the floor" and "the toolchain does not meet the floor" are DIFFERENT questions, and a
+gate that asks the first one will go red every time the machine is updated -- which is the one
+thing a machine does. Before calling a red gate a defect, separate "the tree changed" from "the
+machine changed" by running the SAME gate on the PREVIOUS tree on the SAME machine, and before
+changing a floor's NUMBER, ask whether the floor is supposed to move: 0631 already ruled that it
+does not, and a floor that moves upward drops the users it exists to protect.
+
+
 
 

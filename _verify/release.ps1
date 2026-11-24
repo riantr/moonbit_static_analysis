@@ -1842,7 +1842,17 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # clean checkout carried -- and promoted them: renamed to drop the underscore,
 # tracked, and every reference updated. It changed NO analyzer behaviour and no
 # public interface, and it moved NO other pin.
-$NARRATIVE_CHAPTERS = '185'
+#
+# 0644. 185 -> 186, and the new chapter is 0644's. The chapter's own lesson is
+# in the title: a FLOOR IS A FLOOR, AND A GATE THAT COMPARES IT AS A MIRROR WAS
+# WRONG. The increment measured a RED release gate whose three failing stages
+# all came from ONE comparison -- the toolchain's bundled core against the
+# CONTRACTED floor -- and that comparison was an EQUALITY, so the tree was
+# red on the very core (0.10.22+124d61d05) that 0631 re-gated it on. The fix
+# changes the version rule to a LOWER BOUND and adds three self-test cases
+# around it. It changed NO analyzer behaviour and no public interface, and it
+# moved NO other pin.
+$NARRATIVE_CHAPTERS = '186'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1896,7 +1906,13 @@ $NARRATIVE_CHAPTERS = '185'
 # file is a promise -- SEVENTY-SIX untracked files sat in `_verify/` and SIX of
 # them were named by tracked files, so the shipped documents were pointing at
 # files that no clean checkout carried.
-$LOOP_RULES = '44'
+# The pin moved 44 -> 45 with rule 45, and the rule is the lesson 0644 measured:
+# a FLOOR is a floor -- the gate that compared the toolchain's bundled core to
+# the contracted floor for EQUALITY went red on the very core (0.10.22) that
+# 0631 had re-gated this tree on, while the coverage check underneath it said
+# the contract was still satisfiable; and the tree BEFORE the fix reports the
+# same failure on the same machine, so the red was never this tree's fault.
+$LOOP_RULES = '45'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
