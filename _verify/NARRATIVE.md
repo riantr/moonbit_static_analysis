@@ -25463,6 +25463,82 @@ machine changed" by running the SAME gate on the PREVIOUS tree on the SAME machi
 changing a floor's NUMBER, ask whether the floor is supposed to move: 0631 already ruled that it
 does not, and a floor that moves upward drops the users it exists to protect.
 
+## 0645: THE PRE-FLIGHT AND THE MUTATION MUST READ THE SAME TEXT, AND A GATE THAT DEPENDS ON LINE ENDINGS DEPENDS ON SOMETHING GIT DOES NOT SHOW YOU
+
+MEASURED 2026-11-24, on this tree at 0644's HEAD.
+
+THE FULL GATE, WITH THE MUTATIONS IN, WENT RED:
+
+    RELEASE GATE FAILED: mutate:0412, mutate:0418, mutate:0419, ... (64 of the 89)
+    exit 1, 1791 s, and the tree restored clean afterwards
+
+SIXTY-FOUR of the eighty-nine mutation gates, every one of them with the same abort:
+
+    ABORT: N pattern(s) absent. No suite was run.
+
+They aborted BEFORE running anything, so they were not failures of the mutations -- they were the
+PRE-FLIGHT refusing to find anchors. The other 82 stages were green.
+
+THE CAUSE HAS TWO HALVES, and the first one is a story about this repository's own habits.
+
+WHAT MADE THE FILES CRLF. `core.autocrlf=true` comes from the GIT INSTALLATION's own config
+(`D:/Program Files/Git/etc/gitconfig`), not from this repository and not from the user. It rewrites
+the files a CHECKOUT touches -- and this repository's own discriminating controls need a checkout
+(the 0644 control ran the previous commit's tree in a worktree). So a `git checkout` turned
+sixteen files into CRLF while the BLOBS stayed LF, and `git status` stayed CLEAN, because git
+normalises before it compares: a line-ending change is INVISIBLE to git by construction.
+
+MEASURED, the footprint matched the checkout exactly. The 219 pre-flight misses fell on TWO files
+-- `src/parser/parser.mbt` (179) and `src/interp/interp.mbt` (40) -- and those are the two source
+files among the sixteen the checkout touched. A census of the whole tree said the same thing:
+every file in the 0643 diff was CRLF, every file outside it was LF.
+
+WHY THE GATES THEN FAILED. `_verify/mutate_lib.ps1` reads each target file ONCE, and the two
+halves of one gate disagreed about that text:
+
+    the MUTATION PHASE   detects the file's EOL, replaces CRLF with LF, matches the anchor
+                          against the normalised text, and converts back when it writes
+    the PRE-FLIGHT        matched the RAW text against an LF anchor
+
+Every anchor in this repository is written with "`n" (LF), because the blobs are LF. So on a CRLF
+file the pre-flight could not find anchors that the mutation phase would have found -- and the
+gate aborted on the stricter reader before it ran a single test. TWO RULERS FOR ONE TEXT.
+
+THE PROOF, ON THE SAME TREE. The pre-flight's normalisation was added and NOTHING ELSE was
+changed -- the tree was still CRLF, the machine was the same, and four gates that had been RED
+in the full run were run standalone:
+
+    mutate_0412  ->  GATE OK   baseline 1807/1807 passed, 0 failed, 3 killed
+    mutate_0461  ->  GATE OK   baseline 1642/1642 passed, 0 failed, 4 killed
+    mutate_0504  ->  GATE OK   baseline 1807/1807 passed, 0 failed, 8 killed
+    mutate_0615  ->  GATE OK   baseline 1807/1807 passed, 0 failed, 5 killed
+
+and every one of them ended with "every restore verified byte-identical" -- the tree the gates
+mutate is the tree they restore, and the harness proves it with SHA256.
+
+AND THE FIX IS A GUARD, NOT A PATCH. `_verify/mutate_lib_selftest.ps1` grew a case that runs ONE
+CRLF fixture -- a few lines, in TEMP, with a two-line anchor -- through BOTH readers:
+
+    the real harness                    MUST find the anchor
+    a harness with the fix REMOVED      MUST miss it
+
+The second half is what makes the first one mean something: a fixture that passed for any reason
+would pass the first half too.
+
+AND THE TREE WAS PUT BACK. The sixteen files were rewritten from their blobs' bytes, so the
+working tree is byte-identical to what it was before the checkout. Seven files are still CRLF, and
+they PREDATE this increment (the installation wrote them at clone time, and no mutation gate
+anchors on any of them).
+
+=> 判据: THE PRE-FLIGHT AND THE MUTATION MUST READ THE SAME TEXT. A pre-flight that is stricter
+than the thing it is a pre-flight FOR is not a pre-flight; it is a second, disagreeing
+implementation, and it will abort on the day the working tree's bytes stop matching the bytes the
+anchors were written against. And a gate that depends on LINE ENDINGS depends on a thing git does
+not even show you: `git status` was CLEAN through all of it, because git normalises before it
+compares. When a gate's verdict changes with no change in the tree, the first question is what
+the gate READS that git does not -- and the answer has to be measured with the same fixture
+through both readers, or the fix is a guess.
+
 
 
 

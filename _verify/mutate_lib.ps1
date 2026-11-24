@@ -292,6 +292,33 @@ function Invoke-MutationGate {
   foreach ($m in $live) {
     $findText = ([string]$m.Find).Replace("`r`n", $nl)
     $hay = $texts[$m.File]
+    # 0645. THE HAYSTACK IS NORMALIZED HERE, EXACTLY AS THE MUTATION PHASE
+    # NORMALIZES IT -- and it was not, and the two halves of one gate disagreed
+    # about the same text.
+    #
+    # MEASURED 2026-11-24: on a working tree whose files are CRLF, 64 of the 89
+    # mutation gates went RED with "ABORT: N pattern(s) absent. No suite was run."
+    # -- the PRE-FLIGHT could not find anchors that the MUTATION PHASE would have
+    # found, because the mutation phase normalises the file to LF first (it
+    # detects the file's EOL and replaces CRLF with LF before matching, then
+    # converts back when it writes) while the pre-flight matched the RAW text
+    # against an LF anchor. Two rulers for one text, and the gate aborted on the
+    # stricter one before it ever ran anything.
+    #
+    # WHAT MADE THE TREE CRLF IS WORTH RECORDING TOO: `core.autocrlf=true` (from
+    # the Git installation's own config) rewrites the files a checkout touches,
+    # so a `git checkout` -- which this repository's own discriminating
+    # controls need -- silently changed sixteen files to CRLF. The blobs stayed
+    # LF, and `git status` stayed CLEAN, because git normalises before it
+    # compares: a line-ending change is invisible to git by construction.
+    #
+    # => 判据: the pre-flight and the mutation must READ THE SAME TEXT. A
+    # pre-flight that is stricter than the thing it is a pre-flight FOR is not a
+    # pre-flight; it is a second, disagreeing implementation. And a gate that
+    # depends on the working tree's LINE ENDINGS depends on a thing git does
+    # not even show you.
+    $hayEol = if ($hay.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { $nl }
+    $hay = $hay.Replace($hayEol, $nl)
     # COUNT, do not merely test presence. `mutate_lib` removes the FIRST literal match, so
     # an anchor that occurs twice silently targets the wrong site while the gate reports
     # a clean kill. Four anchors have now been found that way, across three increments:

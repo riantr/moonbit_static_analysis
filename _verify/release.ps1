@@ -1852,7 +1852,17 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # changes the version rule to a LOWER BOUND and adds three self-test cases
 # around it. It changed NO analyzer behaviour and no public interface, and it
 # moved NO other pin.
-$NARRATIVE_CHAPTERS = '186'
+#
+# 0645. 186 -> 187, and the new chapter is 0645's. The chapter's own lesson is
+# in the title: THE PRE-FLIGHT AND THE MUTATION MUST READ THE SAME TEXT. The
+# increment ran the FULL gate with the mutations in -- the first run in this
+# repository's history that did so at this size -- and 64 of the 89 mutation
+# gates went RED because the pre-flight matched an LF anchor against a CRLF
+# file while the mutation phase normalised the file first. The fix is one
+# normalisation in the pre-flight, plus a self-test case that runs one CRLF
+# fixture through BOTH readers. It changed NO analyzer behaviour and no public
+# interface, and it moved NO other pin.
+$NARRATIVE_CHAPTERS = '187'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1912,7 +1922,13 @@ $NARRATIVE_CHAPTERS = '186'
 # 0631 had re-gated this tree on, while the coverage check underneath it said
 # the contract was still satisfiable; and the tree BEFORE the fix reports the
 # same failure on the same machine, so the red was never this tree's fault.
-$LOOP_RULES = '45'
+# The pin moved 45 -> 46 with rule 46, and the rule is the lesson 0645 measured:
+# the PRE-FLIGHT and the MUTATION must READ THE SAME TEXT -- the pre-flight
+# matched an LF anchor against a CRLF file while the mutation phase normalised
+# the file first, so 64 of the 89 mutation gates went red on a tree whose
+# `git status` was CLEAN, because git normalises before it compares and a
+# line-ending change is invisible to it.
+$LOOP_RULES = '46'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

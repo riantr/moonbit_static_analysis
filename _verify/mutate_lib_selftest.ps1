@@ -119,5 +119,109 @@ if ($code -eq 0) {
   Write-Output 'FAIL: the demonstration gate exited 0 -- a run that could not be scored must FAIL.'
   exit 1
 }
-Write-Output 'SELFTEST OK: the INCONCLUSIVE verdict fires, is retried once, and FAILS the gate.'
+
+# --- 4. 0645. THE PRE-FLIGHT AND THE MUTATION MUST READ THE SAME TEXT ----------
+#
+# THE DEFECT THIS PROVES. MEASURED 2026-11-24: 64 of the 89 mutation gates went
+# RED with "ABORT: N pattern(s) absent. No suite was run." -- the PRE-FLIGHT
+# could not find anchors that the MUTATION PHASE would have found, because the
+# mutation phase normalises the file to LF before it matches (it detects the
+# file's EOL and replaces CRLF with LF, then converts back when it writes) and
+# the pre-flight matched the RAW text against an LF anchor. Two rulers for one
+# text, and the gate aborted on the stricter one before it ran anything.
+#
+# WHY A CRLF FILE IS THE RIGHT FIXTURE. The mutation tables in this repository
+# write their anchors with "`n" (LF), because the blobs are LF. A file whose
+# bytes are CRLF is therefore the case where the two readers disagree, and it
+# is not a hypothetical one: `core.autocrlf=true` (from the Git installation's
+# own config) rewrites the files a checkout touches, and `git status` stays
+# CLEAN while it does it, because git normalises before it compares.
+#
+# THE TWO HALVES OF THE PROOF, on ONE fixture:
+#
+#   the REAL harness          the pre-flight MUST find the anchor
+#   a harness with the fix REMOVED   the pre-flight MUST miss it
+#
+# The second half is what makes the first one mean something: a fixture that
+# passes for any reason would pass the first half too.
+#
+# The fixture lives in TEMP and is a few lines long, so the real tree is never
+# patched and the demonstration costs no test suite.
+$crlfDir = Join-Path $tmp 'crlf'
+New-Item -ItemType Directory -Force -Path $crlfDir | Out-Null
+$crlfFile = Join-Path $crlfDir 'fixture.txt'
+# THE ANCHOR SPANS TWO LINES, and the file's bytes are CRLF.
+[System.IO.File]::WriteAllText($crlfFile, "alpha`r`n  match toks[i] {`r`n    TName(n) => {`r`nbeta`r`n", (New-Object System.Text.UTF8Encoding($false)))
+
+$fixtureGate = Join-Path $tmp 'mutate_crlf_fixture.ps1'
+$fixtureSrc = @'
+$ErrorActionPreference = 'Stop'
+. '__HARNESS__'
+Invoke-MutationGate -Name 'selftest-crlf' -Target 'js' -Root '__ROOT__' -Mutations @(
+  @{
+    Name = 'M1 the anchor spans two lines'
+    File = 'fixture.txt'
+    Find = "  match toks[i] {`n    TName(n) => {"
+    Repl = "  match toks[j] {`n    TName(n) => {"
+    Expect = 'COMPILE-ERR'
+    Prove = 'the demonstration: the fixture is not a MoonBit project, so no suite can run'
+  }
+)
+Write-MutationGateVerdict -Name 'selftest-crlf'
+if ($script:MutationGateFailures.Count -gt 0) { exit 1 }
+exit 0
+'@
+
+function Invoke-Fixture {
+  param([string]$Harness, [string]$Tag)
+  $g = Join-Path $tmp ('mutate_crlf_' + $Tag + '.ps1')
+  [System.IO.File]::WriteAllText($g, $fixtureSrc.Replace('__HARNESS__', $Harness).Replace('__ROOT__', $crlfDir), (New-Object System.Text.UTF8Encoding($false)))
+  $prev2 = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $g 2>&1 | Out-String
+  $c = $LASTEXITCODE
+  $ErrorActionPreference = $prev2
+  return @{ Out = $o; Code = $c }
+}
+
+Write-Output ''
+Write-Output '=== 0645: the pre-flight and the mutation must read the same text ==='
+$fixed = Invoke-Fixture (Join-Path $verify 'mutate_lib.ps1') 'fixed'
+$fixedHit = ($fixed.Out -match 'Pre-flight: all 1 live patterns present and UNIQUE')
+$fixedMiss = ($fixed.Out -match 'PREFLIGHT MISS')
+Write-Output ('  the real harness on a CRLF fixture: pre-flight found the anchor = ' + $fixedHit + ', and missed it = ' + $fixedMiss)
+if (-not $fixedHit -or $fixedMiss) {
+  Write-Output 'FAIL: the real harness did not find a two-line anchor in a CRLF file -- the pre-flight and the mutation still disagree.'
+  exit 1
+}
+
+# THE HARNESS WITH THE FIX REMOVED. The line that normalises the haystack is
+# deleted from a COPY, and the copy has to go back to missing the anchor.
+$noFixLib = Join-Path $tmp 'mutate_lib_nofix.ps1'
+$libText = [System.IO.File]::ReadAllText((Join-Path $verify 'mutate_lib.ps1'), [System.Text.Encoding]::UTF8)
+$normLines = @(
+  '    $hayEol = if ($hay.Contains([string][char]13 + [char]10)) { [string][char]13 + [char]10 } else { $nl }',
+  '    $hay = $hay.Replace($hayEol, $nl)'
+)
+$stripped = $libText
+foreach ($l in $normLines) { $stripped = $stripped.Replace($l + "`r`n", '').Replace($l + "`n", '') }
+if ($stripped -eq $libText) {
+  Write-Output 'FAIL: the harness does not carry the normalisation this self-test removes -- the case would prove nothing.'
+  exit 1
+}
+[System.IO.File]::WriteAllText($noFixLib, $stripped, (New-Object System.Text.UTF8Encoding($false)))
+$broken = Invoke-Fixture $noFixLib 'nofix'
+$brokenMiss = ($broken.Out -match 'PREFLIGHT MISS')
+$brokenAbort = ($broken.Out -match 'ABORT: 1 pattern\(s\) absent')
+Write-Output ('  the same fixture, fix removed: pre-flight missed it = ' + $brokenMiss + ', and aborted = ' + $brokenAbort)
+if (-not $brokenMiss -or -not $brokenAbort) {
+  Write-Output 'FAIL: the harness without the fix did NOT miss the anchor -- so the case cannot tell the two readers apart.'
+  exit 1
+}
+Write-Output '  ok  the same fixture, the same anchor: the real harness finds it and the un-fixed one misses it.'
+
+Write-Output ''
+Write-Output 'SELFTEST OK: the INCONCLUSIVE verdict fires, is retried once, and FAILS the gate;'
+Write-Output '              and the pre-flight finds a two-line anchor in a CRLF file, exactly as'
+Write-Output '              the mutation phase does.'
 exit 0
