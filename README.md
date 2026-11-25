@@ -625,17 +625,17 @@ the sentence named are the only two that **report** anything. The other three ar
 
 | reason | this tree | the seven corpora | reports? |
 |---|---:|---:|---|
-| a method call — the lens has no signature for a method | **3,808** | **21,350** | silent |
+| a method call — the lens has no signature for a method | **3,814** | **21,350** | silent |
 | a callee that is not callable | **498** | **7,647** | reports (`MSA-008`) |
 | a cross-file value whose signature was never read | **191** | **1,941** | silent |
 | a `..` chain link — the lens has no signature for it | **0** | **104** | silent |
 | a name that did not resolve at all | **0** | **16** | reports (`MSA-002`) |
-| **the remainder** | **4,497** | **31,058** | |
+| **the remainder** | **4,503** | **31,058** | |
 
-So **88.9 %** of this tree's 4,497 unverified call sites are silent, **75.3 %** of the
+So **88.9 %** of this tree's 4,503 unverified call sites are silent, **75.3 %** of the
 corpora's 31,058 are, and **84.7 %** of this tree's remainder is one reason the old
 sentence never named — a method call. Across the seven corpora and this repository's own
-source together: **35,555** unverified call sites, of which **25,158** are method calls.
+source together: **35,561** unverified call sites, of which **25,164** are method calls.
 The old sentence was not wrong about the two classes it named — those are the two that
 report — but it was wrong about the **whole**, and a reader could not tell which part of
 the remainder was which. The split is printed by the analyzer as its own
@@ -685,12 +685,12 @@ implements, and the one place where the framework and this tree disagree — are
 Every declaration or expression form it reads past **without analysing** is reported as a
 notice, and the notice is a statement about the tool, not about your code — so it is
 rendered **`notice:`**, a label of its own rather than a borrowed `error:`. Measured on this
-project's own source (281 files), with the per-file printing cap lifted so the count is the
+project's own source (284 files), with the per-file printing cap lifted so the count is the
 whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1807 | | `const` declaration | 7 |
+| `test` declaration | 1826 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -699,7 +699,7 @@ whole finding set:
 Removing one of those rows needs an AST node for that form, which is why they are features
 and not notices to be reworded. The distinction that matters is not the wording but the
 **position**: **158** of them sit inside a function's extent and can switch that body's
-audit off, so they are printed one per line; the other **1977** sit outside every function's
+audit off, so they are printed one per line; the other **1996** sit outside every function's
 extent, hide nothing, and are counted by shape in one table at the end of the scan.
 
 **The split is the analyzer's own geometry, and it is a position rather than a wording.**
@@ -752,10 +752,10 @@ line.
 | a genuine defect in the file | `error:` | actionable |
 
 Measured across the seven pinned corpora and this repository's own source, with the
-per-file printing cap lifted so the count is the whole finding set: **24,130** notices —
+per-file printing cap lifted so the count is the whole finding set: **24,149** notices —
 every declared scope limit, plus the low-confidence findings demoted in 0.4.38. The scan
 says so itself: its `NOTICES` table counts **4,034** of them as printed per line and
-**20,096** as aggregated — which is 4,034 + 20,096 = 24,130, the same number — and the 4,034
+**20,115** as aggregated — which is 4,034 + 20,115 = 24,149, the same number — and the 4,034
 is exactly the number of rendered notice lines, the scope limits and the demoted findings
 together. A genuine defect of this family would
 render `error:`, and the release gate counts those separately and requires zero — and there
@@ -779,7 +779,7 @@ false positive on correct code.
 Measured, and the number is the reason this is worth reading. With the region suppression
 switched off — one line in `Walker::holes_in`, and the diff against the shipped build —
 the tool produces **701** `UnusedLocal` and **1,338** `UnusedParam` findings across the
-seven pinned corpora and this repository's own source — the same 281 files the notice table
+seven pinned corpora and this repository's own source — the same 284 files the notice table
 above counts, with `_verify/` excluded because it holds no tracked source, so the pair is
 reproducible from a clean checkout. With it on, as it ships, it
 produces **one** of them: a local assigned and never read, in `moonbit_labeler`. So the
@@ -2030,25 +2030,25 @@ subscript while `x` has three, so a variable with exactly one definition keeps i
 phi-functions"* and *"May introduce inefficiency problem when translating to machine code (due to
 copy operations)"* — and neither claim carries a number. On the lecture's own twelve-instruction
 program: **8** variables become **16** versions, **8** phi-functions appear, and taking them away
-would need **16** copies. Over this project's own source — 263 files, 1,437 functions, 9,222
+would need **16** copies. Over this project's own source — 266 files, 1,439 functions, 9,222
 instructions of 3AC — the same measurement gives **1,171** variables becoming **2,808** versions,
 **975** phi-functions and **2,408** copies. The claim is not a figure of speech.
 
 The measurement is a mode of the scanner, `--ssa-cost`, and it prints one line:
 
 ```
-SSA-COST	files=263	unreadable=0	functions=1437	converted=5	partial=1432	declined=6541	…
+SSA-COST	files=266	unreadable=0	functions=1439	converted=5	partial=1434	declined=6549	…
 ```
 
 It reports its **coverage** beside the numbers, because a number without its coverage is half a
-number: the files read, the functions measured, and the statements the lowering declined (6,541
+number: the files read, the functions measured, and the statements the lowering declined (6,549
 of them — the 3AC layer converts the statements it understands and counts the rest). The release
 gate pins the line, so the next increment that moves it has to move the pin on purpose.
 ## Verification
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1807/1807 on wasm; 1642/1642 on js and wasm-gc
+moon test --deny-warn                # 1826/1826 on wasm; 1661/1661 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

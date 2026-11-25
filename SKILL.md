@@ -272,14 +272,14 @@ for one has been told nothing about the scale. `--metrics` appends the block
 that carries the scale:
 
 ```
-METRICS	read	files=281	parsed=281	partial=0	understood=100.0%
-METRICS	calls	sites=5619	checked=1122	not-verified=4497	checked-share=19.9%	(...)
-METRICS	unverified-split	sig-unknown=191	not-callable=498	unresolved=0	method=3808	dotdot=0	sum=4497	not-verified=4497	(...)
-METRICS	findings	total=2135	high=0	low=0	undecided=2135	(...)
-METRICS	family	MSA-001	ParseError	severity=error	high=0	low=0	undecided=2135	total=2135
+METRICS	read	files=284	parsed=284	partial=0	understood=100.0%
+METRICS	calls	sites=5625	checked=1122	not-verified=4503	checked-share=19.9%	(...)
+METRICS	unverified-split	sig-unknown=191	not-callable=498	unresolved=0	method=3814	dotdot=0	sum=4503	not-verified=4503	(...)
+METRICS	findings	total=2154	high=0	low=0	undecided=2154	(...)
+METRICS	family	MSA-001	ParseError	severity=error	high=0	low=0	undecided=2154	total=2154
 ```
 
-*(those are the analyzer's own tree, scanned by its own build — 281 files, every
+*(those are the analyzer's own tree, scanned by its own build — 284 files, every
 finding a declared scope limit, and a call-argument adequacy of 19.9%.)*
 
   * **read** — `parsed/files`, the same ratio the `PARSED` line prints. A file
@@ -293,7 +293,7 @@ finding a declared scope limit, and a call-argument adequacy of 19.9%.)*
     **2** sites and not 3 (measured). ⇒ the share is an **upper bound** on what
     was verified; it can overstate and cannot understate.
     `not-verified` has **FIVE** reasons, and the analyzer prints them in its own
-    `METRICS unverified-split` row: a method call (**3,808** on this tree), a callee
+    `METRICS unverified-split` row: a method call (**3,814** on this tree), a callee
     that is not callable (**498**, reported as `MSA-008`), a cross-file value whose
     signature was never read (**191**), a `..` chain link (**0**), and a name that
     did not resolve at all (**0**, reported as `MSA-002`). Only **two** of the five
@@ -307,7 +307,7 @@ finding a declared scope limit, and a call-argument adequacy of 19.9%.)*
     carrying the return hint) and is counted once. The `unchecked=` on the
     `SUMMARY` and per-file lines counts **visits**, not sites, so the two
     numbers are deliberately not arithmetically related — on this tree the naive
-    subtraction `sites - checked - unchecked` is **−100**.
+    subtraction `sites - checked - unchecked` is **−102**.
   * **findings / family** — one row per family that spoke, with its stable id
     and its severity, split by the axis that says how sure the analyzer was.
     `undecided` **is** the declared-scope-limit count: constructs it read and

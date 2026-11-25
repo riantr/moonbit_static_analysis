@@ -967,7 +967,7 @@ Write-Output ('  version : ' + (((Select-String -Path (Join-Path $root 'moon.mod
 # it lives in is now READ PAST the line the parser used to stop at. So the fix
 # REMOVED a false positive rather than adding one: reading more code is what
 # let the analyzer see the read.
-$NOTICE_TOTAL = '24130'
+$NOTICE_TOTAL = '24149'
 # 0550. THE EIGHT-TREE SPLIT, and the gap it closes. 0547 recorded the gap in
 # these words: "the EIGHT-TREE split is not -- `check_readme_links.ps1` checks
 # the total and the own-source pair, and the '3,402 + 16,214' sentence is prose
@@ -1111,7 +1111,7 @@ $NOTICE_TOTAL = '24130'
 # sit inside function extents, and are therefore printed -- are visible for
 # the first time. The other six corpora and `moonbit_core` did not move.
 $NOTICE_SPLIT_PRINTED = '4034'
-$NOTICE_SPLIT_AGGREGATED = '20096'
+$NOTICE_SPLIT_AGGREGATED = '20115'
 # 0542. THE OWN-SOURCE PINS, and the CONVENTION they were measured under.
 #
 # The count is the number of files the self-scan READS, and the self-scan now
@@ -1286,10 +1286,10 @@ $NOTICE_SPLIT_AGGREGATED = '20096'
 # `const declaration` 7. The parser change adds NO notice to this tree --
 # this repository's own source writes no `let <pattern> : <type> = ...` --
 # so the analyzer's own reading of itself did not move.
-$SELF_FILES = '281'
-$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1807|try expression=1|type declaration=7'
+$SELF_FILES = '284'
+$SELF_NOTICES = 'anonymous function literal=48|const declaration=7|enum declaration=35|if expression=101|short lambda=8|struct declaration=121|test declaration=1826|try expression=1|type declaration=7'
 $SELF_PRINTED = '158'
-$SELF_AGGREGATED = '1977'
+$SELF_AGGREGATED = '1996'
 #   $SELF_SAMPLES  the embedded sample set the CLI demo runs over: the entries of
 #                  `src/samples/samples.mbt`'s `all()` array.
 #
@@ -1330,7 +1330,7 @@ $SELF_SAMPLES = '6'
 # increment's own test file's calls, and every one of them is a method call
 # the lens cannot type -- so the `method` row of the eight-tree split moved
 # with it and nothing else did.
-$SELF_CALLS = 'sites=5619|checked=1122|not-verified=4497|checked-share=19.9%'
+$SELF_CALLS = 'sites=5625|checked=1122|not-verified=4503|checked-share=19.9%'
 #   $SELF_UNCHECKED  the `unchecked=` on this tree's own SUMMARY: the number of call
 #                   VISITS the lens could not type, counted before de-duplication.
 #
@@ -1348,7 +1348,7 @@ $SELF_CALLS = 'sites=5619|checked=1122|not-verified=4497|checked-share=19.9%'
 # 0640. AND IT MOVED, 4589 -> 4597, with the same eight new visits the `sites` row
 # records: this increment's own test file is a test file, and a test body is
 # visited by the lens even though its body is outside the analyzed subset.
-$SELF_UNCHECKED = '4597'
+$SELF_UNCHECKED = '4605'
 #   $SELF_SURFACE   the deck's p.57 question over this repository's own source:
 #                   the hand-modelled native surface measured against the
 #                   DECLARED one.
@@ -1427,7 +1427,7 @@ $IFACE_SIG_AGREES = '2282'
 # 31,058 not-verified call sites, of which 21,350 are a METHOD call -- the
 # class the old sentence never named, and 68.7 % of the whole.
 $UNVERIFIED_SPLIT_CORPORA = 'sig-unknown=1941|not-callable=7647|unresolved=16|method=21350|dotdot=104|not-verified=31058'
-$UNVERIFIED_SPLIT_EIGHT = 'sig-unknown=2132|not-callable=8145|unresolved=16|method=25158|dotdot=104|not-verified=35555'
+$UNVERIFIED_SPLIT_EIGHT = 'sig-unknown=2132|not-callable=8145|unresolved=16|method=25164|dotdot=104|not-verified=35561'
 #   $SUPPOFF_LOCAL   what the region suppression hides, measured by
 #   $SUPPOFF_PARAM   `_verify/measure_suppression_off.ps1` with the
 #                    suppression switched OFF.
@@ -1706,7 +1706,7 @@ $SUPPOFF_PARAM = '1338'
 # is this increment's own test file, and the eight new instructions and the
 # eight new declined statements are its calls -- a test body is outside the
 # analyzed subset, so the lowering declines it.
-$SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|declined=6541|instructions=9222|variables=1171|versions=2808|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
+$SSA_COST = 'files=266|unreadable=0|functions=1439|converted=5|partial=1434|declined=6549|instructions=9222|variables=1171|versions=2808|phis=975|copies=2408|undef_operands=202|dead_blocks=470|undef_uses=1295'
 
 #   $NARRATIVE_CHAPTERS  the number of chapter headings in `_verify/NARRATIVE.md`,
 #                   counted by section 9 of `_verify/check_readme_links.ps1`. It is
@@ -1911,7 +1911,7 @@ $SSA_COST = 'files=263|unreadable=0|functions=1437|converted=5|partial=1432|decl
 # harness now PRINTS how many sites it applied the replacement at, beside the
 # pre-flight's own count, and the self-test pins that number. It changed NO
 # analyzer behaviour and no public interface, and it moved NO other pin.
-$NARRATIVE_CHAPTERS = '188'
+$NARRATIVE_CHAPTERS = '189'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -1989,7 +1989,7 @@ $NARRATIVE_CHAPTERS = '188'
 # written -- it said "the FIRST literal match" and the code replaced EVERY
 # occurrence -- so the sentence this increment quoted was an inference nobody
 # measured, and the harness now prints how many sites it touched.
-$LOOP_RULES = '47'
+$LOOP_RULES = '48'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

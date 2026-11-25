@@ -16,7 +16,7 @@ calls US — we never import pyroduct.
 ```console
 moon check --deny-warn      # 0 errors, 0 warnings — first gate
 moon fmt                   # format; `moon fmt --check` must stay clean
-moon test --deny-warn      # 1807/1807 on wasm; 1642/1642 on js and wasm-gc
+moon test --deny-warn      # 1826/1826 on wasm; 1661/1661 on js and wasm-gc
 moon run src/cli           # program demo + file-kind demo + sample machine audit
 ```
 

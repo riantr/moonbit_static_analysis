@@ -25736,6 +25736,148 @@ sentence this chapter first quoted had been in the harness since the harness was
 was wrong the whole time, and every argument built on it was an inference nobody measured.
 
 
+## 0647: THE RINGS THE DECK NEVER DREW, AND THE RECURSION THE ANALYZER CANNOT SEE
+
+MEASURED 2026-11-25, on this tree at 0646's HEAD, by an audit of what the suite covers and
+what it does not.
+
+THE AUDIT ASKED ONE QUESTION -- what does the analyzer's RECURSION story look like, and which
+of its shapes is actually held by a test? -- and it found that the story was told by ONE
+shape: a rule whose body mentions its own head. The self-loop. The Datalog deck's own taint
+program carries a MUTUAL cycle on the Datalog side, and the interpreter has one self-call. So:
+
+    a ring of THREE or more predicates               -- not tested
+    a SELF-loop living BESIDE a MUTUAL cycle          -- not tested
+    the INTERPRETER's mutual recursion A -> B -> A    -- not tested
+    a recursive TYPE                                  -- not tested, and NOT TESTABLE
+
+THE FIRST THREE ARE GAPS IN THE SUITE, and this increment closed them. THE FOURTH IS NOT A GAP
+IN THE SUITE. It is a capability the analyzer does not have, and the difference between those
+two things is the whole content of this chapter.
+
+PART ONE: THE INTERPRETER'S RINGS, AND WHAT THE LEDGER CANNOT TELL YOU.
+
+0541 built the call-context ledger and pinned it against ONE recursive shape -- a function
+that calls ITSELF with the same abstract argument. Everything the ledger says about
+recursion was therefore read off a one-function ring.
+
+MEASURED, by a probe that printed the ledger BEFORE anything was asserted, and read twice:
+
+    the shape                      exec  sig  ctx  shared  cuts  depth
+    self-recursion   r -> r         1     1    1       0      1      1
+    mutual           a -> b -> a    2     2    2       0      1      2
+    self-loop beside a mutual       3     3    3       0      2      2
+    a ring of three                 3     3    3       0      1      3
+    a mutual from two call strings  6     4    6       2      2      3
+    an edge out of the cycle        4     4    4       0      1      3
+
+AND THE PAIR THAT MATTERS IS THE FIRST TWO. `cuts` is ONE in both. A ledger that reported
+only `cuts` would describe a self-loop and a mutual cycle with the same words, and a reader
+who had only the self-loop row could not have told them apart. What tells them apart is
+`exec` and `sig`: ONE against TWO.
+
+THE CUT CONVERGES ON A RETURN TYPE, and this is the only place `cycle_ret` is observable at
+all -- the summary's return column:
+
+    a mutual cycle, the return type DECLARED       ->  a(int) -> int
+    a mutual cycle, NO declared return type        ->  a(int) -> Any
+    the CONTROL: no annotation and NO recursion    ->  g(int) -> int
+
+The third row is what makes the second row mean something. "Any" is not "the annotation was
+missing": a function with no annotation and no recursion still answers "int", because its
+body produced a value. "Any" is the CUT -- the partial the ring converges on when the
+declared type gives it nothing concrete to be.
+
+PART TWO: THE DATALOG RINGS, AND THE GROUP THAT MUST NOT BE EMPTY.
+
+`d_strata` groups predicates by MUTUAL REACHABILITY, so a ring of three is ONE stratum: A
+reaches B, then C, then A again, and mutual reachability is transitive. The control is the
+same three predicates with the ring CUT, and they are then THREE strata of one predicate
+each. The pair is what makes the count mean something -- "one stratum of three" would also be
+true of an engine that puts everything in one stratum always.
+
+THE HARD ROW IS THE SELF-LOOP BESIDE A MUTUAL CYCLE, because `d_strata` has an ARM for it
+-- `p == q` -- and that arm is what keeps a group from coming out EMPTY. The engine's own
+comment records the trap:
+
+    // A PREDICATE IS IN ITS OWN STRATUM, and the reflexive case is the whole reason the
+    // first version of this loop derived NOTHING: a predicate with no IDB dependency does
+    // not reach itself, so the mutual-reachability test was false for it and its group
+    // came out EMPTY -- and a stratum with no predicate in it evaluates no rule at all.
+
+0594 recorded exactly that failure from the other side: the second stratum was never
+evaluated, and the program silently derived less than it should while the report said
+nothing. So the row asserts the two strata hold ONE and TWO predicates -- and that NEITHER
+IS EMPTY.
+
+AND THE ORDER OF THE TWO STRATA IS NOT ASSERTED, on purpose. They sit at the same level,
+and their relative order is the order the GROUPS were discovered in -- and the groups are
+discovered by walking a Map, whose key order is not a property of the PROGRAM. A row that
+asserted `strata[0]` is `A` would be asserting the engine's hash order.
+
+PART THREE: THE RECURSION THE ANALYZER CANNOT SEE.
+
+`ast::Module` has a `body` and an `imports` and NOTHING ELSE: there is no node for an
+`enum`, no node for a `struct`, no node for a `type` alias. The frontend SKIPS those
+declarations at the token level, and what survives of an `enum` is its CONSTRUCTOR NAMES --
+harvested by name, with the payloads dropped.
+
+AND THE RECURSION LIVES IN THE PAYLOAD. `Node(Tree, Tree)` is recursive because the payload
+names the type being declared; the NAME `Node` says nothing about it. So the one piece of
+the declaration that would say "this type is recursive" is exactly the piece the harvest
+throws away.
+
+MEASURED, on the two programs that differ in nothing but the recursion:
+
+    enum Tree { Leaf, Node(Tree, Tree) }     recursive
+    enum Color { Red, Green }                not recursive
+
+    both:  ONE report, and the reports are IDENTICAL -- same family, same message:
+           MSA-001  enum declaration is outside the analyzed subset; its body was not analyzed
+    both:  ZERO nodes in the tree -- the declaration leaves nothing behind
+    both:  the constructor NAMES are harvested, and the payload is not
+
+SO THE FRONTEND CANNOT TELL A RECURSIVE TYPE FROM A PLAIN ONE. It reads neither. And
+therefore "the analyzer reported nothing about the recursive type" CANNOT be read as "the
+analyzer checked, and the type is not recursive". It can only be read as "the analyzer does
+not read type definitions at all" -- which is a statement about the ANALYZER.
+
+THIS IS THE PART THAT GENERALISES. An absence of a finding is evidence about the PROGRAM
+only if the analyzer's CAPACITY to produce it was itself measured. The discriminating
+measurement is NOT "the recursive program produced no finding" -- that is satisfied by an
+analyzer that cannot see type definitions at all, which is the truth here, and it is an
+empty claim. It is "the recursive program and the plain program produce the SAME
+observation". Without the second program, the first row proves nothing.
+
+AND THE INCREMENT TO COME IS NAMED, so that nobody has to rediscover it. Detecting a
+recursive type needs three things this tree does not have: an AST node for a type
+declaration, a parser that READS the declaration instead of skipping it, and a type-lens
+pass that builds the type graph and asks whether it has a cycle. That is an INCREMENT, not a
+fixture -- and this chapter records it as missing rather than pretending a test covers it.
+
+
+=> 判据: 一条「没有发现」只有在分析器「有能力发现」这件事本身被测过时，才是关于程序的证据；判别性的测量不是「递归的程序没有报」，而是「递归的程序和普通的程序给出同一个观测」。 An absence of a
+finding is evidence about the program only if the analyzer's CAPACITY to produce it was
+itself measured; the discriminating measurement is not "the recursive program reported
+nothing" but "the recursive program and the plain one gave the SAME observation". And the
+three rings that COULD be drawn -- a ring of three, a self-loop beside a mutual cycle, and
+the interpreter's mutual recursion -- are drawn now, with every number measured before it
+was asserted, because a shape that no fixture holds is a shape nobody has measured. The
+one that could not be drawn is named as a missing CAPABILITY rather than covered by a
+fixture, so that the next increment starts from a map and not from a guess.
+COMMENT. An absence of a finding is evidence about the program only if the analyzer's
+capacity to produce it was itself measured -- the discriminating measurement is not "the
+recursive program reported nothing", which an analyzer that cannot see type definitions
+satisfies trivially, but "the recursive program and the plain one gave the SAME
+observation". The three rings that could be drawn are drawn now, every number measured
+before it was asserted, and the ledger's own numbers show what it cannot say: `cuts` is
+ONE for a self-loop and ONE for a mutual cycle, so the thing that tells them apart is
+`exec` and `sig`, and a reader who had only the self-loop row could not have told. The
+fourth shape is not covered by a fixture because it cannot be: the recursion lives in the
+payload, and the payload is what the frontend drops -- so the capability is written down as
+missing, which is the only honest way to leave it.
+
+
 
 
 
