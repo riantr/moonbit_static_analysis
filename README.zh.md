@@ -587,7 +587,7 @@ notice 都写明工具没读懂什么。
 
 | notice | 条数 | | notice | 条数 | | 
 |---|---:|---|---|---:|---|
-| `test` 声明 | 1826 | | `const` 声明 | 7 |
+| `test` 声明 | 1848 | | `const` 声明 | 7 |
 | `if` 表达式 | 101 | | 短 lambda | 8 |
 | `struct` 声明 | 121 | | `type` 声明 | 7 |
 | 匿名函数字面量 | 48 | | `try` 表达式 | 1 |
@@ -1687,7 +1687,7 @@ SSA-COST	files=266	unreadable=0	functions=1439	converted=5	partial=1434	declined
 
 ```bash
 moon check --target all --deny-warn   # 0 错 0 警（js / native / wasm / wasm-gc）
-moon test --deny-warn                # wasm 1826/1826；js 与 wasm-gc 1661/1661
+moon test --deny-warn                # wasm 1848/1848；js 与 wasm-gc 1683/1683
 moon run src/cli                     # 程序 demo + 文件种类 demo + 样例机器审计
 ```
 

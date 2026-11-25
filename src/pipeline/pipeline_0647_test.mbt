@@ -280,29 +280,50 @@ test "0647: an edge leaving the cycle is not swallowed by it" {
 ///     enum Tree { Leaf, Node(Tree, Tree) }     <- recursive
 ///     enum Color { Red, Green }                <- not recursive
 ///
-/// Both programs produce ONE report, and the reports are IDENTICAL -- same
-/// family, same message. There is no finding about the recursive type, and
-/// there is no finding about the plain one either.
+/// 0647 MEASURED THAT THESE TWO PRODUCE THE SAME REPORT, and that measurement was
+/// the point of this increment's third half: a program whose type is recursive
+/// and a program whose type is not produced the same output, so "the analyzer
+/// reported nothing about the recursive type" CANNOT be read as "the analyzer
+/// checked and the type is not recursive". It can only be read as "the
+/// analyzer does not read type definitions" -- which is a statement about the
+/// analyzer, and the reason the recursive-type check was an INCREMENT TO COME
+/// rather than a row to write.
 ///
-/// THIS ROW IS THE POINT OF THE WHOLE INCREMENT'S THIRD HALF. A program whose
-/// type is recursive and a program whose type is not produce the same output,
-/// so "the analyzer reported nothing about the recursive type" CANNOT be read
-/// as "the analyzer checked and the type is not recursive". It can only be
-/// read as "the analyzer does not read type definitions" -- which is a
-/// statement about the analyzer, and the reason the recursive-type check is
-/// an INCREMENT TO COME rather than a row to write.
-test "0647: a recursive type and a plain type produce the SAME report" {
+/// 0648 CLOSED THAT GAP, and this row is where the closure shows. The frontend
+/// now READS type declarations, the type lens builds the type graph over them,
+/// and the two programs now produce DIFFERENT reports -- which is the only
+/// form in which "the analyzer reported nothing about the recursive type" can
+/// be read as a fact about the PROGRAM.
+///
+/// SO THE ROW MOVED, rather than being edited into a shape it never had: the
+/// assertion that is now true is in `src/pipeline/pipeline_0648_test.mbt`, and
+/// the measurement above is kept as the record of what the analyzer could not
+/// do. A row that asserted the old sameness would have to go RED to record
+/// the change, and a test that is red is not a record -- it is a failure.
+test "0648: a recursive type and a plain type now produce DIFFERENT reports" {
   let recursive = "enum Tree {\n  Leaf\n  Node(Tree, Tree)\n}\nfn f(t : Tree) -> Int {\n  t\n}\n"
   let plain = "enum Color {\n  Red\n  Green\n}\nfn f(c : Color) -> Int {\n  c\n}\n"
   let r1 = @pipeline.run(recursive, "u.mbt", empty_iface())
   let r2 = @pipeline.run(plain, "u.mbt", empty_iface())
-  // ONE REPORT EACH, and the reports are the same report.
+  // ONE REPORT EACH -- the recursion ADDS A FACT to the report, it does not
+  // add a report: the two notices land on the same line and the pipeline
+  // merges them, and the type lens's message is the more specific one.
   assert_eq(r1.reports.length(), 1)
   assert_eq(r2.reports.length(), 1)
-  assert_eq(reports_text_0647(r1.reports), reports_text_0647(r2.reports))
-  // AND THE ONE REPORT IS THE SUBSET EXCLUSION -- not a type finding.
+  // AND THE REPORTS ARE NOW DIFFERENT. This is the inversion of the 0647
+  // measurement, and it is the whole point of the increment: the analyzer can
+  // now TELL the two programs apart.
+  assert_true(reports_text_0647(r1.reports) != reports_text_0647(r2.reports))
+  // AND THE DIFFERENCE IS THE RECURSION, not an accident of the wording: the
+  // recursive program says the type is recursive and the plain one does not.
+  assert_true(r1.reports[0].message.contains("recursive type"))
+  assert_false(r2.reports[0].message.contains("recursive type"))
+  // AND BOTH ARE STILL SCOPE LIMITS. A recursive type is LEGAL MoonBit --
+  // `moon check` accepts `enum Tree { Leaf(Int), Node(Tree, Tree) }` -- so
+  // this is not a defect in the reader's code, and the label says `notice`.
   assert_eq(r1.reports[0].family.id(), "MSA-001")
-  assert_true(r1.reports[0].message.contains("outside the analyzed subset"))
+  assert_true(r1.reports[0].is_notice())
+  assert_eq(r1.reports[0].severity_label(), "notice")
 }
 
 ///|

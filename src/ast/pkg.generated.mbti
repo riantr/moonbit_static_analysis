@@ -114,6 +114,7 @@ pub(all) struct MatchArm {
 pub(all) struct Module {
   body : Array[Stmt]
   imports : Array[ImportSpec]
+  types : Array[TypeDecl]
 }
 
 #derive(Eq)
@@ -149,6 +150,22 @@ pub(all) enum SKind {
 pub(all) struct Stmt {
   span : @core.Span
   kind : SKind
+}
+
+#derive(Eq)
+pub(all) struct TypeDecl {
+  name : String
+  kind : TypeKind
+  refs : Array[String]
+  span : @core.Span
+}
+
+#derive(Eq)
+pub(all) enum TypeKind {
+  TStruct
+  TEnum
+  TAlias
+  TSuberror
 }
 
 #derive(Eq)

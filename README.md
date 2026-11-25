@@ -690,7 +690,7 @@ whole finding set:
 
 | notice | n | | notice | n | | 
 |---|---:|---|---|---:|---|
-| `test` declaration | 1826 | | `const` declaration | 7 |
+| `test` declaration | 1848 | | `const` declaration | 7 |
 | `if` expression | 101 | | `short lambda` | 8 |
 | `struct` declaration | 121 | | `type` declaration | 7 |
 | `anonymous function literal` | 48 | | `try` expression | 1 |
@@ -2048,7 +2048,7 @@ gate pins the line, so the next increment that moves it has to move the pin on p
 
 ```bash
 moon check --target all --deny-warn   # 0 errors, 0 warnings (js / native / wasm / wasm-gc)
-moon test --deny-warn                # 1826/1826 on wasm; 1661/1661 on js and wasm-gc
+moon test --deny-warn                # 1848/1848 on wasm; 1683/1683 on js and wasm-gc
 moon run src/cli                     # program demo + file-kind demo + sample machine audit
 ```
 

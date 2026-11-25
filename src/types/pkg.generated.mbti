@@ -13,9 +13,15 @@ pub fn ann_to_ty(String) -> Ty
 
 pub fn binop_result(@ast.BOp, Ty, Ty) -> Ty?
 
+pub fn build_type_graph(Array[@ast.TypeDecl]) -> TypeGraph
+
 pub fn infer_full(@ast.Module, @walk.WalkResult, @core.IfaceSymTab, Array[String]) -> TypeResult
 
 pub fn is_numeric(Ty) -> Bool
+
+pub fn recursive_type_notices(TypeGraph) -> Array[@report.Report]
+
+pub fn recursive_types(TypeGraph) -> Array[@ast.TypeDecl]
 
 pub fn ty_assignable(Ty, Ty) -> Bool
 
@@ -24,6 +30,8 @@ pub fn ty_join(Ty, Ty) -> Ty
 pub fn ty_name(Ty) -> String
 
 pub fn ty_union(Array[Ty]) -> Ty
+
+pub fn type_cycles(TypeGraph) -> Array[TypeCycle]
 
 // Errors
 
@@ -50,6 +58,15 @@ pub(all) enum Ty {
   TFunc(String, Array[String], Array[Ty], Ty)
   TUnknownFn(String)
   TUnion(Array[Ty])
+}
+
+pub(all) struct TypeCycle {
+  path : Array[String]
+}
+
+pub(all) struct TypeGraph {
+  decls : Array[@ast.TypeDecl]
+  edges : Array[(String, String)]
 }
 
 pub(all) struct TypeResult {

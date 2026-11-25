@@ -819,6 +819,59 @@ pub fn ImportSpec::render(self : ImportSpec) -> String {
 }
 
 ///|
+/// The kind of a TYPE DECLARATION.
+///
+/// 0648. Four declaration forms, and they differ in what a CYCLE among them
+/// means, which is why the kind is kept rather than flattened:
+///
+///   * `TAlias` -- `type A = B`. A cycle among aliases is a cycle the
+///     TOOLCHAIN rejects outright: `moon check` says "Found cycle A -> B -> A
+///     in `type alias` declaration" and exits non-zero (MEASURED, 0648).
+///   * `TEnum` / `TStruct` / `TSuberror` -- a cycle among these is an ordinary
+///     INDUCTIVE type. `enum Tree { Leaf(Int), Node(Tree, Tree) }` is what
+///     MoonBit is FOR, and `moon check` accepts it (MEASURED, 0648).
+///
+/// The distinction is the whole reason the analyzer reads type declarations at
+/// all: before 0648 it read none of them, so it could not tell these two apart
+/// -- and a recursive type was indistinguishable from a plain one.
+#derive(Eq)
+pub(all) enum TypeKind {
+  TStruct
+  TEnum
+  TAlias
+  TSuberror
+}
+
+///|
+/// A TYPE DECLARATION, as the frontend READ it.
+///
+/// 0648. Before this node there was nowhere for a type declaration to live:
+/// `Module` had a `body` of statements and an `imports` list, and the frontend
+/// SKIPPED `struct` / `enum` / `type` / `suberror` at the token level, keeping
+/// only the constructor NAMES (`harvest_ctors`). So the part of the
+/// declaration that says "this type is recursive" -- the PAYLOAD, where
+/// `Node(Tree, Tree)` names the type being declared -- was thrown away with
+/// the rest of it.
+///
+/// `refs` holds the type NAMES the declaration MENTIONS: a payload's type
+/// names, a struct field's type names, an alias's right-hand side. They are
+/// NAMES and not parsed types, because the type graph is built over names --
+/// and a name that is not a declared type of this module is not a node of it.
+/// A name in a non-type position (a field called `Tree`, a constructor called
+/// `Tree`) is therefore NOT collected, which is the difference between this
+/// and a token scan: a token scan would read the constructor `B` in
+/// `enum A { B }` as a reference to a type `B` and could invent a cycle.
+#derive(Eq)
+pub(all) struct TypeDecl {
+  name : String
+  kind : TypeKind
+  /// The type names this declaration mentions, in source order and without
+  /// repeats.
+  refs : Array[String]
+  span : @core.Span
+}
+
+///|
 #derive(Eq)
 pub(all) struct Module {
   body : Array[Stmt]
@@ -826,6 +879,16 @@ pub(all) struct Module {
   /// recorded but NOT resolved — the subset analyzes one self-contained file
   /// at a time. Empty for package sources (`.mbt`).
   imports : Array[ImportSpec]
+  /// 0648. The TYPE DECLARATIONS the frontend read: `struct`, `enum`, `type`
+  /// (an alias) and `suberror`, in source order.
+  ///
+  /// Reading them is NOT analysing them. The declaration body is still not
+  /// modelled -- a constructor is still a name of unknown type, a field is
+  /// still not a binding -- so the scope-limit notice for each declaration
+  /// stands. What changed is that the SHAPE of the declaration is now
+  /// available, which is what lets the type lens build the type graph and
+  /// say whether it has a cycle.
+  types : Array[TypeDecl]
 }
 
 ///|

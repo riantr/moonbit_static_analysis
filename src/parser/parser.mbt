@@ -77,6 +77,9 @@ priv struct Parser {
   /// implementation lives in another language, so the parameter names are part
   /// of that language's ABI and not bindings this analyzer may judge as unread.
   extern_fns : Array[String]
+  /// 0648. The TYPE DECLARATIONS this file declares, read rather than skipped.
+  /// See the field of the same name on `ast::Module`.
+  types : Array[@ast.TypeDecl]
 }
 
 ///|
@@ -116,6 +119,7 @@ pub fn parse(src : String) -> ParseResult {
     error_count: 0,
     enum_ctors: [],
     extern_fns: [],
+    types: [],
   }
   let imports : Array[@ast.ImportSpec] = []
   let import_seen : Map[String, Bool] = Map([])
@@ -291,7 +295,7 @@ pub fn parse(src : String) -> ParseResult {
     p.skip_seps()
   }
   ParseResult::{
-    tree: { body, imports, },
+    tree: { body, imports, types: p.types, },
     reports: p.reports,
     skips: p.skips,
     first_error: p.first_error,
@@ -1099,6 +1103,13 @@ fn Parser::skip_decl_braced(
   what : String,
   sp : @core.Span,
 ) -> Unit {
+  // 0648. The DECLARED NAME is read HERE, before the scan below moves the
+  // cursor: the skipper walks forward to the body and comes back past the
+  // name, so a name read afterwards would be a name from somewhere else.
+  let decl_name = match declared_name_after_kw(self.toks, self.p) {
+    Some(n) => n
+    None => ""
+  }
   let mut found = false
   // `impl T for U with fn m(...) { ... }` puts a `fn` INSIDE the declaration, and
   // that `fn` is followed by the body brace. The `fn` sentinel below exists for
@@ -1162,6 +1173,27 @@ fn Parser::skip_decl_braced(
     // enum variant does.
     if what == "enum" || what == "suberror" {
       self.harvest_ctors(open_p, self.p)
+    }
+    // 0648. AND THE TYPE DECLARATION ITSELF, read out of the body that was
+    // just skipped: the body is the inside of the braces, and the PAYLOADS in
+    // it are where a type's recursion lives.
+    if what == "struct" || what == "enum" || what == "suberror" {
+      let kind = match what {
+        "struct" => @ast.TStruct
+        "enum" => @ast.TEnum
+        _ => @ast.TSuberror
+      }
+      // A STRUCT's body is a list of `field : Type`, and an ENUM's is a list
+      // of constructors. They are read by different scanners, and reading a
+      // struct with the enum's scanner finds NOTHING -- which is exactly what
+      // the measurement showed: a recursive struct produced no notice at
+      // all, and the reason was that its field types were never read.
+      let refs = if kind == @ast.TStruct {
+        struct_body_refs(self.toks, open_p + 1, self.p - 1)
+      } else {
+        enum_body_refs(self.toks, open_p + 1, self.p - 1)
+      }
+      self.record_type_decl(kind, decl_name, refs, sp)
     }
   }
   self.skip(what, true, sp)
@@ -1290,6 +1322,364 @@ fn Parser::after_path_marker(self : Parser, i : Int32) -> Bool {
     TDot => true
     _ => false
   }
+}
+
+///|
+/// 0648. THE INDEX JUST PAST THE GROUP THAT OPENS AT `i`, or `i` when there
+/// is no group there.
+///
+/// The brackets are matched BY KIND, because a mixed match would close a
+/// parenthesis with a bracket and end the scan at the wrong place -- and a
+/// scan that ends early reads HALF a type expression, which is a type
+/// expression with a name missing.
+///
+/// MEASURED 0648, AND THE FIRST VERSION OF THIS FUNCTION WAS WRONG. It
+/// counted all three kinds of bracket together -- every `(`/`{`/`[` added one
+/// to the depth and only the CLOSER OF THE OPENING KIND took one off -- so a
+/// `]` inside a `(...)` never cancelled its `[`, the depth never came back to
+/// zero, and the scan ran to the end of the file. The payload of
+/// `enum E { V(Array[Tree]) W(@core.Size) }` therefore read as `[Tree, Array,
+/// W]`: the member NAME after the payload was reported as a type reference,
+/// and the reader would have invented an edge `E -> W` for a constructor. The
+/// kind-matched version below is the fix, and the rows that pin it are in
+/// `src/parser/parser_0648_test.mbt`.
+fn group_end(toks : Array[@lexer.Tok], i : Int32) -> Int32 {
+  if i >= toks.length() {
+    return i
+  }
+  let open = toks[i]
+  let mut depth = 0
+  let mut j = i
+  while j < toks.length() {
+    match toks[j] {
+      TLParen => if open is TLParen { depth += 1 }
+      TLBrace => if open is TLBrace { depth += 1 }
+      TLBracket => if open is TLBracket { depth += 1 }
+      TRParen => if open is TLParen { depth -= 1 }
+      TRBrace => if open is TLBrace { depth -= 1 }
+      TRBracket => if open is TLBracket { depth -= 1 }
+      TEOF => return j
+      _ => ()
+    }
+    if depth == 0 && j > i {
+      return j + 1
+    }
+    j += 1
+  }
+  j
+}
+
+///|
+/// 0648. THE TYPE NAMES a type expression mentions.
+///
+/// The point of this function is to keep a name that is NOT in a type
+/// position out of the result, because the type graph is built over names and
+/// a stray name is a stray EDGE -- and a stray edge can invent a cycle that
+/// the program does not have. So:
+///
+///   * a QUALIFIED path (`@core.Size`) is recorded WHOLE. Its head is a
+///     package name, and recording the head would invent an edge to a local
+///     type that happens to share the spelling. Its ARGUMENTS belong to the
+///     other package too, so they are not read either.
+///   * an UNQUALIFIED head is recorded, and its `[...]` ARGUMENTS are read as
+///     types of THIS module -- `Array[Tree]` mentions `Tree`.
+///   * `async` is a keyword and not a type.
+fn type_expr_refs(
+  toks : Array[@lexer.Tok],
+  from : Int32,
+  to : Int32,
+) -> Array[String] {
+  let out : Array[String] = []
+  let mut i = from
+  while i < to && i < toks.length() {
+    match toks[i] {
+      TName(n) => {
+        if n == "async" {
+          i += 1
+          continue
+        }
+        let mut j = i + 1
+        let mut qualified = false
+        while j + 1 < toks.length() && toks[j] is TDot {
+          match toks[j + 1] {
+            TName(_) => {
+              qualified = true
+              j += 2
+            }
+            _ => break
+          }
+        }
+        if qualified {
+          if j < toks.length() && toks[j] is TLBracket {
+            j = group_end(toks, j)
+          }
+          i = j
+          continue
+        }
+        if j < toks.length() && toks[j] is TLBracket {
+          let end = group_end(toks, j)
+          for r in type_expr_refs(toks, j + 1, end - 1) {
+            push_type_ref(out, r)
+          }
+          j = end
+        }
+        push_type_ref(out, n)
+        i = j
+      }
+      _ => i += 1
+    }
+  }
+  out
+}
+
+///|
+/// 0648. Add a type reference, without repeats and without the empty name.
+fn push_type_ref(out : Array[String], n : String) -> Unit {
+  if n != "" && !out.contains(n) {
+    out.push(n)
+  }
+}
+
+///|
+/// 0648. THE TYPE NAMES an `enum` / `suberror` body mentions.
+///
+/// A member of an enum body is a NAME followed by an optional payload, and the
+/// payload is a list of TYPES: `Node(Tree, Tree)` mentions `Tree` twice, and
+/// `Tree` is the whole of the recursion. So the payload's parenthesised group
+/// is read as a type expression, and a member with a BRACE payload is read as
+/// a struct body (a record variant's fields are types too).
+///
+/// The member HEADS are not read: a constructor is a VALUE, and a constructor
+/// whose name happens to spell a declared type -- `enum A { B }` beside
+/// `enum B { .. }` -- would otherwise be an edge, and could invent a cycle.
+fn enum_body_refs(
+  toks : Array[@lexer.Tok],
+  from : Int32,
+  to : Int32,
+) -> Array[String] {
+  let out : Array[String] = []
+  let mut i = from
+  let mut depth = 0
+  while i < to && i < toks.length() {
+    match toks[i] {
+      TLBrace | TLParen | TLBracket => {
+        depth += 1
+        i += 1
+        continue
+      }
+      TRBrace | TRParen | TRBracket => {
+        depth -= 1
+        i += 1
+        continue
+      }
+      TName(_) => {
+        if depth == 0 {
+          let nxt = i + 1
+          if nxt < toks.length() && toks[nxt] is TLParen {
+            let end = group_end(toks, nxt)
+            for r in type_expr_refs(toks, nxt + 1, end - 1) {
+              push_type_ref(out, r)
+            }
+            i = end
+            continue
+          }
+          if nxt < toks.length() && toks[nxt] is TLBrace {
+            let end = group_end(toks, nxt)
+            for r in struct_body_refs(toks, nxt + 1, end - 1) {
+              push_type_ref(out, r)
+            }
+            i = end
+            continue
+          }
+        }
+        i += 1
+        continue
+      }
+      _ => i += 1
+    }
+  }
+  out
+}
+
+///|
+/// 0648. THE TYPE NAMES a `struct` body mentions.
+///
+/// A field is `name : Type`, and the TYPE is what says the struct is
+/// recursive: `struct Node { left : Node }`. The field NAME is not read -- a
+/// field called `Tree` is a binding, not a reference to a type -- so the scan
+/// looks for the `:` and reads what follows it, up to the next comma at the
+/// same nesting depth. A tuple type (`x : (Int, Int)`) keeps its own comma
+/// inside its parentheses, which is what the depth is for.
+///
+/// THE FIELDS ARE SEPARATED BY A NEWLINE AS WELL AS BY A COMMA, and the first
+/// version of this scan stopped only at a comma. MoonBit accepts
+///
+///     struct Node {
+///       left : Node
+///       right : Node
+///     }
+///
+/// -- the fields are newline-separated there, so the scan ran past the end of
+/// the first field's type and read `right` as a TYPE. MEASURED 0648: the
+/// declaration's refs came out as `[Node, right]`, two names for one type.
+/// A stray name is a stray EDGE, and an edge to a field name is an edge the
+/// program does not have -- so the newline ends the field's type as surely as
+/// the comma does.
+fn struct_body_refs(
+  toks : Array[@lexer.Tok],
+  from : Int32,
+  to : Int32,
+) -> Array[String] {
+  let out : Array[String] = []
+  let mut i = from
+  let mut depth = 0
+  while i < to && i < toks.length() {
+    match toks[i] {
+      TLBrace | TLParen | TLBracket => {
+        depth += 1
+        i += 1
+        continue
+      }
+      TRBrace | TRParen | TRBracket => {
+        depth -= 1
+        i += 1
+        continue
+      }
+      TName(_) => {
+        if depth == 0 {
+          let nxt = i + 1
+          if nxt < toks.length() && toks[nxt] is TColon {
+            let mut j = nxt + 1
+            let mut inner = 0
+            let mut end = to
+            while j < to && j < toks.length() {
+              match toks[j] {
+                TLBrace | TLParen | TLBracket => inner += 1
+                TRBrace | TRParen | TRBracket => {
+                  if inner == 0 {
+                    end = j
+                    break
+                  }
+                  inner -= 1
+                }
+                TComma =>
+                  if inner == 0 {
+                    end = j
+                    break
+                  }
+                TNewline =>
+                  if inner == 0 {
+                    end = j
+                    break
+                  }
+                _ => ()
+              }
+              j += 1
+            }
+            for r in type_expr_refs(toks, nxt + 1, end) {
+              push_type_ref(out, r)
+            }
+            i = end
+            continue
+          }
+        }
+        i += 1
+        continue
+      }
+      _ => i += 1
+    }
+  }
+  out
+}
+
+///|
+/// 0648. RECORD a type declaration: its name, its kind, and the type names it
+/// mentions.
+///
+/// THE CURSOR IS NOT MOVED, and the declaration is still skipped by the same
+/// mechanism that skipped it before 0648, and the scope-limit notice for it
+/// still stands -- reading a declaration is not analysing one, and the
+/// analyzer still models neither a constructor's shape nor a struct's fields.
+///
+/// WHAT IS NEW is that the SHAPE is available afterwards. Before this, the
+/// frontend could not tell a recursive type from a plain one: it read neither
+/// the payload nor the field types, and `harvest_ctors` kept the constructor
+/// NAMES only. The recursion lives in exactly the part that was thrown away
+/// (`Node(Tree, Tree)` names the type being declared), so "the analyzer
+/// reported nothing about the recursive type" could not be read as "the
+/// analyzer checked, and the type is not recursive" -- it could only be read
+/// as "the analyzer does not read type definitions at all".
+fn Parser::record_type_decl(
+  self : Parser,
+  kind : @ast.TypeKind,
+  name : String,
+  refs : Array[String],
+  sp : @core.Span,
+) -> Unit {
+  if name == "" {
+    return
+  }
+  self.types.push(@ast.TypeDecl::{ name, kind, refs, span: sp, })
+}
+
+///|
+/// 0648. THE TYPE NAMES an alias mentions: `type A = B` mentions `B`.
+///
+/// The right-hand side runs to the END OF THE LINE -- an alias has no body,
+/// and `skip_decl_line` stops at the newline or the `;` -- so the scan stops
+/// there too. An alias with NO `=` (`type A`, an opaque declaration) mentions
+/// nothing.
+fn Parser::alias_refs(self : Parser) -> Array[String] {
+  let mut i = self.p + 1
+  let mut eq = -1
+  while i < self.toks.length() {
+    match self.toks[i] {
+      TAssign => {
+        eq = i
+        break
+      }
+      TNewline | TSemi | TEOF => break
+      _ => i += 1
+    }
+  }
+  if eq < 0 {
+    return []
+  }
+  let mut j = eq + 1
+  let mut end = self.toks.length()
+  while j < self.toks.length() {
+    match self.toks[j] {
+      TNewline | TSemi | TEOF => {
+        end = j
+        break
+      }
+      _ => j += 1
+    }
+  }
+  type_expr_refs(self.toks, eq + 1, end)
+}
+
+///|
+/// 0648. THE TYPE NAMES a TUPLE struct mentions: `struct Point(Int, Int)`.
+///
+/// The fields of a tuple struct are types, and a tuple struct can be
+/// recursive in exactly the way a braced one is.
+fn Parser::tuple_struct_refs(self : Parser) -> Array[String] {
+  let mut i = self.p + 1
+  while i < self.toks.length() {
+    match self.toks[i] {
+      TName(_) => {
+        i += 1
+        break
+      }
+      _ => i += 1
+    }
+  }
+  if i < self.toks.length() && self.toks[i] is TLParen {
+    let end = group_end(self.toks, i)
+    return type_expr_refs(self.toks, i + 1, end - 1)
+  }
+  []
 }
 
 ///|
@@ -1723,6 +2113,25 @@ fn Parser::skip_decl_line(
   what : String,
   sp : @core.Span,
 ) -> Unit {
+  // 0648. The declaration is READ BEFORE the cursor moves: the two shapes
+  // that reach here with a shape to read -- an ALIAS (`type A = B`) and a
+  // TUPLE STRUCT (`struct Point(Int, Int)`) -- are both read forward from the
+  // cursor, and after the skip the cursor is at the END of the line.
+  let decl_name = match declared_name_after_kw(self.toks, self.p) {
+    Some(n) => n
+    None => ""
+  }
+  if what == "type" {
+    self.record_type_decl(@ast.TAlias, decl_name, self.alias_refs(), sp)
+  } else if what == "struct" {
+    // A tuple struct reaches here; a braced one does not. Its FIELDS are
+    // types, and a tuple struct can be recursive in the same way a braced
+    // one is.
+    self.record_type_decl(@ast.TStruct, decl_name, self.tuple_struct_refs(), sp)
+  } else if what == "suberror" {
+    // A body-less suberror: no payload, so no type to mention.
+    self.record_type_decl(@ast.TSuberror, decl_name, [], sp)
+  }
   while !self.at(TEOF) && !self.at(TNewline) && !self.at(TSemi) {
     let _ = self.bump()
   }

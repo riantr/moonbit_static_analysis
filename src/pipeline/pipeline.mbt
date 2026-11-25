@@ -352,6 +352,34 @@ fn run_core(
   // same rule every other lens follows for an unparsed file, and the reason the
   // findings after `first_error` are withheld rather than reported.
   if parsed.first_error == 0 {
+    // 0648. THE TYPE GRAPH, and the cycles in it.
+    //
+    // It runs under the same guard as the three passes below, and for the
+    // same reason: the declarations AFTER a read failure were never read, so
+    // the graph would be missing its nodes -- and a missing cycle is not
+    // evidence that there is none. That is the "missing is not default" rule
+    // one level up: a graph built from a half-read file answers a question
+    // about the HALF, not about the program.
+    //
+    // The pass itself lives in the TYPE LENS (`@types`), because the type
+    // graph is a type-layer fact: the frontend READ the declarations, and
+    // the lens is what asks whether the shape it read has a cycle.
+    //
+    // 0648. THE RESULT IS BOUND BEFORE THE LOOP, and that is not a style
+    // choice. `moon fmt` splits a long `for` header across lines -- `for`
+    // alone on one line, the iterator clause on the next -- and the frontend
+    // does not READ that shape: the parser bumps `for` and asks for the loop
+    // variable at once, so the newline in between is the wrong token. The
+    // shape is documented in `src/sa/main.mbt` and it was MEASURED here: this
+    // file was reported PARTIAL with "expected loop variable" at this line,
+    // and the release gate's self-scan stage failed on `files != parsed`
+    // because of it. The bound keeps the header on one line.
+    let type_notices = @types.recursive_type_notices(
+      @types.build_type_graph(parsed.tree.types),
+    )
+    for r in type_notices {
+      all.push(r)
+    }
     for r in @walk.guard_facts(parsed.tree.body) {
       all.push(r)
     }

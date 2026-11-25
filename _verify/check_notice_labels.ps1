@@ -51,6 +51,10 @@ $ErrorActionPreference = 'Continue'
 #        the literate frontend `subset_exclusion` is what decides a fence is
 #                             outside the subset, so the message beside it is a
 #                             scope limit;
+#        the type lens        `*_notices` in the type lens's own package is what
+#                             BUILDS the type lens's scope limits -- the type
+#                             lens models no recursive type, so every report it
+#                             raises is a scope limit;
 #        everything else       the lexer's malformed literals, `moonfiles`'
 #                             malformed interface text and the parser's read
 #                             failures are defects, and a defect must NOT carry
@@ -178,7 +182,20 @@ if ($lowNotDemoted.Count -gt 0) {
   $lowNotDemoted | Select-Object -First 5 | ForEach-Object { Write-Output ('      ' + $_.Line + ':' + $_.Col + ' - ' + $_.Label + ': ' + $_.Message) }
   $fail++
 }
-if ($wrongLabel.Count -eq 0 -and $wrongNotice.Count -eq 0 -and $lowNotDemoted.Count -eq 0) {
+# THE COUNT THAT WAS PRINTED AND NEVER CHECKED. The header above says this
+# count "must be ZERO" -- every ParseError-family finding in this analyzer's
+# own source is a deliberate exclusion -- and the count was PRINTED and nothing
+# more. MEASURED 0648, by injecting a defect: taking the marker out of the
+# type lens's messages moved this count from 0 to 6, and section 1 still said
+# OK. A row that is printed is not a row that is checked, and a check that
+# cannot fail is not a check -- so the count is asserted here, against the
+# claim the header makes.
+if ($genuineError.Count -gt 0) {
+  Write-Output ('  FAIL: ' + $genuineError.Count + ' ParseError finding(s) do NOT carry the marker:')
+  $genuineError | Select-Object -First 5 | ForEach-Object { Write-Output ('      ' + $_.Line + ':' + $_.Col + ' - ' + $_.Label + ': ' + $_.Message) }
+  $fail++
+}
+if ($wrongLabel.Count -eq 0 -and $wrongNotice.Count -eq 0 -and $lowNotDemoted.Count -eq 0 -and $genuineError.Count -eq 0) {
   Write-Output '  every scope limit is labelled notice:, every low-confidence finding is demoted to notice:, and notice: is used for nothing else   OK'
 }
 
@@ -307,6 +324,9 @@ $dynamicSites = @()
 $nErrCall = 0
 $nErrInterp = 0
 $nErrMarker = 0
+$nTypeLensProducer = 0
+$nTypeLensLiteral = 0
+$nTypeLensBad = 0
 $bad = 0
 
 foreach ($f in $srcFiles) {
@@ -378,7 +398,9 @@ foreach ($f in $srcFiles) {
   # The enclosing function is found by the nearest function declaration above
   # it, and the body of that function is what says whether this site is a
   # skip producer: `subset_exclusion` is the literate frontend's decision, and
-  # `Parser::note_skip` is the program frontend's.
+  # `Parser::note_skip` is the program frontend's. The TYPE LENS has a scope
+  # limit of its own, and its producer is recognised by what it IS rather than
+  # by what its message says -- see the third mechanism below.
   #
   # EVERY SITE IS COUNTED, INCLUDING THE ONES WHOSE MESSAGE IS NOT SPELLED
   # OUT. The first version of this scan ended with
@@ -424,7 +446,19 @@ foreach ($f in $srcFiles) {
         }
       }
       $body = ($lines[($owner + 1)..([Math]::Max($owner + 1, $end - 1))] -join "`n")
-      $isSkipProducer = ($body -match 'subset_exclusion\s*\(') -or ($ownerName -match 'Parser::note_skip')
+      # THE THIRD MECHANISM, and the one that was MISSING until 0648. The type
+      # lens declares a scope limit of its own -- it does not model a
+      # recursive type, so a recursive type is REPORTED rather than analysed --
+      # and its producer builds the message at run time. Before this, the site
+      # was classified as a GENUINE producer, and the gate stayed green for a
+      # reason that had nothing to do with the marker: the marker check only
+      # runs on a message the gate can read, and this one is built at run
+      # time. A check that cannot read the message is a check that passes on
+      # nothing, so the producer is recognised by what it IS -- the function
+      # that BUILDS the type lens's notices, in the type lens's own package --
+      # and its messages are checked where they are spelled out (3e).
+      $isTypeLensProducer = ($ownerName -match '_notices$') -and ($rel -match '^src[\\/]types[\\/]')
+      $isSkipProducer = ($body -match 'subset_exclusion\s*\(') -or ($ownerName -match 'Parser::note_skip') -or $isTypeLensProducer
     }
     $nSites++
     if ($msg -eq '') {
@@ -493,6 +527,52 @@ foreach ($f in $srcFiles) {
       $bad++
     }
   }
+
+  # --- 3e. the type lens's scope-limit producer, where its messages are ------
+  # The type lens builds its scope-limit messages at RUN TIME -- one wording
+  # for an alias cycle, another for a data recursion -- so the marker cannot be
+  # read at the construction site. The same situation as 3d, and it is handled
+  # the same way: the messages are checked HERE, where they are spelled out.
+  #
+  # WITHOUT THIS, 3c's marker check would be a NEGATIVE CONTROL THAT CANNOT
+  # FAIL for this producer: a site whose message the gate cannot read is never
+  # checked for the marker, so a type-lens message that LOST the marker would
+  # render `error:` and the gate would still say OK. That is the failure mode
+  # this gate exists to catch, reproduced by the gate itself.
+  #
+  # The producer is found BY MECHANISM -- the function that BUILDS the type
+  # lens's notices, in the type lens's own package -- and not by its text.
+  # Every string literal in its body is a message it can raise, and every one
+  # of them must carry the marker.
+  if ($rel -match '^src[\\/]types[\\/]') {
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+      if ($lines[$i] -notmatch '^\s*(pub\s*(\(all\)\s*)?)?fn\s+\w*_notices\s*\(') { continue }
+      $nTypeLensProducer++
+      $indent = ($lines[$i] -replace '^(\s*).*$', '$1').Length
+      $end = $lines.Count
+      for ($k = $i + 1; $k -lt $lines.Count; $k++) {
+        if ($lines[$k] -match '^\s*(pub\s*(\(all\)\s*)?)?fn\s' -and ($lines[$k] -replace '^(\s*).*$', '$1').Length -eq $indent) {
+          $end = $k; break
+        }
+      }
+      $tlBody = ($lines[($i + 1)..([Math]::Max($i + 1, $end - 1))] -join "`n")
+      $tlLits = @([regex]::Matches($tlBody, '"([^"]*)"'))
+      if ($tlLits.Count -eq 0) {
+        Write-Output ('  FAIL: ' + $rel + ' -- the type lens''s scope-limit producer has no message; the producer has lost its wording.')
+        $nTypeLensBad++
+        $bad++
+        continue
+      }
+      foreach ($m in $tlLits) {
+        $nTypeLensLiteral++
+        if (-not $m.Groups[1].Value.Contains($MARKER)) {
+          Write-Output ('  FAIL: ' + $rel + ' -- a type-lens scope-limit message does not carry the marker: ' + $m.Groups[1].Value)
+          $nTypeLensBad++
+          $bad++
+        }
+      }
+    }
+  }
 }
 Write-Output ('  FParse construction sites            ' + $nSites + ' (' + ($nSites - $nDynamic) + ' with a literal message, ' + $nDynamic + ' built at run time)')
 Write-Output ('  note_skip call sites            ' + $nSkipCall + ' (' + $nSkipLiteral + ' with a literal, the rest via skip_msg)')
@@ -500,6 +580,7 @@ Write-Output ('  deliberate producers (by mechanism)   ' + $nDeliberate)
 Write-Output ('  genuine producers                    ' + $nGenuine)
 Write-Output ('  err() call sites                     ' + $nErrCall + ' (' + $nErrInterp + ' interpolate a value)')
 Write-Output ('  err() messages carrying the marker   ' + $nErrMarker + '   ' + $(if ($nErrMarker -eq 0) { 'OK' } else { 'FAIL' }))
+Write-Output ('  type-lens scope-limit producers      ' + $nTypeLensProducer + ' (' + $nTypeLensLiteral + ' messages, ' + $nTypeLensBad + ' without the marker)')
 foreach ($ds in $dynamicSites) { Write-Output ('    a dynamic message: ' + $ds) }
 Write-Output ('  sites where the marker and the mechanism disagree   ' + $bad + $(if ($bad -eq 0) { '   OK' } else { '   FAIL' }))
 if ($nSkipCall -lt 1) {
@@ -524,6 +605,10 @@ if ($nDeliberate -lt 1) {
 }
 if ($nGenuine -lt 1) {
   Write-Output '  FAIL: no genuine FParse producer was found. The check has stopped looking at the other direction.'
+  $fail++
+}
+if ($nTypeLensProducer -lt 1) {
+  Write-Output '  FAIL: no type-lens scope-limit producer was found by mechanism. The type lens''s notices have moved, or the type lens is gone.'
   $fail++
 }
 $fail += $bad
