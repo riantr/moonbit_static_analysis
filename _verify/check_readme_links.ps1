@@ -703,6 +703,13 @@ $noticeLabel = [ordered]@{
   # carries one gets a notice -- and a notice kind with no label here would make
   # the README table unable to name it.
   'type declaration'           = @{ en = '`type` declaration';           zh = '`type` 声明' }
+  # 0648. THE TYPE LENS'S OWN SCOPE LIMIT. A recursive type is reported as a
+  # scope limit with its OWN wording -- the type lens does not model recursive
+  # types -- and it lands on the same line as the declaration's own scope-limit
+  # notice, so the pipeline's merge keeps the type lens's message. It is
+  # therefore a notice kind of its own, and a kind with no label here would
+  # make the README table unable to name it.
+  'recursive type declaration' = @{ en = '`recursive type` declaration'; zh = '`recursive type` 声明' }
 }
 $more = New-Object System.Collections.Generic.List[object]
 if ($sn -ne '') {

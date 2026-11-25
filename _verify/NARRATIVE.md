@@ -25877,7 +25877,350 @@ fourth shape is not covered by a fixture because it cannot be: the recursion liv
 payload, and the payload is what the frontend drops -- so the capability is written down as
 missing, which is the only honest way to leave it.
 
+## 0648: THE RECURSION THE ANALYZER COULD NOT SEE, AND THE READER THAT HAD TO LEARN TO READ
 
+MEASURED 2026-11-25, on this tree at 0647's HEAD, by implementing the three things 0647 named.
 
+0647 closed three gaps in the SUITE and named a fourth that was not a gap in the suite: it was a
+CAPABILITY the analyzer did not have. The audit's words were
 
+    the frontend did not read type definitions -- `ast::Module` had a `body` and an
+    `imports` and nothing else, and the parser SKIPPED `struct` / `enum` / `type` /
+    `suberror` at the token level
 
+and the measurement that backed it was that a recursive enum and a plain enum produced
+BYTE-IDENTICAL reports, and left no node in the tree either way. 0647's rule was that a
+"no finding" is evidence about the program only if the analyzer's ability to find is itself
+measured -- and that the discriminating measurement is not "the recursive program reported
+nothing" (an empty negative control) but "the recursive program and the plain program give
+the SAME OBSERVATION".
+
+THIS INCREMENT INVERTS THAT ROW, and the inversion is the point: the recursive program and
+the plain program now give DIFFERENT observations. What the analyzer still cannot do is
+MODEL a recursive type -- and saying so is what it now does.
+
+PART ONE: WHAT THE TOOLCHAIN SAYS, MEASURED BEFORE ANY CODE WAS WRITTEN.
+
+Every claim in this chapter about what MoonBit accepts was measured against `moon check`,
+one shape per case, with a POSITIVE CONTROL beside it -- a file that was wrong on purpose had
+to be rejected, or "the toolchain accepted everything" would be a statement about a probe
+that never ran.
+
+    enum Tree { Leaf(Int), Node(Tree, Tree) }        ACCEPTED
+    enum Tree { Leaf, Node(Tree, Tree) }              ACCEPTED
+    struct Node { left : Node, right : Node }        ACCEPTED
+    suberror E { Wrap(E) }                           ACCEPTED
+    type A = Int                                     ACCEPTED (Warning 0003, unused type)
+    type A = A                                       REJECTED  Error [4155]
+                                                      "Found cycle A -> A in `type alias` declaration."
+    type A = B  +  type B = A                        REJECTED  Error [4155]
+                                                      "Found cycle A -> B -> A in `type alias` declaration."
+
+THE LINE THAT MATTERS IS BETWEEN THE LAST TWO GROUPS. A recursive TYPE is legal MoonBit --
+that is what MoonBit is for -- and a recursive ALIAS is not: the compiler rejects it outright.
+So "this program has a recursive type" is never, by itself, a defect in the reader's code,
+and "this program has a recursive alias cycle" is a defect the compiler has already reported
+before this analyzer says a word.
+
+THAT IS WHY THE FAMILY ROSTER STAYS AT EIGHTEEN. A new family for "recursive type" would be
+a family whose members are LEGAL PROGRAMS, and the analyzer would be reporting the reader's
+idiom as the reader's mistake. The notice channel that already exists for "this analyzer does
+not read this" -- the declaration scope limit -- is the right one, and this increment uses it.
+
+PART TWO: THE THREE THINGS, AND WHERE EACH ONE LIVES.
+
+    a NODE for a type declaration   src/ast/ast.mbt
+        pub(all) enum TypeKind { TStruct, TEnum, TAlias, TSuberror }
+        pub(all) struct TypeDecl { name, kind, refs : Array[String], span }
+        and `Module` grew a field: `types : Array[TypeDecl]`
+
+    a parser that READS it          src/parser/parser.mbt
+        the declarations were SKIPPED; now they are read, and what is read is the
+        PAYLOAD -- because the recursion lives in the payload.
+
+    a type lens that asks about it   src/types/typegraph.mbt
+        build_type_graph / type_cycles / recursive_types / recursive_type_notices
+
+THE READER'S RULES, and every one of them is a rule about what a NAME in a non-type position
+would do to the type graph:
+
+    a CONSTRUCTOR is a value      `enum A { B }` beside `enum B { .. }` must NOT become A -> B
+    a FIELD NAME is a binding     `struct S { Tree : Int }` mentions no type
+    a QUALIFIED path is foreign   `@core.Size` -- its head is a PACKAGE name
+    a BUILTIN is not a node       `Int` is not a type of THIS module
+    a CONTAINER HEAD is not a node `Array[Tree]` mentions `Tree`; `Array` is the constructor
+
+THE LAST ONE IS ENFORCED BY THE GRAPH, NOT BY THE READER, and the division is deliberate:
+the reader reports WHAT IT SAW, and the graph keeps only the names this module DECLARES. A
+reader that filtered would be guessing which names are builtins, and a guess that is wrong
+once is a whole missing edge.
+
+PART THREE: THE READER'S TWO DEFECTS, AND BOTH OF THEM WERE FOUND BY THE TESTS.
+
+The first version of the reader was wrong twice, and both defects are the same SHAPE: a scan
+that ended in the wrong place.
+
+DEFECT ONE -- the brackets were counted TOGETHER. `group_end` added one to the depth for
+every `(`/`{`/`[` and took one off only for the closer of the OPENING KIND, so a `]` inside a
+`(...)` never cancelled its `[` and the depth never came back to zero: the scan ran to the end
+of the file. The measurement:
+
+    enum E { V(Array[Tree]) W(@core.Size) }     refs read as [Tree, Array, W]
+
+`W` is a CONSTRUCTOR. Reading it as a type reference would have invented the edge `E -> W`,
+and a graph with an invented edge invents a cycle that the program does not have.
+
+DEFECT TWO -- the struct field scan stopped only at a COMMA, but MoonBit separates fields by
+a NEWLINE as well:
+
+    struct Node {
+      left : Node
+      right : Node
+    }                                           refs read as [Node, right]
+
+`right` is the NEXT FIELD'S NAME. The fix is one clause -- a newline at the same nesting
+depth ends the field's type as surely as a comma does -- and the measurement after the fix is
+`[Node]`, and the comma-separated form reads the same way.
+
+THE GENERAL FORM, and it is the reason both are worth a chapter: a NAME that is read in the
+wrong POSITION becomes an EDGE, and an edge becomes a CYCLE, and a cycle becomes a FINDING
+about a program that has none. Every rule the reader follows is a rule about not inventing
+that finding.
+
+PART THREE AND A HALF: THE ANALYZER COULD NOT READ ITS OWN NEW SOURCE.
+
+The release gate's self-scan compares the files the scan READ against `git ls-tree -r HEAD`,
+and it asserts `files == parsed`. The first run of this increment FAILED that assertion, and
+the reason was not a drifted pin: TWO of the four new files were reported PARTIAL, with the
+parse error "expected loop variable".
+
+    src/types/typegraph.mbt     read up to line 105
+    src/pipeline/pipeline.mbt   read up to line 367
+
+AND THE TWO SHAPES ARE BOTH KNOWN LIMITS OF THE FRONTEND, both written down in this tree
+before this increment:
+
+    `for (a, b) in edges`    a TUPLE-PAREN PATTERN. The parser's own comment says it
+                             "is not modelled and still reports" -- it bumps `for` and
+                             asks for the loop variable with `expect_name`, and the `(` is
+                             not a name.
+
+    a `for` header split     `moon fmt` splits a long `for` header across lines -- `for`
+    across two lines          alone on one line, the iterator clause on the next -- and the
+                             frontend does not READ that shape. `src/sa/main.mbt` says so
+                             and explains WHY it matters: "Writing that shape would have
+                             left the analyzer unable to read its own source, and the
+                             self-scan stage of the release gate would have failed on
+                             `files != parsed`."
+
+⇒ THE FIXES ARE SMALL AND THE LESSON IS NOT. The tuple is taken apart by FIELD
+(`let a = e.0`) and the `for` header keeps its binder on one line (the result is bound
+first). Both are shapes the frontend reads -- `pair.0` is used by this tree's own source
+in six places.
+
+⇒ BUT THE LESSON IS THE GENERAL ONE, and it is the one the self-scan exists to catch: an
+analyzer that cannot read its own source has moved its own source OUT of the region it is
+checked against -- and that region is the only tree where the analyzer's output can be
+compared with a tree that is supposed to have no defect in it. A file that cannot be read
+is SILENCE, not a finding, and silence in the instrument is indistinguishable from silence
+in the program.
+
+PART FOUR: THE NOTICE, AND WHY IT IS A NOTICE.
+
+The recursive type's report is FParse, with the LENS `type`, and its message carries the word
+`subset` -- so it renders `notice:` and its confidence is `undecided`, and it is not
+actionable. That is the existing DECLARED SCOPE LIMIT channel, used by a new producer.
+
+AND THE COUNT DOES NOT MOVE, and this is the part that matters for the reader: the recursive
+type's own scope-limit notice ("enum declaration is outside the analyzed subset; its body was
+not analyzed") and the type lens's notice land on the SAME LINE, and the pipeline merges
+findings by (family, line) -- so the declaration's notice is REPLACED by the type lens's, not
+ADDED to. The number of notices a recursive declaration produces is the number a plain
+declaration produces. What changed is the WORDING, and the wording is the measurement.
+
+THE OBSERVATION, for the four shapes, measured on the analyzer's own output:
+
+    a recursive enum          notice: recursive type declaration is outside the analyzed
+                              subset; its body was not analyzed and the type lens does not
+                              model recursive types
+    a plain enum              notice: enum declaration is outside the analyzed subset; its
+                              body was not analyzed
+    a mutual recursion        TWO notices, one per declaration
+    an alias cycle            notice: recursive type alias declaration is outside the analyzed
+                              subset; the type lens does not model recursive type aliases
+
+THE FIRST TWO ROWS ARE THE 0647 ROW, INVERTED. In 0647 they were byte-identical, and that
+identity was the proof that the analyzer could not see the recursion at all. Now they differ,
+and the difference is exactly the one the audit asked for.
+
+PART FIVE: THE GATE THAT WAS GREEN FOR THE WRONG REASON.
+
+`check_notice_labels.ps1` holds the SOURCE CONVENTION: a producer that carries the marker
+must be a deliberate scope limit, and a producer that does not carry it must be a defect. The
+producers are told apart BY MECHANISM, so the check is not circular.
+
+The type lens is a THIRD producer, and the gate did not know it. The site was classified as a
+GENUINE producer -- and the gate stayed GREEN, for a reason that had nothing to do with the
+marker: the type lens builds its message at RUN TIME, and the marker check only runs on a
+message the gate can READ. A check that cannot read the message is a check that passes on
+nothing, and the gate's own doctrine says that a count of zero fails the check.
+
+THE FIX HAS TWO HALVES, and the second half is the one that matters:
+
+    the producer is recognised by MECHANISM -- it is the function that BUILDS the type
+    lens's notices, in the type lens's own package -- and not by what its message says;
+
+    and its messages are checked WHERE THEY ARE SPELLED OUT, exactly as the parser's
+    `err()` messages are checked. The gate can now fail on a type-lens message that
+    loses the marker.
+
+AND THE SECOND GAP, in the same gate and the same increment: section 1 counted the
+ParseError-family findings that do NOT carry the marker, printed that count, and NEVER
+ASSERTED IT -- while the gate's own header says the count "must be ZERO". The measurement that
+found it was the injection: taking the marker out of the type lens's messages moved that
+count from 0 to 6, and section 1 still said OK. A row that is printed is not a row that is
+checked.
+
+THE INJECTION, and the gate's own rule is that a green gate proves nothing until it has been
+shown to go red:
+
+    the marker taken out of the type lens's two messages
+        -> the gate exits 1, with both messages named
+        -> the tree is restored and the restore is checked BY HASH
+
+PART SIX: WHAT IS STILL NOT TRUE.
+
+READING A DECLARATION IS NOT MODELLING ONE. The analyzer still has no representation for a
+recursive shape, so it still checks nothing about the code that uses one: a constructor's
+shape is unknown, a struct's fields are not bindings, and the type lens only says "there is
+a cycle here and I do not model it".
+
+AND THE TYPE GRAPH RUNS UNDER THE SAME GUARD AS EVERYTHING ELSE: it runs only where the
+frontend read the whole file. A half-read file's declarations are not in the tree, and a
+missing cycle is not the same fact as an absent one -- "missing is not default".
+
+AND THE ALIAS CASE IS THE COMPILER'S, not this analyzer's: `moon check` rejects it, so the
+notice is never a reader's first signal, and this increment did not add a family for it.
+
+PART SEVEN: THE PIN THAT DID NOT ADD UP, AND THE GATE THAT SAID "CORPUS DRIFTED".
+
+THE FULL GATE, WITH THE MUTATIONS IN, WENT RED, and it went red in exactly ONE place:
+
+    [DRIFT ] the eight trees split into 4035 printed and 20141 aggregated, pinned 4193 / 22137.
+
+and it went red SEVENTY MINUTES in. The tree had NOT drifted: every one of the eight trees
+MATCHED its own pinned baseline, the seven corpora's own split MATCHED, and the eight-tree
+TOTAL (24176) MATCHED. The one thing that did not match was a pin -- MY pin, derived by
+hand, in the increment's own commit.
+
+AND THE WAY IT WAS WRONG IS THE POINT. The eight-tree split is the seven corpora PLUS this
+repository's own source, and the own-source half moved by +1 printed and +26 aggregated. A
+pin that is the SUM OF TWO HALVES moves by the CHANGE in the half that moved. What was
+written was the old eight-tree total plus the NEW ABSOLUTE VALUE of the own-source half:
+
+    old eight-tree total + the half's NEW VALUE   = 4034 + 159 = 4193
+    old eight-tree total + the half's DELTA        = 4034 +   1 = 4035
+
+and the same mistake in the other half (20115 + 2022 = 22137, where it had to be
+20115 + 26 = 20141). The own-source half was counted TWICE.
+
+AND THE SUM DID NOT CLOSE, and that is the part nothing was looking at:
+
+    4193 + 22137 = 26330        against a pinned eight-tree total of 24176
+
+THE GATE'S OWN CONSISTENCY CHECK WAS THE MEASUREMENT SIDE, not the pin side. The corpus
+stage checks that the MEASURED split adds up to the MEASURED total -- and that check
+PASSED, because the measurement is right. It also checks the PINNED split against the
+MEASURED split -- and that one failed, correctly, but only at the corpus stage, seventy
+minutes in, and it reported the mismatch as "corpus drifted". So the VERDICT was right and
+the ACCUSATION was wrong: a tree that had not drifted was accused of drifting, and the
+reader was sent to look at eight corpora instead of at one line of arithmetic. The corpus
+stage's own comment had already said what was missing -- "A pin on the split alone could be
+satisfied by two numbers that do not add up to the total" -- and it was true of the PIN,
+not only of the measurement.
+
+AND THE READMEs SAID THE SAME WRONG NUMBERS, and the document gate was GREEN, because
+`check_readme_links.ps1` DERIVES what the READMEs must say from release.ps1's pins. A wrong
+pin and a document that agrees with it are indistinguishable from a right one -- and the
+paragraph even asserted the false identity:
+
+    4,193 + 22,137 = 24,176
+
+which is 26,330, not 24,176. A published number that is not gated is a number that can go
+missing silently (rule 29); a published EQUATION that is not gated is an equation that can
+be FALSE while every gate is green.
+
+SO THE GATE GETS THE CHECK THAT WAS MISSING, and it is the corpus stage's own sentence
+applied to the PINS: two pins that are supposed to add up to a third are checked against
+EACH OTHER, before any stage runs. MEASURED, with one pin moved by ONE:
+
+    the pinned split 4035 + 20142 = 24177 is not the pinned total 24176
+        -> FATAL, exit 1, and ZERO stages ran
+
+and the harness's own self-test proves the guard bites (assertion J), and that the pins are
+back when the self-test is over. The file is restored BY HASH.
+
+=> 判据: a pin that adds itself up wrong turns the gate red SEVENTY MINUTES LATER, and on
+the wrong suspect -- and a verdict that is right does not make the accusation right. Two
+pins that are supposed to sum to a third have to be checked against EACH OTHER, before any
+stage runs.
+
+PART EIGHT: THE MEASUREMENTS, AND WHAT THEY ARE ABOUT.
+
+    the self-scan (own source), MEASURED on this tree
+
+    files=288 parsed=288 actionable=0 notices=2181 unreliable=0 withheld=0 unchecked=4649
+    288/288 parsed, actionable 0 (with `// nosec` honoured)
+    the notices reconcile: 2181 = 159 printed + 2022 aggregated
+    the call sites the type lens could not verify, by reason: 191 a cross-file value,
+    500 not callable, 0 unresolved, 3855 a method call, 0 a `..` link
+    the SSA cost: files=270 functions=1457 instructions=9315 variables=1186
+
+    the notice table, by kind, on this tree's own source
+
+    test declaration              1848
+    struct declaration             121
+    if expression                  102
+    anonymous function literal      48
+    enum declaration                33
+    short lambda                     8
+    type declaration                 7
+    const declaration                7
+    recursive type declaration       6
+    try expression                   1
+
+    THE SIX ARE THIS TREE'S OWN RECURSIVE TYPES: EKind, Expr, ElseIf, SKind and Stmt
+    in src/ast/ast.mbt, and Ty in src/types/types.mbt. And the six scope-limit notices
+    the type lens REPLACED are gone from their old kinds: `enum declaration` reads 33 --
+    three enums were replaced (EKind, SKind, Ty) and one was added (`TypeKind`) -- and
+    `struct declaration` reads 121, the SAME number as before, because three structs
+    were replaced (Expr, ElseIf, Stmt) and three were added (`TypeDecl`, `TypeGraph`,
+    `TypeCycle`).
+
+    the eight trees, over the seven pinned corpora AND this tree's own source
+
+    24176 notices = 4035 printed + 20141 aggregated
+
+    AND THE MOVEMENT RECONCILES EXACTLY, term by term: the own-source half moved by 27
+    -- the 22 new test declarations, the 6 type-lens notices, the 6 scope-limit notices
+    the type lens replaced, the 4 declarations this increment added (`TypeKind` and
+    `TypeDecl` in src/ast/ast.mbt, the two structs in src/types/typegraph.mbt), and the
+    one `if expression` in that file, which sits inside a function's extent and is
+    therefore PRINTED rather than aggregated. The seven corpora did not move at all:
+    this increment changed no corpus. And the SPLIT of that 27 is the split of the pin:
+    26 AGGREGATED (the 22 test declarations, the 6 type-lens notices, less the 6
+    scope-limit notices the type lens replaced, and the 4 declarations) and 1 PRINTED
+    (the `if expression`) -- so the eight-tree split moves 4034 -> 4035 printed and
+    20115 -> 20141 aggregated, and the seven corpora's own split does not move at all.
+
+AND THE RULE THIS INCREMENT ADDS TO THE LOOP is the 0647 rule with its other half written
+down: a "no finding" is evidence only if the analyzer's ability to find is measured -- and
+the ability has to be measured BEFORE the finding means anything. 0647 measured that the
+analyzer COULD NOT find a recursive type, and this increment is the proof that the measurement
+was about the analyzer: the same analyzer, the same tree, the same input shape, and a
+DIFFERENT observation -- because the analyzer changed.
+
+AND THE SECOND RULE THIS INCREMENT ADDS TO THE LOOP is the one the pin failure earned: a
+verdict that is RIGHT and an accusation that is WRONG are two different things, and a pin
+that does not close turns the gate red on the wrong suspect -- so two pins that are supposed
+to sum to a third are checked against EACH OTHER, before any stage runs.

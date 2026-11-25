@@ -268,7 +268,7 @@ way a hand-written table rots. **A QA that is not a gate is a comment.**
       actionable count — it has to, it needs the same scan for the notice table and
       the file set — but it no longer TAKES the verdict, because two assertions of
       one claim in two files is a second implementation of that claim. MEASURED:
-      `files=284 parsed=284 actionable=0 notices=2154`; the self-test plants a
+      `files=288 parsed=288 actionable=0 notices=2181`; the self-test plants a
       stale suppression in a copy and the count moves 0 -> 1. **RE-MEASURED 2026-11-21**
       (increment 0633): these counts moved in increment **0616**, which added
       `src/pipeline/pipeline_0616_test.mbt` and `src/sa/sa_0616_test.mbt` — the tree
@@ -463,8 +463,8 @@ fixed and measured.
 
 | # | candidate | the number that would rank it | step |
 |---|---|---|---|
-| C1 | the 1826 test-declaration bodies outside the subset | the largest blind region BY COUNT | 广 |
-| C2 | the 4503 unverified call sites (five reasons, three of them silent) | the largest blind region BY DEFECT RISK | 深 |
+| C1 | the 1848 test-declaration bodies outside the subset | the largest blind region BY COUNT | 广 |
+| C2 | the 4546 unverified call sites (five reasons, three of them silent) | the largest blind region BY DEFECT RISK | 深 |
 | C3 | the merge group `arg-type` hiding MSA-007/MSA-008 | how many corpus findings are merged echoes | 深 (report shape) |
 | C4 | MSA-001 never being actionable | how many corpus files are withheld | 广 |
 
