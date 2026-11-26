@@ -15,13 +15,17 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 `.mbtp` — and it **never modifies the target**: the analysed repository neither depends on
 this module nor is touched by it.
 
-Measured on `moonbitlang/core` (1766 files): **1705 parsed, 30 actionable** — 10 of them are
-constructs this frontend does not read or an operator it does not model, and the other 20 are
-`MSA-015` dead stores on declarations: a `let` whose value is overwritten before anything reads
-it. That is dead weight in the analysed code rather than a reader gap, and every one of the
-20 was measured against the source it names. The 12 findings demoted in 0.4.38 — names the
-analyzer could not resolve — are counted as notices and are not in that 30. On that same tree
-`moon check --target all` reports **no** diagnostic at all.
+Measured on the **published** `riantr/moonbit_static_analysis@0.6.0` over the published
+`riantr/LunaFlow@0.1.37` (76 files): **73 parsed (96.0%), 3 actionable** — and all three are in
+the package's own `fixtures/eva_demo/lib.mbt`, a demo file whose comments announce the first two
+(`DIVISION BY ZERO, definite`, `OUT OF BOUNDS, negative`); the third is a dead store, the initial
+`None` of a mutable Option that both branches overwrite before anything reads it. On the product
+source (`src/`) there is **no** actionable finding, and the three files the frontend could not
+finish are reported `PARTIAL` with **0** findings withheld from them. `moon check --target all` on
+that same tree reports **93 warnings and no error**: the compiler does not diagnose the two
+runtime-fatal shapes above (measured with a positive control beside it — it does diagnose a type
+mismatch in the same probe). Reproduce it with
+`moonx riantr/moonbit_static_analysis@0.6.0 riantr/LunaFlow@0.1.37`.
 
 ## Contents
 
@@ -185,6 +189,13 @@ The target is a registry coordinate (`author/module`, optionally `@version` or `
 a local path; omit it to scan the current directory. A coordinate is materialised with
 `moon fetch` into `.repos/` and then walked.
 
+> **Run it from an empty scratch directory, not from inside the project you are analysing.** The
+> `.repos/` tree is created under the **current** directory, so a coordinate target run inside a
+> MoonBit project that keeps its own `.repos/` writes the fetched package into that project's
+> registry snapshot. This repository is exactly such a project — its corpus A/B reads `.repos/` —
+> so a fetch here changes the tree the measurements are taken against. For a coordinate, run it
+> from an empty directory; for a local tree, point the target at a copy outside the project.
+
 ### Use it as a library
 
 ```moonbit
@@ -321,8 +332,8 @@ time.
 `per_file` and `max_files` cap the drawing, `0` meaning no cap. **Whatever a cap leaves out
 is stated in the diagram**, in the header and in a note on the file, so a truncated diagram
 cannot be read as a clean one. Files are ranked by descending **actionable** count, not raw
-findings: on `moonbitlang/core` the largest raw-finding file is `v128/simd_float.mbt` at
-**51** findings — every one of them a notice, and none of them a defect — and ranking by
+findings: on `riantr/LunaFlow` the largest raw-finding file is `src/app/model.mbt` at
+**47** findings — every one of them a notice, and none of them a defect — and ranking by
 raw count put it first in a diagram whose job is to lead with what to fix.
 
 ### Provenance — the artifact name
@@ -647,9 +658,9 @@ itself; both figures above are pinned by the release gate.
 ### What this tool does not compete with
 
 On `.mbt`, this tool does **not** compete with the toolchain's compiler: `moon check` has a
-real parser and reads the **whole** language. On the same `moonbitlang/core` it reports
-**no** diagnostic at all; this tool's `.mbt` frontend reads a **subset**
-and parses **1705 of 1766** files (96.5%); `.mbti` and `.mbt.md` are 100%.
+real parser and reads the **whole** language. On `riantr/LunaFlow` it reports **93 warnings and
+no error**; this tool's `.mbt` frontend reads a **subset**
+and parses **73 of 76** files (96.0%); `.mbti` and `.mbt.md` are 100%.
 
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
@@ -900,7 +911,7 @@ numbers with and without the flag.
 |---|---|
 | `.mbt` | three-inspection program analysis |
 | `.mbtx` | three-inspection program analysis + import-block audit |
-| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so a generated file raises no *malformed line*. The unknown-type check consults the module-wide interface table and measures **0** on `moonbitlang/core`. A residual finding can still name a type declared outside the scan — treat it as unverified, not as a defect. |
+| `.mbti` | interface audit: malformed lines / duplicate signatures / unknown type references. The line grammar matches what `moon info` actually emits, so a generated file raises no *malformed line*. The unknown-type check consults the module-wide interface table and measures **0** on `riantr/LunaFlow`. A residual finding can still name a type declared outside the scan — treat it as unverified, not as a defect. |
 | `.mbt.md` | literate: only fences the toolchain actually **compiles** — `mbt check` / `mbt test` and the `moonbit` spellings. A bare `mbt`, a bare `moonbit` and `nocheck` are display blocks and are skipped. |
 | `.mbtp` | logic-side proof lint (string constants in bodies, banned `!`/`↔` forms, cross-package calls, lemma without `proof_ensure`) — **not a replacement for `moon prove`** |
 | `moon.mod` / `moon.pkg` / workspace | recorded only, no static analysis — configuration is not code |
@@ -2115,6 +2126,8 @@ and is not named here is a stage a reader cannot find:
     the registry URLs, shown to go red (its own self-test)
     the newest core: the tree must have been re-gated against the one the registry publishes
     package contents: the junk stays out, the evidence stays in
+    the scan record: the evidence, the pin and the two READMEs agree
+    the scan-record gate, shown to go red (its own self-test)
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible
     the family roster, shown to go red (its own self-test)
@@ -2134,6 +2147,7 @@ and is not named here is a stage a reader cannot find:
     the toolchain claims, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
+    the published scan record, re-measured against the registry
     the notice reconciliation can go red (a real defect is seen)
     corpus SUMMARY vs pinned baseline
     per-function census vs pinned baseline

@@ -13,11 +13,15 @@
 它能读 MoonBit 工具链的每一种文件后缀 —— `.mbt` / `.mbtx` / `.mbti` / `.mbt.md` /
 `.mbtp` —— 而且 **绝不修改被扫描的目标**：被分析的仓库既不依赖本模块，也不会被本模块改动。
 
-在 `moonbitlang/core`（1766 个文件）上的实测：**解析 1705 个，actionable 30 条**——其中 10 条
-是本前端读不到的构造或算不出来的运算符，另外 20 条是 `MSA-015` 声明上的死存储：一个在任何
-读取之前就被覆盖掉的 `let`。那是**被分析代码里的死重量**，不是阅读器的盲区，而且这 20 条每
-一条都对着它指名的源码核过。0.4.38 降级的那 12 条——分析器解不出来的名字——算作 notice，
-不在这 30 条里。同一棵树上 `moon check --target all` **一条**诊断也不报。
+在**已发布的** `riantr/moonbit_static_analysis@0.6.0` 上、对着已发布的 `riantr/LunaFlow@0.1.37`
+（76 个文件）实测：**解析 73 个（96.0%），actionable 3 条**——三条**全在**包自带的
+`fixtures/eva_demo/lib.mbt` 里，那是一个连注释都把前两条说破了的 demo 文件
+（`DIVISION BY ZERO, definite`、`OUT OF BOUNDS, negative`）；第三条是死存储：一个可变 Option 的
+初始 `None`，两个分支都在任何读取之前就把它覆盖掉了。产品源码（`src/`）上**没有** actionable
+发现；前端读不完的那三个文件按 `PARTIAL` 报，从它们那里**扣下 0 条**发现。同一棵树上
+`moon check --target all` 报 **93 条 warning、零条 error**：编译器不诊断上面那两个运行时致命的
+形状（这旁边有阳性对照：同一个探针里它确实诊断出了类型不匹配）。用
+`moonx riantr/moonbit_static_analysis@0.6.0 riantr/LunaFlow@0.1.37` 可以复现这一整行。
 
 ## 目录
 
@@ -159,6 +163,12 @@ moonx riantr/moonbit_static_analysis@latest riantr/moonbit_doubleML@latest
 目标可以是注册表坐标（`author/module`，可带 `@version` 或 `@latest`），也可以是本地路径；
 省略则扫描当前目录。坐标会先由 `moon fetch` 落到 `.repos/`，然后再遍历。
 
+> **在一个空的临时目录里跑，不要在你正要分析的那个项目里跑。** `.repos/` 这棵树是建在**当前**
+> 目录下的，所以一个坐标目标跑在一个自带 `.repos/` 的 MoonBit 项目里，会把拉下来的包写进那个
+> 项目的注册表快照里。本仓库正是这样的项目——它的语料 A/B 读的就是 `.repos/`——在这里跑一次
+> 抓取，就改了测量所依据的那棵树。坐标目标就从一个空目录跑；本地树就把目标指向项目之外的
+> 一份副本。
+
 ### 当作库来用
 
 ```moonbit
@@ -284,8 +294,8 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 
 `per_file` 和 `max_files` 给绘图封顶，`0` 表示不封。**被封顶砍掉的部分会在图里写明**，
 写在头部和文件上的一条注里，所以被截断的图不会被读成干净的图。文件按 **actionable**
-条数降序排，而不是按原始发现数：在 `moonbitlang/core` 上，原始发现最多的文件是
-`v128/simd_float.mbt`，**51** 条发现——全是 notice、零缺陷；按原始数排会把它放在一张
+条数降序排，而不是按原始发现数：在 `riantr/LunaFlow` 上，原始发现最多的文件是
+`src/app/model.mbt`，**47** 条发现——全是 notice、零缺陷；按原始数排会把它放在一张
 「该把注意力放在哪」为职责的图的第一位。
 
 ### 出处 —— 产物的文件名
@@ -550,8 +560,8 @@ id 上，于是记号后面那个记号不是 id）。在本工具自己的源�
 ### 这个工具不跟谁竞争
 
 在 `.mbt` 上，本工具 **不与工具链的编译器竞争**：`moon check` 有真正的解析器，读的是**整个**
-语言。在同一棵 `moonbitlang/core` 上它**一条**诊断也不报；本工具的 `.mbt`
-前端读的是一个 **子集**，解析 **1766 个文件里的 1705 个**（96.5%）；`.mbti` 和 `.mbt.md` 是 100%。
+语言。在 `riantr/LunaFlow` 上它报 **93 条 warning、零条 error**；本工具的 `.mbt`
+前端读的是一个 **子集**，解析 **76 个文件里的 73 个**（96.0%）；`.mbti` 和 `.mbt.md` 是 100%。
 
 本工具能做而编译器不能做的：编译器**根本不审**的那三种文件——`.mbti`、`.mbt.md`、
 `.mbtp`——以及跨包语义。
@@ -759,7 +769,7 @@ notice 都写明工具没读懂什么。
 |---|---|
 | `.mbt` | 三鉴程序分析 |
 | `.mbtx` | 三鉴程序分析 + import 块审计 |
-| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知的类型引用。行文法与 `moon info` 真正吐出的一致，所以生成的接口文件不会报*畸形行*。未知类型检查会查全模块的接口表，在 `moonbitlang/core` 上实测 **0**。残留的发现仍可能指向扫描范围之外声明的类型——请当作未经验证，而不是缺陷。 |
+| `.mbti` | 接口审计：畸形行 / 重复签名 / 未知的类型引用。行文法与 `moon info` 真正吐出的一致，所以生成的接口文件不会报*畸形行*。未知类型检查会查全模块的接口表，在 `riantr/LunaFlow` 上实测 **0**。残留的发现仍可能指向扫描范围之外声明的类型——请当作未经验证，而不是缺陷。 |
 | `.mbt.md` |  literate：只认工具链真正**会编译**的围栏——`mbt check` / `mbt test` 以及 `moonbit` 写法。裸 `mbt`、裸 `moonbit` 和 `nocheck` 是展示块，跳过。 |
 | `.mbtp` | 逻辑侧证明 lint（函数体里的字符串常量、被禁的 `!`/`↔` 形式、跨包调用、没有 `proof_ensure` 的引理）——**不能替代 `moon prove`** |
 | `moon.mod` / `moon.pkg` / 工作区 | 只记录，不做静态分析——配置不是代码 |
@@ -1747,6 +1757,8 @@ stage，就是读者找不到的 stage：
     the registry URLs, shown to go red (its own self-test)
     the newest core: the tree must have been re-gated against the one the registry publishes
     package contents: the junk stays out, the evidence stays in
+    the scan record: the evidence, the pin and the two READMEs agree
+    the scan-record gate, shown to go red (its own self-test)
     notice labels: a scope limit is a notice, a defect is an error
     the family roster: one id each, contiguous, and reversible
     the family roster, shown to go red (its own self-test)
@@ -1766,6 +1778,7 @@ stage，就是读者找不到的 stage：
     the toolchain claims, shown to go red (its own self-test)
     published self-scan self-test
     published package self-scan
+    the published scan record, re-measured against the registry
     the notice reconciliation can go red (a real defect is seen)
     corpus SUMMARY vs pinned baseline
     per-function census vs pinned baseline

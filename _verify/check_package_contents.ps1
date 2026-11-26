@@ -135,6 +135,15 @@ $evidence = @(
   # somebody follows it. The gate is the only one here that touches the
   # network -- deliberately, because the CI runner publishes to mooncakes.io.
   @{ N = 'the registry-urls gate';          Want = 1;                R = '^_verify\\check_registry_urls\.ps1$' }
+    # 0650. AND THE GATE THAT HOLDS THE PUBLISHED SCAN RECORD. It is evidence
+    # because the thing it checks IS published: both READMEs publish a row
+    # about a scan of `riantr/LunaFlow`, and the row ships. The capture is
+    # evidence for the same reason -- it is the OUTPUT the row was written
+    # from, and a row without the output behind it is a number in a comment.
+    # The capture's NAME carries the two versions it was measured on, so the
+    # pattern is a wildcard: re-pinning the record re-names the capture.
+    @{ N = 'the scan-record gate';          Want = 1;                R = '^_verify\\check_lunaflow_scan\.ps1$' }
+    @{ N = 'the scan-record capture';       Want = 1;                R = '^_verify\\fixtures\\lunaflow_scan_.*\.out$' }
     @{ N = 'the suppression-off stage';    Want = 1;                R = '^_verify\\measure_suppression_off\.ps1$' }
     @{ N = 'the reach-measurement stage';  Want = 1;                R = '^_verify\\measure_0503_reach\.ps1$' }
     @{ N = 'the finding-quality stage';   Want = 1;                R = '^_verify\\settle_0505_finding_quality\.ps1$' }

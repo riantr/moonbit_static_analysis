@@ -96,3 +96,48 @@ jobs:
         # that skills.mooncakes.io links and moonx downloads, so a wasm-only
         # regression that the js checks above cannot see would otherwise ship.
         run: moon build --target wasm
+      # 0650. THE SCAN RECORD. Both READMEs publish a MEASUREMENT taken on
+      # SOMEBODY ELSE'S package -- `riantr/LunaFlow` -- and the row names the
+      # two versions it was measured on. A row that names versions goes stale
+      # the moment either package is published again, and nothing noticed until
+      # a reader compared the README with the registry.
+      #
+      # CI cannot REVISE a published README -- the registry freezes the bytes at
+      # publish time -- but it CAN say, on every push, whether the row still
+      # holds. That is what this step does: it re-measures the record against the
+      # registry and turns a drift into a red build.
+      #
+      # THE EXIT CODES ARE THREE, and the step reads all three:
+      #   0  every claim holds.
+      #   1  a claim is FALSE -- the versions moved, or a README quotes a number
+      #      the pin does not hold. RED, because that is the drift signal.
+      #   2  a claim could not be MEASURED -- the registry did not answer, or
+      #      `moonx` was missing, or the running compiler is not the one the
+      #      record was measured with. NOT red: a network outage is not a defect
+      #      in this repository. But it is printed, because "not measured" and
+      #      "measured, and fine" are not the same statement.
+      #
+      # `moonx` IS AVAILABLE HERE: the installer the step above runs creates it
+      # as a symlink to `moon`, and the scan is run OUTSIDE the repository --
+      # `moonx` creates `.repos/` under the CURRENT directory, and a repository
+      # that keeps its own `.repos/` would have the fetched package written into
+      # the tree its measurements are taken against. The gate enforces that.
+      - name: The published scan record (the READMEs' row about somebody else's package)
+        run: |
+          set -uo pipefail
+          command -v pwsh >/dev/null || {
+            echo "::error::pwsh is not on this runner, so the scan-record gate cannot run"
+            exit 1
+          }
+          pwsh -NoProfile -File _verify/check_lunaflow_scan.ps1 -Live
+          code=$?
+          if [ "$code" -eq 1 ]; then
+            echo "::error::the published scan record does not hold any more. Re-measure it, re-pin the READMEs, and re-commit the capture."
+            exit 1
+          elif [ "$code" -eq 2 ]; then
+            echo "::warning::the scan record was NOT re-measured. That is not a pass."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::the scan-record gate exited $code, which is not one of its three verdicts."
+            exit 1
+          fi
+          exit 0

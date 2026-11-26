@@ -1987,7 +1987,7 @@ $SSA_COST = 'files=270|unreadable=0|functions=1457|converted=5|partial=1452|decl
 # the working tree), the two published artifacts disagreeing over one input, and
 # the gate that named a culprit it had not measured. It moved no analyzer
 # behaviour and no public interface, and it moved no other pin.
-$NARRATIVE_CHAPTERS = '191'
+$NARRATIVE_CHAPTERS = '192'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -2088,7 +2088,7 @@ $NARRATIVE_CHAPTERS = '191'
 # the previous release. Same shape as the pin failure: the verdict was right and
 # the accusation was wrong, and the reader was sent to measure a place where the
 # evidence was fine.
-$LOOP_RULES = '51'
+$LOOP_RULES = '52'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -2102,6 +2102,42 @@ $LOOP_RULES = '51'
 # `0.1.<date>+<hash>` and the core's own `moon.mod` says `0.10.<n>+<hash>`, so
 # the two strings differ and the hash is what they share.
 $CORE_REGATED = '0.10.22+124d61d05'
+
+# 0650. THE PIN FOR THE PUBLISHED SCAN RECORD -- the one measurement in this
+# repository that is taken on SOMEBODY ELSE'S code and published in the READMEs.
+#
+# MEASURED, and the reason it is a pin and not prose: the READMEs published a row
+# about `moonbitlang/core` -- 1766 files, 1705 parsed, 30 actionable -- that no
+# gate could check, because `check_readme_links.ps1` derives the corpus numbers
+# from the pin table and that row was NOT in the pin table. A published number
+# that is not pinned is a number that rots silently, and this one had been true
+# for a release and a half.
+#
+# The row now names the two PUBLISHED packages it was measured on, and it is
+# measured by `_verify/check_lunaflow_scan.ps1`, which checks the EVIDENCE (the
+# captured output of the scan, committed at
+# `_verify/fixtures/lunaflow_scan_<analyzer>_<corpus>.out`), this PIN, and both
+# READMEs against each other -- and, with -Live, re-measures the whole thing
+# against the registry.
+#
+# THE ANALYZER'S VERSION IS PART OF THE PIN because `moonx` does not say which
+# version of the analyzer it ran (MEASURED: its output names the TARGET and the
+# corpus, and nothing else), so a capture that does not carry the analyzer's
+# version in its FILE NAME is not evidence of anything.
+#
+# `pct` is the ANALYZER's own percentage, not a re-computation: 73 of 76 is
+# 96.0526 per cent, which ROUNDS to 96.1 and TRUNCATES to 96.0, and the analyzer
+# prints 96.0. A second rule for the same number is a second place to be wrong.
+$LUNAFLOW_SCAN = 'analyzer=0.6.0|corpus=0.1.37|files=76|parsed=73|pct=96.0|actionable=3|notices=665|unreliable=39|withheld=0|unchecked=2877|total=707|notparse=3|src_actionable=0|defects_in=fixtures/eva_demo/lib.mbt|top_file=src/app/model.mbt|top_findings=47'
+
+# 0650. AND THE COMPILER'S ROW, which is a DIFFERENT tool's measurement and is
+# pinned separately so that the two are never confused for each other: `moon
+# check --target all` over the same fetched tree reports "93 warnings, 0
+# errors". It was measured with the core this tree is gated against
+# ($CORE_REGATED), because the compiler's diagnostics move with the compiler --
+# so the live check compares this row ONLY when the running compiler IS that
+# core, and says UNKNOWN otherwise.
+$LUNAFLOW_MOONCHECK = 'warnings=93|errors=0'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
 #   $SOUNDINESS_SOUNDY   `_verify/check_family_roster.ps1` from the SOURCE, and
@@ -3412,6 +3448,61 @@ if ($failed.Count -eq 0) {
   }
 }
 
+# --- 4e2  THE PUBLISHED SCAN RECORD, AND THE PIN THAT HOLDS IT --------------------
+# THE ONE MEASUREMENT IN THIS REPOSITORY THAT IS TAKEN ON SOMEBODY ELSE'S CODE.
+#
+# MEASURED 0650, and this stage exists because the READMEs published a row that
+# NOTHING could check. `check_readme_links.ps1` derives the corpus numbers from
+# the pin table -- and the row about `riantr/LunaFlow` was NOT in the pin table,
+# so it was not derived, so it was not checked. A published number that is not
+# pinned is a number that rots silently, and the row it replaced had been true
+# for a release and a half.
+#
+# THE THREE THINGS HAVE TO AGREE: the EVIDENCE (the captured output of the
+# scan, committed under `_verify\fixtures\`), the PIN (`$LUNAFLOW_SCAN` and
+# `$LUNAFLOW_MOONCHECK` above), and the two DOCUMENTS. This stage asks the
+# offline question -- does the committed evidence still say what the pin says,
+# and do both READMEs still quote it? -- and the stage after 5b asks the live
+# one.
+#
+# THE GATE'S OWN SELF-TEST IS RUN HERE, because a proof that is never run is a
+# comment: it copies the pin, the capture and the two READMEs into TEMP and
+# requires the copy to go RED twice, once with a changed capture and once with
+# a changed document.
+$LFS = Join-Path $root '_verify\check_lunaflow_scan.ps1'
+if ($failed.Count -eq 0) {
+  if (-not (Test-Path $LFS)) {
+    Write-Output ''
+    Write-Output 'MISSING: _verify\check_lunaflow_scan.ps1'
+    $failed += 'lunaflow-scan'
+  } else {
+    Stage 'the scan record: the evidence, the pin and the two READMEs agree' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $LFS 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(LUNAFLOW SCAN|\sFAIL|UNKNOWN)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'lunaflow-scan' }
+  }
+  if ($failed.Count -eq 0) {
+    Stage 'the scan-record gate, shown to go red (its own self-test)' {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $LFS -SelfTest 2>&1 | Out-String
+      $code = $LASTEXITCODE
+      $ErrorActionPreference = $prev
+      foreach ($ln in ($o -split "`r?`n")) {
+        if ($ln -match '(SELFTEST|OK:|FAIL:|MISSED)') { Write-Output ('  ' + $ln.Trim()) }
+      }
+      if ($code -ne 0) { $script:stageOk = $false }
+    }
+    if (-not $script:lastOk) { $failed += 'lunaflow-scan-selftest' }
+  }
+}
+
 # --- 4f  A DECLARED SCOPE LIMIT IS NOT AN ERROR -------------------------------
 # Every ParseError the tool rendered carried the label `error:`, including the
 # ones that are not errors at all: "match expression is outside the analyzed
@@ -4111,6 +4202,58 @@ if ($SkipMutations) {
     if ($code -ne 0) { $script:stageOk = $false }
   }
   if (-not $script:lastOk) { $failed += 'selfscan-published' }
+}
+
+# --- 5c  THE SCAN RECORD, RE-MEASURED AGAINST THE PUBLISHED PACKAGES -------------
+# THE RITUAL, RUN BY MACHINE. The READMEs publish a row about a scan of somebody
+# else's package, and the row names the VERSIONS it was measured on -- so the row
+# goes stale the moment either package is published again, and nothing notices
+# until a reader compares it with the registry.
+#
+# This stage re-runs the scan against the registry, OUTSIDE this repository, and
+# asks two questions that are not the same question:
+#
+#   1. DO THE PUBLISHED ARTIFACTS STILL MEASURE WHAT THE CAPTURE SAYS? The scan
+#      runs the PINNED pair, so the answer is about reproducibility and not about
+#      the world moving.
+#   2. HAS THE WORLD MOVED? The registry's `latest_version` for both packages is
+#      compared with the pin. A record that names versions which have moved on is
+#      stale EVEN IF THE NUMBERS DID NOT MOVE -- the READMEs name the versions.
+#
+# AND WHEN IT HAS MOVED, THE STAGE PRINTS THE CANDIDATE: the same scan run
+# against `@latest`, reduced to the pin it would become. The remedy is then a
+# measurement and not a guess.
+#
+# EXIT 2 IS UNKNOWN, NOT A FAILURE. The claim could not be MEASURED -- the
+# registry did not answer, `moonx` was not installed, the compiler is not the one
+# the record was measured with. That is not a defect in this repository, and a
+# release must not be blocked by it; but it is PRINTED, because "not measured" and
+# "measured, and fine" are not the same statement.
+if ($SkipMutations) {
+  Write-Output ''
+  Write-Output '=== the published scan record SKIPPED (-SkipMutations) ==='
+} elseif ($failed.Count -gt 0) {
+  Write-Output ''
+  Write-Output '=== the published scan record SKIPPED (an earlier stage failed) ==='
+} elseif (-not (Test-Path $LFS)) {
+  Write-Output ''
+  Write-Output 'MISSING: _verify\check_lunaflow_scan.ps1'
+  $failed += 'lunaflow-scan-live'
+} else {
+  Stage 'the published scan record, re-measured against the registry' {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $LFS -Live 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    foreach ($ln in ($o -split "`r?`n")) {
+      if ($ln -match '(live |latest of|compiler.s row|repos/ is untouched|LUNAFLOW SCAN|UNKNOWN|FAIL)') { Write-Output ('  ' + $ln.Trim()) }
+    }
+    if ($code -eq 1) { $script:stageOk = $false }
+    elseif ($code -eq 2) {
+      Write-Output '  UNKNOWN: the record was NOT re-measured. That is not a pass, and it is not a failure.'
+    }
+  }
+  if (-not $script:lastOk) { $failed += 'lunaflow-scan-live' }
 }
 
 # --- 6  corpus comparison ----------------------------------------------------

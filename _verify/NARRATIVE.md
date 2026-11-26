@@ -26350,3 +26350,117 @@ The exit code says THAT something failed; it does not say WHAT. The gate that me
 cause prints the cause, so a gate that only knows the exit code must point at it rather
 than guess -- and a wrong accusation is worse than no accusation, because it sends the
 reader to a place where the evidence is fine.
+## 0650: A ROW IN THE README THAT NO GATE COULD CHECK, AND THE TRIPWIRE THAT NOW WATCHES IT
+
+The READMEs published a measurement of somebody else's code, and nothing in this
+repository could check it.
+
+MEASURED, and the shape of it is the shape this repository keeps meeting.
+`check_readme_links.ps1` derives the corpus numbers from the pin table in
+`release.ps1`, and the row about `moonbitlang/core` -- 1766 files, 1705 parsed,
+30 actionable -- was NOT in that table. So it was not derived, so it was not
+checked, so it was a number in a document that could only fail in one direction:
+it stayed true, and then it stopped being true, and the day it stopped being
+true nothing said so. When it was replaced it had been true for a release and a
+half.
+
+THE ROW THAT REPLACED IT was measured on 2026-11-26 against the PUBLISHED
+artifacts, not against this tree:
+
+    the published riantr/moonbit_static_analysis@0.6.0
+    over the published riantr/LunaFlow@0.1.37
+    76 files, 73 parsed (96.0%), 3 actionable, 0 findings withheld
+    the three actionable are in the corpus's own fixtures/eva_demo/lib.mbt
+    the product source (src/) has none of them
+    moon check --target all on the same tree: 93 warnings, 0 errors
+
+The three actionable findings are the DEMO the corpus ships ON PURPOSE: its own
+comments announce the first two (`DIVISION BY ZERO, definite`, `OUT OF BOUNDS,
+negative`), and the third is a dead store. The product source has none of them.
+That attribution is in the README because it is the claim that would embarrass us
+if it were wrong -- and it is now CHECKED against the evidence instead of
+trusted.
+
+THE MEASUREMENT IS THREE THINGS, and a measurement is only a measurement when
+all three agree.
+
+THE EVIDENCE is the captured output of the scan, committed at
+`_verify/fixtures/lunaflow_scan_0.6.0_0.1.37.out`. THE PIN is `$LUNAFLOW_SCAN`
+and `$LUNAFLOW_MOONCHECK` in `release.ps1`. THE DOCUMENTS are the two READMEs.
+`_verify/check_lunaflow_scan.ps1` checks the three against each other -- and
+its own self-test copies them into TEMP and requires the copy to go RED twice:
+once with a number changed in the capture, and once with a number changed in a
+README.
+
+FOUR THINGS MEASURED WHILE BUILDING IT, each of them a trap a reader would
+otherwise walk into.
+
+`moonx` CREATES `.repos/` UNDER THE CURRENT DIRECTORY, and this repository's
+corpus A/B READS `.repos/`. A scan run inside the repository writes the fetched
+package into the very tree the measurements are taken against. The READMEs now
+say so, and the gate REFUSES to run there: it works in a scratch directory and
+then checks that the repository's own `.repos/` is exactly as it was --
+12,329 files before the scan and 12,329 after.
+
+`moonx` DOES NOT NAME THE ANALYZER VERSION IT RAN. Its output names the TARGET
+and the corpus and nothing else, so a capture that does not carry the
+analyzer's version in its FILE NAME is not evidence of anything. Hence
+`lunaflow_scan_<analyzer>_<corpus>.out`, and hence the registry probe below.
+
+THE PERCENTAGE IS THE ANALYZER'S, NOT A RE-COMPUTATION. 73 of 76 is 96.0526 per
+cent, which ROUNDS to 96.1 and TRUNCATES to 96.0 -- and the analyzer prints
+96.0. A gate that re-derived the percentage would have had a second rule to get
+wrong, and would have reported a false failure on a correct capture.
+
+THE COMPILER'S ROW IS A DIFFERENT TOOL'S MEASUREMENT, and it moves with the
+compiler. It is pinned separately (`$LUNAFLOW_MOONCHECK`), it was measured with
+the core this tree was re-gated against (`$CORE_REGATED`), and the live check
+compares it only when the running compiler IS that core -- otherwise it says
+UNKNOWN, loudly, because "not measured" and "measured, and fine" are not the
+same statement.
+
+AND THE QUESTION THIS WAS BUILT TO ANSWER: can CI revise the README on every
+push? NO -- and the reason is a FACT, not a limitation of CI. The registry
+freezes a version's bytes at the moment it publishes: the 0.6.0 package in the
+registry still carries the README that names 0.5.4, and no push can change it.
+What CI CAN do is say, on every push, whether the row still holds -- and that
+is what it does now. The row names VERSIONS, so the registry's `latest_version`
+for both packages is compared with the pin on every push; a publish that moves
+either side turns the NEXT push RED, and the gate prints the CANDIDATE: the
+same scan run against `@latest`, reduced to the pin it would become.
+
+So the ritual is: the release publishes, the increment AFTER it re-measures and
+revises the READMEs, and CI watches for the moment the revision is due. The
+tripwire is automatic; the revision is still a human act, and it has to be --
+because the revision lands after the publish.
+
+TWO POWERSHELL TRAPS, both of which made the new gate report a green row while
+measuring nothing.
+
+`$live` AND `$Live` ARE THE SAME VARIABLE. PowerShell's variable names are
+case-insensitive, and the gate's parameter is `[switch]$Live`, so assigning the
+scan's 421 lines to `$live` raised "Cannot convert value System.Object[] to type
+SwitchParameter" AT THE ASSIGNMENT. The scan never ran, and the exit code left
+behind by the previous native call read as a pass -- the exact shape 0649 found
+in the published self-scan, one level down.
+
+`\'` IS NOT AN ESCAPE in a single-quoted PowerShell string (`''` is), so one
+line of prose in a header swallowed the rest of the file and turned one parse
+error into a cascade of unrelated ones.
+
+AND A `.ps1` THAT CARRIES CHINESE IN STRING LITERALS NEEDS A UTF-8 BOM, because
+PowerShell 5.1 reads a BOM-less `.ps1` as ANSI and mangles the literals -- a
+scratch script with a Chinese string in it did not even parse. `release.ps1`
+carries NO BOM, because its Chinese lives in COMMENTS, where the misread is
+harmless to the parser. Two files, two conventions, and the difference between
+them is WHERE the non-ASCII is.
+
+=> 判据: 一个被发布出去、却没有任何门禁看过的测量，会在没人注意的时候过期。
+而 CI 不能修订已发布的文档——注册表在发布那一刻就冻结了字节（实测：0.6.0 的包里
+那份 README 仍然写着 0.5.4，**任何 push 都改不了它**）。CI 能做的是当**绊线**：
+每次 push 都重测一次，对不上就红，并且把**候选的新 pin** 打出来；修订仍然落在
+发布**之后**的那个增量里。而那一行替换掉的，正是**没有任何门禁看过的测量**：
+`moonbitlang/core` 的 1766/1705/30 不在 pin 表里 ⇒ 不是派生的 ⇒ 没人查 ⇒
+它在一个半的发布里一直是**真的**，然后不再是了，而没有任何东西说过一句话。
+所以纪律是：**被发布出去的测量，就是证据 + pin + 文档三者的对账**；少一样，
+它就只是一段散文里的数字。

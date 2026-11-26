@@ -45,6 +45,28 @@
 #   2. sync every version reference in README.md, README.zh.md and SKILL.md
 #   3. commit, push to gitee (daily remote) and github
 #   4. git tag -a v<version> -m "..." && git push github v<version>
+#   5. AFTER the publish: re-measure the published scan record and revise the
+#      READMEs from the result
+#
+# Step 5 is not optional bookkeeping, and it cannot be done before step 4: the
+# READMEs publish a MEASUREMENT of `riantr/LunaFlow` taken with a PUBLISHED
+# analyzer, and the analyzer that a reader gets is the one that was just
+# published -- so the row can only be measured once the publish has happened.
+# The registry freezes the bytes at publish time, so a README inside the
+# published package cannot be revised afterwards: the revision lands in the
+# increment AFTER the release.
+#
+# The measurement is one command, and it prints the candidate:
+#
+#   powershell -NoProfile -ExecutionPolicy Bypass -File _verify\check_lunaflow_scan.ps1 -Live
+#
+# When the registry has moved on, it prints the `$LUNAFLOW_SCAN` line the pin
+# would become, and the candidate capture to commit beside it. When nothing has
+# moved, it says so and exits 0.
+#
+# AND CI WATCHES FOR THE DRIFT: `gate.yml` runs the same gate on every push,
+# so a publish that moved the record turns the NEXT push red until step 5 has
+# been done. That is the tripwire, and step 5 is the disarm.
 #
 # Step 4 is what triggers this. A tag pushed to gitee alone does nothing.
 #

@@ -340,8 +340,22 @@ if (-not $coreM.Success -or -not $censusM.Success -or -not $ctrlM.Success) {
 $expect = @(
   @{ F = 'README.md';    S = $wasmStr; N = 'wasm test count' }
   @{ F = 'README.md';    S = $jsStr; N = 'js/wasm-gc test count' }
-  @{ F = 'README.md';    S = ($coreParsed + ' parsed'); N = 'core parsed' }
-  @{ F = 'README.md';    S = ($coreActionable + ' actionable'); N = 'core module actionable' }
+  # 0650. THE CORE'S PARSED COUNT AND ITS ACTIONABLE COUNT ARE NOT IN THIS LIST
+  # ANY MORE, and the reason is that the READMEs no longer PUBLISH them. The
+  # READMEs' scan record is now `riantr/LunaFlow` -- the published analyzer over
+  # a published package somebody else wrote -- and that row is held by
+  # `_verify\check_lunaflow_scan.ps1`, which checks the EVIDENCE, the PIN and
+  # both documents against each other.
+  #
+  # The core's numbers are NOT LOST by this: the corpus stage of the release
+  # gate measures the core corpus on every run and compares it with the
+  # `$CORPUS['moonbit_core']` pin, and that is where a drift in the core is
+  # caught. What is gone is a SECOND place the same fact was written -- the
+  # READMEs' front page -- and a second place a number is written is a second
+  # place for it to be wrong. MEASURED: the two expectations below were RED
+  # against the tree of 0650, because the sentence that carried them had been
+  # replaced, and a gate that requires a sentence nobody publishes is a gate
+  # that reddens the tree for being honest.
   @{ F = 'README.md';    S = ('**' + $censusTotal + '** `actionable`'); N = 'per-function census total' }
   @{ F = 'README.md';    S = ($controlN + ' of ' + $controlN); N = 'positive control' }
   @{ F = 'README.md';    S = ($gateCount.ToString() + ' of them'); N = 'mutation gates' }
@@ -353,7 +367,6 @@ $expect = @(
   @{ F = 'README.md';    S = '_verify/check_gate_roster.ps1'; N = 'the gate that checks the roster is named' }
   @{ F = 'README.zh.md'; S = $wasmStr; N = 'wasm test count (zh)' }
   @{ F = 'README.zh.md'; S = $jsStr; N = 'js/wasm-gc test count (zh)' }
-  @{ F = 'README.zh.md'; S = ('解析 ' + $coreParsed + ' 个'); N = 'core parsed (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $censusTotal + '** 条'); N = 'per-function census total (zh)' }
   @{ F = 'README.zh.md'; S = ($controlN + ' / ' + $controlN); N = 'positive control (zh)' }
   @{ F = 'README.zh.md'; S = ('**' + $gateCount + '** 个'); N = 'mutation gates (zh)' }

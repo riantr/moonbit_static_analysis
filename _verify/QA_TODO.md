@@ -287,15 +287,17 @@ way a hand-written table rots. **A QA that is not a gate is a comment.**
       "Done when" FORCED MORE THAN THE PLAN ASKED FOR: "a gate that is in the
       roster but has no `-SelfTest` cannot be shown to work" — so the roster now
       covers the `check_*` gates too, and every one of them is accounted for.
-      MEASURED: 20 `check_*` gates, 20 named by the release gate, 15 with a live
-      `-SelfTest`, 5 stating why they have none. **RE-MEASURED 2026-11-21**
-      (increment 0633): this count moved in increments **0616**, **0617**, **0620**,
-      **0624**, **0626**, **0627**, **0628** and **0629**, which added eight gates —
+      MEASURED: 21 `check_*` gates, 21 named by the release gate, 16 with a live
+      `-SelfTest`, 5 stating why they have none. **RE-MEASURED 2026-11-26**
+      (increment 0650; last re-measured 2026-11-21, increment 0633): this count
+      moved in increments **0616**, **0617**, **0620**, **0624**, **0626**,
+      **0627**, **0628**, **0629** and **0650**, which added nine gates —
       `_verify/check_blindspot_rate.ps1`, `_verify/check_published_pointers.ps1`,
       `_verify/check_cli_output.ps1`, `_verify/check_toolchain_claims.ps1`,
       `_verify/check_release_freshness.ps1`, `_verify/check_prove_status.ps1`,
-      `_verify/check_goal_checklist.ps1` and `_verify/check_registry_urls.ps1` — the
-      tree 0615 measured had twelve, and today's tree has **20**. Two of the twelve
+      `_verify/check_goal_checklist.ps1`, `_verify/check_registry_urls.ps1` and
+      `_verify/check_lunaflow_scan.ps1` — the tree 0615 measured had twelve, and
+      today's tree has **21**. Two of the twelve
       that 0615 registered turned out to be defective: `check_prove_contracts.ps1`
       declared `param([switch]$SelfTest)`
       and then never mentioned `$SelfTest` again — a DEAD SWITCH, in the one gate

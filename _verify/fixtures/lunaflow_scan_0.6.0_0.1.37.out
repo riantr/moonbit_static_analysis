@@ -1,0 +1,421 @@
+Fetching riantr/LunaFlow@0.1.37 to C:\Users\31379\AppData\Local\Temp\rawcap2_4da6572f\.repos\riantr\LunaFlow\0.1.37
+Success: Successfully fetched riantr/LunaFlow@0.1.37 to C:\Users\31379\AppData\Local\Temp\rawcap2_4da6572f\.repos\riantr\LunaFlow\0.1.37
+TARGET	riantr/LunaFlow@0.1.37	.repos/riantr/LunaFlow/0.1.37
+SCANNED	76 files under .repos/riantr/LunaFlow/0.1.37
+IFACE	types=105	values=473	(dirs=1)
+PRIVTAB	packages=10	names=1280	(package-private top-level names, sibling files only)
+CLEAN	.mbt	unchecked=4	.repos/riantr/LunaFlow/0.1.37/main.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/pkg.generated.mbti
+PARTIAL	.mbt	defects=0	notices=1	unchecked=322	read up to line 154, 19 after it not shown	.repos/riantr/LunaFlow/0.1.37/src/command/command.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/command/pkg.generated.mbti
+CLEAN	.mbt	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/cli/main.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/cli/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=25	unchecked=51	.repos/riantr/LunaFlow/0.1.37/src/app/abs.mbt
+107:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+147:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+149:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+169:9 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+174:9 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+263:24 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+264:24 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+519:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+660:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1186:32 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1225:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1230:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1560:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1577:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1659:23 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1704:23 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1744:37 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1801:27 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1830:27 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=8	unchecked=6	.repos/riantr/LunaFlow/0.1.37/src/app/alloc_rules_wbtest.mbt
+FOUND	.mbt	defects=0	notices=9	unchecked=35	.repos/riantr/LunaFlow/0.1.37/src/app/analyze.mbt
+155:21 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+224:10 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+287:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+421:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+436:21 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+441:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=7	unchecked=2	.repos/riantr/LunaFlow/0.1.37/src/app/block_string_test.mbt
+FOUND	.mbt	defects=0	notices=6	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/app/bool_literal_wbtest.mbt
+FOUND	.mbt	defects=0	notices=22	unchecked=5	.repos/riantr/LunaFlow/0.1.37/src/app/boundary_test.mbt
+FOUND	.mbt	defects=0	notices=5	unchecked=25	.repos/riantr/LunaFlow/0.1.37/src/app/cfg.mbt
+143:24 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+145:22 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+150:24 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+158:23 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=5	unchecked=3	.repos/riantr/LunaFlow/0.1.37/src/app/cfg_test.mbt
+FOUND	.mbt	defects=0	notices=18	unchecked=91	.repos/riantr/LunaFlow/0.1.37/src/app/conc.mbt
+462:28 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+463:26 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+544:32 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+718:37 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1022:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1463:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1536:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1818:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=18	unchecked=7	.repos/riantr/LunaFlow/0.1.37/src/app/conc_test.mbt
+FOUND	.mbt	defects=0	notices=11	unchecked=90	.repos/riantr/LunaFlow/0.1.37/src/app/contract.mbt
+435:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+457:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+458:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+468:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+469:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=6	unchecked=2	.repos/riantr/LunaFlow/0.1.37/src/app/contract_edges_test.mbt
+CLEAN	.mbt	unchecked=7	.repos/riantr/LunaFlow/0.1.37/src/app/coverage.mbt
+FOUND	.mbt	defects=0	notices=9	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/app/crosscheck_test.mbt
+FOUND	.mbt	defects=0	notices=17	unchecked=74	.repos/riantr/LunaFlow/0.1.37/src/app/eva.mbt
+180:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+546:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+585:5 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+590:5 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+617:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+624:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+637:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+638:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+649:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+650:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+680:5 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+685:5 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+763:23 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+823:5 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+828:5 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+860:22 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=22	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/app/eva_test.mbt
+CLEAN	.mbt	unchecked=29	.repos/riantr/LunaFlow/0.1.37/src/app/family.mbt
+PARTIAL	.mbt	defects=0	notices=17	unchecked=146	read up to line 1083, 18 after it not shown	.repos/riantr/LunaFlow/0.1.37/src/app/ffi.mbt
+342:14 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+392:24 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+432:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=24	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/app/ffi_test.mbt
+FOUND	.mbt	defects=0	notices=1	unchecked=12	.repos/riantr/LunaFlow/0.1.37/src/app/funnel.mbt
+FOUND	.mbt	defects=0	notices=3	unchecked=14	.repos/riantr/LunaFlow/0.1.37/src/app/hardening_test.mbt
+FOUND	.mbt	defects=0	notices=17	unchecked=120	.repos/riantr/LunaFlow/0.1.37/src/app/ifds_spike_wbtest.mbt
+418:14 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=24	unchecked=102	.repos/riantr/LunaFlow/0.1.37/src/app/interp.mbt
+149:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+275:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+576:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+577:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+591:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+697:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+708:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+789:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+794:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+864:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+891:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+901:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1276:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1424:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1435:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1496:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1668:31 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1673:43 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1780:24 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+PARTIAL	.mbt	defects=0	notices=9	unchecked=38	read up to line 1121, 2 after it not shown	.repos/riantr/LunaFlow/0.1.37/src/app/ipc.mbt
+694:33 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=37	unchecked=7	.repos/riantr/LunaFlow/0.1.37/src/app/ipc_test.mbt
+FOUND	.mbt	defects=0	notices=6	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/app/levels_test.mbt
+FOUND	.mbt	defects=0	notices=8	unchecked=87	.repos/riantr/LunaFlow/0.1.37/src/app/lexer.mbt
+168:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+236:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+286:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+287:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+300:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=1	unchecked=7	.repos/riantr/LunaFlow/0.1.37/src/app/lockstep.mbt
+FOUND	.mbt	defects=0	notices=5	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/app/lockstep_wbtest.mbt
+FOUND	.mbt	defects=0	notices=10	unchecked=72	.repos/riantr/LunaFlow/0.1.37/src/app/memory.mbt
+288:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+866:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=14	unchecked=8	.repos/riantr/LunaFlow/0.1.37/src/app/memory_test.mbt
+FOUND	.mbt	defects=0	notices=6	unchecked=41	.repos/riantr/LunaFlow/0.1.37/src/app/minimize.mbt
+288:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+293:22 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+374:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=12	unchecked=14	.repos/riantr/LunaFlow/0.1.37/src/app/minimize_wbtest.mbt
+FOUND	.mbt	defects=0	notices=47	unchecked=26	.repos/riantr/LunaFlow/0.1.37/src/app/model.mbt
+37:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+42:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+199:21 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=1	unchecked=3	.repos/riantr/LunaFlow/0.1.37/src/app/package.mbt
+FOUND	.mbt	defects=0	notices=7	unchecked=2	.repos/riantr/LunaFlow/0.1.37/src/app/package_wbtest.mbt
+FOUND	.mbt	defects=0	notices=15	unchecked=371	.repos/riantr/LunaFlow/0.1.37/src/app/parser.mbt
+193:11 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+222:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+227:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+277:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+406:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+448:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1060:25 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1073:13 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1138:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1476:16 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1598:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1907:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+2093:19 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=8	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/app/parser_test.mbt
+FOUND	.mbt	defects=0	notices=7	unchecked=6	.repos/riantr/LunaFlow/0.1.37/src/app/peer_findings_test.mbt
+FOUND	.mbt	defects=0	notices=8	unchecked=6	.repos/riantr/LunaFlow/0.1.37/src/app/pipeline_test.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/app/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=12	unchecked=15	.repos/riantr/LunaFlow/0.1.37/src/app/plus_size_wbtest.mbt
+CLEAN	.mbt	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/app/policy.mbt
+FOUND	.mbt	defects=0	notices=3	unchecked=11	.repos/riantr/LunaFlow/0.1.37/src/app/property_test.mbt
+FOUND	.mbt	defects=0	notices=12	unchecked=5	.repos/riantr/LunaFlow/0.1.37/src/app/range_test.mbt
+FOUND	.mbt	defects=0	notices=2	unchecked=40	.repos/riantr/LunaFlow/0.1.37/src/app/relation.mbt
+FOUND	.mbt	defects=0	notices=15	unchecked=3	.repos/riantr/LunaFlow/0.1.37/src/app/relation_test.mbt
+FOUND	.mbt	defects=0	notices=16	unchecked=11	.repos/riantr/LunaFlow/0.1.37/src/app/repair_test.mbt
+FOUND	.mbt	defects=0	notices=29	unchecked=660	.repos/riantr/LunaFlow/0.1.37/src/app/report.mbt
+112:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+194:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+589:23 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+590:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+709:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+794:23 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+795:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+997:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1063:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1070:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1152:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1154:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1156:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1259:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1263:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1317:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1352:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1532:31 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1798:7 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1865:6 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1945:10 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1954:21 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+1994:8 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+2169:10 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+2274:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+2284:10 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+2287:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=14	unchecked=7	.repos/riantr/LunaFlow/0.1.37/src/app/report_wbtest.mbt
+FOUND	.mbt	defects=0	notices=13	unchecked=48	.repos/riantr/LunaFlow/0.1.37/src/app/scan.mbt
+57:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+181:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+219:21 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+223:14 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+225:14 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+324:14 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+357:20 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+407:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=5	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/app/scan_test.mbt
+FOUND	.mbt	defects=0	notices=18	unchecked=0	.repos/riantr/LunaFlow/0.1.37/src/app/selfscan_guards_wbtest.mbt
+FOUND	.mbt	defects=0	notices=10	unchecked=5	.repos/riantr/LunaFlow/0.1.37/src/app/size_taint_wbtest.mbt
+FOUND	.mbt	defects=0	notices=10	unchecked=4	.repos/riantr/LunaFlow/0.1.37/src/app/taint_labels_wbtest.mbt
+FOUND	.mbt	defects=0	notices=1	unchecked=121	.repos/riantr/LunaFlow/0.1.37/src/app/util.mbt
+19:17 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=8	unchecked=31	.repos/riantr/LunaFlow/0.1.37/src/app/value.mbt
+51:22 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+141:15 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+150:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+151:12 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+201:18 - notice: if expression is outside the analyzed subset; it was read but not analysed (ParseError) [structural, MSA-001, undecided]
+
+FOUND	.mbt	defects=0	notices=9	unchecked=3	.repos/riantr/LunaFlow/0.1.37/src/app/verdict_wbtest.mbt
+CLEAN	.mbt	unchecked=1	.repos/riantr/LunaFlow/0.1.37/fixtures/vuln_demo/lib.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/fixtures/vuln_demo/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=1	unchecked=11	.repos/riantr/LunaFlow/0.1.37/fixtures/memory_demo/lib.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/fixtures/memory_demo/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=4	unchecked=18	.repos/riantr/LunaFlow/0.1.37/fixtures/ipc_demo/lib.mbt
+180:14 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+193:14 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/fixtures/ipc_demo/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=1	unchecked=2	.repos/riantr/LunaFlow/0.1.37/fixtures/ffi_demo/lib.mbt
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/fixtures/ffi_demo/pkg.generated.mbti
+FOUND	.mbt	defects=3	notices=0	unchecked=13	.repos/riantr/LunaFlow/0.1.37/fixtures/eva_demo/lib.mbt
+44:9 - error: the divisor is definitely zero: this division fails at run time (DivisionByZero) [structural, MSA-016, high]
+
+65:5 - error: the index is definitely negative: this subscript is out of bounds at run time (NegativeIndex) [structural, MSA-017, high]
+
+138:3 - warning: the value bound to 'x' is read on no path before the name is written again (DeadStore) [structural, MSA-015, high]
+
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/fixtures/eva_demo/pkg.generated.mbti
+FOUND	.mbt	defects=0	notices=6	unchecked=9	.repos/riantr/LunaFlow/0.1.37/fixtures/conc_demo/lib.mbt
+31:16 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+49:16 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+74:14 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+81:14 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+97:14 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+110:14 - notice: anonymous function literal is outside the analyzed subset; its parameters were read but the body was not analysed (ParseError) [structural, MSA-001, undecided]
+
+CLEAN	.mbti	unchecked=0	.repos/riantr/LunaFlow/0.1.37/fixtures/conc_demo/pkg.generated.mbti
+NOTICES	TOTAL	notices=665	printed=157	aggregated=508	157 of them are printed per line: the ones that can hide a finding, and the low-confidence ones, which name a place. The other 508 are counted by shape below
+NOTICES	count=339	test declaration is outside the analyzed subset; its body was not analyzed
+NOTICES	count=95	struct declaration is outside the analyzed subset; its body was not analyzed
+NOTICES	count=34	const declaration is outside the analyzed subset
+NOTICES	count=17	enum declaration is outside the analyzed subset; its body was not analyzed
+NOTICES	count=15	extend declaration is outside the analyzed subset; its body was not analyzed
+NOTICES	count=6	recursive type declaration is outside the analyzed subset; its body was not analyzed and the type lens does not model recursive types
+NOTICES	count=2	type declaration is outside the analyzed subset
+PARSED	73/76 files understood (96.0%); 3 more read only up to their first parse error
+BYKIND	.mbt	files=66	parsed=63	defects=3	notices=665
+BYKIND	.mbti	files=10	parsed=10	defects=0	notices=0
+NOTPARSE	3 files, 0 finding(s) withheld — they measure what this analyzer does not understand, not what your code does
+  1x  expected ')'
+      e.g. .repos/riantr/LunaFlow/0.1.37/src/command/command.mbt
+  1x  unexpected token `,`
+      e.g. .repos/riantr/LunaFlow/0.1.37/src/app/ffi.mbt
+  1x  expected loop variable
+      e.g. .repos/riantr/LunaFlow/0.1.37/src/app/ipc.mbt
+SUMMARY	files=76	parsed=73	actionable=3	notices=665	unreliable=39	withheld=0	unchecked=2877	total=707	(actionable+notices+unreliable = total; withheld ⊆ unreliable; unchecked calls are not findings)
