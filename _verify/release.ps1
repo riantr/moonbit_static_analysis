@@ -1981,7 +1981,13 @@ $SSA_COST = 'files=270|unreadable=0|functions=1457|converted=5|partial=1452|decl
 # of the type lens -- the recursion the analyzer could not see, the reader that
 # had to learn to read, and the two shapes the frontend cannot read (one of
 # them this increment's own new source).
-$NARRATIVE_CHAPTERS = '190'
+# 0649. AND AGAIN: 190 -> 191, with chapter 0649, which is the NARRATIVE's account
+# of the release that FOLLOWS the publish: the published 0.6.0 bytes, the proof
+# that the published source IS the tagged commit (measured by blob ids, not by
+# the working tree), the two published artifacts disagreeing over one input, and
+# the gate that named a culprit it had not measured. It moved no analyzer
+# behaviour and no public interface, and it moved no other pin.
+$NARRATIVE_CHAPTERS = '191'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -2074,7 +2080,15 @@ $NARRATIVE_CHAPTERS = '190'
 # not drifted, reporting "corpus drift" -- the verdict was right and the
 # accusation was wrong. Two pins that are supposed to sum to a third are now
 # checked against EACH OTHER, before any stage runs.
-$LOOP_RULES = '50'
+# 0649. AND AGAIN: 50 -> 51, with the rule this increment adds: a gate may report
+# a verdict it measured and it may not name a culprit it did not. The published
+# self-scan read the inner gate's EXIT CODE and reported the published BYTES as
+# the culprit; the bytes were fine (92 symbols asked for, 93 contracted) and the
+# inner gate had named the real cause two lines above -- the READMEs still naming
+# the previous release. Same shape as the pin failure: the verdict was right and
+# the accusation was wrong, and the reader was sent to measure a place where the
+# evidence was fine.
+$LOOP_RULES = '51'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

@@ -263,7 +263,21 @@ if (Test-Path -LiteralPath $asset) {
     if ($ln -match '^(GATE OK|FAIL|ABORT|  ok|  \+|  -)') { Write-Output ('  ' + $ln.Trim()) }
   }
   if ($code -ne 0) {
-    Write-Output 'FAIL: the published bytes do not satisfy the host contract. A user whose toolchain is older cannot run them.'
+    # MEASURED 2026-11-26, cutting 0.6.0: this line used to NAME A CULPRIT IT HAD
+    # NOT MEASURED. The inner gate failed because the READMEs still named the
+    # previous release -- two lines above, in its own words:
+    #
+    #     FAIL: README.md -- it names the published 0.5.4 artifact, and this release published 0.6.0.
+    #
+    # and the published bytes were FINE (they ask for 92 symbols, the contract
+    # covers 93). This stage read the EXIT CODE and reported the bytes as the
+    # culprit: a verdict that was right (non-zero) and an accusation that was
+    # wrong, which sends the reader to the contract instead of to the README.
+    # The inner gate holds the DOCUMENTS to the artifact as well as the bytes,
+    # so this stage may only report that the gate did not pass -- the gate
+    # names the cause, and it is printed above.
+    Write-Output 'FAIL: the host-contract gate did not pass on the published bytes -- the FAIL lines it printed above name the cause.'
+    Write-Output '      (This stage does not claim the bytes are the culprit: that gate holds the DOCUMENTS to the artifact too.)'
     $fail++
   } else {
     Write-Output '  ok  the published bytes satisfy the host contract'

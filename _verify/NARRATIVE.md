@@ -26224,3 +26224,129 @@ AND THE SECOND RULE THIS INCREMENT ADDS TO THE LOOP is the one the pin failure e
 verdict that is RIGHT and an accusation that is WRONG are two different things, and a pin
 that does not close turns the gate red on the wrong suspect -- so two pins that are supposed
 to sum to a third are checked against EACH OTHER, before any stage runs.
+
+
+## 0649: A RELEASE PROVES ITS OWN SOURCE BY THE BLOBS OF ITS TAG, AND A GATE THAT NAMES A CULPRIT IT DID NOT MEASURE SENDS THE READER TO THE WRONG PLACE
+
+MEASURED 2026-11-26, after the 0.6.0 release. The registry serves
+`riantr/moonbit_static_analysis@0.6.0`, the publish workflow for the tag `v0.6.0`
+is green, and the published bytes are measurable for the third time.
+
+    the publish run              45783925057, conclusion success
+    the registry's checksum      6e95a3009a44ffb2af3f2b86f8b2b5b1a4b10514352d2f134ccd8c07761541a1
+    the registry's created_at    2026-11-26T08:32:14.781318+00:00
+
+THE WASM HASH WAS MEASURED TWICE AND THE TWO PATHS AGREE: once from the local
+registry cache, once from a fresh download of the file the registry serves.
+
+    published 0.6.0  wasm 0F56CAB8C55BDF8DB988AC1733166825A80CC6526D1F601771D9DFD5140A4ADB  737995 bytes  checksum 6e95a3009a44ffb2af3f2b86f8b2b5b1a4b10514352d2f134ccd8c07761541a1  2026-11-26T08:32:14.781318+00:00
+
+### THE PUBLISHED SOURCE IS THIS TREE, PROVED BY THE BLOB IDS AND NOT BY THE WORKING TREE
+
+The published package was fetched with `moon add riantr/moonbit_static_analysis@0.6.0`
+into a scratch directory OUTSIDE this repository, and its 589 files were compared with
+the tree of the tag. Four of them differ from the WORKING TREE -- and every one of the
+four is a checkout artefact, because `core.autocrlf=true` writes CRLF where git stores
+LF:
+
+    CHANGELOG.md              published 318635 bytes  CRLF=0    == the tag's blob
+                              working tree 324168 bytes  CRLF=5533
+    CHANGELOG.zh.md           published 309962 bytes  CRLF=0    == the tag's blob
+                              working tree 314750 bytes  CRLF=4788
+    _verify/mutate_0421.ps1   published 15645 bytes   CRLF=0    == the tag's blob
+                              working tree 15978 bytes   CRLF=333
+    _verify/settle_0477_let_pattern.ps1
+                              published 11237 bytes   CRLF=0    == the tag's blob
+                              working tree 11541 bytes   CRLF=304
+
+So the question was asked of the GIT BLOBS, where the line-ending question cannot arise:
+a blob id is computed over the file's own bytes.
+
+    the tag's tree holds                        619 entries
+    the published package holds                589 files
+    published files whose blob id == the tag's   589  (100%)
+    published files whose blob id differs         0
+    published files the tag does not hold         0
+    tag files the package does not carry         30  -- the 24 fixture files that are
+                                                    deliberately malformed (6 blind-spot,
+                                                    18 family) and the 6 CI/metadata
+                                                    files
+
+EVERY PUBLISHED FILE IS BYTE-FOR-BYTE THE TAGGED COMMIT. The release IS this tree, and
+that is now a measurement about the BYTES rather than an inference from a version number.
+It is also stronger than the 0.5.4 chapter's, which compared the published tree with the
+tree of TODAY -- a comparison that a checkout could have moved.
+
+### THE PUBLISHED PACKAGE SCANS ITS OWN SHIPPED SOURCE CLEAN
+
+    288 files under .repos/riantr/moonbit_static_analysis/0.6.0
+    288/288 parsed (100.0%), actionable=0, notices=2181, unchecked=4649
+
+and the host contract holds: the artifact requires 92 symbols and the contract covers 93.
+
+### THE IMPORT SETS ARE MEASURED, NOT ASSUMED
+
+    the PUBLISHED 0.6.0 artifact   106 imports, 92 from `moonbitlang/async`
+    this tree's release build      106 imports, 92 from `moonbitlang/async`
+    this tree's debug build        106 imports, 92 from `moonbitlang/async`
+    the contract                   93
+
+The contract is one symbol WIDER than the artifact -- `thread_pool/make_fsync_job` -- and a
+floor is allowed to be wider than one build. The number the READMEs publish (92) is a fact
+about the source, not about the machine that measured it.
+
+### THE TWO RELEASED ARTIFACTS DISAGREE, AND THAT IS THE PROOF
+
+The same input -- the PUBLISHED 0.6.0 source tree, 288 files -- read by two PUBLISHED
+artifacts, the released 0.5.4 and the released 0.6.0:
+
+    notice kind                                     published 0.5.4   published 0.6.0
+    struct declaration is outside the analyzed subset      124             121
+    enum declaration is outside the analyzed subset         36              33
+    recursive type declaration is outside the analyzed
+    subset; the type lens does not model recursive types   --                6
+
+THE TOTAL IS THE SAME ON BOTH SIDES (notices=2181) and that is the point: the type lens
+REPLACED six scope-limit notices with six of its own, so the COUNT did not move while the
+KINDS did. The 0.6.0 artifact reports a kind of notice the 0.5.4 artifact cannot produce
+at all, and it no longer reports three structs and three enums as outside the subset --
+the six the type lens took over: `EKind`, `Expr`, `ElseIf`, `SKind`, `Stmt`, `Ty`.
+
+Two artifacts that agreed everywhere would have proved nothing about either. These two
+disagree, on the reader's own bytes, and the difference IS the type lens.
+
+### THE RELEASE FOUND A DEFECT IN ITS OWN TOOLING, AND IT NAMED THE WRONG CULPRIT
+
+The published self-scan FAILED after the publish, and the first line it printed was a
+false accusation:
+
+    FAIL: the published bytes do not satisfy the host contract. A user whose toolchain is older cannot run them.
+
+The bytes were FINE. They ask for 92 symbols, the contract covers 93, and the inner gate
+had said so in its own words:
+
+    ok  every symbol it requires (92) is in the contract (93)
+
+The inner gate had failed for a DIFFERENT reason, and it had named that reason, two lines
+above:
+
+    FAIL: README.md -- it names the published 0.5.4 artifact, and this release published 0.6.0.
+    FAIL: README.zh.md -- it names the published 0.5.4 artifact, and this release published 0.6.0.
+
+The stage read the inner gate's EXIT CODE and reported the bytes as the culprit. The
+verdict was right -- something WAS wrong -- and the accusation was wrong, which sends the
+reader to the contract instead of to the sentence that had to move. It is the same shape
+as 0648's pin: a correct verdict pointing at the wrong suspect, and the reader pays for it
+in an hour of measuring the wrong thing.
+
+The fix is to REPORT WHAT WAS MEASURED. The inner gate prints its own failures, so this
+stage now says that the gate did not pass and points at those lines, instead of asserting
+a cause it did not measure. And the two README sentences moved, as they were always going
+to: the registry freezes a version's README at the moment it publishes, so the sentence
+that names the published artifact moves in the increment that FOLLOWS the publish.
+
+=> 判据: A GATE MAY REPORT A VERDICT IT MEASURED, AND IT MAY NOT NAME A CULPRIT IT DID NOT.
+The exit code says THAT something failed; it does not say WHAT. The gate that measured the
+cause prints the cause, so a gate that only knows the exit code must point at it rather
+than guess -- and a wrong accusation is worse than no accusation, because it sends the
+reader to a place where the evidence is fine.
