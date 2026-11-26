@@ -129,8 +129,22 @@ jobs:
             echo "::error::pwsh is not on this runner, so the scan-record gate cannot run"
             exit 1
           }
-          pwsh -NoProfile -File _verify/check_lunaflow_scan.ps1 -Live
-          code=$?
+          # THE EXIT CODE HAS TO BE CAUGHT IN THE COMMAND LIST, NOT AFTER IT.
+          # GitHub runs a step with `bash -e`, so a command that exits non-zero
+          # ABORTS THE STEP right there -- a `pwsh ...` line followed by
+          # `code=$?` never reaches the `code=$?` line, and the step dies
+          # carrying pwsh's own exit code. MEASURED: the first run of this step
+          # (2026-11-26, run 45842679767) printed the gate's own verdict --
+          # "LUNAFLOW SCAN UNKNOWN: 1 claim(s) could not be measured. That is
+          # not a pass." -- and then died with exit 2 instead of taking the
+          # branch that says so. The RECORD was fine; the plumbing was not, and
+          # the reader was sent to look at a row that had already been checked.
+          #
+          # The idiom that survives `set -e` is `cmd || code=$?`: the failing
+          # command sits on the LEFT of `||`, so the shell does not abort, and
+          # `$?` still carries its exit code.
+          code=0
+          pwsh -NoProfile -File _verify/check_lunaflow_scan.ps1 -Live || code=$?
           if [ "$code" -eq 1 ]; then
             echo "::error::the published scan record does not hold any more. Re-measure it, re-pin the READMEs, and re-commit the capture."
             exit 1

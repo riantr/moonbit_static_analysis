@@ -1987,7 +1987,7 @@ $SSA_COST = 'files=270|unreadable=0|functions=1457|converted=5|partial=1452|decl
 # the working tree), the two published artifacts disagreeing over one input, and
 # the gate that named a culprit it had not measured. It moved no analyzer
 # behaviour and no public interface, and it moved no other pin.
-$NARRATIVE_CHAPTERS = '192'
+$NARRATIVE_CHAPTERS = '193'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -2088,7 +2088,7 @@ $NARRATIVE_CHAPTERS = '192'
 # the previous release. Same shape as the pin failure: the verdict was right and
 # the accusation was wrong, and the reader was sent to measure a place where the
 # evidence was fine.
-$LOOP_RULES = '52'
+$LOOP_RULES = '53'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the

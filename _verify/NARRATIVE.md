@@ -26464,3 +26464,69 @@ them is WHERE the non-ASCII is.
 它在一个半的发布里一直是**真的**，然后不再是了，而没有任何东西说过一句话。
 所以纪律是：**被发布出去的测量，就是证据 + pin + 文档三者的对账**；少一样，
 它就只是一段散文里的数字。
+
+## 0651: THE TRIPWIRE'S FIRST RUN, AND THE SHELL THAT READS AN EXIT CODE BEFORE THE BRANCH DOES
+
+The step 0650 added to `gate.yml` ran for the first time on the runner, and it
+went red -- and the red was MINE, not the record's.
+
+MEASURED, GitHub Actions run 45842679767, 2026-11-26, in the step "The published
+scan record (the READMEs' row about somebody else's package)":
+
+    the capture's own invariants                    10 of 10 OK
+    the documents quote the pin                     18 of 18 OK
+    the live scan                                   exited 0, and all 9 numbers matched
+    the latest of riantr/moonbit_static_analysis    0.6.0    OK
+    the latest of riantr/LunaFlow                    0.1.37   OK
+    the repository's .repos/ is untouched            0 files  OK
+    UNKNOWN: the compiler row is not comparable -- the record was measured with
+      core 0.10.22+124d61d05 and this machine runs 1.0.0-rc1+3c0520448.
+    LUNAFLOW SCAN UNKNOWN: 1 claim(s) could not be measured. That is not a pass.
+    ##[error]Process completed with exit code 2.
+
+EVERY MEASUREMENT THE GATE MAKES PASSED. The one UNKNOWN is the gate telling the
+truth about the world: the runner's compiler is the one the registry published
+TODAY -- the registry serves `moonbitlang/core` at `0.1.20261126+3c0520448`, and
+the newest toolchain's `moonc` carries the SAME build hash, which is exactly why
+the pin is compared as a hash -- while the compiler's row was measured with
+`0.10.22+124d61d05`. "Not measured" and "measured, and fine" are not the same
+statement, and the gate says which one it is. That part is the gate working.
+
+AND THE STEP WENT RED ANYWAY, because the exit code was read in the WRONG PLACE.
+The step was written as
+
+    pwsh -NoProfile -File _verify/check_lunaflow_scan.ps1 -Live
+    code=$?
+    if [ "$code" -eq 1 ]; then ... exit 1
+    elif [ "$code" -eq 2 ]; then ... a warning, and carry on
+    ...
+
+which reads as if the three-way verdict were reachable. IT IS NOT. GitHub runs a
+step with `bash -e`, so a command that exits non-zero ABORTS THE STEP THERE, and
+the `code=$?` line is never reached. The step died carrying the gate's own exit
+code -- 2 -- instead of taking the branch that says "not measured, and that is
+not a pass". So a verdict the gate had already explained in full was reported to
+the reader as a failure, and the reader was sent to the wrong place: the RECORD
+was fine, and the plumbing was not.
+
+The idiom that survives `set -e` catches the code IN THE COMMAND LIST:
+
+    code=0
+    pwsh -NoProfile -File _verify/check_lunaflow_scan.ps1 -Live || code=$?
+
+The failing command sits on the LEFT of `||`, so the shell does not abort, and
+`$?` still carries its exit code.
+
+=> 判决: 一个门禁的退出码必须在**它自己的命令行里**接住（`cmd || code=$?`），不能在下一行接。
+   CI 的步骤默认跑在 `bash -e` 下，**非零退出会当场中止整个步骤**，那三路分支根本没机会执行。
+   ⇒ 实测（GitHub Actions run 45842679767，2026-11-26）：门禁自己的每一项测量都过了
+     （捕获不变量 10/10、文档断言 18/18、live 重测 9 个数全对、两个包的 latest 全对、
+     `.repos/` 未被碰），唯一一条 UNKNOWN 是它对世界的如实相告；**但步骤仍然红了**，
+     因为退出码**读错了地方**——`pwsh ...; code=$?` 里，**GitHub 用 `bash -e` 跑步骤**，
+     非零退出会当场中止，那一行 `code=$?` 根本执行不到 ⇒ 步骤带着门禁自己的 2 死了，
+     而没有走「测不到、这不是通过」那条分支。
+   ⇒ 修法只有一条：**`code=0; cmd || code=$?`**，让失败的命令站在 `||` 的左边，shell 就不中止，
+     而 `$?` 仍然带着它的退出码。
+   ⇒ 而这一条是**规则 51 的另一半**：退出码说明「有东西失败了」，不说明「是什么失败了」；
+     **退出码还要看是谁读的、什么时候读的**——同一个 2，在门禁里是「测不到」，
+     在 `bash -e` 的步骤里是「步骤失败」。
