@@ -101,10 +101,40 @@ function Get-BuildHash([string]$Version) {
   return ''
 }
 
+# THE SIZE THE SERVER PROMISES, or 0 when it does not answer.
+#
+# 0652. THIS NUMBER WAS HARDCODED, AND THE WORLD MOVED IT. The two sizes this
+# script carried were the sizes of the artifacts on 2026-11-20, and both of them
+# have changed since: MEASURED 2026-11-26, the core is 2,954,196 bytes (the old
+# number was 2,943,845) and the toolchain zip is 94,358,539 (the old number was
+# 94,334,795). A hardcoded size is a number the world moves, and the failure it
+# causes is the QUIET one: while the artifacts GROW, a hardcoded number is only
+# a floor and everything still works -- but the day an artifact SHRINKS, the
+# loop below can never reach its target, and the script reports "the download
+# did not finish" about a download that finished. So the server's own
+# Content-Length is the target, and the old number is only the fallback for a
+# server that does not answer a HEAD.
+function Get-RemoteSize([string]$Url) {
+  try {
+    $req = [System.Net.HttpWebRequest]::Create($Url)
+    $req.Method = 'HEAD'
+    $req.Timeout = 30000
+    $req.AllowAutoRedirect = $true
+    $req.UserAgent = 'moonbit_static_analysis re-gate'
+    $resp = $req.GetResponse()
+    $len = [int64]$resp.ContentLength
+    $resp.Close()
+    return $len
+  } catch { return 0 }
+}
+
 # DOWNLOAD WITH A RESUME LOOP. The link drops big transfers, and the server
 # advertises `accept-ranges: bytes`, so the bytes already on disk are kept and
-# the rest is asked for again.
-function Get-File([string]$Url, [string]$Out, [long]$Expected) {
+# the rest are asked for again. `$Floor` is the size this script knew on
+# 2026-11-20; the size it waits for is the one the server says today.
+function Get-File([string]$Url, [string]$Out, [long]$Floor) {
+  $Expected = Get-RemoteSize $Url
+  if ($Expected -le 0) { $Expected = $Floor }
   for ($i = 1; $i -le 40; $i++) {
     $have = 0
     if (Test-Path -LiteralPath $Out) { $have = (Get-Item -LiteralPath $Out).Length }
@@ -155,6 +185,8 @@ if (-not (Test-Path -LiteralPath $moon)) {
     Write-Output '  FAIL: offline, and there is no toolchain in the cache.'
     exit 1
   }
+  # The floor is the size the toolchain zip had on 2026-11-20; the size this
+  # waits for is the one the server says today (94,358,539 bytes on 2026-11-26).
   if (-not (Get-File 'https://cli.moonbitlang.com/binaries/latest/moonbit-windows-x86_64.zip' $zip 94334795)) {
     Write-Output '  FAIL: the toolchain download did not finish.'
     exit 1
@@ -179,11 +211,21 @@ if ($regHash -ne '' -and $coreHash -eq $regHash) {
   }
   Write-Output '  the core is not the newest one: downloading it (2.9 MB)'
   $tgz = Join-Path $Cache 'core-latest.tar.gz'
+  # The floor is the size the core had on 2026-11-20; the size this waits for is
+  # the one the server says today (2,954,196 bytes on 2026-11-26).
   if (-not (Get-File 'https://cli.moonbitlang.com/cores/core-latest.tar.gz' $tgz 2943845)) {
     Write-Output '  FAIL: the core download did not finish.'
     exit 1
   }
   Write-Output '  extracting the core'
+  # THE EXIT CODE OF `tar` IS NOT CHECKED, and that is deliberate. MEASURED
+  # 2026-11-26: the core tarball carries TWELVE SYMLINKS -- `README.md ->
+  # README.mbt.md` in twelve packages -- and Windows' tar cannot create them
+  # ("Invalid argument"), so `tar` exits non-zero having extracted everything
+  # else. The verdict is not "tar said 0" but the core that came OUT: the
+  # version in `$Cache\lib\core\moon.mod` is read and printed below, and the
+  # hash in it is what this script compares with the registry's. The twelve
+  # entries are documentation links; nothing that compiles depends on them.
   & tar -xzf $tgz -C (Join-Path $Cache 'lib')
 }
 

@@ -26530,3 +26530,80 @@ The failing command sits on the LEFT of `||`, so the shell does not abort, and
    ⇒ 而这一条是**规则 51 的另一半**：退出码说明「有东西失败了」，不说明「是什么失败了」；
      **退出码还要看是谁读的、什么时候读的**——同一个 2，在门禁里是「测不到」，
      在 `bash -e` 的步骤里是「步骤失败」。
+
+## 0652: THE CORE MOVED, THE RE-GATE SAYS THE TREE IS STILL FINE ON IT, AND A HARDCODED SIZE IS A NUMBER THE WORLD MOVES
+
+The registry published a new core while this work was in progress, and the release
+gate said so -- in the only way it knows how.
+
+MEASURED 2026-11-26, in the stage "the newest core: the tree must have been re-gated
+against the one the registry publishes":
+
+    the registry publishes: 0.1.20261126+3c0520448
+    the tree was re-gated on: 0.10.22+124d61d05
+    FAIL: the registry publishes a newer core (3c0520448), and this tree was re-gated on 124d61d05.
+          Run _verify\regate_newest_toolchain.ps1, fix what it finds, and move the pin with the fix.
+
+That is the gate doing its job, and the red was NOT this tree's fault: `$CORE_REGATED` is
+byte for byte the same in HEAD and in the working tree, and the core it names WAS the
+newest one on 2026-11-20, when 0631 moved it there.
+
+THE RE-GATE, on a COPY of the tree, with the newest toolchain and the newest core:
+
+    the registry publishes: 0.1.20261126+3c0520448
+    the toolchain: moon 0.1.20261126 (ccd306a 2026-11-26)
+    the core:      1.0.0-rc1+3c0520448
+    the core is bundled (525 artifacts)
+    ok      update                       (10s)
+    ok      check --deny-warn            (3s)
+    ok      fmt --check                  (13s)
+    ok      test --target js --deny-warn (8s)
+    ok      test --target wasm --deny-warn (9s)
+    ok      test --target wasm-gc --deny-warn (8s)
+    ok      build --target wasm          (3s)
+    ok      build --release --target wasm (3s)
+    REGATE OK: the tree builds and tests on moon 0.1.20261126 with core 1.0.0-rc1+3c0520448.
+
+THE TREE DID NOT HAVE TO BE FIXED. 0631's `unused_package` suppression is still what it is,
+and the newest core does not object to it -- so the pin moves and nothing else does.
+
+AND THE COMPILER'S ROW DID NOT MOVE EITHER, and that was the only row at risk: `moon check
+--target all` over the published `riantr/LunaFlow@0.1.37` reports **93 warnings and 0
+errors** under moonc 1.0.0-rc1+3c0520448 -- the same 93 and 0 the READMEs publish, and the
+same 93 and 0 the capture was taken with under moonc 0.10.22+124d61d05. So the READMEs' row
+did not have to be revised, and the capture did not have to be re-taken: the capture is the
+ANALYZER's measurement, and the analyzer did not move. Only the compiler moved, and only the
+compiler's row could have gone stale with it.
+
+AND TWO HARDCODED SIZES IN THE RE-GATE MACHINERY WERE STALE, which is the same disease as
+the README row 0650 was about: a number the world moves. MEASURED 2026-11-26:
+
+    the core tarball    the script expected 2,943,845 bytes; it is 2,954,196
+    the toolchain zip   the script expected 94,334,795 bytes; it is 94,358,539
+
+While the artifacts GROW, a hardcoded size is only a floor and nothing breaks. The day one
+SHRINKS, the download loop can never reach its target, and the script reports "the download
+did not finish" about a download that finished. So the script now asks the server for its own
+`Content-Length` (a HEAD) and waits for that, and the old number is only the fallback for a
+server that does not answer.
+
+AND ONE MORE THING MEASURED WHILE DOING IT, which is a Windows-only trap and not a defect:
+the core tarball carries TWELVE SYMLINKS -- `README.md -> README.mbt.md`, in twelve packages
+-- and Windows' tar cannot create them ("Invalid argument"), so `tar` exits non-zero having
+extracted everything else. The re-gate script does not check `tar`'s exit code, and now says
+why: the verdict is not "tar said 0" but the core that came OUT, and the hash in its
+`moon.mod` is what the script compares with the registry's.
+
+=> 判决: **发布门禁的 pin 红了，先分清是树红了还是世界往前走了**；如果是世界往前走了，
+   修法**不是改树**，是**按门禁自己说的做**——跑 re-gate、修掉它发现的东西、然后**把 pin 随修复一起移动**。
+   ⇒ 实测（2026-11-26）：新 core `1.0.0-rc1+3c0520448` 上这棵树**一行都不用改**，re-gate 八步全绿
+     ⇒ **pin 移动，别的都不动**。
+   ⇒ 而**只有编译器那一行有风险**：它是**另一个工具的测量**，编译器一动它就可能过期
+     ⇒ 实测它**没有过期**（两个 core 上都是 93 warnings / 0 errors）⇒ README 那行不用改，
+       捕获也不用重取（捕获是**分析器**的测量，而分析器没动）。
+   ⇒ 而**写死的大小就是同一个病**：世界往前走了，下载器却按旧数字等
+     ⇒ 修法：**问服务器它自己的 Content-Length**，旧数字只当「服务器不回答时的兜底」；
+       而且**变大不疼、变小才疼**——变大时写死的数字只是地板，变小时下载循环永远等不到目标，
+       会对一次**已经下完**的下载报「没下完」。
+   ⇒ 而**「门禁红了」要分清是谁红的**：这一次的红**不在树里**（pin 在 HEAD 与工作区逐字相同），
+     在世界里 ⇒ **指控错的对象，比红本身更费时间**。

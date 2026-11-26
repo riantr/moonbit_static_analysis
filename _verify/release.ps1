@@ -1987,7 +1987,7 @@ $SSA_COST = 'files=270|unreadable=0|functions=1457|converted=5|partial=1452|decl
 # the working tree), the two published artifacts disagreeing over one input, and
 # the gate that named a culprit it had not measured. It moved no analyzer
 # behaviour and no public interface, and it moved no other pin.
-$NARRATIVE_CHAPTERS = '193'
+$NARRATIVE_CHAPTERS = '194'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -2088,7 +2088,7 @@ $NARRATIVE_CHAPTERS = '193'
 # the previous release. Same shape as the pin failure: the verdict was right and
 # the accusation was wrong, and the reader was sent to measure a place where the
 # evidence was fine.
-$LOOP_RULES = '53'
+$LOOP_RULES = '54'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -2101,7 +2101,25 @@ $LOOP_RULES = '53'
 # The pin is compared as a BUILD HASH: the registry publishes the core as
 # `0.1.<date>+<hash>` and the core's own `moon.mod` says `0.10.<n>+<hash>`, so
 # the two strings differ and the hash is what they share.
-$CORE_REGATED = '0.10.22+124d61d05'
+#
+# 0652. The pin MOVED, because the registry published a newer core on
+# 2026-11-26 -- `0.1.20261126+3c0520448`, whose own `moon.mod` says
+# `1.0.0-rc1+3c0520448` -- and the newest toolchain's `moonc` carries the same
+# build hash. MEASURED, by `_verify/regate_newest_toolchain.ps1` against the
+# tree on a COPY: moon 0.1.20261126 (ccd306a 2026-11-26) with core
+# 1.0.0-rc1+3c0520448 runs `update`, `check --deny-warn`, `fmt --check`, the js
+# and wasm and wasm-gc test runs and both wasm builds -- all eight green. The
+# tree did NOT have to be fixed for this core: the 0631 suppression is still
+# what it is, and the compiler says the same thing about it.
+#
+# AND THE COMPILER'S ROW DID NOT MOVE EITHER: `moon check --target all` over
+# the published `riantr/LunaFlow@0.1.37` reports 93 warnings and 0 errors under
+# moonc 1.0.0-rc1+3c0520448, the same 93 and 0 the README publishes for
+# moonc 0.10.22+124d61d05. So the READMEs' row did not have to be revised, and
+# the record in `_verify/fixtures/lunaflow_scan_0.6.0_0.1.37.out` did not have
+# to be re-captured: the scan is the ANALYZER's measurement and the analyzer did
+# not move. Only the compiler moved, and only the compiler's row was at risk.
+$CORE_REGATED = '1.0.0-rc1+3c0520448'
 
 # 0650. THE PIN FOR THE PUBLISHED SCAN RECORD -- the one measurement in this
 # repository that is taken on SOMEBODY ELSE'S code and published in the READMEs.
