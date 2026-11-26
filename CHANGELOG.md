@@ -5385,3 +5385,149 @@ AND WHAT DID NOT MOVE: `$SELF_PRINTED` (158), `$IFACE_SIG_AVAILABLE` (2943), `$I
 `_verify/settle_0640_let_pattern_annotation.ps1`, 5 ACCEPT rows + 1 RECORD + 2 controls, GATE OK.
 The first draft of the corpus-shaped fixture was REJECTED by the toolchain with 4014 -- the
 SCAFFOLD was wrong, not the claim -- and the settle caught it before the code did.
+
+## 0.6.0 -- the recursion the analyzer could not see, and the reader that had to learn to read
+
+**WHAT THIS RELEASE IS.** A MINOR version, and the reason is a property a user can feel: the
+PUBLIC SURFACE MOVED. `pub(all) struct Module` gained a field (`types : Array[TypeDecl]`), and a
+`pub` struct gaining a field breaks any consumer that constructs it -- so this is a MINOR bump
+(0.5.x -> 0.6.0), not a patch. `src/ast/pkg.generated.mbti` also carries two new public types
+(`TypeDecl`, `TypeKind`) and `src/types/pkg.generated.mbti` two more (`TypeGraph`, `TypeCycle`),
+beside five new public functions.
+
+**WHAT IT ADDS IS A CAPABILITY**, and it is the one 0647 named and could not deliver: the analyzer
+now READS a type declaration instead of skipping it, and a type lens builds the type graph and
+asks whether it has a cycle.
+
+    0641  a tagged release with no bytes row is a release nobody can check
+    0642  the verdict of a chained verification must be every stage's, not the last one's
+    0643  a file that does work must not look like scratch, and a name that promises a file
+          is a promise
+    0644  a floor is a floor, and the gate that compared it as a mirror was wrong
+    0645  the pre-flight and the mutation must read the same text
+    0646  a red that cannot be attributed is not a verdict, and a red that cannot be read is
+          not a measurement
+    0647  the rings the deck never drew, and the recursion the analyzer cannot see
+    0648  the recursion the analyzer could not see, and the reader that had to learn to read
+
+### A RECURSIVE TYPE IS LEGAL MOONBIT, AND AN ALIAS CYCLE IS NOT
+
+MEASURED against the toolchain, one shape per case, with a positive control beside it:
+
+    enum Tree { Leaf(Int), Node(Tree, Tree) }        ACCEPTED
+    struct Node { left : Node, right : Node }        ACCEPTED
+    suberror E { Wrap(E) }                           ACCEPTED
+    type A = Int                                     ACCEPTED (Warning 0003, unused type)
+    type A = A                                       REJECTED  Error [4155]
+        "Found cycle A -> A in `type alias` declaration."
+    type A = B  +  type B = A                        REJECTED  Error [4155]
+        "Found cycle A -> B -> A in `type alias` declaration."
+
+So "this program has a recursive type" is never a defect in the reader's code, and the family
+roster stays at EIGHTEEN: the recursive type goes through the existing DECLARED SCOPE LIMIT
+channel -- FParse, the `type` lens, a message that carries the marker -- so it renders `notice:`
+and its confidence is `undecided`.
+
+### THE OBSERVATION IS INVERTED
+
+In 0647 a recursive enum and a plain enum produced BYTE-IDENTICAL reports, and that identity was
+the proof that the analyzer could not see the recursion at all. Now they differ:
+
+    a recursive enum    notice: recursive type declaration is outside the analyzed subset; its
+                        body was not analyzed and the type lens does not model recursive types
+    a plain enum        notice: enum declaration is outside the analyzed subset; its body was
+                        not analyzed
+    a mutual recursion  TWO notices, one per declaration
+    an alias cycle      notice: recursive type alias declaration is outside the analyzed subset;
+                        the type lens does not model recursive type aliases
+
+### THE READER HAD TO LEARN TO READ, AND TWO OF ITS BOUNDARIES WERE WRONG
+
+    the brackets were counted TOGETHER, so a `]` inside a `(...)` never cancelled its `[`
+        -> the payload scan ran to the end of the file
+        -> `enum E { V(Array[Tree]) W(@core.Size) }` read as [Tree, Array, W]
+        -> `W` is a CONSTRUCTOR, and reading it would have invented the edge E -> W
+
+    the struct field scan stopped only at a COMMA, but MoonBit separates fields by a NEWLINE
+        -> `struct Node { left : Node / right : Node }` read as [Node, right]
+        -> `right` is the next FIELD'S NAME
+
+A NAME read in the wrong POSITION becomes an EDGE, an edge becomes a CYCLE, and a cycle becomes
+a FINDING about a program that has none.
+
+### AND THE ANALYZER COULD NOT READ ITS OWN NEW SOURCE
+
+Two of the four new files were reported PARTIAL with "expected loop variable" -- a tuple-paren
+pattern (`for (a, b) in edges`) and a `for` header that `moon fmt` split across two lines. Both
+shapes are known limits of the frontend, written down in this tree before this increment. An
+analyzer that cannot read its own source has moved its own source OUT of the region it is
+checked against -- and that region is the only tree where its output can be compared with a tree
+that is supposed to have no defect in it.
+
+### THE PINS THIS MOVED, every one of them MEASURED before it was written
+
+    $SELF_FILES             284 -> 288      four new files under src/
+    $SELF_NOTICES           test declaration 1826 -> 1848, enum declaration 35 -> 33,
+                            if expression 101 -> 102, and a NEW KIND: recursive type
+                            declaration = 6
+    $SELF_PRINTED           158 -> 159
+    $SELF_AGGREGATED        1996 -> 2022
+    $SELF_CALLS             sites 5625 -> 5677, checked 1122 -> 1131,
+                            not-verified 4503 -> 4546
+    $SELF_UNCHECKED         4605 -> 4649
+    $NOTICE_TOTAL           24149 -> 24176
+    $NOTICE_SPLIT_PRINTED   4034 -> 4035
+    $NOTICE_SPLIT_AGGREGATED 20115 -> 20141
+    $UNVERIFIED_SPLIT_EIGHT not-callable 8145 -> 8147, method 25164 -> 25205,
+                            not-verified 35561 -> 35604
+    $SSA_COST               files 266 -> 270, functions 1439 -> 1457,
+                            instructions 9222 -> 9315, declined 6549 -> 6637
+    $NARRATIVE_CHAPTERS     189 -> 190
+    $LOOP_RULES             48 -> 50
+
+### AND A PIN THAT WAS WRONG
+
+The eight-tree split is the seven corpora PLUS this repository's own source, and the own-source
+half moved by +1 printed and +26 aggregated. The first version of that pin added the own-source
+half's NEW ABSOLUTE VALUE to the old eight-tree total instead of its DELTA, so it counted that
+half twice -- and it did not close: 4193 + 22137 = 26330 against a pinned total of 24176. Nothing
+was looking at that, because the corpus stage checks the MEASURED split against the MEASURED
+total (both right) and the PINNED split against the MEASURED split (a mismatch, but found
+seventy minutes later, in the corpus stage, and reported as "corpus drift": the verdict was right
+and the accusation was wrong). The gate now checks the PINS against EACH OTHER, before any stage
+runs: with one pin moved by one it is FATAL, exit 1, and zero stages have run.
+
+### AND THE PUBLISHED 0.5.4 IS NOT THIS ANALYZER
+
+MEASURED, by running the published package against the registry and by matching its tree against
+this repository's history:
+
+    the published 0.5.4 scans its own shipped source   281/281 parsed, actionable=0,
+                                                        notices=2135, unchecked=4597
+    and its tree is byte-for-byte the commit d188813    574 of 574 files identical (100%)
+
+and under that release the source moved by
+
+    git diff --shortstat d188813..HEAD -- src/   ->  13 files changed, 2249 insertions(+), 4 deletions(-)
+
+Thirteen files and 2,249 lines -- including the reader's two boundary fixes and a type lens that
+does not exist in the published artifact at all. The tests moved with it: 1642 / 1807 / 1642
+(js / wasm / wasm-gc) at the release, 1683 / 1848 / 1683 here.
+
+**AND A CORRECTION, because the READMEs carried a statement that was false.** They said the
+published 0.5.4 was cut "three comment lines" away from this tree, and that "no behavior moved
+with them". That was true when it was written (at 0641) and it stopped being true as the
+increments after it moved `src/`, and nothing measured it: the sentence is checked for its
+PRESENCE and for the version it names, not for whether its body is still true. It is gone in this
+release, because the version is set at this commit and `src/` has not moved under it.
+
+### THE PUBLISHED ARTIFACT, AND THE SENTENCE THAT MOVES AFTER IT
+
+The READMEs say "The published 0.5.4 artifact imports 92 symbols", and that sentence still names
+0.5.4 in this release, deliberately: the registry freezes a version's README at the moment it
+publishes, and the import count belongs to the registry's builder toolchain rather than to this
+repository, so the number cannot be known before the bytes exist. The sentence moves in the
+increment that FOLLOWS the publish, measured on the published artifact -- exactly what increment
+0639 did for 0.5.3.
+
+The tests are 1683 / 1848 / 1683 (js / wasm / wasm-gc).

@@ -4655,3 +4655,134 @@ README 写的是「发布出去的 0.5.2 产物导入了 **92** 个符号」，�
 `_verify/settle_0640_let_pattern_annotation.ps1`，5 条 ACCEPT + 1 条 RECORD + 2 条对照，GATE OK。
 语料形状那份 fixture 的**第一稿**被工具链用 4014 **拒了**——是**脚手架**错了，不是判据错了——
 而这道 settle 在写代码之前就抓住了它。
+
+## 0.6.0 —— 分析器看不见的那个递归，和那个不得不学会读东西的读者
+
+**这一版是什么。** 一个 MINOR 版本，理由是用户能感觉到的：**公开表面动了**。
+`pub(all) struct Module` 新增了一个字段（`types : Array[TypeDecl]`），而给 `pub` 结构体加字段
+会**打断任何构造它的使用者**——所以这是 MINOR（0.5.x -> 0.6.0），不是 patch。
+`src/ast/pkg.generated.mbti` 还多了两个公开类型（`TypeDecl`、`TypeKind`），
+`src/types/pkg.generated.mbti` 多了两个（`TypeGraph`、`TypeCycle`），外加五个新的公开函数。
+
+**它加进来的是一项能力**，也正是 0647 点名而当时给不出来的那个：分析器现在**读**类型声明，
+而不是跳过它；一道类型透镜建出类型图，问它有没有环。
+
+    0641  打了 tag 却没有字节行的发布，是谁也查不了的发布
+    0642  链式验证的判定必须是每一段的，不是最后一段的
+    0643  干活的文件不能长得像草稿，而名字是承诺
+    0644  地板就是地板，而拿地板当镜子照的门禁是错的
+    0645  预检和执行必须读同一段文字
+    0646  归因不了的红不是判决，读不懂的红不是测量
+    0647  面板从未画出的那些环，和分析器看不见的那个递归
+    0648  分析器终于能看见的递归，和那个不得不学会读东西的读者
+
+### 递归类型是合法的 MoonBit，而别名环不是
+
+对着工具链实测，一个形状一条，旁边放着正例：
+
+    enum Tree { Leaf(Int), Node(Tree, Tree) }        接受
+    struct Node { left : Node, right : Node }        接受
+    suberror E { Wrap(E) }                           接受
+    type A = Int                                     接受（Warning 0003，未使用的类型）
+    type A = A                                       拒绝  Error [4155]
+        "Found cycle A -> A in `type alias` declaration."
+    type A = B  +  type B = A                        拒绝  Error [4155]
+        "Found cycle A -> B -> A in `type alias` declaration."
+
+所以「这个程序有递归类型」**永远不是**读者代码里的缺陷，发现族清单也就停在**十八个**：递归类型
+走的是既有的**声明范围限制**通道——FParse、`type` 透镜、消息带标记——所以它渲染成 `notice:`，
+置信度是 `undecided`。
+
+### 观测被反转了
+
+0647 里，一个递归 enum 和一个普通 enum 给出**逐字节相同**的报告，而那个相同正是「分析器根本
+看不见递归」的证据。现在它们不一样了：
+
+    一个递归 enum    notice: recursive type declaration is outside the analyzed subset; its
+                     body was not analyzed and the type lens does not model recursive types
+    一个普通 enum    notice: enum declaration is outside the analyzed subset; its body was
+                     not analyzed
+    互相递归        两条 notice，每个声明一条
+    别名环          notice: recursive type alias declaration is outside the analyzed subset;
+                     the type lens does not model recursive type aliases
+
+### 读者不得不学会读，而它的两处边界是错的
+
+    三种括号被**混在一起**算，所以 `(` 里的 `]` 抵消不了 `[`
+        -> 载荷扫描一路跑到文件尾
+        -> `enum E { V(Array[Tree]) W(@core.Size) }` 读成 [Tree, Array, W]
+        -> `W` 是**构造器**，读它就等于凭空造出边 E -> W
+
+    struct 的字段扫描**只停在逗号**上，而 MoonBit 的字段也可以**换行**分隔
+        -> `struct Node { left : Node / right : Node }` 读成 [Node, right]
+        -> `right` 是**下一个字段的名字**
+
+在**错的位置**读到的名字变成**边**，边变成**环**，环变成一条**关于程序没有的**发现。
+
+### 而且分析器读不了它自己的新源码
+
+四个新文件里有**两个**被报成 PARTIAL、`expected loop variable`——一个 tuple 括号模式
+（`for (a, b) in edges`），一个被 `moon fmt` 拆成两行的 `for` 头。这两个形状都是前端早就写下来
+的限制。一个读不了自己源码的分析器，就把自己的源码挪到了**检验范围之外**——而那棵树正是它唯一
+能被拿来和「一棵没有缺陷的树」对照的树。
+
+### 这次动掉的 pin，每一个都是先量后写
+
+    $SELF_FILES             284 -> 288      src/ 下四个新文件
+    $SELF_NOTICES           test declaration 1826 -> 1848，enum declaration 35 -> 33，
+                            if expression 101 -> 102，还有一个**新 kind**：
+                            recursive type declaration = 6
+    $SELF_PRINTED           158 -> 159
+    $SELF_AGGREGATED        1996 -> 2022
+    $SELF_CALLS             sites 5625 -> 5677，checked 1122 -> 1131，
+                            not-verified 4503 -> 4546
+    $SELF_UNCHECKED         4605 -> 4649
+    $NOTICE_TOTAL           24149 -> 24176
+    $NOTICE_SPLIT_PRINTED   4034 -> 4035
+    $NOTICE_SPLIT_AGGREGATED 20115 -> 20141
+    $UNVERIFIED_SPLIT_EIGHT not-callable 8145 -> 8147，method 25164 -> 25205，
+                            not-verified 35561 -> 35604
+    $SSA_COST               files 266 -> 270，functions 1439 -> 1457，
+                            instructions 9222 -> 9315，declined 6549 -> 6637
+    $NARRATIVE_CHAPTERS     189 -> 190
+    $LOOP_RULES             48 -> 50
+
+### 还有一个算错了的 pin
+
+八树拆分是**七个语料 + 本仓库自己的源码**两半之和，而自身源码那半动了 +1 printed / +26
+aggregated。这个 pin 的**第一版**把自身半边的**新绝对值**加在了旧的八树总值上，而不是它的
+**差值**——于是那一半被算了两遍，**而且不闭合**：4193 + 22137 = 26330，而 pin 的总数是 24176。
+没人看着这件事，因为语料段查的是**实测拆分 vs 实测总数**（两个都对）和 **pinned 拆分 vs 实测
+拆分**（不匹配，但要等七十来分钟之后在语料段才报，而且报成「corpus drift」——**判据对了，指控
+错了**）。现在门禁会在任何阶段之前把 **pin 彼此对账**：把一个 pin 挪 1 就是 FATAL、exit 1、
+**一个阶段都没跑**。
+
+### 而已发布的 0.5.4 不是这个分析器
+
+实测：拿已发布的包打注册表，再把它的树与本仓库的历史对起来——
+
+    已发布的 0.5.4 扫自己随包发出去的源码   281/281 解析，actionable=0，
+                                              notices=2135，unchecked=4597
+    而它的树与 commit d188813 逐字节相同     574 个文件全部一致（100%）
+
+而在那个发布之下，源码动了
+
+    git diff --shortstat d188813..HEAD -- src/   ->  13 files changed, 2249 insertions(+), 4 deletions(-)
+
+**13 个文件、2,249 行**——其中包括读者的两处边界修复，和一个在已发布产物里**根本不存在**的类型
+透镜。测试数也跟着动：发布时是 1642 / 1807 / 1642（js / wasm / wasm-gc），这里是 1683 / 1848 /
+1683。
+
+**还有一处更正，因为两份 README 带着一句假话。** 它们说已发布的 0.5.4 离这棵树只差「三行注释」，
+而且「行为没有跟着变」。这话写下来时是真的（0641），后来那些增量动了 `src/`，它就不是真的了，
+而**没有任何东西量它**：这句话只被查**在不在**、以及**它点名的是哪个版本**，没人查它**本身还
+是不是真的**。这一版里它没了，因为版本在这个 commit 上定下来，而 `src/` 在它底下没有动。
+
+### 已发布的产物，以及发布之后才会移动的那句话
+
+两份 README 写着「The published 0.5.4 artifact imports 92 symbols」，而这一版里那句话**仍然**
+点名 0.5.4，**故意的**：registry 在 publish 那一刻就把这个版本的 README 冻住，而 import 数属于
+registry 的构建工具链、不属于本仓库，所以字节还不存在的时候这个数量不出来。那句话在**发布之后**
+的那个增量里移动，对着发布出来的产物实测——0.5.3 那次正是增量 0639 这么做的。
+
+测试是 1683 / 1848 / 1683（js / wasm / wasm-gc）。

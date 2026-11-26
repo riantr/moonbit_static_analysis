@@ -64,14 +64,14 @@
 ## 安装
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.5.4
+moon add riantr/moonbit_static_analysis@0.6.0
 ```
 
 然后在 `moon.mod` 里引入：
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.5.4",
+  "riantr/moonbit_static_analysis@0.6.0",
 }
 ```
 
@@ -294,7 +294,7 @@ pyroduct 的测试挂掉，强制一次复审。同一次运行还会列出它**
 主张。这三样都进文件名 —— `<package>_<version>_<moonbit>_<stamp>.mmd`：
 
 ```
-moonbit_static_analysis_0.5.4_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.6.0_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # 版本没定下来
 ```
@@ -1901,10 +1901,6 @@ mermaid 图和 JSON 桥全都走它——所以标签和数字不可能互相打
 
 逐版本的发布史——每一版改了什么、改动的实测依据是什么、以及某个结论被撤回时的更正——
 见 **[CHANGELOG.zh.md](CHANGELOG.zh.md)**（[English](CHANGELOG.md)）。
-
-> **注意：已发布的产物比这棵树旧，因为源码在版本 0.5.4 之后移动过。** 已发布的 0.5.4 是在这棵树的
-> `src/` 移动之前切出来的，动的是三行注释——两个从草稿提升为受跟踪的证明脚本的路径。行为没有跟着
-> 变；下一次发布会把移动后的源码发出去。
 
 ## 参与开发
 

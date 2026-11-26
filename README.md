@@ -70,14 +70,14 @@ analyzer could not resolve — are counted as notices and are not in that 30. On
 ## Installation
 
 ```bash
-moon add riantr/moonbit_static_analysis@0.5.4
+moon add riantr/moonbit_static_analysis@0.6.0
 ```
 
 Then import it in your `moon.mod`:
 
 ```moonbit
 import {
-  "riantr/moonbit_static_analysis@0.5.4",
+  "riantr/moonbit_static_analysis@0.6.0",
 }
 ```
 
@@ -331,7 +331,7 @@ A scan result is a claim about a specific tree, read by a specific toolchain, at
 moment. All three go in the filename — `<package>_<version>_<moonbit>_<stamp>.mmd`:
 
 ```
-moonbit_static_analysis_0.5.4_0.1.20261023_20261024T060000Z.mmd
+moonbit_static_analysis_0.6.0_0.1.20261023_20261024T060000Z.mmd
 moonbitlang-core_0.1.20261105+65efd5b93_0.1.20261104_20261114T060000Z.mmd
 tree_unknown_unknown_0.1.20261104_20261114T055946Z.mmd     # version not determined
 ```
@@ -2292,11 +2292,6 @@ with cvc5.
 The release-by-release history — every version's changes, the measurement behind each
 change, and the correction when one was needed — is in **[CHANGELOG.md](CHANGELOG.md)**
 ([中文](CHANGELOG.zh.md)).
-
-> **NOTE: the released artifact is older than this tree, because the source has moved under
-> version 0.5.4.** The published 0.5.4 was cut before this tree's `src/` moved, and what moved
-> is three comment lines — the paths of two proof scripts that were promoted from scratch to
-> tracked. No behavior moved with them; the next release ships the moved source.
 
 ## Contributing
 
