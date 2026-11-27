@@ -80,6 +80,98 @@ function Stage {
   $script:lastOk = $script:stageOk
 }
 
+# 0653. THE SCAN-RECORD FILTER, AS A FUNCTION, because a rule that lives inside
+# a stage is a rule that cannot be shown to go red.
+#
+# WHAT IT DOES. The scan-record gate's child prints a lot: the evidence, the
+# documents, the live scan, the staleness probe, and -- when the record has gone
+# stale -- THE CANDIDATE, which is the block that carries the remedy: the
+# header, the pin line to paste, and the instruction. This function takes the
+# child's text and returns the lines this stage should print, and it ANSWERS
+# whether the candidate block came through WHOLE.
+#
+# WHY IT IS NOT AN ALLOW-LIST. Until 0653 the stage filtered the child through
+# an allow-list of line SHAPES, and the candidate block matched NONE of them:
+# the block RAN -- the gate measured it, and the measurement was correct -- and
+# was then DISCARDED by the parent. MEASURED: the child's raw output was 69
+# lines, the allow-list kept 17, and the gate log held exactly those 17, and
+# the 3 candidate lines were among the 46 dropped. The reader was told "the
+# record is stale and must be re-measured" and shown NOTHING to paste. The
+# gate's own header promises "WHEN IT HAS MOVED, THE STAGE PRINTS THE
+# CANDIDATE", so the promise and the implementation disagreed -- and only a
+# stale registry could ever tell.
+#
+# SO THE BLOCK IS PASSED THROUGH WHOLE, and the rule that it is passed through
+# whole is an ASSERTION ABOUT ITS SHAPE: header, pin line, instruction. A wider
+# allow-list would have fixed this one omission and left the next one silent.
+function Select-ScanRecordLines {
+  param([string]$Text)
+  $lines = @()
+  $candIn = 0
+  $candOut = 0
+  $candLines = @()
+  $inCandidate = $false
+  foreach ($ln in ($Text -split "`r?`n")) {
+    $t = $ln.Trim()
+    # THE SHAPE OF A CANDIDATE LINE, counted BEFORE any filtering happens.
+    $isCand = $false
+    if ($t -match '^=== the candidate:') { $isCand = $true }
+    elseif ($t -match '^\$LUNAFLOW_SCAN\s*=') { $isCand = $true }
+    elseif ($t -match '^Re-measure with it') { $isCand = $true }
+    if ($isCand) { $candIn++ }
+    if ($t -match '^=== the candidate:') {
+      $inCandidate = $true
+      $lines += $t
+      $candOut++
+      $candLines += $t
+      continue
+    }
+    if ($inCandidate) {
+      # The block is the header, the pin line and the instruction. Anything
+      # else ends it.
+      if ($t -match '^\$LUNAFLOW_SCAN\s*=' -or $t -match '^Re-measure with it') {
+        $lines += $t
+        $candOut++
+        $candLines += $t
+        continue
+      }
+      $inCandidate = $false
+    }
+    if ($ln -match '(live |latest of|compiler.s row|repos/ is untouched|LUNAFLOW SCAN|UNKNOWN|FAIL)') {
+      $lines += $ln.Trim()
+    }
+  }
+  $ok = $true
+  $reason = ''
+  if ($candIn -gt 0) {
+    $hasHeader = ($candLines | Where-Object { $_ -match '^=== the candidate:' }).Count -gt 0
+    $hasPin = ($candLines | Where-Object { $_ -match '^\$LUNAFLOW_SCAN\s*=' }).Count -gt 0
+    $hasHow = ($candLines | Where-Object { $_ -match '^Re-measure with it' }).Count -gt 0
+    if (-not ($hasHeader -and $hasPin -and $hasHow)) {
+      $ok = $false
+      $reason = ('the child printed ' + $candIn + ' candidate line(s) and this stage printed ' + $candOut + ' of them (header=' + $hasHeader + ', the pin line=' + $hasPin + ', the instruction=' + $hasHow + '). The remedy was measured and then hidden.')
+    } elseif ($candIn -ne $candOut) {
+      $ok = $false
+      $reason = ('the child printed ' + $candIn + ' candidate line(s) and this stage printed ' + $candOut + '. The remedy was measured and then hidden.')
+    }
+  }
+  return [pscustomobject]@{ Lines = $lines; CandIn = $candIn; CandOut = $candOut; Ok = $ok; Reason = $reason }
+}
+
+# THE 0652 SHAPE, KEPT AS THE CONTROL. This is the allow-list that dropped the
+# candidate block. It is not called by the gate any more -- it is here so the
+# self-test can prove, on the SAME input, that the old filter loses the remedy
+# and the new one keeps it. A fix that is not shown to fix anything is a fix
+# that is only believed.
+function Select-ScanRecordLinesLegacy {
+  param([string]$Text)
+  $lines = @()
+  foreach ($ln in ($Text -split "`r?`n")) {
+    if ($ln -match '(live |latest of|compiler.s row|repos/ is untouched|LUNAFLOW SCAN|UNKNOWN|FAIL)') { $lines += $ln.Trim() }
+  }
+  return $lines
+}
+
 function Run-Moon {
   param([string[]]$MoonArgs)
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -1987,7 +2079,7 @@ $SSA_COST = 'files=270|unreadable=0|functions=1457|converted=5|partial=1452|decl
 # the working tree), the two published artifacts disagreeing over one input, and
 # the gate that named a culprit it had not measured. It moved no analyzer
 # behaviour and no public interface, and it moved no other pin.
-$NARRATIVE_CHAPTERS = '194'
+$NARRATIVE_CHAPTERS = '195'
 
 # 0628. THE PIN THAT HOLDS THE LOOP'S OWN RULE LIST. The goal this repository
 # is written against is "compile the LOOP, and complete every task in
@@ -2088,7 +2180,17 @@ $NARRATIVE_CHAPTERS = '194'
 # the previous release. Same shape as the pin failure: the verdict was right and
 # the accusation was wrong, and the reader was sent to measure a place where the
 # evidence was fine.
-$LOOP_RULES = '54'
+# 0653. AND AGAIN: 54 -> 55, with the rule this increment adds: a gate may
+# MEASURE a remedy and it may not THROW IT AWAY. The live scan-record stage
+# filtered its child's output through an allow-list of line shapes, and the
+# candidate block -- the pin the reader is supposed to paste -- matched none of
+# them: the block was computed correctly and then dropped, silently. MEASURED:
+# 69 lines out of the child, 17 kept, 46 dropped, the 3 candidate lines among
+# them, and the gate log holding exactly the 17. The fix is structural -- the
+# block is passed through whole, and "whole" is asserted by its SHAPE -- and
+# the assertion is shown to go red by the release gate's own self-test, on the
+# same input, with the old filter as the control.
+$LOOP_RULES = '55'
 
 # 0631. THE PIN THAT SAYS WHICH CORE THIS TREE WAS RE-GATED AGAINST. The CI
 # workflows install the toolchain with NO version, so the runner gets the
@@ -2119,6 +2221,14 @@ $LOOP_RULES = '54'
 # the record in `_verify/fixtures/lunaflow_scan_0.6.0_0.1.37.out` did not have
 # to be re-captured: the scan is the ANALYZER's measurement and the analyzer did
 # not move. Only the compiler moved, and only the compiler's row was at risk.
+#
+# 0653. THE LAST TWO SENTENCES ABOVE ARE NOW HISTORICAL. The capture WAS
+# re-taken, and the corpus did move -- but not the analyzer. The record was
+# re-measured against `riantr/LunaFlow@0.1.38`, which is a different tree, and
+# the scan of THAT tree is a different measurement. The reason the capture moved
+# is the corpus, not the analyzer, and the two reasons must not be confused:
+# "the analyzer moved" would have invalidated the row, "the corpus moved" only
+# invalidates the row if the row claims to be about that corpus. This row does.
 $CORE_REGATED = '1.0.0-rc1+3c0520448'
 
 # 0650. THE PIN FOR THE PUBLISHED SCAN RECORD -- the one measurement in this
@@ -2143,10 +2253,29 @@ $CORE_REGATED = '1.0.0-rc1+3c0520448'
 # corpus, and nothing else), so a capture that does not carry the analyzer's
 # version in its FILE NAME is not evidence of anything.
 #
-# `pct` is the ANALYZER's own percentage, not a re-computation: 73 of 76 is
-# 96.0526 per cent, which ROUNDS to 96.1 and TRUNCATES to 96.0, and the analyzer
-# prints 96.0. A second rule for the same number is a second place to be wrong.
-$LUNAFLOW_SCAN = 'analyzer=0.6.0|corpus=0.1.37|files=76|parsed=73|pct=96.0|actionable=3|notices=665|unreliable=39|withheld=0|unchecked=2877|total=707|notparse=3|src_actionable=0|defects_in=fixtures/eva_demo/lib.mbt|top_file=src/app/model.mbt|top_findings=47'
+# `pct` is the ANALYZER's own percentage, not a re-computation: 75 of 78 is
+# 96.1538 per cent, which ROUNDS to 96.2 and TRUNCATES to 96.1, and the analyzer
+# prints 96.1. A second rule for the same number is a second place to be wrong.
+#
+# 0653. THE CORPUS MOVED, so the record was RE-MEASURED and RE-PINNED. The
+# registry published `riantr/LunaFlow@0.1.38` at 2026-11-27T14:35:16Z, in the
+# middle of the 0652 gate run, and a record that names versions which have moved
+# on is stale even when the numbers happen not to have moved. The new capture is
+# `_verify/fixtures/lunaflow_scan_0.6.0_0.1.38.out` (32,354 bytes, 425 lines,
+# LF, no BOM) and it was taken at the BYTE LEVEL -- `cmd`'s redirection copies
+# what the program WROTE, and a capture whose line endings were normalised is a
+# capture of something slightly different from what was observed.
+#
+# WHAT MOVED AND WHAT DID NOT. The corpus grew: 76 files -> 78, 73 parsed ->
+# 75, notices 665 -> 684, unchecked 2877 -> 2883, total 707 -> 726, and the
+# percentage 96.0 -> 96.1. WHAT DID NOT MOVE: the analyzer (still 0.6.0), the
+# actionable count (still 3, all three in the corpus's own `fixtures/eva_demo/
+# lib.mbt`), the unreliable count (39), the withheld count (0), the notparse
+# count (3), the product source's own actionable count (0), the largest
+# raw-finding file (`src/app/model.mbt`) and its count (47). So the row the
+# READMEs publish about somebody ELSE'S code grew, and the row about THIS
+# repository's own source did not.
+$LUNAFLOW_SCAN = 'analyzer=0.6.0|corpus=0.1.38|files=78|parsed=75|pct=96.1|actionable=3|notices=684|unreliable=39|withheld=0|unchecked=2883|total=726|notparse=3|src_actionable=0|defects_in=fixtures/eva_demo/lib.mbt|top_file=src/app/model.mbt|top_findings=47'
 
 # 0650. AND THE COMPILER'S ROW, which is a DIFFERENT tool's measurement and is
 # pinned separately so that the two are never confused for each other: `moon
@@ -2155,6 +2284,15 @@ $LUNAFLOW_SCAN = 'analyzer=0.6.0|corpus=0.1.37|files=76|parsed=73|pct=96.0|actio
 # ($CORE_REGATED), because the compiler's diagnostics move with the compiler --
 # so the live check compares this row ONLY when the running compiler IS that
 # core, and says UNKNOWN otherwise.
+#
+# 0653. RE-MEASURED OVER 0.1.38, AND THE NUMBER DID NOT MOVE: `moon check
+# --target all` over `riantr/LunaFlow@0.1.38` reports the same 93 warnings and
+# 0 errors under moonc 1.0.0-rc1+3c0520448. That is a MEASUREMENT, not an
+# assumption -- the compiler's row is about a TREE, and the tree moved, so the
+# row was taken again over the tree the pin now names. It happens to be the
+# same number, which is worth knowing and worth not assuming: the two trees
+# differ (76 files against 78, 665 notices against 684), so the compiler
+# agreeing on both is a fact about the compiler, not a coincidence of the row.
 $LUNAFLOW_MOONCHECK = 'warnings=93|errors=0'
 
 #   $SOUNDINESS_SOUND    the deck's three-way verdict, DERIVED per family by
@@ -2460,8 +2598,49 @@ if ($SelfTest) {
   }
 
   Write-Output ''
-  if ($a -and $b -and $c -and $d -and $e -and $f -and $gOk -and $hOk -and $iOk -and $jOk) {
-    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, a patched tree is reported, a tree that cannot be read is refused, the restore is byte-for-byte, a terminated gate is not reported as a failed gate, and a pin set that does not close is refused.'
+  Write-Output 'K. the scan-record filter must print the CANDIDATE block whole'
+  # 0653. The defect this asserts against: the stage used to filter the child's
+  # output through an allow-list of line shapes, and the candidate block -- the
+  # three lines that carry the REMEDY when the record has gone stale -- matched
+  # none of them. So the block was measured and then thrown away, and the
+  # reader was told to re-measure without being shown what to re-measure TO.
+  #
+  # So this asserts three things on ONE input: the OLD filter loses the pin
+  # line (the defect, shown to be a defect), the NEW filter keeps it (the fix,
+  # shown to fix something), and a block that is missing its pin line is
+  # REFUSED rather than passed on (the guard, shown to go red).
+  $kOk = $false
+  $candSample = @(
+    '  the live scan exited 0',
+    '  live files                                           78  OK',
+    '  the latest of riantr/LunaFlow                    0.1.38  FAIL (the registry now serves 0.1.39) -- the record is stale and must be re-measured',
+    '  === the candidate: the same scan against @latest ===',
+    "  `$LUNAFLOW_SCAN = 'analyzer=0.6.0|corpus=0.1.38|files=78|parsed=75|pct=96.1'",
+    '  Re-measure with it, re-commit the capture under the new name, and re-pin the READMEs.',
+    "  the repository's .repos/ is untouched          12329 files  OK"
+  ) -join "`n"
+  $legacy = Select-ScanRecordLinesLegacy $candSample
+  $legacyPin = ($legacy | Where-Object { $_ -match '^\$LUNAFLOW_SCAN\s*=' }).Count -gt 0
+  $legacyLost = (-not $legacyPin)
+  Write-Output ('   the OLD filter kept the pin line: ' + $legacyPin + ' -> ' + $(if ($legacyLost) { 'PASS' } else { 'FAIL' }))
+  $now = Select-ScanRecordLines $candSample
+  $nowPin = ($now.Lines | Where-Object { $_ -match '^\$LUNAFLOW_SCAN\s*=' }).Count -gt 0
+  Write-Output ('   the NEW filter kept the pin line: ' + $nowPin + ' -> ' + $(if ($nowPin) { 'PASS' } else { 'FAIL' }))
+  # THE INJECTED DEFECT: the block arrives WITHOUT its pin line.
+  $brokenSample = @(
+    '  === the candidate: the same scan against @latest ===',
+    '  Re-measure with it, re-commit the capture under the new name, and re-pin the READMEs.'
+  ) -join "`n"
+  $broken = Select-ScanRecordLines $brokenSample
+  Write-Output ('   a block without its pin line is refused: ' + (-not $broken.Ok) + ' -> ' + $(if (-not $broken.Ok) { 'PASS' } else { 'FAIL' }))
+  # THE CONTROL: a child that printed NO candidate at all is not an error.
+  $noCand = Select-ScanRecordLines '  the live scan exited 0'
+  Write-Output ('   a child with no candidate is not an error: ' + $noCand.Ok + ' -> ' + $(if ($noCand.Ok) { 'PASS' } else { 'FAIL' }))
+  $kOk = $legacyLost -and $nowPin -and (-not $broken.Ok) -and $noCand.Ok
+
+  Write-Output ''
+  if ($a -and $b -and $c -and $d -and $e -and $f -and $gOk -and $hOk -and $iOk -and $jOk -and $kOk) {
+    Write-Output 'SELF TEST PASSED: a failing stage is distinguishable from a passing one, a patched tree is reported, a tree that cannot be read is refused, the restore is byte-for-byte, a terminated gate is not reported as a failed gate, a pin set that does not close is refused, and the scan-record filter is shown to keep the candidate block that the old allow-list dropped.'
     exit 0
   }
   Write-Output 'SELF TEST FAILED: this gate cannot tell a failure from a pass. Do not trust a run.'
@@ -4263,8 +4442,17 @@ if ($SkipMutations) {
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $LFS -Live 2>&1 | Out-String
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
-    foreach ($ln in ($o -split "`r?`n")) {
-      if ($ln -match '(live |latest of|compiler.s row|repos/ is untouched|LUNAFLOW SCAN|UNKNOWN|FAIL)') { Write-Output ('  ' + $ln.Trim()) }
+    # 0653. THE CANDIDATE BLOCK IS PASSED THROUGH WHOLE, and the rule that it is
+    # passed through whole is enforced by an INVARIANT inside
+    # `Select-ScanRecordLines` -- the block this stage prints must have all
+    # three parts. A wider allow-list would have fixed the one omission and
+    # left the next one silent; an invariant fails LOUDLY the moment the block
+    # is not whole, whatever the child prints.
+    $sel = Select-ScanRecordLines $o
+    foreach ($l in $sel.Lines) { Write-Output ('  ' + $l) }
+    if (-not $sel.Ok) {
+      Write-Output ('  FAIL: ' + $sel.Reason)
+      $script:stageOk = $false
     }
     if ($code -eq 1) { $script:stageOk = $false }
     elseif ($code -eq 2) {

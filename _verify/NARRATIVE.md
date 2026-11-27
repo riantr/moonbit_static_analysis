@@ -26607,3 +26607,111 @@ why: the verdict is not "tar said 0" but the core that came OUT, and the hash in
        会对一次**已经下完**的下载报「没下完」。
    ⇒ 而**「门禁红了」要分清是谁红的**：这一次的红**不在树里**（pin 在 HEAD 与工作区逐字相同），
      在世界里 ⇒ **指控错的对象，比红本身更费时间**。
+
+
+## 0653: THE CORPUS MOVED WHILE THE GATE WAS RUNNING, AND THE GATE MEASURED THE REMEDY AND THEN THREW IT AWAY
+
+The registry published a new corpus while the release gate was running, and the gate
+said so -- in the only way it knows how. One line, one verdict, and the remedy went
+missing.
+
+MEASURED 2026-11-27. The gate started at 22:18:46 and finished at 23:18:51, with
+`exit=1` and the summary line
+
+    RELEASE GATE FAILED: lunaflow-scan-live
+    Nothing was published and no tag should be pushed.
+
+The registry published `riantr/LunaFlow@0.1.38` at **2026-11-27T14:35:16Z**, which is
+22:35:16 in China -- sixteen and a half minutes INTO the run. The stage that noticed
+it is the live scan-record stage, and it noticed it correctly:
+
+    the latest of riantr/LunaFlow                    0.1.37  FAIL (the registry now serves 0.1.38) -- the record is stale and must be re-measured
+    LUNAFLOW SCAN FAILED: 1 problem(s).
+
+THE REMEDY WAS MEASURED, IN THE SAME RUN, AND THEN DISCARDED. The scan-record gate
+does not only say "the record is stale": it runs the same scan against `@latest` and
+reduces the result to the pin it would become. That block -- a header, the pin line to
+paste, and the instruction -- was computed correctly, and the parent stage threw it
+away, because the parent filtered the child's output through an ALLOW-LIST of line
+shapes and the candidate block matched none of them.
+
+MEASURED, on the raw child output: 69 lines came out of the child; the allow-list kept
+17; 46 were dropped; the 3 candidate lines were among the 46. And the gate log held
+EXACTLY those 17 -- the cross-check is bidirectional and zero on both sides: every
+line the filter kept is in the log, and every line in the log is one the filter kept.
+So the candidate RAN. It was not missing, and it was not a failure: it was thrown away
+by the parent, silently, with no line anywhere saying so.
+
+That contradicts the gate's own header, which promises "WHEN IT HAS MOVED, THE STAGE
+PRINTS THE CANDIDATE". A promise in a comment and an implementation that does the
+opposite is worse than neither, because the comment is the thing a reader trusts.
+
+THE FIX IS STRUCTURAL, NOT A WIDER LIST. The candidate is a BLOCK, so the block is
+passed through whole, and the rule that it is passed through whole is an ASSERTION
+ABOUT ITS SHAPE: header, pin line, instruction. A wider allow-list would have fixed
+this one omission and left the next one silent. The rule is now a function,
+`Select-ScanRecordLines`, and it is exercised by the release gate's own self-test --
+assertion K -- on ONE input, in three ways: the OLD filter loses the pin line (the
+defect, shown to be a defect), the NEW filter keeps it (the fix, shown to fix
+something), and a block that arrives without its pin line is REFUSED rather than passed
+on (the guard, shown to go red). A fourth case is there too: a child that printed no
+candidate at all is not an error, so the guard cannot cry wolf.
+
+WHAT MOVED, AND WHAT DID NOT. The capture was re-taken at the BYTE LEVEL -- `cmd`'s
+redirection copies what the program WROTE, and a capture whose line endings were
+normalised is a capture of something slightly different from what was observed. The
+new capture is `_verify/fixtures/lunaflow_scan_0.6.0_0.1.38.out`: 32,354 bytes, 425
+lines, LF, no BOM, sha256 `75bf9bc569c7a40f85f96cd3e951efabc2d6f3b0d67d0f106d9756c2b2d90ed1`.
+
+    files       76 -> 78        parsed      73 -> 75        pct    96.0 -> 96.1
+    notices    665 -> 684       unchecked 2877 -> 2883       total  707 -> 726
+
+and these did NOT move: the analyzer (still 0.6.0), the actionable count (still 3, all
+three in the corpus's own `fixtures/eva_demo/lib.mbt`), the unreliable count (39), the
+withheld count (0), the notparse count (3), this repository's own actionable count on
+`src/` (0), the largest raw-finding file (`src/app/model.mbt`) and its count (47). So
+the row the READMEs publish about somebody ELSE'S code grew, and the row about THIS
+repository's own source did not.
+
+THE COMPILER'S ROW WAS RE-MEASURED TOO, because it is measured over a TREE, and the
+tree moved: `moon check --target all` over `riantr/LunaFlow@0.1.38` reports the same
+**93 warnings and 0 errors** under moonc 1.0.0-rc1+3c0520448. It happens to be the
+same number, which is worth knowing and worth NOT assuming -- the two trees differ
+(76 files against 78, 665 notices against 684), so the compiler agreeing on both is a
+fact about the compiler, not a coincidence.
+
+AND ONE ROW OF THE SUMMARY IS NOT A ROW AT ALL, and it must not be read as one. The
+four stages after the live one -- the notice reconciliation and the three corpus
+stages -- are guarded by `if ($failed.Count -eq 0)`, so when the live stage went red
+they were SKIPPED, and they are absent from the summary rather than green. The old
+run's summary had 154 rows and this one has 150: the four missing rows are exactly
+those four. So the corpus row of this run is **NOT MEASURED**, and "not measured" is
+not "did not move". Reporting it as unchanged would be reporting a measurement that
+was never taken.
+
+WHAT DID NOT MOVE AT ALL: the tree's own numbers, under a new compiler. All 89
+mutation gates were True, and at the body level all 515 verdicts (475 KILLED, 40
+SURVIVED) were identical to the old run -- the same outcomes, the same measured
+details, and the same denominators (1683 and 1848) on every single one. The new
+toolchain was also faster: 2402 seconds of mutation against 2985.
+
+=> 判决: **一个门禁把补救措施测出来又扔掉，比不测更坏：读者拿到的是「重新测量」，却拿不到「测量成什么」。**
+   ⇒ 而**允许名单过滤会把「子进程说过的话」变成「父进程选择说的话」**，而且**丢掉的部分不留任何痕迹**
+     ⇒ 实测（2026-11-27）：子进程输出 69 行、保留 17 行、丢掉 46 行，候选那 3 行就在丢掉的里面；
+       而门禁日志里那 17 行与过滤后的结果**双向零差异** ⇒ **候选确实跑了，是被父进程扔的**。
+   ⇒ 而**门禁自己承诺过它会打印候选**（抬头写着 "WHEN IT HAS MOVED, THE STAGE PRINTS THE CANDIDATE"）
+     ⇒ **承诺与实现不符，比两者都没有更费时间**：读者信的是那句话。
+   ⇒ 修法**不是放宽允许名单**（那只会修好这一处遗漏，下一处照旧静默）
+     ⇒ 修法是**整块透传 + 形状断言 + 自证红**：旧过滤器丢、新过滤器留、缺一截被拒、没有候选不误报，
+       **四条都在门禁自己的 `-SelfTest` 里跑**。
+   ⇒ 而**世界往前走了，但树没动**：0.1.38 在门禁跑着的时候发布（22:35:16，门禁 22:18:46 起跑）
+     ⇒ **语料的行变了，本仓库源码的行没变**（76→78 文件、73→75 解析、96.0→96.1%、
+       665→684 notices、707→726 total；而 actionable 仍 3、unreliable 仍 39、withheld 仍 0、
+       `src/` 的 actionable 仍 0、`src/app/model.mbt` 仍 47）
+     ⇒ **编译器的行也重测了**（它测的是一棵树，树换了）：0.1.38 上**仍是 93 warnings / 0 errors**
+       —— **两棵树不同，所以两边都相同是关于编译器的事实，不是巧合**。
+   ⇒ 而**「没跑」不是「没变」**：语料那三段被 `$failed.Count -eq 0` 守着，前一段一红它们就**整段被跳过**
+     ⇒ 旧跑 154 行、新跑 150 行，**少的正好是那四行** ⇒ 那一格是**未测量**，
+       把它写成「没动」就是**报告了一次从未做过的测量**。
+   ⇒ 而**树自己的数一个都没动**，在新编译器下也是：89 道 mutation 全 True，
+     body 级 515 条判决（475 KILLED / 40 SURVIVED）与旧跑**逐条相同**，连 "of N" 的分母都没变。

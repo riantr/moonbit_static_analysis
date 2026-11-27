@@ -13,15 +13,15 @@
 它能读 MoonBit 工具链的每一种文件后缀 —— `.mbt` / `.mbtx` / `.mbti` / `.mbt.md` /
 `.mbtp` —— 而且 **绝不修改被扫描的目标**：被分析的仓库既不依赖本模块，也不会被本模块改动。
 
-在**已发布的** `riantr/moonbit_static_analysis@0.6.0` 上、对着已发布的 `riantr/LunaFlow@0.1.37`
-（76 个文件）实测：**解析 73 个（96.0%），actionable 3 条**——三条**全在**包自带的
+在**已发布的** `riantr/moonbit_static_analysis@0.6.0` 上、对着已发布的 `riantr/LunaFlow@0.1.38`
+（78 个文件）实测：**解析 75 个（96.1%），actionable 3 条**——三条**全在**包自带的
 `fixtures/eva_demo/lib.mbt` 里，那是一个连注释都把前两条说破了的 demo 文件
 （`DIVISION BY ZERO, definite`、`OUT OF BOUNDS, negative`）；第三条是死存储：一个可变 Option 的
 初始 `None`，两个分支都在任何读取之前就把它覆盖掉了。产品源码（`src/`）上**没有** actionable
 发现；前端读不完的那三个文件按 `PARTIAL` 报，从它们那里**扣下 0 条**发现。同一棵树上
 `moon check --target all` 报 **93 条 warning、零条 error**：编译器不诊断上面那两个运行时致命的
 形状（这旁边有阳性对照：同一个探针里它确实诊断出了类型不匹配）。用
-`moonx riantr/moonbit_static_analysis@0.6.0 riantr/LunaFlow@0.1.37` 可以复现这一整行。
+`moonx riantr/moonbit_static_analysis@0.6.0 riantr/LunaFlow@0.1.38` 可以复现这一整行。
 
 ## 目录
 
@@ -561,7 +561,7 @@ id 上，于是记号后面那个记号不是 id）。在本工具自己的源�
 
 在 `.mbt` 上，本工具 **不与工具链的编译器竞争**：`moon check` 有真正的解析器，读的是**整个**
 语言。在 `riantr/LunaFlow` 上它报 **93 条 warning、零条 error**；本工具的 `.mbt`
-前端读的是一个 **子集**，解析 **76 个文件里的 73 个**（96.0%）；`.mbti` 和 `.mbt.md` 是 100%。
+前端读的是一个 **子集**，解析 **78 个文件里的 75 个**（96.1%）；`.mbti` 和 `.mbt.md` 是 100%。
 
 本工具能做而编译器不能做的：编译器**根本不审**的那三种文件——`.mbti`、`.mbt.md`、
 `.mbtp`——以及跨包语义。

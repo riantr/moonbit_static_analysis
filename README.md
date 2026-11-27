@@ -16,7 +16,7 @@ It reads every MoonBit toolchain file kind — `.mbt` / `.mbtx` / `.mbti` / `.mb
 this module nor is touched by it.
 
 Measured on the **published** `riantr/moonbit_static_analysis@0.6.0` over the published
-`riantr/LunaFlow@0.1.37` (76 files): **73 parsed (96.0%), 3 actionable** — and all three are in
+`riantr/LunaFlow@0.1.38` (78 files): **75 parsed (96.1%), 3 actionable** — and all three are in
 the package's own `fixtures/eva_demo/lib.mbt`, a demo file whose comments announce the first two
 (`DIVISION BY ZERO, definite`, `OUT OF BOUNDS, negative`); the third is a dead store, the initial
 `None` of a mutable Option that both branches overwrite before anything reads it. On the product
@@ -25,7 +25,7 @@ finish are reported `PARTIAL` with **0** findings withheld from them. `moon chec
 that same tree reports **93 warnings and no error**: the compiler does not diagnose the two
 runtime-fatal shapes above (measured with a positive control beside it — it does diagnose a type
 mismatch in the same probe). Reproduce it with
-`moonx riantr/moonbit_static_analysis@0.6.0 riantr/LunaFlow@0.1.37`.
+`moonx riantr/moonbit_static_analysis@0.6.0 riantr/LunaFlow@0.1.38`.
 
 ## Contents
 
@@ -660,7 +660,7 @@ itself; both figures above are pinned by the release gate.
 On `.mbt`, this tool does **not** compete with the toolchain's compiler: `moon check` has a
 real parser and reads the **whole** language. On `riantr/LunaFlow` it reports **93 warnings and
 no error**; this tool's `.mbt` frontend reads a **subset**
-and parses **73 of 76** files (96.0%); `.mbti` and `.mbt.md` are 100%.
+and parses **75 of 78** files (96.1%); `.mbti` and `.mbt.md` are 100%.
 
 What this tool can do that the compiler cannot: the three file kinds the compiler does not
 audit at all — `.mbti`, `.mbt.md`, `.mbtp` — plus cross-package semantics.
